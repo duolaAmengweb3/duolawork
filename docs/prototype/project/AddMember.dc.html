@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>添加成员</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; max-width: 1240px">
+    <div>
+      <a href="Agents.dc.html" style="font-size: 14px; text-decoration: none">← 返回成员</a>
+      <h1 style="margin: 8px 0 0; font-size: 28px">添加成员</h1>
+      <p style="margin: 6px 0 0; color: #5E5E58">先选平台。只要一个 Agent 支持"添加自定义 MCP"，就能接进工作台；每个平台的接入步骤和限制会显示在右边。</p>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <section aria-label="选择平台" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+        <sc-for list="{{tiers}}" as="tier" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; gap: 10px; align-items: baseline">
+              <div style="font-weight: 700">{{tier.name}}</div>
+              <div style="font-size: 13px; color: #5E5E58">{{tier.hint}}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+              <sc-for list="{{tier.items}}" as="p" hint-placeholder-count="3">
+                <button type="button" onClick="{{p.pick}}" style="font: inherit; text-align: left; cursor: pointer; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; border: {{p.ring}}; background: {{p.bg}}; color: {{p.fg}}">
+                  <span style="font-weight: 500">{{p.name}}</span>
+                  <span style="font-size: 13px; color: {{p.sub}}">{{p.maker}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+
+      <aside aria-label="平台详情" style="flex: 1 1 360px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+        <div>
+          <div style="font-size: 20px; font-weight: 700">{{cur.name}}</div>
+          <div style="font-size: 13px; color: #5E5E58">{{cur.maker}}</div>
+        </div>
+        <span style="align-self: flex-start; font-size: 13px; font-weight: 500; padding: 4px 10px; border-radius: 12px; background: {{cur.tagBg}}; color: {{cur.tagFg}}">{{cur.tier}}</span>
+        <div style="display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 12px; font-size: 14px">
+          <div style="color: #5E5E58">接入方式</div><div>{{cur.via}}</div>
+          <div style="color: #5E5E58">叫醒方式</div><div>{{cur.wake}}</div>
+          <div style="color: #5E5E58">依据</div><div>{{cur.basis}}</div>
+        </div>
+        <sc-if value="{{cur.hasLimit}}" hint-placeholder-val="{{ true }}">
+          <div style="background: #FFF4E8; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #7A3A07; line-height: 1.6">{{cur.limit}}</div>
+        </sc-if>
+        <div style="font-weight: 500">怎么接</div>
+        <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.6">
+          <sc-for list="{{cur.how}}" as="h" hint-placeholder-count="3">
+            <li>{{h}}</li>
+          </sc-for>
+        </ol>
+        <sc-if value="{{cur.canAdd}}" hint-placeholder-val="{{ true }}">
+          <a href="Agents.dc.html" style="align-self: flex-start; background: #1F4FB8; color: #FFFFFF; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 500">生成接入地址</a>
+        </sc-if>
+        <sc-if value="{{cur.blocked}}" hint-placeholder-val="{{ false }}">
+          <div style="font-size: 14px; color: #5E5E58">这个平台暂时接不了，有变化时我们会更新。</div>
+        </sc-if>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 'perplexity' }; }
+  renderVals() {
+    var self = this;
+    var T = {
+      ok: { tier: '能接', tagBg: '#EDF7F1', tagFg: '#1F6B43' },
+      test: { tier: '需要实测', tagBg: '#FFF4E8', tagFg: '#8A4307' },
+      no: { tier: '暂不支持', tagBg: '#F1F0EC', tagFg: '#5E5E58' },
+      any: { tier: '通用', tagBg: '#EEF2FC', tagFg: '#1F4FB8' }
+    };
+    var P = [
+      { id: 'grok', t: 'ok', name: 'Grok Bot', maker: 'xAI', via: 'MCP', wake: 'webhook；兜底每 30 分钟自查', basis: '官方文档 + 你已确认', limit: '长时间不理会，Grok Bot 会暂停定时任务。', how: ['在 Grok Bot 的「连接应用」里添加自定义 MCP，粘贴接入地址', '在 routine 设置里创建 webhook，把地址填回工作台', '对 Bot 说：收到通知时用 agent-hub 工具完成我的任务'] },
+      { id: 'dots', t: 'ok', name: 'ChatGPT Dots', maker: 'OpenAI', via: 'MCP（开发者模式）', wake: 'Slack 里 @它（待实测）；兜底自查', basis: '你已确认 + 第三方', limit: '需要 Pro 或 Business Premium。', how: ['ChatGPT 设置里打开开发者模式，添加 MCP 应用，粘贴接入地址', '把 Dot 加进一个 Slack 频道，在工作台填这个频道', '对 Dot 说：被 @ 时用 agent-hub 工具完成我的任务'] },
+      { id: 'gemini', t: 'ok', name: 'Gemini Tasks', maker: 'Google（原 Spark）', via: 'MCP（自定义应用）', wake: 'Gmail 邮件触发', basis: '官方文档', limit: 'Gemini 往外写东西要你手动确认；仅美国、英文；需 AI Pro 或 Ultra；触发时间不精确。', how: ['gemini.google.com → 已连接应用 → 添加自定义应用，粘贴接入地址', '建一个 Gmail 触发：收到标题带 [agent-hub] 的邮件时运行', '要做的事：用 agent-hub 工具完成我的任务'] },
+      { id: 'perplexity', t: 'ok', name: 'Perplexity Computer', maker: 'Perplexity', via: 'MCP（自定义远程连接器）', wake: '定时自查；企业版可在 Slack 里 @', basis: '官方更新日志', limit: 'Pro、Max、企业版可用；个人版能否在 Slack 里被叫醒未确认。', how: ['在 Computer 的连接器里选「添加自定义连接器」，填接入地址，认证选「无」', '让它建一个定时工作流：每 30 分钟用 agent-hub 工具检查我的任务'] },
+      { id: 'workbuddy', t: 'ok', name: 'WorkBuddy', maker: '腾讯', via: 'MCP（自定义连接器）', wake: '定时自查', basis: '官方文档 + 第三方', limit: '电脑客户端：电脑要开着才会按时来查；写入类操作需要你确认。', how: ['连接器管理页右上角「自定义连接器」，按引导填接入地址', '在连接器页点「信任」启用', '在自动化面板建定时任务：每 30 分钟用 agent-hub 工具检查我的任务'] },
+      { id: 'qwen', t: 'ok', name: '千问办公', maker: '阿里', via: 'MCP（自定义 MCP）', wake: '定时自查', basis: '官方（定时）+ 第三方（自定义 MCP）', limit: '定时任务由电脑客户端调度：电脑睡眠或关机就不执行；每次执行消耗 Credits。', how: ['连接器页面选「自定义 MCP」，填接入地址', '新建定时任务：间隔 30 分钟，内容是用 agent-hub 工具检查我的任务', '打开「保持系统唤醒」'] },
+      { id: 'openclaw', t: 'ok', name: 'OpenClaw', maker: '开源', via: 'MCP', wake: '它自带的 cron 定时', basis: '官方文档 + 第三方', limit: '需要自己部署和维护。', how: ['在 OpenClaw 配置里添加 MCP 服务器，填接入地址', '建一个 automation：every 10m，内容是用 agent-hub 工具检查我的任务'] },
+      { id: 'hermes', t: 'ok', name: 'Hermes Agent', maker: 'Nous Research · 开源', via: 'MCP', wake: '它自带的 cron 定时', basis: '官方 + 第三方', limit: '需要自己部署和维护。', how: ['在 config.yaml 里添加 MCP 服务器，填接入地址', '用 hermes cron create 建一个每 10 分钟的检查任务'] },
+      { id: 'muse', t: 'test', name: 'Meta Muse', maker: 'Meta', via: '自定义连接器（普通接口）', wake: '定时自查', basis: '官方（自定义连接器）；MCP 未见官方说明', limit: '未经实测，可能接不上。', how: ['对 Muse 说：帮我搭一个自定义连接器，接口说明在这个地址', '把连接器的操作设为「总是允许」', '对 Muse 说：每 30 分钟用这个连接器检查我的任务'] },
+      { id: 'doubao', t: 'test', name: '豆包工作', maker: '字节', via: 'MCP（自定义连接器）', wake: '定时自查', basis: '第三方教程', limit: '没找到官方帮助页；自定义连接器和定时任务都只在电脑版，电脑要开着。', how: ['「技能 · 连接器 · 伙伴」→ 新建 → 新建自定义连接器，传输类型选 HTTP，填接入地址', '电脑版新建定时任务：每小时用这个连接器检查我的任务'] },
+      { id: 'duet', t: 'test', name: 'Claude Duet', maker: 'Anthropic', via: 'MCP（自定义连接器）', wake: '它自己的后台检查（每几个小时）', basis: '官方页面 + 第三方评测', limit: '仅美国 Pro、Max，候补名单；有评测说定时运行用不了自定义连接器。', how: ['在 Claude 设置里添加自定义连接器，填接入地址', '实测：Duet 的后台检查能不能用上它'] },
+      { id: 'kimi', t: 'test', name: 'Kimi', maker: '月之暗面', via: 'MCP（Kimi Code 命令行）', wake: 'Kimi Code 的定时任务', basis: '官方更新日志', limit: '网页版 Kimi Agent 没提自定义 MCP；目前只有命令行工具 Kimi Code 支持。', how: ['在 Kimi Code 的配置里添加 MCP 服务器，填接入地址', '用自然语言建一个定时任务：每 30 分钟检查我的任务'] },
+      { id: 'instinct', t: 'no', name: 'Instinct', maker: 'Spear Street', via: '—', wake: '—', basis: '多个第三方来源一致', limit: '只能通过短信或电话找它办事，没有公开接口，也没有 MCP。', how: ['暂时接不了'] },
+      { id: 'copilot', t: 'no', name: 'Microsoft Copilot', maker: '微软（Cowork）', via: '—', wake: '—', basis: '没找到依据', limit: '个人版还在预览，没找到自定义 MCP 的资料。', how: ['暂时接不了'] },
+      { id: 'autoglm', t: 'no', name: '智谱 AutoGLM', maker: '智谱', via: '—', wake: '—', basis: '没找到依据', limit: '定时任务官方说"即将上线"，自定义 MCP 没找到官方说明。', how: ['暂时接不了'] },
+      { id: 'other', t: 'any', name: '其他 Agent', maker: '任何支持自定义 MCP 的', via: 'MCP', wake: '定时自查', basis: '标准 MCP', limit: '', how: ['在它的设置里添加自定义 MCP，粘贴接入地址', '让它定时用 agent-hub 工具检查任务'] }
+    ];
+    var picked = this.state.picked;
+    function card(p) {
+      var on = p.id === picked, off = p.t === 'no';
+      return { name: p.name, maker: p.maker,
+        ring: on ? '2px solid #1F4FB8' : '1px solid #D5D4CD',
+        bg: on ? '#EEF2FC' : (off ? '#F1F0EC' : '#FFFFFF'),
+        fg: off ? '#5E5E58' : '#1B1B19', sub: '#5E5E58',
+        pick: function () { self.setState({ picked: p.id }); } };
+    }
+    function group(k) { return P.filter(function (p) { return p.t === k; }).map(card); }
+    var c = P.filter(function (p) { return p.id === picked; })[0] || P[0];
+    var tag = T[c.t];
+    return {
+      tiers: [
+        { name: '能接', hint: '有官方依据，或你已确认', items: group('ok') },
+        { name: '需要实测', hint: '官方没写清，可能接不上', items: group('test') },
+        { name: '暂不支持', hint: '目前没有可用的接入方式', items: group('no') },
+        { name: '通用', hint: '不在名单里，但支持自定义 MCP', items: group('any') }
+      ],
+      cur: { name: c.name, maker: c.maker, tier: tag.tier, tagBg: tag.tagBg, tagFg: tag.tagFg, via: c.via, wake: c.wake, basis: c.basis,
+        limit: c.limit, hasLimit: !!c.limit, how: c.how, canAdd: c.t !== 'no', blocked: c.t === 'no' }
+    };
+  }
+}
+</script>
+</body>
+</html>
