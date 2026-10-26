@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>团队</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">任务板</a>
+    <a href="Team.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">团队</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">成员（Agent 连接）</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">公司档案</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; max-width: 1180px">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
+      <div>
+        <h1 style="margin: 0; font-size: 28px">你的 AI 团队</h1>
+        <p style="margin: 6px 0 0; color: #5E5E58">按岗位来管。每个岗位交给握着那个生态的大厂 Agent 来干；平时它们按例行工作自己做，只在需要你批准时来找你。</p>
+      </div>
+      <button type="button" style="font: inherit; background: #1F4FB8; color: #FFFFFF; border: 0; padding: 12px 20px; border-radius: 8px; font-weight: 500">招一个岗位</button>
+    </div>
+
+    <a href="Notes.dc.html" style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 16px 20px; color: #1B1B19; text-decoration: none">
+      <span><strong>公司档案</strong> · 在 X 上做 AI 和 AI + Web3 内容 · 语气：大白话 · 禁区：不荐币、不推中转站</span>
+      <span style="color: #1F4FB8; font-size: 14px">所有岗位共用 · 编辑</span>
+    </a>
+
+    <section aria-label="岗位" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{roles}}" as="r" hint-placeholder-count="4">
+        <article style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px">
+            <div style="font-size: 18px; font-weight: 700">{{r.title}}</div>
+            <div style="font-size: 13px; color: {{r.stateColor}}">{{r.state}}</div>
+          </div>
+          <div style="font-size: 14px; color: #5E5E58; line-height: 1.6">{{r.duty}}</div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="font-size: 13px; color: #5E5E58">由谁来干</div>
+            <sc-for list="{{r.who}}" as="w" hint-placeholder-count="2">
+              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px">
+                <span style="width: 28px; height: 28px; border-radius: 6px; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; background: {{w.color}}">{{w.initial}}</span>
+                <span><strong>{{w.name}}</strong> · {{w.part}}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="background: #F6F6F3; border-radius: 8px; padding: 10px 12px; font-size: 14px">例行工作：{{r.routine}}</div>
+        </article>
+      </sc-for>
+    </section>
+
+    <section aria-label="还可以招的岗位" style="display: flex; flex-direction: column; gap: 10px">
+      <div style="font-weight: 700">还可以招</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <sc-for list="{{more}}" as="m" hint-placeholder-count="4">
+          <span style="border: 1px dashed #A9A89F; border-radius: 8px; padding: 8px 14px; font-size: 14px; color: #5E5E58">{{m}}</span>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var A = {
+      grok: { name: 'Grok Bot', initial: 'G', color: '#2B2B28' },
+      dots: { name: 'ChatGPT Dots', initial: 'D', color: '#0F6B5E' },
+      gemini: { name: 'Gemini Tasks', initial: 'Ge', color: '#1D4ED8' },
+      muse: { name: 'Meta Muse', initial: 'M', color: '#6D28D9' }
+    };
+    function w(k, part) { var a = A[k]; return { name: a.name, initial: a.initial, color: a.color, part: part }; }
+    return {
+      roles: [
+        { title: '社媒经理', state: '工作中', stateColor: '#1F6B43',
+          duty: '追热点、写帖子、改成各平台版本；发布前问你。',
+          who: [w('grok', 'X 上的热点和帖子（X 在它手里）'), w('muse', 'Instagram、Threads 版本（这两个平台在它手里）')],
+          routine: '每天 08:00 出一份 X 内容包' },
+        { title: '行政助理', state: '工作中', stateColor: '#1F6B43',
+          duty: '整理邮件、提醒要回的信、安排日程、每天早上一份简报。',
+          who: [w('gemini', 'Gmail、日历、Google 文档（都在它手里）')],
+          routine: '每天 07:30 发一份今日简报' },
+        { title: '获客', state: '待设置', stateColor: '#8A4307',
+          duty: '找在 X 上表达需求的人，查资料，写跟进邮件草稿。',
+          who: [w('grok', '在 X 上找有需求的人'), w('dots', '查对方公司资料、记进表格'), w('gemini', '在 Gmail 写跟进草稿')],
+          routine: '每周一 09:00 出一份潜在客户名单' },
+        { title: '内容核实', state: '工作中', stateColor: '#1F6B43',
+          duty: '逐条打开官网、价格页核对数字，查不到就标"未核实"。',
+          who: [w('dots', '能连几千个应用，适合查官网和数据')],
+          routine: '每次社媒经理交稿后自动接手' }
+      ],
+      more: ['客服（Muse：Instagram 和 WhatsApp 私信）', '数据分析（Dots）', '行业研究（Perplexity）', '电商运营（Dots：Shopify）']
+    };
+  }
+}
+</script>
+</body>
+</html>
