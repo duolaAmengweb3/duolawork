@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>首次使用向导</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1100px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; padding: 32px 24px; box-sizing: border-box">
+  <div style="max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px">
+      <div style="font-weight: 700; font-size: 18px">Agent 工作台 · 首次使用</div>
+      <a href="Main.dc.html" style="font-size: 14px; text-decoration: none">跳过，直接进入</a>
+    </div>
+
+    <ol aria-label="进度" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+        <li style="border-radius: 8px; padding: 10px 12px; font-size: 14px; background: {{s.bg}}; color: {{s.fg}}; font-weight: {{s.weight}}">{{s.n}}. {{s.label}}</li>
+      </sc-for>
+    </ol>
+
+    <sc-if value="{{at1}}" hint-placeholder-val="{{ true }}">
+      <section style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+        <div>
+          <h1 style="margin: 0; font-size: 26px">你想让 AI 团队帮你做什么？</h1>
+          <p style="margin: 6px 0 0; color: #5E5E58">选一件你经常重复做的事。之后还能加更多。</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <sc-for list="{{goals}}" as="g" hint-placeholder-count="4">
+            <button type="button" onClick="{{g.pick}}" style="font: inherit; text-align: left; cursor: pointer; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; border: {{g.ring}}; background: {{g.bg}}; color: #1B1B19">
+              <span style="font-weight: 700">{{g.title}}</span>
+              <span style="font-size: 14px; color: #5E5E58; line-height: 1.6">{{g.desc}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{at2}}" hint-placeholder-val="{{ false }}">
+      <section style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+        <div>
+          <h1 style="margin: 0; font-size: 26px">你手上有哪些 Agent？</h1>
+          <p style="margin: 6px 0 0; color: #5E5E58">勾选你已经在用的。我们按"谁手里握着哪个生态"推荐分工。</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{roles}}" as="r" hint-placeholder-count="4">
+            <label style="display: grid; grid-template-columns: 24px 44px minmax(0, 1fr); gap: 12px; align-items: center; border: 1px solid #E3E2DC; border-radius: 12px; padding: 14px 16px">
+              <input type="checkbox" checked style="width: 20px; height: 20px">
+              <span style="width: 40px; height: 40px; border-radius: 8px; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; background: {{r.color}}">{{r.initial}}</span>
+              <span style="display: flex; flex-direction: column; gap: 2px">
+                <span style="font-weight: 700">{{r.name}} · 负责{{r.job}}</span>
+                <span style="font-size: 14px; color: #5E5E58">为什么是它：{{r.why}}</span>
+              </span>
+            </label>
+          </sc-for>
+        </div>
+        <div style="font-size: 14px; color: #5E5E58">没有某一家？取消勾选，我们会把它的活换给你有的 Agent，或者留给你自己做。</div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{at3}}" hint-placeholder-val="{{ false }}">
+      <section style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+        <div>
+          <h1 style="margin: 0; font-size: 26px">一个一个连上</h1>
+          <p style="margin: 6px 0 0; color: #5E5E58">每家三步，照着做就行。不需要懂任何技术词。</p>
+        </div>
+        <sc-for list="{{connect}}" as="c" hint-placeholder-count="4">
+          <article style="border: 1px solid {{c.border}}; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap">
+              <div style="font-weight: 700">{{c.name}}</div>
+              <span style="font-size: 14px; font-weight: 500; color: {{c.stateColor}}">{{c.state}}</span>
+            </div>
+            <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.6">
+              <li>复制接入地址 <button type="button" style="font: inherit; font-size: 13px; padding: 2px 10px; border-radius: 6px; border: 1px solid #D5D4CD; background: #FFFFFF">复制</button></li>
+              <li>{{c.where}}</li>
+              <li>把这句话发给它：<span style="display: block; margin-top: 4px; background: #F6F6F3; border-radius: 8px; padding: 8px 10px">{{c.say}}</span></li>
+            </ol>
+            <button type="button" onClick="{{c.test}}" style="font: inherit; align-self: flex-start; padding: 8px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">测试连接</button>
+          </article>
+        </sc-for>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{at4}}" hint-placeholder-val="{{ false }}">
+      <section style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+        <div>
+          <h1 style="margin: 0; font-size: 26px">试跑一次</h1>
+          <p style="margin: 6px 0 0; color: #5E5E58">用一个小任务走完整条接力："找 1 条今天的 AI 热点 → 核实 → 写成一句话草稿"。大约 10～30 分钟。</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <sc-for list="{{trial}}" as="t" hint-placeholder-count="3">
+            <div style="display: flex; justify-content: space-between; gap: 12px; border-radius: 10px; padding: 12px 14px; background: {{t.bg}}">
+              <span>{{t.who}}：{{t.what}}</span>
+              <span style="font-weight: 500; color: {{t.fg}}">{{t.state}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <a href="Main.dc.html" style="align-self: flex-start; background: #1F4FB8; color: #FFFFFF; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 500">完成，进入任务板</a>
+      </section>
+    </sc-if>
+
+    <div style="display: flex; justify-content: space-between; gap: 12px">
+      <button type="button" onClick="{{back}}" style="font: inherit; padding: 12px 20px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF; visibility: {{backVis}}">上一步</button>
+      <button type="button" onClick="{{next}}" style="font: inherit; padding: 12px 24px; border-radius: 8px; border: 0; background: #1F4FB8; color: #FFFFFF; font-weight: 500; visibility: {{nextVis}}">下一步</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { step: 1, goal: 'content', tested: {} }; }
+  renderVals() {
+    var self = this, st = this.state;
+    var labels = ['选要做的事', '选你的 Agent', '一个一个连上', '试跑一次'];
+    var steps = labels.map(function (l, i) {
+      var n = i + 1, cur = n === st.step, done = n < st.step;
+      return { n: n, label: l, bg: cur ? '#1F4FB8' : (done ? '#EDF7F1' : '#ECEBE6'), fg: cur ? '#FFFFFF' : (done ? '#1F6B43' : '#5E5E58'), weight: cur ? '700' : '400' };
+    });
+    var G = [
+      { id: 'content', title: '每日内容包', desc: '每天早上自动出一份 X 内容草稿：找热点、核实、写稿、改成其他平台版本。' },
+      { id: 'leads', title: '线索跟进', desc: '找到在 X 上表达需求的人，查资料、写跟进邮件草稿、在日历里留时间。' },
+      { id: 'weekly', title: '每周行业周报', desc: '检索一周的动态，核实数据，写成文档。' },
+      { id: 'custom', title: '我自己定', desc: '从空白开始拆步骤。' }
+    ];
+    var goals = G.map(function (g) {
+      var on = g.id === st.goal;
+      return { title: g.title, desc: g.desc, ring: on ? '2px solid #1F4FB8' : '1px solid #D5D4CD', bg: on ? '#EEF2FC' : '#FFFFFF', pick: function () { self.setState({ goal: g.id }); } };
+    });
+    var roles = [
+      { name: 'Grok Bot', initial: 'G', color: '#2B2B28', job: '找热点', why: 'X 上的实时内容在它手里' },
+      { name: 'ChatGPT Dots', initial: 'D', color: '#0F6B5E', job: '核实数据', why: '能连几千个应用，适合查官网和价格页' },
+      { name: 'Gemini Tasks', initial: 'Ge', color: '#1D4ED8', job: '写成草稿', why: '你的 Google 文档在它手里' },
+      { name: 'Meta Muse', initial: 'M', color: '#6D28D9', job: '改成 Threads、Instagram 版本', why: 'Instagram、Threads 在它手里' }
+    ];
+    var C = [
+      { id: 'grok', name: 'Grok Bot', where: '打开 Grok Bot →「连接应用」→ 添加自定义连接，粘贴地址', say: '以后收到 agent-hub 的通知，就用 agent-hub 工具查看并完成分给你的任务，做完交回结果。' },
+      { id: 'dots', name: 'ChatGPT Dots', where: '打开 ChatGPT 设置 →「应用」→ 添加，粘贴地址', say: '每 30 分钟用 agent-hub 工具检查一次有没有分给你的任务，有就做完并交回。' },
+      { id: 'gemini', name: 'Gemini Tasks', where: '打开 gemini.google.com →「已连接应用」→ 添加自定义应用，粘贴地址', say: '收到标题带 [agent-hub] 的邮件时，用 agent-hub 工具完成分给你的任务。' },
+      { id: 'muse', name: 'Meta Muse', where: '对 Muse 说"帮我搭一个自定义连接器"，把地址发给它', say: '每 30 分钟用这个连接器检查分给你的任务，做完交回。' }
+    ];
+    var connect = C.map(function (c) {
+      var ok = !!st.tested[c.id];
+      return { name: c.name, where: c.where, say: c.say,
+        state: ok ? '已连上' : '还没连上', stateColor: ok ? '#1F6B43' : '#5E5E58', border: ok ? '#BFE0CC' : '#E3E2DC',
+        test: function () { var t = Object.assign({}, self.state.tested); t[c.id] = true; self.setState({ tested: t }); } };
+    });
+    var trial = [
+      { who: 'Grok Bot', what: '找 1 条今天的 AI 热点', state: '完成', bg: '#EDF7F1', fg: '#1F6B43' },
+      { who: 'ChatGPT Dots', what: '核实来源', state: '完成', bg: '#EDF7F1', fg: '#1F6B43' },
+      { who: 'Gemini Tasks', what: '写成一句话草稿', state: '进行中（等你在 Gemini 里点允许）', bg: '#FFF4E8', fg: '#8A4307' }
+    ];
+    return {
+      steps: steps, goals: goals, roles: roles, connect: connect, trial: trial,
+      at1: st.step === 1, at2: st.step === 2, at3: st.step === 3, at4: st.step === 4,
+      backVis: st.step > 1 ? 'visible' : 'hidden', nextVis: st.step < 4 ? 'visible' : 'hidden',
+      next: function () { self.setState({ step: Math.min(4, self.state.step + 1) }); },
+      back: function () { self.setState({ step: Math.max(1, self.state.step - 1) }); }
+    };
+  }
+}
+</script>
+</body>
+</html>
