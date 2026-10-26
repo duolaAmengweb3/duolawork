@@ -124,7 +124,7 @@
 | 档位 | 平台 | 显示 |
 |---|---|---|
 | 能接 | Grok Bot、ChatGPT Dots、Gemini Tasks、Perplexity Computer、腾讯 WorkBuddy、千问办公、OpenClaw、Hermes | 正常可选，带接入指引 |
-| 需要实测 | Meta Muse、豆包工作、Claude Duet、Kimi | 可选，标"未经官方确认，可能接不上" |
+| 需要实测 | Meta Muse、豆包工作、Kimi | 可选，标"未经官方确认，可能接不上" |
 | 暂不支持 | Instinct、Microsoft Copilot、智谱 AutoGLM | 灰色，写明原因（比如"Instinct 没有开放接口"） |
 | 通用 | 其他支持自定义 MCP 的 Agent | 只给接入地址和通用说明 |
 | 连接状态 | P0 | "从未连接 / 最近一次来过是 X 分钟前"，据此判断有没有接成功 |
