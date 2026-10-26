@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>共享资料</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 960px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; max-width: 1180px">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
+      <div>
+        <h1 style="margin: 0; font-size: 28px">共享资料</h1>
+        <p style="margin: 6px 0 0; color: #5E5E58">所有成员都能读写。背景写一次，四家 Agent 都用得上。不要放密码和密钥。</p>
+      </div>
+      <button type="button" style="font: inherit; background: #1F4FB8; color: #FFFFFF; border: 0; padding: 12px 20px; border-radius: 8px; font-weight: 500">新建资料</button>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+      <section aria-label="资料列表" style="flex: 1 1 260px; background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 4px">
+        <sc-for list="{{notes}}" as="n" hint-placeholder-count="4">
+          <button type="button" onClick="{{n.pick}}" style="font: inherit; text-align: left; border: 0; border-radius: 8px; padding: 12px 14px; cursor: pointer; background: {{n.bg}}; color: #1B1B19">
+            <div style="font-weight: 500">{{n.title}}</div>
+            <div style="font-size: 13px; color: #5E5E58">{{n.by}}</div>
+          </button>
+        </sc-for>
+      </section>
+
+      <article style="flex: 999 1 480px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline">
+          <h2 style="margin: 0; font-size: 22px">{{current.title}}</h2>
+          <div style="font-size: 13px; color: #5E5E58">{{current.by}}</div>
+        </div>
+        <div style="background: #F6F6F3; border-radius: 8px; padding: 16px; line-height: 1.8; white-space: pre-line; font-size: 15px">{{current.body}}</div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">编辑</button>
+          <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">修改记录</button>
+        </div>
+      </article>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: 0 }; }
+  renderVals() {
+    var self = this;
+    var data = [
+      { title: '我的写作风格', by: '你 · 昨天 21:40 修改',
+        body: '- 先说"对你有什么用 / 能省多少 / 能赚多少"，再说发生了什么\n- 大白话，一句话一个意思，不用"赋能、闭环"这类词\n- 数字要有来源，查不到就写"未核实"\n- 每条结尾给一个能马上用的动作（链接、命令、步骤）' },
+      { title: '本周选题', by: 'Grok Bot · 今天 08:06 追加',
+        body: '- 个人 Agent 聚合（自己在做，可以写过程）\n- DeepSeek Harness 插件生态\n- 免费额度和羊毛（七牛云 Conatus 到 11 月 30 日）' },
+      { title: '选题禁区', by: '你 · 10 月 25 日',
+        body: '- 不荐币、不喊单、不预测涨跌\n- 不推中转站和灰色额度\n- 不写和公司安全业务、ATEL 支付相关的内容' },
+      { title: '常用信息源', by: 'Dots · 今天 08:20 追加',
+        body: '- TrustMRR（收入经过核实）\n- Product Hunt 日榜\n- Hacker News 的 Show HN\n- 各产品官网的价格页' }
+    ];
+    var notes = data.map(function (n, i) {
+      return { title: n.title, by: n.by, bg: i === self.state.picked ? '#EEF2FC' : 'transparent', pick: function () { self.setState({ picked: i }); } };
+    });
+    return { notes: notes, current: data[this.state.picked] };
+  }
+}
+</script>
+</body>
+</html>

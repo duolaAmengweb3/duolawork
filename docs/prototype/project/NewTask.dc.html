@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>新建任务</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1080px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; max-width: 1080px">
+    <div>
+      <a href="Main.dc.html" style="font-size: 14px; text-decoration: none">← 返回任务板</a>
+      <h1 style="margin: 8px 0 0; font-size: 28px">新建任务</h1>
+      <p style="margin: 6px 0 0; color: #5E5E58">写清楚要做什么，拆成几步，每一步交给一个成员。上一步做完，工作台会自动叫醒下一个。</p>
+    </div>
+
+    <section aria-label="选择模板" style="display: flex; flex-direction: column; gap: 10px">
+      <div style="font-weight: 500">从模板开始</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <button type="button" style="font: inherit; padding: 12px 16px; border-radius: 8px; border: 2px solid #1F4FB8; background: #EEF2FC; color: #1F4FB8; font-weight: 500">每日 X 内容包</button>
+        <button type="button" style="font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF; color: #1B1B19">本周 AI 创业项目周报</button>
+        <button type="button" style="font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF; color: #1B1B19">空白任务</button>
+      </div>
+    </section>
+
+    <section aria-label="任务信息" style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px">
+      <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 500">任务名称
+        <input type="text" value="每日 X 内容包" style="font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid #D5D4CD; border-radius: 8px">
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-weight: 500">重复运行
+        <select style="font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid #D5D4CD; border-radius: 8px; background: #FFFFFF">
+          <option>每天 08:00 自动创建</option>
+          <option>只运行一次</option>
+          <option>每周一 09:00</option>
+        </select>
+      </label>
+      <label style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; font-weight: 500">任务说明（每个成员都会看到）
+        <textarea rows="3" style="font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid #D5D4CD; border-radius: 8px; resize: vertical">给 @hunterweb303 准备今天的 X 内容：AI 和 AI + Web3 方向，偏"能省钱、能用上的工具"。语气按共享资料「我的写作风格」。</textarea>
+      </label>
+    </section>
+
+    <section aria-label="步骤" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <div style="font-weight: 500">步骤（按顺序接力）</div>
+        <div style="font-size: 14px; color: #5E5E58">勾选"做完要我确认"的步骤，交了结果后会先停下等你点头</div>
+      </div>
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+        <div style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 16px 20px; display: grid; grid-template-columns: 40px minmax(0, 1fr) 220px; gap: 12px 16px; align-items: start">
+          <div style="width: 32px; height: 32px; border-radius: 16px; background: #EEF2FC; color: #1F4FB8; display: flex; align-items: center; justify-content: center; font-weight: 700">{{s.n}}</div>
+          <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+            <div style="font-weight: 700">{{s.title}}</div>
+            <div style="color: #5E5E58; font-size: 14px; line-height: 1.6">{{s.ask}}</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5E5E58">交给
+              <select style="font: inherit; font-size: 14px; color: #1B1B19; padding: 8px 10px; border: 1px solid #D5D4CD; border-radius: 8px; background: #FFFFFF">
+                <option>{{s.who}}</option>
+                <option>谁有空谁领</option>
+              </select>
+            </label>
+            <label style="display: flex; gap: 8px; align-items: center; font-size: 14px">
+              <input type="checkbox" checked="{{s.confirm}}" style="width: 18px; height: 18px"> 做完要我确认
+            </label>
+          </div>
+        </div>
+      </sc-for>
+      <button type="button" style="font: inherit; align-self: flex-start; padding: 10px 16px; border-radius: 8px; border: 1px dashed #A9A89F; background: transparent; color: #1B1B19">+ 加一步</button>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; padding-bottom: 32px">
+      <a href="TaskDetail.dc.html" style="background: #1F4FB8; color: #FFFFFF; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 500">创建并开始</a>
+      <a href="Main.dc.html" style="border: 1px solid #D5D4CD; background: #FFFFFF; color: #1B1B19; text-decoration: none; padding: 12px 24px; border-radius: 8px">取消</a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      steps: [
+        { n: 1, who: 'Grok Bot', confirm: false, title: '抓 X 上的 AI 热点', ask: '找过去 24 小时 X 上讨论最多的 AI、AI + Web3 话题，挑 5 个，每个写：是什么、为什么火、原帖链接。' },
+        { n: 2, who: 'ChatGPT Dots', confirm: false, title: '核实数据和来源', ask: '逐条打开热点涉及的产品官网、价格页，核对数字；查不到的标"未核实"，不要编。' },
+        { n: 3, who: 'Gemini Tasks', confirm: false, title: '写成草稿，放进 Google 文档', ask: '按「我的写作风格」写 3 条推文草稿，放进一个新的 Google 文档，把链接交回工作台。' },
+        { n: 4, who: 'Meta Muse', confirm: false, title: '改成 Threads 和 Instagram 版本', ask: '把 3 条草稿各改一版 Threads 文案，配一张简单的图，交回链接。' },
+        { n: 5, who: '你', confirm: true, title: '你最后看一眼', ask: '看草稿、改一改，确认后自己发布。' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

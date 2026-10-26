@@ -1,0 +1,21 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-10-26T05:20:00Z"},
+  "title": "Agent 工作台原型",
+  "launch": {"view": "focused", "file": "Main.dc.html"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 960, "title": "1 任务板（首页）", "expand": "fill", "is_interactive": true},
+    "NewTask.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 1080, "title": "2 新建任务", "expand": "fill", "is_interactive": true},
+    "TaskDetail.dc.html": {"x": 3040, "y": 0, "w": 1440, "h": 1180, "title": "3 任务详情（接力过程）", "expand": "fill", "is_interactive": true},
+    "Agents.dc.html": {"x": 0, "y": 1420, "w": 1440, "h": 1080, "title": "4 成员（连接 Agent）", "expand": "fill", "is_interactive": true},
+    "Notes.dc.html": {"x": 1520, "y": 1420, "w": 1440, "h": 960, "title": "5 共享资料", "expand": "fill", "is_interactive": true},
+    "Approvals.dc.html": {"x": 3040, "y": 1420, "w": 1440, "h": 960, "title": "6 确认中心", "expand": "fill", "is_interactive": true},
+    "AgentView.dc.html": {"x": 0, "y": 2620, "w": 1440, "h": 1000, "title": "7 Agent 那边看到的样子", "expand": "fill", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "NewTask.dc.html", "TaskDetail.dc.html", "Agents.dc.html", "Notes.dc.html", "Approvals.dc.html", "AgentView.dc.html"],
+  "notes": {
+    "title": {"x": 0, "y": -300, "text": "Agent 工作台 · 第一版原型", "kind": "title1", "maxW": 4480}
+  },
+  "designSystems": []
+}

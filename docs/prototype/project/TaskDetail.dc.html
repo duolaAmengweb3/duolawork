@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>任务详情</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1180px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-content: flex-start; max-width: 1180px">
+    <div style="flex: 1 1 100%">
+      <a href="Main.dc.html" style="font-size: 14px; text-decoration: none">← 返回任务板</a>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; margin-top: 8px">
+        <h1 style="margin: 0; font-size: 28px">10 月 27 日 X 内容包</h1>
+        <div style="display: flex; gap: 8px">
+          <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">复制最终结果</button>
+          <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF; color: #9B2C1F">取消任务</button>
+        </div>
+      </div>
+      <p style="margin: 6px 0 0; color: #5E5E58">来自模板「每日 X 内容包」 · 今天 08:00 自动创建 · 进行到第 3 步，共 5 步</p>
+    </div>
+
+    <section aria-label="接力过程" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+        <article style="background: #FFFFFF; border: 1px solid {{s.border}}; border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+            <div style="display: flex; gap: 12px; align-items: center">
+              <div style="width: 36px; height: 36px; border-radius: 8px; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; background: {{s.color}}">{{s.initial}}</div>
+              <div>
+                <div style="font-weight: 700">第 {{s.n}} 步 · {{s.title}}</div>
+                <div style="font-size: 13px; color: #5E5E58">{{s.who}}</div>
+              </div>
+            </div>
+            <span style="font-size: 14px; font-weight: 500; padding: 4px 10px; border-radius: 12px; background: {{s.bg}}; color: {{s.fg}}">{{s.status}}</span>
+          </div>
+          <div style="font-size: 13px; color: #5E5E58">{{s.trail}}</div>
+          <sc-if value="{{s.hasResult}}" hint-placeholder-val="{{ true }}">
+            <div style="background: #F6F6F3; border-radius: 8px; padding: 12px 14px; font-size: 14px; line-height: 1.7; white-space: pre-line">{{s.result}}</div>
+          </sc-if>
+          <sc-if value="{{s.isCurrent}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <a href="Approvals.dc.html" style="background: #B4530A; color: #FFFFFF; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 500">去确认中心</a>
+              <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">再叫醒一次</button>
+              <button type="button" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">改派给别人</button>
+            </div>
+          </sc-if>
+        </article>
+      </sc-for>
+    </section>
+
+    <aside aria-label="时间线" style="flex: 1 1 280px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 18px 20px; align-self: flex-start; display: flex; flex-direction: column; gap: 12px">
+      <div style="font-weight: 700">时间线</div>
+      <sc-for list="{{events}}" as="e" hint-placeholder-count="8">
+        <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; font-size: 14px">
+          <div style="color: #5E5E58">{{e.t}}</div>
+          <div>{{e.text}}</div>
+        </div>
+      </sc-for>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var S = {
+      done: { status: '完成', bg: '#EDF7F1', fg: '#1F6B43', border: '#E3E2DC' },
+      confirm: { status: '等你在 Gemini 里确认', bg: '#FFF4E8', fg: '#8A4307', border: '#F1CFA8' },
+      wait: { status: '等待前一步', bg: '#F6F6F3', fg: '#5E5E58', border: '#E3E2DC' }
+    };
+    function step(n, title, who, initial, color, k, trail, result, current) {
+      var o = S[k];
+      return { n: n, title: title, who: who, initial: initial, color: color, status: o.status, bg: o.bg, fg: o.fg, border: o.border,
+        trail: trail, result: result || '', hasResult: !!result, isCurrent: !!current };
+    }
+    return {
+      steps: [
+        step(1, '抓 X 上的 AI 热点', 'Grok Bot', 'G', '#2B2B28', 'done',
+          '08:00 通过 webhook 叫醒 · 08:01 领取 · 08:07 提交',
+          '1. Laya 决策模型接入 BSC meme 数据（原帖 1.9 万浏览）\n2. DeepSeek Harness 插件数 10 天新增 3226 个\n3. 七牛云 Conatus 每天 1 亿 token 免费到 11 月 30 日\n4. Gomotion：不露脸 YouTube 视频月收入 6 万美元\n5. Higgsfield 获英伟达追加投资'),
+        step(2, '核实数据和来源', 'ChatGPT Dots', 'D', '#0F6B5E', 'done',
+          '08:07 在 Slack 里 @ 叫醒 · 08:08 领取 · 08:21 提交',
+          '5 条里 4 条核实；第 3 条免费额度以官网为准（每天 1 亿 token，截止 11 月 30 日）；第 5 条金额未公开，标"未核实"。'),
+        step(3, '写成草稿，放进 Google 文档', 'Gemini Tasks', 'Ge', '#1D4ED8', 'confirm',
+          '08:21 发触发邮件叫醒 · 09:02 领取 · 09:15 在 Google 文档里写好草稿 · 等你在 Gemini 里确认"写回工作台"',
+          '', true),
+        step(4, '改成 Threads 和 Instagram 版本', 'Meta Muse', 'M', '#6D28D9', 'wait', '第 3 步完成后，Muse 下一次定时检查（每 30 分钟）会领取', ''),
+        step(5, '你最后看一眼', '你', '你', '#5E5E58', 'wait', '做完要你确认', '')
+      ],
+      events: [
+        { t: '08:00', text: '按模板自动创建任务' },
+        { t: '08:00', text: '叫醒 Grok Bot（webhook）' },
+        { t: '08:01', text: 'Grok Bot 领取第 1 步' },
+        { t: '08:07', text: 'Grok Bot 提交第 1 步' },
+        { t: '08:07', text: '叫醒 Dots（Slack @）' },
+        { t: '08:21', text: 'Dots 提交第 2 步' },
+        { t: '08:21', text: '叫醒 Gemini（触发邮件）' },
+        { t: '09:02', text: 'Gemini 领取第 3 步' },
+        { t: '09:20', text: '提醒你：Gemini 等你确认写入' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

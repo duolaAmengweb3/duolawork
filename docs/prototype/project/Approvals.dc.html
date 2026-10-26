@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>确认中心</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 960px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">{{badge}}</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; max-width: 1080px">
+    <div>
+      <h1 style="margin: 0; font-size: 28px">确认中心</h1>
+      <p style="margin: 6px 0 0; color: #5E5E58">所有需要你点头的事都在这里。有两种：</p>
+      <ul style="margin: 8px 0 0; padding-left: 20px; color: #5E5E58; line-height: 1.8">
+        <li><strong style="color: #1B1B19">确认关卡</strong>：你在建任务时勾了"做完要我确认"，成员交了结果后先停在这里，你点"通过"才继续。</li>
+        <li><strong style="color: #1B1B19">去 Gemini 里确认</strong>：Google 规定 Gemini 往外写东西要你手动点确认，确认要在 Gemini App 里点，工作台只负责提醒你。</li>
+      </ul>
+    </div>
+
+    <section aria-label="待处理" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="font-weight: 700">待处理（{{badge}}）</div>
+      <sc-if value="{{pending}}" hint-placeholder-val="{{ true }}">
+        <article style="background: #FFFFFF; border: 1px solid #F1CFA8; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline">
+            <div style="font-weight: 700">去 Gemini 里确认 · 10 月 27 日 X 内容包 · 第 3 步</div>
+            <div style="font-size: 13px; color: #5E5E58">Gemini 09:02 领取，已等待 18 分钟</div>
+          </div>
+          <div style="font-size: 14px; line-height: 1.7">Gemini 已经在 Google 文档里写好了 3 条草稿，正在等你允许它把文档链接"写回工作台"。打开 Gemini App，在这个任务里点「允许」即可。</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <a href="https://gemini.google.com" style="background: #B4530A; color: #FFFFFF; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 500">打开 Gemini</a>
+            <button type="button" onClick="{{markDone}}" style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">我已在 Gemini 里确认</button>
+            <a href="TaskDetail.dc.html" style="padding: 10px 16px; text-decoration: none">查看任务</a>
+          </div>
+        </article>
+      </sc-if>
+      <sc-if value="{{cleared}}" hint-placeholder-val="{{ false }}">
+        <div style="background: #EDF7F1; border: 1px solid #BFE0CC; border-radius: 12px; padding: 16px 20px; color: #1F6B43">已处理。Gemini 的结果一交上来，工作台会自动叫醒下一步的 Muse。</div>
+      </sc-if>
+    </section>
+
+    <section aria-label="确认关卡示例" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="font-weight: 700">确认关卡长这样（示例：昨天的任务）</div>
+      <article style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline">
+          <div style="font-weight: 700">确认关卡 · 10 月 26 日 X 内容包 · 第 5 步「你最后看一眼」</div>
+          <div style="font-size: 13px; color: #1F6B43">你 昨天 09:41 通过</div>
+        </div>
+        <div style="background: #F6F6F3; border-radius: 8px; padding: 12px 14px; font-size: 14px; line-height: 1.7">草稿 1：DeepSeek Harness 10 天新增 3226 个插件……（展开全文）</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <button type="button" disabled style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 0; background: #D5D4CD; color: #5E5E58">通过</button>
+          <button type="button" disabled style="font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF; color: #5E5E58">打回重做</button>
+          <span style="font-size: 13px; color: #5E5E58">打回时写一句意见，会退给原来的成员重做</span>
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { done: false }; }
+  renderVals() {
+    var self = this;
+    var done = this.state.done;
+    return {
+      pending: !done,
+      cleared: done,
+      badge: done ? '0' : '1',
+      markDone: function () { self.setState({ done: true }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>成员</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F6F3}
+a{color:#1F4FB8}a:hover{color:#173C8C}
+</style>
+</helmet>
+<div style="min-height: 1080px; background: #F6F6F3; font-family: 'Noto Sans SC', system-ui, sans-serif; color: #1B1B19; display: flex; flex-wrap: wrap; align-items: stretch">
+  <nav aria-label="主导航" style="flex: 1 1 220px; max-width: 260px; background: #FFFFFF; border-right: 1px solid #E3E2DC; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-weight: 700; font-size: 18px; padding: 8px 12px 20px">Agent 工作台</div>
+    <a href="Main.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">任务板</a>
+    <a href="Agents.dc.html" style="display: block; padding: 12px; border-radius: 8px; background: #EEF2FC; color: #1F4FB8; font-weight: 500; text-decoration: none">成员</a>
+    <a href="Notes.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">共享资料</a>
+    <a href="Approvals.dc.html" style="display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none"><span>确认中心</span><span style="background: #B4530A; color: #FFFFFF; border-radius: 10px; padding: 0 8px; font-size: 13px">1</span></a>
+    <a href="TaskDetail.dc.html" style="display: block; padding: 12px; border-radius: 8px; color: #1B1B19; text-decoration: none">时间线</a>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; max-width: 1180px">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
+      <div>
+        <h1 style="margin: 0; font-size: 28px">成员</h1>
+        <p style="margin: 6px 0 0; color: #5E5E58">把你的 Agent 连进来。每个成员有自己的专属接入地址，工作台靠它认出"是谁在干活"。</p>
+      </div>
+      <button type="button" style="font: inherit; background: #1F4FB8; color: #FFFFFF; border: 0; padding: 12px 20px; border-radius: 8px; font-weight: 500">添加成员</button>
+    </div>
+
+    <section aria-label="成员列表" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{members}}" as="m" hint-placeholder-count="4">
+        <article style="background: #FFFFFF; border: 1px solid #E3E2DC; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between">
+            <div style="display: flex; gap: 12px; align-items: center">
+              <div style="width: 40px; height: 40px; border-radius: 8px; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; background: {{m.color}}">{{m.initial}}</div>
+              <div>
+                <div style="font-weight: 700; font-size: 17px">{{m.name}}</div>
+                <div style="font-size: 13px; color: #1F6B43">{{m.status}}</div>
+              </div>
+            </div>
+            <button type="button" style="font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid #D5D4CD; background: #FFFFFF">发测试任务</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px 12px; font-size: 14px">
+            <div style="color: #5E5E58">接入方式</div><div>{{m.via}}</div>
+            <div style="color: #5E5E58">接入地址</div>
+            <div style="display: flex; gap: 8px; align-items: center; min-width: 0">
+              <code style="background: #F6F6F3; border-radius: 6px; padding: 4px 8px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0">{{m.url}}</code>
+              <button type="button" style="font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid #D5D4CD; background: #FFFFFF; flex: none">复制</button>
+            </div>
+            <div style="color: #5E5E58">叫醒方式</div><div>{{m.wake}}</div>
+          </div>
+
+          <details style="border-top: 1px solid #ECEBE6; padding-top: 12px">
+            <summary style="cursor: pointer; font-weight: 500">在 {{m.name}} 里怎么接</summary>
+            <ol style="margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.6">
+              <sc-for list="{{m.how}}" as="h" hint-placeholder-count="3">
+                <li>{{h}}</li>
+              </sc-for>
+            </ol>
+          </details>
+
+          <sc-if value="{{m.hasNote}}" hint-placeholder-val="{{ false }}">
+            <div style="background: #FFF4E8; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #7A3A07; line-height: 1.6">{{m.note}}</div>
+          </sc-if>
+        </article>
+      </sc-for>
+    </section>
+
+    <p style="margin: 0; font-size: 13px; color: #5E5E58">接入地址里含有口令，相当于密码，不要发给别人；泄露了可以在这里换一个。</p>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      members: [
+        { name: 'Grok Bot', initial: 'G', color: '#2B2B28', status: '已连接 · 3 分钟前来过',
+          via: 'MCP', url: 'https://hub.example.com/mcp/g-••••••••', wake: 'webhook（立即）；没有新任务时每 30 分钟自查一次',
+          how: ['在 Grok Bot 里打开「连接应用」，添加自定义 MCP，粘贴上面的接入地址', '在工作台填入 Grok Bot 的 webhook 地址（在 Bot 的 routine 设置里创建）', '对 Bot 说：「收到工作台通知时，用 agent-hub 工具查看并完成我的任务」'],
+          hasNote: false, note: '' },
+        { name: 'ChatGPT Dots', initial: 'D', color: '#0F6B5E', status: '已连接 · 12 分钟前来过',
+          via: 'MCP（开发者模式）', url: 'https://hub.example.com/mcp/d-••••••••', wake: '在 Slack 频道里 @ 它（待实测）；每 30 分钟自查',
+          how: ['在 ChatGPT 设置里打开开发者模式，添加 MCP 应用，粘贴接入地址', '把 Dots 加进一个 Slack 频道，在工作台填这个频道', '对 Dot 说：「在这个频道被 @ 时，用 agent-hub 工具查看并完成我的任务」'],
+          hasNote: false, note: '' },
+        { name: 'Gemini Tasks', initial: 'Ge', color: '#1D4ED8', status: '已连接 · 1 小时前来过',
+          via: 'MCP（已连接应用 → 自定义应用）', url: 'https://hub.example.com/mcp/ge-••••••••', wake: '往你的 Gmail 发一封标题带 [agent-hub] 的邮件',
+          how: ['在 gemini.google.com 的「已连接应用」里添加自定义应用，粘贴接入地址', '在 Gemini 里建一个 Gmail 触发：收到标题带 [agent-hub] 的邮件时运行', '触发时要做的事：「用 agent-hub 工具查看并完成我的任务」'],
+          hasNote: true, note: 'Google 规定：Gemini 往外写东西要你手动确认。所以它交结果时，你会在 Gemini 里看到一个确认按钮，点了才算交上。另外仅限美国、英文，需要 Google AI Pro 或 Ultra。' },
+        { name: 'Meta Muse', initial: 'M', color: '#6D28D9', status: '已连接 · 35 分钟前来过',
+          via: '自定义连接器（普通接口）', url: 'https://hub.example.com/api/m-••••••••', wake: '定时自查（每 30 分钟）',
+          how: ['对 Muse 说：「帮我搭一个自定义连接器，接口说明在这个地址」，并粘贴接入地址', '在 Muse 设置里，把这个连接器的操作设为「总是允许」', '对 Muse 说：「每 30 分钟用这个连接器查看并完成我的任务」'],
+          hasNote: true, note: 'Meta 官方没写支持 MCP，所以 Muse 用"自定义连接器"接工作台的普通接口。是否可行，第 1 周实测确认。' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
