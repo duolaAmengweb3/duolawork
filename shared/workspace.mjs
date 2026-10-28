@@ -34,7 +34,7 @@ export function parseWorkPlan(body){
  const raw=String(body||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');let value;
  try{value=JSON.parse(raw);}catch{throw new Error('成员没有交回有效方案；可以在下方要求它补充或重写。');}
  if(!value||Array.isArray(value)||typeof value.summary!=='string'||!value.summary.trim()||!Array.isArray(value.questions)||value.questions.length>8||value.questions.some(q=>typeof q!=='string'||!q.trim()||q.length>1000)||!Array.isArray(value.steps)||value.steps.length>8||(!value.steps.length&&!value.questions.length))throw new Error('方案内容不完整，请补充要求让成员完善。');
- return{summary:value.summary.trim(),questions:value.questions.map(q=>q.trim()),steps:value.steps.map(s=>({memberId:text(s.memberId,'成员编号',100),title:text(s.title,'步骤名称',160),instruction:text(s.instruction,'步骤要求',8000),requireSources:s.requireSources===true,minLength:20,requiresApproval:false,outputType:'text'}))};
+ return{summary:value.summary.trim(),questions:value.questions.map(q=>q.trim()),steps:value.steps.map(s=>({memberId:text(s.memberId,'成员编号',100),title:text(s.title,'步骤名称',160),instruction:text(s.instruction,'步骤要求',8000),requireSources:s.requireSources===true,minLength:20,requiresApproval:s.requiresApproval===true,outputType:'text'}))};
 }
 export function workspaceStart(state,input,availability){
  const goal=text(input.goal,'你的目标',6000),member=availableMember(state,input.memberId,availability),kind=input.mode==='plan'?'plan':'work';
@@ -51,6 +51,6 @@ export function workspaceExecute(state,input,body,availability){
  if(!task||task.kind!=='plan'||task.status!=='completed')throw new Error('请等待方案完成后再执行');
  const original=parseWorkPlan(body);if(original.questions.length)throw new Error('方案还有待补充的问题，请先在会话里回答');
  if(!Array.isArray(input.steps)||input.steps.length<1||input.steps.length>8)throw new Error('执行方案需要 1 到 8 个步骤');
- const steps=input.steps.map(s=>({memberId:availableMember(state,s.memberId,availability).id,title:text(s.title,'步骤名称',160),instruction:text(s.instruction,'步骤要求',8000),minLength:20,requireSources:s.requireSources===true,requiresApproval:false,outputType:'text'}));
+ const steps=input.steps.map(s=>({memberId:availableMember(state,s.memberId,availability).id,title:text(s.title,'步骤名称',160),instruction:text(s.instruction,'步骤要求',8000),minLength:20,requireSources:s.requireSources===true,requiresApproval:s.requiresApproval===true,outputType:'text'}));
  return{type:'task.create',payload:{title:task.title,goal:task.goal,kind:'work',originPlanId:task.id,clientRequestId:requestKey(input.requestId),source:'workspace',steps}};
 }
