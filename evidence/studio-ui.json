@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-28T02:01:44.289Z",
+  "checks": [
+    "B layout and ready-member gate",
+    "text attachment enters actual task input",
+    "conversation draft and selected work survive reload",
+    "running follow-up preserves original lease",
+    "Markdown appears as an editable document",
+    "edited draft survives reload without overwriting original",
+    "original preview is read only",
+    "copy and Markdown export use edited content",
+    "sources and actual receipt times rendered",
+    "failed save buffer survives reload and retries",
+    "follow-up input contains exact user-edited draft",
+    "real stored plan remains editable and cannot launch twice",
+    "850px and 390px layouts have no horizontal overflow",
+    "no React runtime errors"
+  ],
+  "target": "isolated Worker/D1, original receipts are fixture-only",
+  "realCommercialAgentTested": false
+}

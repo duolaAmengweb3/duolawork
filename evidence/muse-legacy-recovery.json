@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-27T12:25:31.464Z",
+  "buildId": "20c3bf1fe10c33a3",
+  "taskId": "task_6f4d0ef23e9747cab63e129d3bb12086",
+  "platform": "muse",
+  "status": "completed",
+  "steps": [
+    {
+      "title": "读取公开服务的实时结果",
+      "status": "completed",
+      "attempts": 1,
+      "artifactId": "artifact_e397aa78b1494e029b585f6a6cd35a08"
+    },
+    {
+      "title": "接收前序成果并生成中文说明",
+      "status": "completed",
+      "attempts": 1,
+      "artifactId": "artifact_87ee87c0a7584835a7e1a73262f06eda"
+    }
+  ],
+  "checks": [
+    "original logged-in Muse automatically accepts work in a hidden headed Chrome page",
+    "real public endpoint read by Muse with fresh server timestamp",
+    "complete body and HTTPS source returned to Hub",
+    "same original Agent receives previous full result in step two",
+    "one dispatch per step, no manual retransmission",
+    "no foreground account window required"
+  ],
+  "serverTime": "2026-10-27T12:08:02.386Z",
+  "realCommercialLoginTested": true,
+  "realCommercialAgentTested": true,
+  "crossAgentCollaborationTested": false,
+  "operatorRecovery": {
+    "step": 1,
+    "reason": "legacy web Markdown consumed nested JSON escapes",
+    "action": "read and parse the original exact marked reply and submit under its existing attempt; no resend"
+  },
+  "fullyAutonomousOnCurrentBuild": false
+}

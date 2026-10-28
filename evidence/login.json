@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-27T12:30:45.251Z",
+  "platform": "muse",
+  "status": "authenticated",
+  "lastConfirmedAt": "2026-10-27T12:30:45.250Z",
+  "checkedAt": "2026-10-27T12:30:45.250Z",
+  "active": true,
+  "method": "dedicated-browser-dom",
+  "readOnly": true,
+  "noProfileMutationRequested": true,
+  "realCommercialLoginTested": true,
+  "realCommercialAgentTested": false
+}

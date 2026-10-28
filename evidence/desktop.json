@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-28T02:32:22.439Z",
+  "nativeApp": true,
+  "packaged": true,
+  "keychain": "Electron mock keychain in a temporary profile; no production credentials",
+  "checks": [
+    "native B layout renders",
+    "temporary app data is isolated",
+    "fixed local origin and persistent UI partition survive full process exit",
+    "same selected work restores on relaunch",
+    "unsent composer text survives relaunch",
+    "edited working document survives relaunch",
+    "relaunch does not dispatch the work twice",
+    "quit closes its own local listener"
+  ],
+  "realCommercialAgentTested": false
+}

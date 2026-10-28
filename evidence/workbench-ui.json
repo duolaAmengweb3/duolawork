@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-27T13:58:45.074Z",
+  "checks": [
+    "default homepage explains goal-to-result usage",
+    "only ready members can be selected",
+    "draft survives account-page navigation",
+    "one-sentence goal reaches local API and D1",
+    "follow-up during execution queues without replaying first attempt",
+    "complete original and follow-up bodies render in the same conversation",
+    "real stored plan is editable before execution",
+    "one plan cannot be launched twice",
+    "compact layout has no horizontal overflow",
+    "no React runtime errors"
+  ],
+  "target": "isolated local Worker and D1 with fixture-only receipts",
+  "realCommercialAgentTested": false
+}

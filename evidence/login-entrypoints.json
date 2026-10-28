@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-27",
+  "scope": "login entrypoints and dedicated browser launch; no real account login accepted",
+  "officialEntries": {
+    "muse": "https://muse.ai/",
+    "grokSharedAccount": "https://grok.com/sign-in"
+  },
+  "existingAccountsRequireRecreation": false,
+  "loginButtonPreviouslyDisabled": "empty maintained entry URL",
+  "browserStartupFix": "attach before website navigation; show window before navigation; retain action error across state polling",
+  "residentialChromeMuse": "ERR_CONNECTION_CLOSED before sign-in",
+  "currentClashMuseHttp": 200,
+  "loginCompleted": false,
+  "realCommercialAgentTested": false,
+  "networkChoicePending": true
+}

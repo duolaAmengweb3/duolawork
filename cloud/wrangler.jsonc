@@ -1,0 +1,36 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "agent-hub-local",
+  "main": "worker.ts",
+  "account_id": "d9d2d3d737a0e4f3f99bee632ed94f45",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "observability": {
+    "enabled": false
+  },
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agent-hub-local",
+      "database_id": "890d1e07-1ad5-42fb-a982-b99215b2ff99",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "WORKSPACE_ID": "owner"
+  },
+  "secrets": {
+    "required": [
+      "ADMIN_KEY"
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  }
+}

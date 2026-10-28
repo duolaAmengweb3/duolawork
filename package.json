@@ -1,0 +1,48 @@
+{
+  "name": "agent-hub-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地 Agent 工作台与独立账号浏览器",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "node local/server.mjs",
+    "desktop": "electron .",
+    "build": "node scripts/build-stamp.mjs && vite build",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "hub:dev": "wrangler dev --config cloud/wrangler.jsonc",
+    "hub:types": "wrangler types --config cloud/wrangler.jsonc cloud/env.d.ts",
+    "hub:deploy": "python3 scripts/cloud.py deploy",
+    "package:mac": "npm run verify:session && node scripts/package-mac.mjs",
+    "verify:session": "npm test && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
+    "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@tiptap/extension-table": "3.32.0",
+    "@tiptap/markdown": "3.32.0",
+    "@tiptap/react": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
+    "agents": "^0.30.1",
+    "hono": "^4.10.0",
+    "lucide-react": "^0.577.0",
+    "playwright-core": "^1.64.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "undici": "^8.12.3",
+    "ws": "^8.18.0",
+    "zod": "^4.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron": "^45.0.0",
+    "typescript": "latest",
+    "vite": "^8.3.5",
+    "wrangler": "^4.135.0"
+  }
+}

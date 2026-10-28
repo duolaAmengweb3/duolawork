@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-26T16:00:00.590153+00:00",
+  "url": "http://127.0.0.1:8766",
+  "cloudConnected": true,
+  "realAccounts": 0,
+  "realMembers": 0,
+  "realTasks": 0,
+  "nativeClient": "Electron 45 local Mac app running",
+  "commercialPlatformAcceptance": "pending user-owned account connection",
+  "unitTestsPassed": 11
+}

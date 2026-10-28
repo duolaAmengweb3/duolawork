@@ -1,0 +1,4 @@
+import fs from 'node:fs/promises';import path from 'node:path';import{createHash}from'node:crypto';
+const hash=createHash('sha256');
+async function walk(dir){for(const entry of(await fs.readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const p=path.join(dir,entry.name);if(p==='shared/build-info.json')continue;if(entry.isDirectory())await walk(p);else{hash.update(p);hash.update(await fs.readFile(p));}}}
+for(const dir of ['desktop','local','shared','ui'])await walk(dir);hash.update(await fs.readFile('package.json'));const info={id:hash.digest('hex').slice(0,16),version:JSON.parse(await fs.readFile('package.json','utf8')).version,builtAt:new Date().toISOString()};await fs.writeFile('shared/build-info.json',JSON.stringify(info,null,2)+'\n');console.log('Build:',info.id);

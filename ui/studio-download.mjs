@@ -1,0 +1,1 @@
+export function downloadDocument(body,title){const link=document.createElement('a'),url=URL.createObjectURL(new Blob([body],{type:'text/markdown;charset=utf-8'}));link.href=url;link.download=(title||'Agent-Hub-文稿').replace(/[\\/:*?"<>|]/g,'-').slice(0,90)+'.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}

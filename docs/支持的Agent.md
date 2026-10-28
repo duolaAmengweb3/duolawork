@@ -2,12 +2,59 @@
 
 - 日期：2026-10-26
 - 方法：先摸底，再逐家对照官方文档。**"官方确认"= 读过官方页面原文；"第三方"= 只有博客、教程或评测的说法；"你确认"= 你在自己账号里确认过。**
+- 本轮 v0.5 已选择客户端管理普通完整浏览器 + 独立资料目录 + 云端工作台，后做托管，不以指纹浏览器为前提。P0 对所有已适配平台支持同类多成员、多账号及混合团队；Grok/Muse 和“10+10”仅是用户举例，不限定接入品牌或数量。本文旧分档只是线索，当前决定见 PRD v0.5 与验证文档第 11—13 节；新平台须适配和验证，资料隔离不自动获得原生多 Agent 或额外额度。
 
 ## 关键结论
 
-**工作台用的是标准 MCP，所以只要一个 Agent 支持"添加自定义 MCP"，它就能直接接进来，不用为它单独开发。** 每多支持一家，要做的只有两件事：
-1. 写一份接入指引（在那个 App 里点哪里、粘贴什么）；
-2. 确定怎么叫醒它（webhook、Slack、邮件，或者只能靠它自己定时来查）。
+**标准 MCP 能复用工具接口，但不能自动解决主动开工、后台权限和结果回传。** 每个平台需要验证：原生工具及认证、当前账号的官方触发入口；没有合适入口时实现本地浏览器适配器并验证发送和完整结果采集。支持自定义 MCP 不等于已经支持自动接力。
+
+## 2026-10-27 补充：Muse 接入 Hermes 的开源实现
+
+结论：有参考价值，尤其是官方 Gadget SDK 的消息通道。Muse 应优先验证原生消息发送、事件订阅这条路径；浏览器保留为备选。以下是源码和文档核查，不是本产品的真实账号联测结果。用户提到的评论没有提供链接，不能声称已确认评论具体指哪一个仓库。
+
+| 项目与核查版本 | 实际实现 | 对 Agent Hub 的意义 |
+|---|---|---|
+| [www222fff/muse2api](https://github.com/www222fff/muse2api/tree/618aeb0d569e71a8e57d3e4724015b0e18d3ac03) | FastAPI 对外提供 OpenAI 兼容接口；browser 驱动用 Chromium/CDP 操作 muse.ai，导入账号 Cookie，发送输入并轮询页面回复。直接 HTTP 驱动仍返回 501；默认是 mock；README 明确真实账号待测 | 可参考账号租用、会话绑定、限流和错误分类；不能拿 mock 测试证明 Muse 真实可用 |
+| [uezo/muse-proxy](https://github.com/uezo/muse-proxy/tree/627fbfbee3593a54862122eb50ff28c299b5836f) | 依赖 Meta 官方 Muse Gadget SDK，使用已配对的设备身份，经 WebSocket/Noise 连接 Muse；发送消息并订阅原生进度、回复和任务状态；对外包装成 Chat Completions | 与调用账号里的 Muse 更接近，值得优先验证；可以直接借鉴消息通道，无需为了 Hub 再套一层模型接口 |
+| [evangit2/muse-sub-proxy](https://github.com/evangit2/muse-sub-proxy/tree/1a45866e1fbec4de3bdb9f795722816cadbb0188) | 单文件 Python，将 Chat Completions 请求转为 `api.meta.ai/v1/responses` 模型请求，使用已有 Meta API 凭证 | 代码更轻，但取得的是模型推理，不能据此宣称取得网页 Muse 的记忆、已连接应用和完整执行环境 |
+| [danny-hines/muse-code-bridge](https://github.com/danny-hines/muse-code-bridge/tree/58165874f5b83da80e31c0d91ab8f30f8998101c) | 启动官方 `muse serve`，用结构化会话协议驱动 Muse Code，再通过 MCP 暴露委派、续聊、轮询、取消和批准 | 可参考原生 CLI Agent 适配器；这是 Muse Code，不能混写成网页 Muse。其 Hermes 接入文档明确标记尚未在 Hermes 宿主实测 |
+
+### Hermes 为什么能连
+
+Hermes 支持自定义 OpenAI 兼容端点，配置本地网关的 `base_url`、代理访问密钥和模型别名即可接协议。`muse2api` 没有专门实现一套 Hermes 协作系统。协议兼容也不等于 Hermes 的全部工具流程可用：该仓库把模拟 tool calling 列在 TODO；`uezo/muse-proxy` 则明确不支持客户端传入 tools/functions，不能当成可任意替换 Hermes 主模型的完整工具调用后端。Hub 可以把它视为接收任务、交回成果的原生 Agent 通道，验收目标不同。
+
+### SDK 路线已确认的条件和限制
+
+- [Meta 官方 Linux SDK](https://github.com/facebookincubator/muse-gadget-sdk/blob/main/linux/README.md) 确认支持程序发送聊天消息、指定 session ID 和订阅通道。首次按官方流程配对需要 SDK Token、Linux + 蓝牙 LE、手机 Muse App；配对后的代理聊天和令牌刷新不再依赖手机或蓝牙。不能直接向 Mac 用户宣传“登录网页就能装好这条 SDK 通道”。
+- `uezo/muse-proxy` 的源码调用 `send_chat` / `subscribe_chat`，保留发送回执并区分进度、回复与完成。它发送最后一条用户文本，由 Muse 维护历史和 persona；客户端传入的 model 不会选中另一个 Muse 模型。
+- 代理本身是第三方项目，依赖官方 SDK 不等于整个代理经过 Meta 官方认证。SDK 的设备会话是否继承本账号所需的已连接应用、文件能力和授权仍需按任务核实。
+- `muse2api` 的浏览器驱动通过回复文本稳定和 Stop 按钮判断结束；源码还会自动拒绝待批准动作。Hub 不能直接套用这两个行为：长任务应依据真实任务结束或明确验收，批准请求应进入确认中心。
+- 同一账号的不同 session 是不同任务上下文，不自动获得多个独立原生 Muse、独立额度或互不影响的资源。
+
+### 对当前方案的具体调整建议
+
+接入优先级保持“原生协议 / SDK / 官方 CLI → 已验证连接器 → 网页适配”。对 Muse 新增 SDK 直连验证候选，暂不更改当前运行中的成员就绪状态。最小真实验收是一份账号授权、两轮同会话任务、发送回执与结果关联、原生进度及完成状态、断线后检查原任务而不重复发送，以及完整成果进入 Hub；再核实该任务实际调用了哪些 Muse 原生能力。当前未安装这些代理、未读取用户凭证、未修改登录资料，真实账号可用性仍待验证。
+
+源码依据：[浏览器发送与采集](https://github.com/www222fff/muse2api/blob/618aeb0d569e71a8e57d3e4724015b0e18d3ac03/src/muse2api/drivers/browser/driver.py)、[SDK 消息通道](https://github.com/uezo/muse-proxy/blob/627fbfbee3593a54862122eb50ff28c299b5836f/src/muse_proxy/muse.py)、[代理参数与配对条件](https://github.com/uezo/muse-proxy/blob/627fbfbee3593a54862122eb50ff28c299b5836f/docs/reference.md)、[Hermes 自定义端点官方说明](https://hermes-agent.nousresearch.com/docs/reference/faq)。
+
+## 2026-10-27 补充：币安 Agent
+
+用户要接入的是币安自己的 Agent，候选为 **Binance AI Pro**，不是币安钱包，也不是给其他 Agent 提供交易工具的 Agent OS MCP。
+
+| 核实项 | 当前结论 |
+|---|---|
+| 官方入口 | `https://ai.binance.com/`，入口由产品维护，不让用户猜地址 |
+| 产品能力 | 官方确认可做市场研究、监控、提醒、信号和策略生成；支持模拟盘。当前版本未提供历史回测，自动代码测试不能写成回测 |
+| 账号条件 | 使用币安主账号；账号和地区资格仍需在真实账号中验证 |
+| 当前免费额度 | 2026-10-19 FAQ：每月 250,000 credits；付费为 19.99 USDC/月、1,000 万 credits。套餐不是接入证明 |
+| 原生 Agent 调用接口 | 本轮所查官方文档未找到可从外部派发 AI Pro 对话任务并取回完整结果的公开接口；不能据此断言绝对没有 |
+| 自定义连接器 / MCP | 尚未在当前账号内核实 AI Pro 是否能配置 Agent Hub 工具。Binance MCP 文档描述的是其他 Agent 调用币安行情、账户和交易工具，方向不同 |
+| 网页现场 | 已通过 Chrome 访问 AI Pro，正常跳转到 `accounts.binance.com` 官方登录页；尚未登录，未发送任务 |
+| 当前接入状态 | **待登录验证，未接通。** 不加入“已可用”名单，不创建就绪成员，不拿通用模型 API 代替币安 Agent |
+
+登录后的验收顺序：核实原生聊天和连接器能力；优先验证官方任务触发与成果提交路径。若只能走网页，则单独实现浏览器适配器，用无资金操作的研究任务验证“派发 → 真实运行 → 完整结果 → Hub 验收”。只打开网页、展示回复片段或接通行情 MCP 都不能算通过。浏览器测试使用 Hub 的独立持久资料目录，不复制日常 Chrome 的登录资料。
+
+依据：[当前 AI Pro FAQ（2026-10-19）](https://www.binance.com/en/support/faq/detail/252ea010e543488f87292c1ab27f82b2)、[Binance MCP 文档（2026-10-26 更新）](https://developers.binance.com/en/docs/agent-native/mcp-server/agentic)。旧版 AI Pro Beta 的价格、能力和限制不能直接套用到新版。
 
 ---
 

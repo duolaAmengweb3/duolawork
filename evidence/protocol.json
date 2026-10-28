@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-27T11:59:29.386Z",
+  "target": "local workerd + D1 test workspace",
+  "protocol": "MCP Streamable HTTP",
+  "checks": [
+    "unauthorized rejected",
+    "two independently authenticated members",
+    "tools/list 7 tools",
+    "native-tool nonce roundtrip",
+    "atomic concurrent claim only one winner",
+    "cross-member submission rejected",
+    "persisted artifact read by next step",
+    "approval gates completion"
+  ],
+  "realCommercialAgentTested": false
+}

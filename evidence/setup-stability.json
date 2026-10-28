@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-27T00:09:03.329Z",
+  "checks": [
+    "reopening setup preserves verified readiness",
+    "repeated verification is harmless",
+    "explicit credential rotation revokes old readiness",
+    "old proof cannot verify rotated credential"
+  ],
+  "realCommercialAgentTested": false
+}

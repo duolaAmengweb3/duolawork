@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-28T01:54:16.597Z",
+  "checks": [
+    "React pages render without runtime errors",
+    "account creation persists to local D1",
+    "account addition, member binding and connection setup remain separate",
+    "binding accepts only a remark name",
+    "remark edit preserves account, readiness and encrypted credential",
+    "team has no role templates",
+    "member setup instructions generated",
+    "profile save persists",
+    "task builder and timeline work",
+    "settings show real runner status",
+    "browser-only proxy setting saves to temporary local config",
+    "credential-bearing proxy URL rejected without changing the saved route",
+    "cross-origin mutation rejected",
+    "owner secret absent from UI state"
+  ],
+  "realCommercialAgentTested": false
+}

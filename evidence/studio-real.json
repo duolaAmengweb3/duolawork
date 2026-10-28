@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-28T02:31:40.459Z",
+  "nativeFlowBuildId": "b23e9f6469a82cd2",
+  "planTaskId": "task_429d6e9cf4aa40abb2be5f8acc17502c",
+  "executionTaskId": "task_dd3dc4a6fd4f4c3b8046cb2ecdded60e",
+  "editedArtifactId": "artifact_2bb92d41353347eeaf9dbe004f84ab48",
+  "editedRevision": 1,
+  "observedServerTime": "2026-10-28T01:56:48.577Z",
+  "nativeDesktopActions": true,
+  "checks": [
+    "original Muse generated plan in B desktop conversation",
+    "native desktop plan button started one real execution",
+    "Muse read fresh public endpoint and cited original sources",
+    "real response rendered in right-hand document editor",
+    "native editor changed the working document and autosaved it",
+    "original Agent delivery remained unmodified",
+    "next native dispatch included exact complete edited document",
+    "original Muse returned final document retaining human edit and exact time",
+    "plan and both execution steps each dispatched once",
+    "Muse login preserved without reauthentication"
+  ],
+  "realCommercialAgentTested": true,
+  "crossPlatformCollaborationTested": false,
+  "presentationBuildId": "d94c2024b1573c19",
+  "workingDocumentRestoredAfterUpdate": true
+}
