@@ -10,14 +10,13 @@ import {
   Link,
   Paperclip,
   Send,
-  Sparkles,
 } from "lucide-react";
 import { Avatar, IconButton } from "./common.jsx";
 import { agents } from "./model.mjs";
 
 function Message({ name, time, children }) {
   return (
-    <div className="message">
+    <div className={"message" + (name === "User" ? " message-user" : "")}>
       <Avatar name={name} />
       <div className="message-body">
         <div className="message-by">
@@ -104,13 +103,17 @@ export default function Conversation({
       <div className="message-scroll">
         <div className="date-separator">
           <span />
-          今天 · 原型示例
+          今天
           <span />
         </div>
-        <div className="project-note">
-          <Sparkles size={14} />
-          <span>一个群，一份共同成果。交接自动推进，你随时可以补充。</span>
-        </div>
+        {project.status !== "idle" && <div className="project-note" aria-label="示例协作进度">
+          {["发现选题", "资料查证", "整理成稿"].map((label, i) => <React.Fragment key={label}>
+            {i > 0 && <span className="flow-connector" />}
+            <span className={"flow-stop" + (project.stage > i ? " done" : "")}>
+              <i>{project.stage > i ? <Check size={10} /> : i + 1}</i>{label}
+            </span>
+          </React.Fragment>)}
+        </div>}
         {project.status === "idle" ? (
           <div className="empty-conversation">
             <Paperclip size={27} />

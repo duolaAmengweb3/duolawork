@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   FileText,
-  HelpCircle,
   LayoutGrid,
   Layers,
   MessageCircle,
@@ -175,123 +174,118 @@ function App() {
     project.docs[0];
   return (
     <div className="app-shell">
-      <aside className="global-dock">
-        <div className="app-mark" title="Agent Hub">
-          <Layers size={24} />
+      <aside className="workspace-sidebar">
+        <div className="global-dock">
+          <div className="brand-lockup">
+            <div className="app-mark" title="Agent Hub"><Layers size={23} strokeWidth={1.8} /></div>
+            <div><strong>Agent Hub</strong><small>你的 AI 协作空间</small></div>
+          </div>
+          <div className="workspace-label">个人工作空间 <span>LOCAL</span></div>
+          <nav>
+            {nav.map(([key, label, Icon]) => (
+              <button
+                key={key}
+                className={state.page === key ? "dock-item active" : "dock-item"}
+                onClick={() => navigate(key)}
+                aria-label={label}
+              >
+                <Icon size={22} strokeWidth={1.7} />
+                <span>{label}</span>
+                {key === "groups" && <i className="dock-dot" />}
+              </button>
+            ))}
+          </nav>
         </div>
-        <nav>
-          {nav.map(([key, label, Icon]) => (
+        {state.page === "groups" && (
+          <div className="project-sidebar">
+            <div className="list-heading">
+              <h1>我的项目</h1>
+              <IconButton
+                icon={Plus}
+                label="新建项目群"
+                onClick={() =>
+                  setModal({ type: "setup", title: "用配方创建项目群" })
+                }
+              />
+            </div>
+            <label className="project-search">
+              <Search size={15} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索项目群"
+                aria-label="搜索项目群"
+              />
+              <span>⌕</span>
+            </label>
+            <div className="list-filter">
+              <span>
+                全部项目 <small>{state.projects.length}</small>
+              </span>
+              <span>最近</span>
+            </div>
+            <div className="project-list">
+              {state.projects
+                .filter((p) => p.name.includes(query))
+                .map((p) => (
+                  <button
+                    className={
+                      "project-item" + (project.id === p.id ? " selected" : "")
+                    }
+                    key={p.id}
+                    onClick={() => selectProject(p.id)}
+                  >
+                    <span
+                      className={
+                        "project-icon " + (p.id === "ideas" ? "teal" : "")
+                      }
+                    >
+                      <MessageCircle size={20} />
+                    </span>
+                    <span className="project-item-copy">
+                      <strong>{p.name}</strong>
+                      <small>
+                        {p.messages.at(-1)?.text ||
+                          (p.status === "complete"
+                            ? p.writer + "：成稿已交付"
+                            : p.status === "idle"
+                              ? "留住灵感，慢慢整理"
+                              : "配方已就绪，等待试跑")}
+                      </small>
+                    </span>
+                    <time>{p.status === "complete" ? "08:06" : "刚刚"}</time>
+                  </button>
+                ))}
+              {!state.projects.some((p) => p.name.includes(query)) && (
+                <p className="no-results">没有匹配的项目</p>
+              )}
+            </div>
             <button
-              key={key}
-              className={state.page === key ? "dock-item active" : "dock-item"}
-              onClick={() => navigate(key)}
-              aria-label={label}
+              className="sidebar-recipe"
+              onClick={() => navigate("recipes")}
             >
-              <Icon size={22} strokeWidth={1.7} />
-              <span>{label}</span>
-              {key === "groups" && <i className="dock-dot" />}
+              <LayoutGrid size={17} />
+              <span>
+                试试一个工作配方<small>从目标开始，安排 Agent</small>
+              </span>
+              <ChevronDown size={13} />
             </button>
-          ))}
-        </nav>
-        <div className="dock-bottom">
-          <IconButton
-            icon={HelpCircle}
-            label="原型说明"
-            onClick={() =>
-              setModal({ type: "help", title: "关于这版交互原型" })
-            }
-          />
-          <IconButton
-            icon={Settings}
-            label="原型设置"
-            onClick={() => setModal({ type: "settings", title: "原型设置" })}
-          />
-          <Avatar name="User" size={31} />
+          </div>
+        )}
+        <div className="workspace-bottom">
+          <button className="team-shortcut" onClick={() => navigate("members")}>
+            <span className="avatar-stack"><Avatar name="Grok" size={27} /><Avatar name="Perplexity" size={27} /><Avatar name="Dot" size={27} /></span>
+            <span>查看我的团队 <ArrowRight size={13} /></span>
+          </button>
+          <div className="workspace-profile"><Avatar name="User" size={32} /><div><strong>我的工作空间</strong><small>本地版 · 交互预览</small></div>
+            <IconButton icon={Settings} label="原型设置" onClick={() => setModal({ type: "settings", title: "原型设置" })} />
+          </div>
         </div>
       </aside>
-      {state.page === "groups" && (
-        <aside className={"project-sidebar" + (review ? " is-collapsed" : "")}>
-          <div className="list-heading">
-            <h1>项目群</h1>
-            <IconButton
-              icon={Plus}
-              label="新建项目群"
-              onClick={() =>
-                setModal({ type: "setup", title: "用配方创建项目群" })
-              }
-            />
-          </div>
-          <label className="project-search">
-            <Search size={15} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索项目群"
-              aria-label="搜索项目群"
-            />
-            <span>⌕</span>
-          </label>
-          <div className="list-filter">
-            <span>
-              全部项目 <small>{state.projects.length}</small>
-            </span>
-            <span>最近</span>
-          </div>
-          <div className="project-list">
-            {state.projects
-              .filter((p) => p.name.includes(query))
-              .map((p) => (
-                <button
-                  className={
-                    "project-item" + (project.id === p.id ? " selected" : "")
-                  }
-                  key={p.id}
-                  onClick={() => selectProject(p.id)}
-                >
-                  <span
-                    className={
-                      "project-icon " + (p.id === "ideas" ? "teal" : "")
-                    }
-                  >
-                    <MessageCircle size={20} />
-                  </span>
-                  <span className="project-item-copy">
-                    <strong>{p.name}</strong>
-                    <small>
-                      {p.messages.at(-1)?.text ||
-                        (p.status === "complete"
-                          ? p.writer + "：成稿已交付"
-                          : p.status === "idle"
-                            ? "留住灵感，慢慢整理"
-                            : "配方已就绪，等待试跑")}
-                    </small>
-                  </span>
-                  <time>{p.status === "complete" ? "08:06" : "刚刚"}</time>
-                </button>
-              ))}
-            {!state.projects.some((p) => p.name.includes(query)) && (
-              <p className="no-results">没有匹配的项目</p>
-            )}
-          </div>
-          <button
-            className="sidebar-recipe"
-            onClick={() => navigate("recipes")}
-          >
-            <LayoutGrid size={17} />
-            <span>
-              试试一个工作配方<small>从目标开始，安排 Agent</small>
-            </span>
-            <ChevronDown size={13} />
-          </button>
-          <div className="sidebar-foot">
-            Agent Hub <span>交互原型 v3</span>
-          </div>
-        </aside>
-      )}
       <div className="main-shell">
         <div className="window-bar">
           <div>
-            <span className="window-app">Agent Hub</span>
+            <span className="window-app">工作空间</span>
             <span className="window-divider">/</span>
             <span>
               {state.page === "groups"
@@ -301,7 +295,7 @@ function App() {
           </div>
           <span className="prototype-badge">
             <i />
-            交互原型 · 示例数据
+            设计预览 · 示例数据
           </span>
           <button
             className="text-button"
@@ -327,9 +321,7 @@ function App() {
                   onClick={() => setReview(false)}
                 />
               )}
-              <span className="group-icon">
-                <MessageCircle size={21} />
-              </span>
+              <span className="group-icon"><Layers size={24} strokeWidth={1.5} /></span>
               <div className="group-title">
                 <h2>{project.name}</h2>
                 <span>
