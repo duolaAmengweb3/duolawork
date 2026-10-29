@@ -26,7 +26,13 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { Avatar, Badge, IconButton, Empty } from "./common.jsx";
-import { modes, planSteps, pendingCount, sanitizeHTML } from "./model.mjs";
+import {
+  modes,
+  planSteps,
+  pendingCount,
+  currentFeedback,
+  sanitizeHTML,
+} from "./model.mjs";
 const extensions = [
   StarterKit.configure({ link: { openOnClick: false, autolink: false } }),
 ];
@@ -171,6 +177,7 @@ export default function Conversation({
   onPlan,
   onDecision,
   onAttach,
+  onEvidence,
   onDemo,
   onPause,
 }) {
@@ -200,6 +207,22 @@ export default function Conversation({
         <span className="goal-text">{project.goal}</span>
         <ChevronRight size={15} />
       </button>
+      {project.mode === "parallel" && project.messages.length > 0 && (
+        <div className="phase-summary">
+          <span>
+            <strong>
+              {project.status === "review" ? "独立研究已汇合" : "独立研究阶段"}
+            </strong>
+            <small title="正式接入时，Hub 不向其他独立分支下发本分支结论；原平台记忆不受 Hub 控制。当前为示例。">
+              互不可见 · 示例
+            </small>
+          </span>
+          <span>
+            {project.decisions.filter((d) => d.status === "pending").length}{" "}
+            项分歧待处理<button onClick={onEvidence}>查看依据</button>
+          </span>
+        </div>
+      )}
       {["running", "paused"].includes(project.status) && (
         <div className="demo-progress">
           <span>
@@ -426,6 +449,7 @@ export function Overview({
             ["results", "成果"],
             ["materials", "资料"],
             ["members", "成员"],
+            ["evidence", "依据"],
           ].map(([id, label]) => (
             <button
               role="tab"
@@ -442,7 +466,32 @@ export function Overview({
         <IconButton icon={X} label="关闭成果与资料" onClick={onClose} />
       </header>
       <div className="overview-scroll">
-        {tab === "results" ? (
+        {tab === "evidence" ? (
+          <div className="evidence-drawer">
+            <h3>独立材料与分歧</h3>
+            <p className="field-note">
+              当前为示例材料。相同来源的一致不计作互证，不展示模型自报置信度。
+            </p>
+            {project.decisions.flatMap((d) =>
+              (d.positions || []).map((p, i) => (
+                <section key={`${d.id}:${i}`}>
+                  <Avatar member={members.find((m) => m.id === p.member)} />
+                  <strong>
+                    {members.find((m) => m.id === p.member)?.name}
+                  </strong>
+                  <p>{p.text}</p>
+                  <p className="muted">{p.evidence}</p>
+                  {p.url && (
+                    <a href={p.url} target="_blank" rel="noreferrer">
+                      查看引用来源 ↗
+                    </a>
+                  )}
+                  <Badge>同一来源 · 示例</Badge>
+                </section>
+              )),
+            )}
+          </div>
+        ) : tab === "results" ? (
           project.docs.length ? (
             <>
               <div className="results-list">
@@ -458,9 +507,9 @@ export function Overview({
                       <strong>{d.title}</strong>
                       <small>
                         {members.find((m) => m.id === d.author)?.name} ·{" "}
-                        {d.feedback === "adopted"
+                        {currentFeedback(d) === "adopted"
                           ? "已采用"
-                          : d.feedback === "rejected"
+                          : currentFeedback(d) === "rejected"
                             ? "已弃用"
                             : "待审阅"}
                       </small>

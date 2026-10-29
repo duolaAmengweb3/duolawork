@@ -2993,3 +2993,318 @@ small {
     grid-column: 2;
   }
 }
+/* Review-aligned collaboration: a goal wizard and decisions inside the artifact. */
+.wizard-steps {
+  display: flex;
+  gap: 30px;
+  padding-bottom: 28px;
+  color: var(--muted);
+}
+.wizard-steps span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.wizard-steps b {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #eff2f7;
+  font-weight: 500;
+}
+.wizard-steps .current {
+  color: var(--blue);
+  font-weight: 600;
+}
+.wizard-steps .current b {
+  background: #e9efff;
+}
+.goal-field textarea {
+  font-size: 17px;
+  line-height: 1.8;
+  min-height: 190px;
+}
+.wizard .form-actions {
+  padding-top: 24px;
+}
+.wizard-goal {
+  font-size: 16px;
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+.three-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.three-modes .mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  position: relative;
+  padding: 20px 16px;
+  min-height: 162px;
+}
+.three-modes .mode-option strong {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.three-modes .radio-dot {
+  position: absolute;
+  right: 14px;
+  top: 22px;
+}
+.three-modes .mode-option small {
+  line-height: 1.7;
+  display: block;
+  margin-top: 9px;
+}
+.wizard .member-choice small {
+  display: block;
+  font-size: 12px;
+  color: #626f84;
+  margin-top: 4px;
+}
+.wizard .member-choice {
+  padding: 12px;
+}
+.wizard-summary {
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: #f8faff;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+.wizard-summary strong {
+  font-size: 17px;
+  line-height: 1.8;
+}
+.wizard-summary p {
+  margin-top: 8px;
+  color: var(--muted);
+}
+.cadence-options {
+  display: flex;
+  gap: 24px;
+  padding: 10px 0 24px;
+}
+.cadence-options label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.phase-summary {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  min-height: 54px;
+  border-bottom: 1px solid var(--line);
+  background: #fafbfd;
+  font-size: 12px;
+}
+.phase-summary span {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.phase-summary strong {
+  font-size: 13px;
+}
+.phase-summary small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.phase-summary button {
+  color: var(--blue);
+  white-space: nowrap;
+}
+.evidence-drawer h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+.evidence-drawer section {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.evidence-drawer section > .avatar {
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.evidence-drawer .badge {
+  display: table;
+  margin-top: 12px;
+}
+.decision-inline {
+  background: #fff8eb;
+  border: 1px solid #e5c78b;
+  border-radius: 8px;
+  padding: 22px;
+  margin: 26px 0;
+  line-height: 1.7;
+  font-size: 14px;
+}
+.decision-inline h3 {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 16px !important;
+  margin: 0 0 12px !important;
+  color: #77500f;
+}
+.decision-inline p {
+  font-size: 14px !important;
+  margin: 8px 0 13px !important;
+  line-height: 1.7 !important;
+}
+.decision-inline .decision-description {
+  color: #6b5c43;
+}
+.decision-positions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.decision-positions section {
+  min-width: 0;
+  background: #fffdf8;
+  border: 1px solid #eadcc4;
+  border-radius: 6px;
+  padding: 14px;
+}
+.decision-positions header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.decision-positions details {
+  font-size: 12px;
+  margin: 10px 0;
+}
+.decision-positions summary {
+  cursor: pointer;
+  color: #765b2f;
+}
+.decision-positions details p {
+  font-size: 12px !important;
+}
+.decision-recommendation {
+  color: #6b5c43;
+}
+.decision-alternatives {
+  display: flex;
+  gap: 18px;
+  margin-top: 16px;
+}
+.decision-alternatives button,
+.decision-undo button,
+.learning-note button.text-button {
+  color: var(--blue);
+  font-size: 13px;
+}
+.remember-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #6b5c43;
+}
+.decision-inline.resolved {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.decision-inline .decision-chosen {
+  font-size: 16px !important;
+  animation: decision-highlight 3s ease-out;
+}
+.decision-undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.decision-undo button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.decision-writing textarea {
+  width: 100%;
+  margin: 10px 0;
+}
+.decision-writing .button {
+  margin-right: 8px;
+}
+.learning-note {
+  background: #f5f8ff;
+  border: 1px solid #dce5f7;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.8;
+  max-width: 260px;
+}
+.learning-note > p {
+  margin: 10px 0;
+}
+.learning-note > strong {
+  font-size: 14px;
+  display: block;
+  margin-bottom: 16px;
+}
+.learning-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.learning-accepted {
+  color: #277668;
+}
+.learning-accepted button {
+  color: var(--blue);
+  margin-left: 8px;
+}
+.learning-demo {
+  margin-top: 20px;
+}
+@keyframes decision-highlight {
+  from {
+    background: #fff0c8;
+  }
+  to {
+    background: transparent;
+  }
+}
+@media (max-width: 1100px) {
+  .decision-positions {
+    grid-template-columns: 1fr;
+  }
+  .phase-summary {
+    flex-wrap: wrap;
+    padding: 10px 18px;
+  }
+  .phase-summary span {
+    gap: 8px;
+  }
+}
+@media (max-width: 700px) {
+  .three-modes {
+    grid-template-columns: 1fr;
+  }
+  .three-modes .mode-option {
+    min-height: auto;
+  }
+  .wizard-steps {
+    gap: 12px;
+  }
+}

@@ -44,6 +44,7 @@ import {
   now,
   modes,
   pendingCount,
+  currentFeedback,
   escapeHTML,
   planSteps,
 } from "./model.mjs";
@@ -89,10 +90,34 @@ function App() {
   );
   const patch = (fn) => updateProject(project.id, fn);
   const updateDoc = (projectId, docId, fn) =>
-    updateProject(projectId, (p) => ({
-      ...p,
-      docs: p.docs.map((d) => (d.id === docId ? fn(d) : d)),
-    }));
+    updateProject(projectId, (p) => {
+      const before = p.docs.find((d) => d.id === docId);
+      if (!before) return p;
+      const after = fn(before);
+      const markup =
+        before.html !== after.html
+          ? new DOMParser().parseFromString(after.html, "text/html")
+          : null;
+      return {
+        ...p,
+        docs: p.docs.map((d) => (d.id === docId ? after : d)),
+        decisions: markup
+          ? p.decisions.map((d) => {
+              if (d.docId !== docId) return d;
+              const node = [...markup.querySelectorAll("hub-decision")].find(
+                (el) => el.getAttribute("data-id") === d.id,
+              );
+              const selectedText = node?.getAttribute("data-selected") || null;
+              return {
+                ...d,
+                status: selectedText ? "resolved" : "pending",
+                selectedText,
+                choice: node?.getAttribute("data-choice") || null,
+              };
+            })
+          : p.decisions,
+      };
+    });
   const navigate = (page) => {
     setState((s) => ({ ...s, page, review: false }));
     setSidebarOpen(false);
@@ -110,6 +135,131 @@ function App() {
         : s.projects,
     }));
     setSidebarOpen(false);
+  }
+  function openDecision(projectId, decision) {
+    chooseProject(projectId, true, decision.docId);
+    updateProject(projectId, (p) => ({
+      ...p,
+      focusDecision: decision.id,
+      docs: p.docs.map((d) =>
+        d.id === decision.docId && !d.html.includes(`data-id="${decision.id}"`)
+          ? {
+              ...d,
+              history: [
+                ...d.history,
+                {
+                  html: d.html,
+                  revision: d.revision,
+                  time: now(),
+                  label: "恢复决策位置前的工作稿",
+                },
+              ],
+              html: `${d.html}<hub-decision data-id="${decision.id}"></hub-decision>`,
+              revision: d.revision + 1,
+            }
+          : d,
+      ),
+    }));
+  }
+  function chooseInlineDecision(decisionId, choice, text, remember) {
+    patch((p) => {
+      const decision = p.decisions.find((d) => d.id === decisionId);
+      const ruleId = remember ? uid("rule") : decision?.rememberedRuleId;
+      return {
+        ...p,
+        decisions: p.decisions.map((d) =>
+          d.id === decisionId
+            ? {
+                ...d,
+                status: choice ? "resolved" : "pending",
+                choice,
+                selectedText: text,
+                rememberedRuleId: ruleId,
+              }
+            : d,
+        ),
+        rules: [
+          ...p.rules.map((r) =>
+            !choice && r.id === ruleId ? { ...r, status: "revoked" } : r,
+          ),
+          ...(remember
+            ? [
+                {
+                  id: ruleId,
+                  title: decision.title,
+                  body: text,
+                  status: "active",
+                  revision: 1,
+                  scope: "本项目",
+                  type: "guidance",
+                  checks: "guidance",
+                  evidence: `用户在「${currentDoc.title}」中明确选择了同类问题以后这样处理。`,
+                },
+              ]
+            : []),
+        ],
+        messages: [
+          ...p.messages,
+          {
+            id: uid(),
+            type: "system",
+            time: now(),
+            text: choice
+              ? `已在成果中决定：${choice}。`
+              : "已撤回稿件中的决定，重新保留分歧。",
+          },
+        ],
+      };
+    });
+  }
+  function applySuggestion(docId, action) {
+    patch((p) => {
+      const doc = p.docs.find((d) => d.id === docId),
+        suggestion = doc?.suggestion;
+      if (!suggestion) return p;
+      const ruleId = suggestion.ruleId || uid("rule");
+      return {
+        ...p,
+        docs: p.docs.map((d) =>
+          d.id === docId
+            ? {
+                ...d,
+                suggestion: {
+                  ...suggestion,
+                  ruleId,
+                  status:
+                    action === "accept"
+                      ? "accepted"
+                      : action === "undo"
+                        ? "pending"
+                        : "dismissed",
+                },
+              }
+            : d,
+        ),
+        rules:
+          action === "accept"
+            ? [
+                ...p.rules.filter((r) => r.id !== ruleId),
+                {
+                  id: ruleId,
+                  title: suggestion.text.slice(0, 40),
+                  body: suggestion.text,
+                  status: "active",
+                  revision: 1,
+                  type: "style",
+                  checks: "guidance",
+                  scope: "本项目",
+                  evidence: `用户确认的稿件旁建议；「${doc.title}」版本 ${suggestion.revision}。示例归纳。`,
+                },
+              ]
+            : action === "undo"
+              ? p.rules.map((r) =>
+                  r.id === ruleId ? { ...r, status: "revoked" } : r,
+                )
+              : p.rules,
+      };
+    });
   }
   const openDoc = (id) => chooseProject(project.id, true, id);
   function ensureSaved() {
@@ -144,7 +294,19 @@ function App() {
       }));
       notify("工作安排已保留在此预览");
     } else {
-      const p = makeProject(config);
+      const p = makeProject({
+        ...config,
+        status: "running",
+        demoStep: 1,
+        messages: [
+          {
+            id: uid(),
+            type: "system",
+            time: now(),
+            text: "示例运行开始，成员按所选方式协作；未调用真实 Agent。",
+          },
+        ],
+      });
       setState((s) => ({
         ...s,
         projects: [...s.projects, p],
@@ -420,6 +582,7 @@ function App() {
     updateProject,
     setState,
     navigate,
+    openDecision,
   };
   const nav = [
     ["projects", "项目", MessageCircle],
@@ -518,9 +681,9 @@ function App() {
                         <span>
                           <strong>{d.title}</strong>
                           <small>
-                            {d.feedback === "adopted"
+                            {currentFeedback(d) === "adopted"
                               ? "已采用"
-                              : d.feedback === "rejected"
+                              : currentFeedback(d) === "rejected"
                                 ? "已弃用"
                                 : "待审阅"}
                             {d.candidate ? " · 有新版本" : ""}
@@ -578,7 +741,7 @@ function App() {
                                 : p.status === "paused"
                                   ? "已暂停"
                                   : p.docs.length
-                                    ? `${p.docs.filter((d) => !d.feedback).length} 份成果待评价`
+                                    ? `${p.docs.filter((d) => !currentFeedback(d)).length} 份成果待评价`
                                     : "准备工作安排"}
                             </small>
                           </button>
@@ -599,13 +762,6 @@ function App() {
                         .includes(query.toLowerCase()),
                     ) && <p className="muted search-empty">没有匹配的项目</p>}
                   </div>
-                  <button
-                    className="new-project-link"
-                    onClick={() => setModal({ type: "create" })}
-                  >
-                    <Plus size={16} />
-                    开始一个新目标
-                  </button>
                 </>
               )}
               <button
@@ -656,6 +812,11 @@ function App() {
                 notify={notify}
                 storageError={storageError}
                 openSidebar={() => setSidebarOpen(true)}
+                onDecision={chooseInlineDecision}
+                onSuggestion={(action) =>
+                  applySuggestion(currentDoc.id, action)
+                }
+                focusDecision={project.focusDecision}
               />
             ) : (
               <>
@@ -704,6 +865,10 @@ function App() {
                 </header>
                 <div className="group-layout">
                   <Conversation
+                    onEvidence={() => {
+                      setSide("evidence");
+                      setSideOpen(true);
+                    }}
                     key={project.id}
                     project={project}
                     members={members}

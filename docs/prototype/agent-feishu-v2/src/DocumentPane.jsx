@@ -28,9 +28,17 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Avatar, IconButton, Badge, Modal } from "./common.jsx";
-import { downloadText, htmlText, sanitizeHTML, now } from "./model.mjs";
+import { DecisionContext, DecisionNode } from "./DecisionBlock.jsx";
+import {
+  downloadText,
+  htmlText,
+  sanitizeHTML,
+  currentFeedback,
+  now,
+} from "./model.mjs";
 const extensions = [
   StarterKit.configure({ link: { openOnClick: false, autolink: false } }),
+  DecisionNode,
 ];
 function SafeContent({ html }) {
   return (
@@ -50,6 +58,9 @@ export default function DocumentPane({
   notify,
   storageError,
   openSidebar,
+  onDecision,
+  onSuggestion,
+  focusDecision,
 }) {
   const [panel, setPanel] = useState(null),
     [original, setOriginal] = useState(false),
@@ -97,6 +108,22 @@ export default function DocumentPane({
     if (scroll.current) scroll.current.scrollTop = savedScroll.current;
     return () => clearTimeout(scrollTimer.current);
   }, []);
+  useEffect(() => {
+    if (focusDecision && editor) {
+      const frame = requestAnimationFrame(() =>
+        scroll.current
+          ?.querySelector(`[data-decision-id="${focusDecision}"]`)
+          ?.scrollIntoView({ block: "center" }),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [focusDecision, editor]);
+  useEffect(() => {
+    if (doc.suggestion?.status === "accepted" && panel === "learning") {
+      const timer = setTimeout(() => setPanel(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [doc.suggestion?.status, panel]);
   const last = doc.requests.at(-1),
     candidate = doc.candidate,
     conflict = !!candidate && candidate.baseRevision !== doc.revision;
@@ -290,7 +317,11 @@ export default function DocumentPane({
               <span>{project.name}</span>
             </div>
             <div style={{ display: original ? "none" : undefined }}>
-              <EditorContent editor={editor} />
+              <DecisionContext.Provider
+                value={{ project, members, storageError, onChoose: onDecision }}
+              >
+                <EditorContent editor={editor} />
+              </DecisionContext.Provider>
             </div>
             {original && <SafeContent html={doc.original} />}
             <button
@@ -302,25 +333,60 @@ export default function DocumentPane({
               <ChevronDown size={13} />
             </button>
             <div className="paper-end">—— 成果正文结束 ——</div>
+            {doc.revision > 1 && !doc.suggestion && (
+              <button
+                className="text-button learning-demo"
+                onClick={() => {
+                  updateDoc((d) => ({
+                    ...d,
+                    suggestion: {
+                      status: "pending",
+                      text: "开头先说具体做法，再解释判断依据。",
+                      revision: d.revision,
+                      html: d.html,
+                    },
+                  }));
+                  setPanel("learning");
+                }}
+              >
+                演示改稿建议（未调用模型）
+              </button>
+            )}
+            {doc.suggestion?.status === "pending" && (
+              <button
+                className="text-button"
+                onClick={() => setPanel("learning")}
+              >
+                查看稿件旁的规则建议
+              </button>
+            )}
           </article>
         </div>
         <footer className="document-actions">
           <span className="feedback-state">
-            {doc.feedback ? <CheckCheck size={19} /> : <Clock3 size={19} />}
+            {currentFeedback(doc) ? (
+              <CheckCheck size={19} />
+            ) : (
+              <Clock3 size={19} />
+            )}
             <span>
-              {doc.feedback === "adopted"
+              {currentFeedback(doc) === "adopted"
                 ? "已采用"
-                : doc.feedback === "rejected"
+                : currentFeedback(doc) === "rejected"
                   ? "已弃用"
                   : "待评价"}
               <small>
-                {doc.feedback ? "反馈关联此次工作稿" : "你的判断会留在项目里"}
+                {currentFeedback(doc)
+                  ? "反馈关联此次工作稿"
+                  : doc.feedback
+                    ? `版本 ${doc.evaluatedRevision} 已评价，当前稿有更新`
+                    : "你的判断会留在项目里"}
               </small>
             </span>
           </span>
           <div>
             <button
-              className={`button ${doc.feedback === "adopted" ? "success" : "primary"}`}
+              className={`button ${currentFeedback(doc) === "adopted" ? "success" : "primary"}`}
               onClick={() => {
                 setFeedback("adopted");
                 setReason(doc.feedbackReason || "");
@@ -361,6 +427,7 @@ export default function DocumentPane({
                   request: "交回修改",
                   sources: "出处与材料",
                   versions: "原稿与版本",
+                  learning: "从这次修改里学习",
                 }[panel]
               }
             </h3>
@@ -371,7 +438,75 @@ export default function DocumentPane({
             />
           </header>
           <div className="context-scroll">
-            {panel === "request" ? (
+            {panel === "learning" ? (
+              <div className="learning-note">
+                <Badge>示例建议 · 版本 {doc.suggestion?.revision}</Badge>
+                <p>
+                  {members.find((m) => m.id === project.lead)?.name}{" "}
+                  从你的修改里总结：
+                </p>
+                {doc.suggestion?.editing ? (
+                  <textarea
+                    aria-label="建议措辞"
+                    rows={4}
+                    value={doc.suggestion.text}
+                    onChange={(e) =>
+                      updateDoc((d) => ({
+                        ...d,
+                        suggestion: { ...d.suggestion, text: e.target.value },
+                      }))
+                    }
+                  />
+                ) : (
+                  <strong>「{doc.suggestion?.text}」</strong>
+                )}
+                {doc.suggestion?.status === "accepted" ? (
+                  <p className="learning-accepted">
+                    ✓ 已记住，只用于本项目{" "}
+                    <button onClick={() => onSuggestion("undo")}>撤回</button>
+                  </p>
+                ) : (
+                  <>
+                    <div className="learning-actions">
+                      <button
+                        className="button primary small"
+                        disabled={storageError || !doc.suggestion?.text.trim()}
+                        onClick={() => onSuggestion("accept")}
+                      >
+                        以后都这样
+                      </button>
+                      <button
+                        className="button small"
+                        onClick={() => {
+                          onSuggestion("dismiss");
+                          setPanel(null);
+                        }}
+                      >
+                        只这次
+                      </button>
+                    </div>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        updateDoc((d) => ({
+                          ...d,
+                          suggestion: {
+                            ...d.suggestion,
+                            editing: !d.suggestion.editing,
+                          },
+                        }))
+                      }
+                    >
+                      {doc.suggestion?.editing ? "完成措辞修改" : "改一下措辞"}
+                    </button>
+                  </>
+                )}
+                <p className="field-note">
+                  此处手动加载示例，不是模型归纳。正式接入后由整合成员在停止编辑
+                  10 分钟后返回；不会每改一个字就提示。
+                </p>
+              </div>
+            ) : panel === "request" ? (
               <>
                 <div className="context-doc">
                   <FileText size={23} />

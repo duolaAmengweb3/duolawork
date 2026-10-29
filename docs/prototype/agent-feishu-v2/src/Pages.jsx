@@ -50,67 +50,75 @@ const modeIcons = {
   review: ShieldCheck,
 };
 export function ProjectForm({ project, members, onSave, onCancel }) {
-  const [form, setForm] = useState(() =>
-    project
-      ? {
-          name: project.name,
-          goal: project.goal,
-          mode: project.mode,
-          members: [...project.members],
-          lead: project.lead,
-          criteria: project.criteria,
-          allowEmpty: project.allowEmpty,
-          assignments: { ...project.assignments },
-          permissions: { ...project.permissions },
-          schedule: { ...project.schedule },
-        }
-      : {
-          name: "",
-          goal: "",
-          mode: "parallel",
-          members: members
-            .filter((m) => !m.paused)
-            .slice(0, 3)
-            .map((m) => m.id),
-          lead: members.find((m) => m.id === "dots")?.id || members[0]?.id,
-          criteria:
-            "保留原始依据、明确取舍和未确认项；交付可以继续使用的成果。",
-          allowEmpty: true,
-          assignments: {},
-          permissions: {},
-          schedule: {
-            enabled: false,
-            times: ["06:00", "12:00", "19:00"],
-            timezone: "Asia/Shanghai",
-          },
-        },
+  const [step, setStep] = useState(1);
+  const [goal, setGoal] = useState(project?.goal || "");
+  const [mode, setMode] = useState(project?.mode || "parallel");
+  const [selected, setSelected] = useState(
+    project?.members ||
+      members
+        .filter((m) => !m.paused)
+        .slice(0, 3)
+        .map((m) => m.id),
   );
-  const [when, setWhen] = useState("next"),
-    [error, setError] = useState(""),
-    [templates, setTemplates] = useState(false),
-    [times, setTimes] = useState(form.schedule.times.join("、"));
-  const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  function submit(e) {
+  const [lead, setLead] = useState(project?.lead || selected[0]);
+  const [name, setName] = useState(project?.name || "");
+  const [criteria, setCriteria] = useState(
+    project?.criteria ||
+      "保留原始依据、明确取舍和未确认项；交付可以继续使用的成果。",
+  );
+  const [scheduled, setScheduled] = useState(
+    project?.schedule.enabled || false,
+  );
+  const [times, setTimes] = useState(
+    (project?.schedule.times || ["06:00", "12:00", "19:00"]).join("、"),
+  );
+  const [timezone, setTimezone] = useState(
+    project?.schedule.timezone || "Asia/Shanghai",
+  );
+  const [when, setWhen] = useState("next");
+  const [error, setError] = useState("");
+  const recommended = /研究|调研|找|对比|评估/.test(goal)
+    ? "parallel"
+    : /方案|计划|决定/.test(goal)
+      ? "review"
+      : "solo";
+  function advance(e) {
     e.preventDefault();
     setError("");
-    if (!form.name.trim() || !form.goal.trim() || !form.criteria.trim()) {
-      setError("请填写项目名称、目标和交付标准，不能只输入空格");
+    if (step === 1) {
+      if (!goal.trim()) {
+        setError("先写下你想达成的目标");
+        return;
+      }
+      if (!project) {
+        setMode(recommended);
+        if (recommended === "solo")
+          setSelected(
+            [selected[0] || members.find((m) => !m.paused)?.id].filter(Boolean),
+          );
+        if (recommended === "review") setSelected(selected.slice(0, 2));
+      }
+      setStep(2);
       return;
     }
-    const selected = form.members.filter((id) =>
+    const active = selected.filter((id) =>
       members.some((m) => m.id === id && !m.paused),
     );
-    if (selected.length < (form.mode === "solo" ? 1 : 2)) {
+    if (active.length < (mode === "solo" ? 1 : 2)) {
       setError(
-        form.mode === "solo"
+        mode === "solo"
           ? "请选择一位可参与成员"
-          : "此工作方式至少需要两位可参与成员",
+          : "这个方式至少需要两位可参与成员",
       );
+      return;
+    }
+    if (step === 2) {
+      setStep(3);
       return;
     }
     const clock = times.split(/[,，、\s]+/).filter(Boolean);
     if (
-      form.schedule.enabled &&
+      scheduled &&
       (!clock.length || clock.some((t) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)))
     ) {
       setError("时间请填写为 06:00、12:00、19:00");
@@ -118,320 +126,253 @@ export function ProjectForm({ project, members, onSave, onCancel }) {
     }
     onSave(
       {
-        ...form,
-        name: form.name.trim(),
-        goal: form.goal.trim(),
-        members: selected,
-        lead: selected.includes(form.lead) ? form.lead : selected[0],
-        schedule: { ...form.schedule, times: [...new Set(clock)].sort() },
+        name: name.trim() || goal.trim().slice(0, 18),
+        goal: goal.trim(),
+        mode,
+        members: active,
+        lead: active.includes(lead) ? lead : active[0],
+        criteria: criteria.trim() || "保留依据与缺口，交付可用成果。",
+        allowEmpty: true,
+        schedule: {
+          enabled: scheduled,
+          times: [...new Set(clock)].sort(),
+          timezone,
+        },
+        assignments: {},
+        permissions: {},
       },
       when,
     );
   }
   return (
-    <form className="project-form" onSubmit={submit}>
-      <div className="form-row">
-        <label className="field grow">
-          项目名称
-          <input
+    <form className="project-form wizard" onSubmit={advance}>
+      <div className="wizard-steps" aria-label={`第 ${step} 步，共 3 步`}>
+        {["说目标", "选方式与成员", "定节奏"].map((s, i) => (
+          <span key={s} className={i + 1 === step ? "current" : ""}>
+            <b>{i + 1}</b>
+            {s}
+          </span>
+        ))}
+      </div>
+      {step === 1 ? (
+        <label className="field goal-field">
+          你想让团队做成什么？
+          <textarea
+            autoFocus
+            rows={6}
             required
-            maxLength={60}
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            placeholder="例如：每周产品观察"
+            maxLength={4000}
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            placeholder="例如：每天帮我找到值得动手验证的 AI 小项目"
           />
         </label>
-        {!project && (
-          <button
-            type="button"
-            className="button template-toggle"
-            onClick={() => setTemplates((v) => !v)}
-          >
-            <BookOpen size={15} />
-            从模板开始
-            <ChevronDown size={13} />
-          </button>
-        )}
-      </div>
-      {templates && (
-        <div className="template-options">
-          {[
-            [
-              "AI 用例研究",
-              "找到值得动手试的 AI 用例，保留实践步骤与原始出处。",
-              "parallel",
-            ],
-            [
-              "产品方案比较",
-              "比较两个产品方向，给出选择依据、反例和验证办法。",
-              "review",
-            ],
-            [
-              "整理个人材料",
-              "整理已有材料，形成清晰、可以继续使用的文档。",
-              "solo",
-            ],
-          ].map(([name, goal, mode]) => (
-            <button
-              type="button"
-              key={name}
-              onClick={() => {
-                setForm((f) => ({
-                  ...f,
-                  name,
-                  goal,
-                  mode,
-                  members:
-                    mode === "solo" ? [f.lead || members[0].id] : f.members,
-                }));
-                setTemplates(false);
-              }}
-            >
-              {name}
-              <ArrowRight size={14} />
-            </button>
-          ))}
-        </div>
-      )}
-      <label className="field">
-        希望团队帮你达成什么？
-        <textarea
-          required
-          maxLength={4000}
-          rows={3}
-          value={form.goal}
-          onChange={(e) => set("goal", e.target.value)}
-          placeholder="描述目的、使用场景，以及你希望得到的结果。"
-        />
-      </label>
-      <fieldset>
-        <legend>选择工作方式</legend>
-        <div className="mode-options">
-          {modes.map((m) => {
-            const Icon = modeIcons[m.id];
-            return (
-              <button
-                type="button"
-                aria-pressed={form.mode === m.id}
-                className={`mode-option ${form.mode === m.id ? "selected" : ""}`}
-                key={m.id}
-                onClick={() => {
-                  set("mode", m.id);
-                  if (m.id === "solo")
-                    set("members", [
-                      form.members.includes(form.lead)
-                        ? form.lead
-                        : form.members[0] || members[0]?.id,
-                    ]);
-                }}
-              >
-                <Icon size={19} />
-                <span>
-                  <strong>{m.label}</strong>
-                  <small>{m.description}</small>
-                </span>
-                <span className="radio-dot" />
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend>
-          参与成员 <small>职责只属于这个项目</small>
-        </legend>
-        <div className="member-picker">
-          {members.map((m) => (
-            <label
-              key={m.id}
-              className={`member-choice ${form.members.includes(m.id) ? "selected" : ""}`}
-            >
-              <input
-                type="checkbox"
-                checked={form.members.includes(m.id)}
-                disabled={m.paused}
-                onChange={(e) =>
-                  set(
-                    "members",
-                    e.target.checked
-                      ? form.mode === "solo"
-                        ? [m.id]
-                        : [...form.members, m.id]
-                      : form.members.filter((id) => id !== m.id),
-                  )
-                }
-              />
-              <Avatar member={m} size={26} />
-              <span>{m.name}</span>
-              {m.paused && <small>已暂停</small>}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <div className="form-row">
-        <label className="field grow">
-          {form.mode === "solo" ? "交付责任人" : "牵头与整合"}
-          <select
-            value={
-              form.members.includes(form.lead)
-                ? form.lead
-                : form.members[0] || ""
-            }
-            onChange={(e) => set("lead", e.target.value)}
-          >
-            {form.members
-              .map((id) => members.find((m) => m.id === id))
-              .filter(Boolean)
-              .map((m) => (
-                <option value={m.id} key={m.id}>
-                  {m.name}
-                </option>
+      ) : step === 2 ? (
+        <>
+          <div className="wizard-goal">{goal}</div>
+          <div className="mode-options three-modes">
+            {modes
+              .filter((m) => m.id !== "relay")
+              .map((m) => {
+                const Icon = modeIcons[m.id];
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    aria-pressed={mode === m.id}
+                    className={`mode-option ${mode === m.id ? "selected" : ""}`}
+                    onClick={() => {
+                      setMode(m.id);
+                      if (m.id === "solo") setSelected(selected.slice(0, 1));
+                      if (m.id === "review") setSelected(selected.slice(0, 2));
+                    }}
+                  >
+                    <Icon size={21} />
+                    <span>
+                      <strong>
+                        {m.label}
+                        {recommended === m.id && (
+                          <Badge tone="blue">推荐</Badge>
+                        )}
+                      </strong>
+                      <small>{m.description}</small>
+                    </span>
+                    <span className="radio-dot" />
+                  </button>
+                );
+              })}
+          </div>
+          <p className="field-note">
+            按目标关键词推荐，可以修改。这里选择的是示例成员，真实连接尚未接入。
+          </p>
+          <fieldset>
+            <legend>参与成员</legend>
+            <div className="member-picker">
+              {members.map((m) => (
+                <label
+                  key={m.id}
+                  className={`member-choice ${selected.includes(m.id) ? "selected" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={m.paused}
+                    checked={selected.includes(m.id)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? mode === "solo"
+                          ? [m.id]
+                          : mode === "review" && selected.length >= 2
+                            ? [selected[0], m.id]
+                            : [...selected, m.id]
+                        : selected.filter((id) => id !== m.id);
+                      setSelected(next);
+                      if (!next.includes(lead)) setLead(next[0]);
+                    }}
+                  />
+                  <Avatar member={m} size={28} />
+                  <span>
+                    {m.name}
+                    <small>
+                      {m.paused
+                        ? "已暂停"
+                        : m.platform === "Grok Bot"
+                          ? "X 线索 · 示例"
+                          : m.platform === "Perplexity Computer"
+                            ? "全网检索 · 示例"
+                            : `${m.platform} · 示例`}
+                    </small>
+                  </span>
+                </label>
               ))}
-          </select>
-        </label>
-        <div className="form-info">
-          <Info size={16} />
-          <span>选择依据是任务需要。成员不按品牌固定成岗位。</span>
-        </div>
-      </div>
-      <label className="field">
-        怎样算交付到位？
-        <textarea
-          required
-          maxLength={4000}
-          rows={2}
-          value={form.criteria}
-          onChange={(e) => set("criteria", e.target.value)}
-        />
-      </label>
-      <label className="check-field">
-        <input
-          type="checkbox"
-          checked={form.allowEmpty}
-          onChange={(e) => set("allowEmpty", e.target.checked)}
-        />
-        <span>
-          允许“没有符合条件的结果”
-          <small>仍需提供实际搜集范围和证据，不能用访问失败代替空结果。</small>
-        </span>
-      </label>
-      <details className="schedule-form">
-        <summary>
-          <Users size={16} />
-          项目内分工与授权
-          <ChevronDown size={14} />
-        </summary>
-        <p className="field-note">
-          默认只读取材料、准备成果。职责和资料更新权限仅属于本项目，不改变成员的账号身份。
-        </p>
-        {form.members
-          .map((id) => members.find((m) => m.id === id))
-          .filter(Boolean)
-          .map((member) => (
-            <div className="assignment-row" key={member.id}>
-              <div className="assignment-member">
-                <Avatar member={member} size={26} />
-                <strong>{member.name}</strong>
-              </div>
-              <label className="field">
-                本轮负责什么
+            </div>
+          </fieldset>
+          {mode === "parallel" && (
+            <label className="field">
+              整合者
+              <select
+                aria-label="整合者"
+                value={selected.includes(lead) ? lead : selected[0] || ""}
+                onChange={(e) => setLead(e.target.value)}
+              >
+                {selected
+                  .map((id) => members.find((m) => m.id === id))
+                  .filter(Boolean)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          {mode === "review" && (
+            <p className="inline-note">
+              第一位出方案，第二位依据证据找漏洞，再交回第一位修订。没发现实质问题也是正常结果。
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="wizard-summary">
+            <strong>{goal}</strong>
+            <p>
+              {modes.find((m) => m.id === mode)?.label} ·{" "}
+              {selected
+                .map((id) => members.find((m) => m.id === id)?.name)
+                .join("、")}
+            </p>
+          </div>
+          <fieldset>
+            <legend>工作节奏</legend>
+            <div className="cadence-options">
+              <label>
                 <input
-                  aria-label={`${member.name}的项目分工`}
-                  value={form.assignments[member.id] || ""}
-                  placeholder={
-                    planSteps({ ...form, assignments: {} }, members).find(
-                      (s) => s.member?.id === member.id,
-                    )?.title || "负责完整交付"
-                  }
-                  onChange={(e) =>
-                    set("assignments", {
-                      ...form.assignments,
-                      [member.id]: e.target.value,
-                    })
-                  }
+                  type="radio"
+                  name="cadence"
+                  checked={!scheduled}
+                  onChange={() => setScheduled(false)}
+                />
+                只跑一次
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="cadence"
+                  checked={scheduled}
+                  onChange={() => setScheduled(true)}
+                />
+                每天定时
+              </label>
+            </div>
+          </fieldset>
+          {scheduled && (
+            <div className="form-row">
+              <label className="field grow">
+                时间点
+                <input
+                  value={times}
+                  onChange={(e) => setTimes(e.target.value)}
+                  placeholder="06:00、12:00、19:00"
                 />
               </label>
               <label className="field">
-                允许的操作
+                时区
                 <select
-                  aria-label={`${member.name}的项目授权`}
-                  value={form.permissions[member.id] || "prepare"}
-                  onChange={(e) =>
-                    set("permissions", {
-                      ...form.permissions,
-                      [member.id]: e.target.value,
-                    })
-                  }
+                  aria-label="时区"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
                 >
-                  <option value="prepare">读取材料、准备成果</option>
-                  <option value="project">准备成果、更新本项目资料</option>
+                  <option value="Asia/Shanghai">北京时间</option>
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">纽约时间</option>
                 </select>
               </label>
             </div>
-          ))}
-        <p className="field-note">
-          对外发布、扩大权限和批准规则需另行确认。这份预览只保留约定，不授予真实平台操作权限。
-        </p>
-      </details>
-      <details className="schedule-form">
-        <summary>
-          <Clock3 size={16} />
-          日程与工作节奏{" "}
-          <Badge>{form.schedule.enabled ? "定时安排" : "按需开始"}</Badge>
-          <ChevronDown size={14} />
-        </summary>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            checked={form.schedule.enabled}
-            onChange={(e) =>
-              set("schedule", { ...form.schedule, enabled: e.target.checked })
-            }
-          />
-          <span>
-            保存定时安排<small>预览仅保存配置，不会触发后台任务。</small>
-          </span>
-        </label>
-        {form.schedule.enabled && (
-          <div className="form-row">
-            <label className="field grow">
-              时间点
+          )}
+          <p className="field-note">
+            每轮预计唤醒{" "}
+            {mode === "solo" ? 1 : mode === "review" ? 3 : selected.length + 1}{" "}
+            次 · 费用未知。预览不会唤醒真实 Agent 或启动定时任务。
+          </p>
+          <details className="schedule-form">
+            <summary>
+              补充交付要求（可选）
+              <ChevronDown size={14} />
+            </summary>
+            <label className="field">
+              项目名称
               <input
-                value={times}
-                onChange={(e) => setTimes(e.target.value)}
-                placeholder="06:00、12:00、19:00"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={goal.trim().slice(0, 18)}
               />
             </label>
             <label className="field">
-              时区
+              怎样算交付到位？
+              <textarea
+                rows={3}
+                value={criteria}
+                onChange={(e) => setCriteria(e.target.value)}
+              />
+            </label>
+            <p className="field-note">
+              默认保留来源与缺口，允许有依据的空结果。对外发布、发送或付款只在实际请求发生时确认。
+            </p>
+          </details>
+          {project?.status === "running" && (
+            <label className="field">
+              新安排何时使用？
               <select
-                value={form.schedule.timezone}
-                onChange={(e) =>
-                  set("schedule", {
-                    ...form.schedule,
-                    timezone: e.target.value,
-                  })
-                }
+                aria-label="新安排何时使用"
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
               >
-                <option value="Asia/Shanghai">北京时间</option>
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">纽约时间</option>
+                <option value="next">下一轮</option>
+                <option value="current">调整当前示例轮次，保留已有成果</option>
               </select>
             </label>
-          </div>
-        )}
-        <p className="field-note">
-          上一轮未结束时保留最新待运行请求，不重复启动。
-        </p>
-      </details>
-      {project?.status === "running" && (
-        <label className="field">
-          什么时候使用新安排？
-          <select value={when} onChange={(e) => setWhen(e.target.value)}>
-            <option value="next">下一轮（保留本轮安排）</option>
-            <option value="current">调整当前示例轮次（保留已有成果）</option>
-          </select>
-        </label>
+          )}
+        </>
       )}
       {error && (
         <p className="form-error" role="alert">
@@ -439,18 +380,29 @@ export function ProjectForm({ project, members, onSave, onCancel }) {
         </p>
       )}
       <div className="form-actions">
-        <span className="muted">手动确认安排 · 未调用 AI 拟稿</span>
-        <button type="button" className="button" onClick={onCancel}>
-          取消
+        <button
+          type="button"
+          className="button"
+          onClick={
+            step === 1
+              ? onCancel
+              : () => {
+                  setStep(step - 1);
+                  setError("");
+                }
+          }
+        >
+          {step === 1 ? "取消" : "上一步"}
         </button>
-        <button className="button primary" type="submit">
-          {project ? "保存工作安排" : "创建项目"}
+        <button className="button primary">
+          {step === 3 ? (project ? "保存安排" : "开始") : "下一步"}
           <ArrowRight size={15} />
         </button>
       </div>
     </form>
   );
 }
+
 export function ManagementPage({ state, project, actions }) {
   const [filter, setFilter] = useState("all"),
     [query, setQuery] = useState(""),
@@ -467,6 +419,7 @@ export function ManagementPage({ state, project, actions }) {
     chooseProject,
     setState,
     updateProject,
+    openDecision,
   } = actions;
   const matches = (p) => filter === "all" || p.id === filter;
   const projects = state.projects.filter(matches);
@@ -563,16 +516,13 @@ export function ManagementPage({ state, project, actions }) {
                       </div>
                       {d.status === "pending" ? (
                         <div className="decision-choices">
-                          {d.options.map((choice, i) => (
-                            <button
-                              key={choice}
-                              className={`button ${i === 0 ? "primary" : ""}`}
-                              onClick={() => decide(p.id, d.id, choice)}
-                            >
-                              {choice}
-                              {i === 0 && <Check size={15} />}
-                            </button>
-                          ))}
+                          <button
+                            className="button primary"
+                            onClick={() => openDecision(p.id, d)}
+                          >
+                            在稿件中处理
+                            <ArrowRight size={15} />
+                          </button>
                         </div>
                       ) : (
                         <div className="resolved-note">
@@ -581,9 +531,9 @@ export function ManagementPage({ state, project, actions }) {
                           {d.status === "waiting" ? " · 等待实际补查" : ""}
                           <button
                             className="text-button"
-                            onClick={() => chooseProject(p.id)}
+                            onClick={() => openDecision(p.id, d)}
                           >
-                            查看项目
+                            查看原文与决定
                             <ArrowRight size={14} />
                           </button>
                         </div>

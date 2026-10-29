@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -266,20 +267,87 @@ try {
     },
   );
   await check(
-    "Decision retains choice and moves to resolved list",
+    "Pending decisions navigate to the affected paragraph; choose and undo remain in the artifact",
     async () => {
       await nav(p, "待我决定").click();
       await shot(p, "04-decisions");
-      const card = p.locator(".decision-card").first();
-      const choice = await card
-        .locator(".decision-choices button")
+      await p
+        .getByRole("button", { name: "在稿件中处理", exact: true })
+        .click();
+      await p.locator(".decision-inline").waitFor();
+      await shot(p, "09-inline-decision");
+      assert(await p.locator(".review-layout").isVisible());
+      await p
+        .locator(".decision-inline")
+        .getByRole("button", { name: "采纳此方案", exact: true })
         .first()
-        .innerText();
-      await card.locator(".decision-choices button").first().click();
+        .click();
+      await until(
+        async () => current(await state(p)).decisions[0].status === "resolved",
+        "inline decision",
+      );
+      assert.match(firstDoc(await state(p)).html, /data-selected=/);
+      await p
+        .locator(".decision-inline")
+        .getByRole("button", { name: "撤回", exact: true })
+        .click();
+      await until(
+        async () => current(await state(p)).decisions[0].status === "pending",
+        "undo inline",
+      );
+      await p
+        .locator(".decision-inline")
+        .getByRole("button", { name: "两种都保留", exact: true })
+        .click();
+      assert.match(await p.locator(".decision-chosen").innerText(), /如果/);
+      await nav(p, "待我决定").click();
       await p.getByRole("button", { name: "已处理", exact: true }).click();
-      assert.match(
-        await p.locator(".resolved-note").innerText(),
-        new RegExp(choice.trim()),
+      assert.match(await p.locator(".resolved-note").innerText(), /两种都保留/);
+    },
+  );
+  await check(
+    "Marginal rule suggestion is explicit, scoped and reversible without a management form",
+    async () => {
+      await p
+        .getByRole("button", { name: "查看原文与决定", exact: true })
+        .click();
+      await p
+        .getByRole("button", {
+          name: "演示改稿建议（未调用模型）",
+          exact: true,
+        })
+        .click();
+      await shot(p, "10-learning-note");
+      const n = current(await state(p)).rules.length;
+      assert.equal(firstDoc(await state(p)).suggestion.status, "pending");
+      assert.equal(current(await state(p)).rules.length, n);
+      await p.getByRole("button", { name: "以后都这样", exact: true }).click();
+      await until(
+        async () => current(await state(p)).rules.length === n + 1,
+        "inline rule",
+      );
+      assert.equal(current(await state(p)).rules.at(-1).scope, "本项目");
+      await p
+        .locator(".learning-note")
+        .getByRole("button", { name: "撤回", exact: true })
+        .click();
+      await until(
+        async () => firstDoc(await state(p)).suggestion.status === "pending",
+        "undo rule",
+      );
+      await p.getByRole("button", { name: "只这次", exact: true }).click();
+      await until(
+        async () => firstDoc(await state(p)).suggestion.status === "dismissed",
+        "dismiss rule",
+      );
+      assert.equal(
+        await p
+          .getByRole("button", {
+            name: "演示改稿建议（未调用模型）",
+            exact: true,
+          })
+          .count(),
+        0,
       );
     },
   );
@@ -362,49 +430,45 @@ try {
     },
   );
   for (const [mode, label] of [
-    ["solo", "一位成员完成"],
-    ["parallel", "独立研究，再整合"],
-    ["relay", "按依赖顺序接力"],
-    ["review", "执行，再独立复核"],
+    ["solo", "单兵直通"],
+    ["parallel", "赛马互证"],
+    ["review", "红蓝对抗"],
   ]) {
     await check(
-      `Create goal with ${mode} plan, acceptance criteria and scoped assignments`,
+      `Three-step goal wizard: ${mode}, no upfront roles or permission form`,
       async () => {
         await nav(p, "项目").click();
         await p.getByRole("button", { name: "新建项目", exact: true }).click();
-        await p.getByLabel("项目名称", { exact: true }).fill(`验证-${mode}`);
+        assert.equal(await p.locator("dialog textarea").count(), 1);
+        assert.equal(await p.locator("dialog select").count(), 0);
+        assert.equal(await p.locator("dialog input").count(), 0);
         await p
-          .getByLabel("希望团队帮你达成什么？")
-          .fill("比较材料，交付可追溯的判断。");
-        await p.getByRole("button", { name: new RegExp(`^${label}`) }).click();
-        if (mode === "solo") {
-          const n = await p.locator(".member-picker input:checked").count();
-          assert.equal(n, 1);
-        }
+          .getByLabel("你想让团队做成什么？")
+          .fill(`研究可追溯的材料，交付实际判断：${mode}`);
+        await p.getByRole("button", { name: "下一步", exact: true }).click();
+        assert.equal(await p.locator(".mode-option").count(), 3);
+        assert.equal(
+          await p
+            .locator("dialog")
+            .getByRole("button", { name: /^赛马互证/ })
+            .getAttribute("aria-pressed"),
+          "true",
+        );
+        await p
+          .locator("dialog")
+          .getByRole("button", { name: new RegExp(`^${label}`) })
+          .click();
+        if (mode === "solo")
+          assert.equal(
+            await p.locator(".member-picker input:checked").count(),
+            1,
+          );
+        if (mode === "parallel") await shot(p, "07-new-goal");
+        await p.getByRole("button", { name: "下一步", exact: true }).click();
         if (mode === "parallel") {
-          await p
-            .locator("summary")
-            .filter({ hasText: "项目内分工与授权" })
-            .click();
-          await p
-            .getByLabel("Grok的项目分工", { exact: true })
-            .fill("对比原始材料，独立指出缺口");
-          await p
-            .getByLabel("Grok的项目授权", { exact: true })
-            .selectOption("project");
-          await p
-            .locator("summary")
-            .filter({ hasText: "项目内分工与授权" })
-            .click();
-          await p
-            .locator("summary")
-            .filter({ hasText: "日程与工作节奏" })
-            .click();
-          await p.getByLabel(/保存定时安排/).check();
+          await p.getByLabel("每天定时", { exact: true }).check();
           await p.getByLabel("时间点", { exact: true }).fill("25:00");
-          await p
-            .getByRole("button", { name: "创建项目", exact: true })
-            .click();
+          await p.getByRole("button", { name: "开始", exact: true }).click();
           assert.match(
             await p.locator(".form-error").innerText(),
             /时间请填写/,
@@ -412,33 +476,22 @@ try {
           await p
             .getByLabel("时间点", { exact: true })
             .fill("06:00、12:00、19:00、06:00");
-          await p
-            .locator("summary")
-            .filter({ hasText: "日程与工作节奏" })
-            .click();
-          await p.locator(".modal-body").evaluate((el) => (el.scrollTop = 0));
         }
-        if (mode === "parallel") await shot(p, "07-new-goal");
-        await p.getByRole("button", { name: "创建项目", exact: true }).click();
+        await p.getByRole("button", { name: "开始", exact: true }).click();
         await p.locator("dialog").waitFor({ state: "detached" });
         const pr = current(await state(p));
         assert.equal(pr.mode, mode);
+        assert.equal(pr.status, "running");
         assert(pr.criteria);
         assert.equal(pr.schedule.enabled, mode === "parallel");
-        if (mode === "parallel") {
-          assert.equal(pr.assignments.grok, "对比原始材料，独立指出缺口");
-          assert.equal(pr.permissions.grok, "project");
+        if (mode === "parallel")
           assert.deepEqual(pr.schedule.times, ["06:00", "12:00", "19:00"]);
-        }
       },
     );
   }
   await check(
     "Manual demonstration progresses to a reviewable artifact; pause blocks progression",
     async () => {
-      await p
-        .getByRole("button", { name: "演示这份安排", exact: true })
-        .click();
       await until(
         async () => current(await state(p)).status === "running",
         "running",
@@ -470,7 +523,7 @@ try {
     },
   );
   await check(
-    "Settings are persistent, exported backup contains workspace",
+    "Workspace export includes current projects and members",
     async () => {
       await nav(p, "设置").click();
       await shot(p, "08-settings");
@@ -478,7 +531,7 @@ try {
       await p.getByRole("button", { name: "导出工作区", exact: true }).click();
       const d = await downloads;
       const contents = JSON.parse(await fs.readFile(await d.path(), "utf8"));
-      assert.equal(contents.projects.length, 7);
+      assert.equal(contents.projects.length, 6);
       assert.equal(contents.members.length, 5);
     },
   );
@@ -552,6 +605,7 @@ try {
     JSON.stringify(
       {
         checkedAt: new Date().toISOString(),
+        buildSha256: createHash("sha256").update(index).digest("hex"),
         scope:
           "Isolated Chrome UI preview only. No production accounts, native agents, scheduling or backend acceptance.",
         checks,

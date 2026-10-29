@@ -9,15 +9,15 @@ export const now = () =>
 export const modes = [
   {
     id: "parallel",
-    label: "独立研究，再整合",
-    short: "并行研究",
-    description: "从不同角度寻找依据，汇合后形成判断。",
+    label: "赛马互证",
+    short: "赛马互证",
+    description: "几位成员各自独立调查，最后对比、互相核实。",
   },
   {
     id: "solo",
-    label: "一位成员完成",
+    label: "单兵直通",
     short: "独立完成",
-    description: "上下文集中，由一位成员负责完整交付。",
+    description: "交给一位成员直接完成。",
   },
   {
     id: "relay",
@@ -27,9 +27,9 @@ export const modes = [
   },
   {
     id: "review",
-    label: "执行，再独立复核",
+    label: "红蓝对抗",
     short: "执行与复核",
-    description: "关键事实或判断，交给另一位成员检查。",
+    description: "一位成员出方案，另一位专门找漏洞。",
   },
 ];
 export const initialMembers = [
@@ -120,6 +120,7 @@ export function makeDoc(id, title, html, author = "dots") {
     candidate: null,
     scroll: 0,
     sourceIds: sourceMaterials.map((x) => x.id),
+    suggestion: null,
   };
 }
 export function makeProject(config = {}) {
@@ -162,7 +163,14 @@ export function initialState() {
     status: "review",
     demoStep: 3,
     docs: [
-      makeDoc("draft-1", "Agent 团队，先解决交接问题", body1),
+      makeDoc(
+        "draft-1",
+        "Agent 团队，先解决交接问题",
+        body1.replace(
+          "<h2>交接的是材料",
+          '<hub-decision data-id="decision-1"></hub-decision><h2>交接的是材料',
+        ),
+      ),
       makeDoc("draft-2", "本轮研究的取舍与缺口", body2),
     ],
     selectedDoc: "draft-1",
@@ -213,6 +221,28 @@ export function initialState() {
     decisions: [
       {
         id: "decision-1",
+        docId: "draft-1",
+        positions: [
+          {
+            member: "grok",
+            label: "单列为后续进展",
+            text: "保留这个案例，单列为后续进展，标清原始发布与本次更新时间。",
+            evidence: "示例交接材料：新增了实践步骤，但并不是今天才发布。",
+            url: "https://github.com/duolaAmengweb3/agent-hub/issues/9",
+          },
+          {
+            member: "muse",
+            label: "本轮不收录",
+            text: "本轮只收录首次出现的案例，这个旧案例移到后续关注。",
+            evidence:
+              "示例交接材料：原始发布时间早于本轮，若目标只看新品，应排除。",
+            url: "https://github.com/duolaAmengweb3/agent-hub/issues/9",
+          },
+        ],
+        conditional:
+          "如果本轮关注新的实践进展，保留并标注原始与更新时间；如果只看首次发布的项目，本轮不收录。",
+        recommendation:
+          "不要把转发当成首次发布。是否收录，按你本轮对时效性的要求决定。",
         type: "取舍",
         title: "旧案例的新进展，要收录吗？",
         description:
@@ -249,7 +279,7 @@ export function initialState() {
     ],
   });
   return {
-    version: 1,
+    version: 2,
     page: "projects",
     projectId: "daily",
     review: false,
@@ -281,7 +311,7 @@ export function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (
-      s?.version === 1 &&
+      [1, 2].includes(s?.version) &&
       Array.isArray(s.projects) &&
       s.projects.length &&
       Array.isArray(s.members) &&
@@ -297,6 +327,24 @@ export function loadState() {
     )
       return {
         ...s,
+        version: 2,
+        projects: s.projects.map((p) => {
+          if (s.version === 2 || p.id !== "daily") return p;
+          const example = initialState().projects[0].decisions[0];
+          return {
+            ...p,
+            decisions: p.decisions.map((d) =>
+              d.id === example.id
+                ? {
+                    ...example,
+                    ...d,
+                    docId: example.docId,
+                    positions: example.positions,
+                  }
+                : d,
+            ),
+          };
+        }),
         page: [
           "projects",
           "decisions",
@@ -336,6 +384,18 @@ function defaultPlanSteps(project, members) {
         phase: 2,
       },
     ];
+  if (project.mode === "review")
+    return chosen.length
+      ? [
+          { member: chosen[0], title: "提出方案与依据", phase: 1 },
+          {
+            member: chosen[1] || chosen[0],
+            title: "检查漏洞，质疑附证据",
+            phase: 2,
+          },
+          { member: chosen[0], title: "回应质疑，修订并交付", phase: 3 },
+        ]
+      : [];
   return chosen.map((m, i) => ({
     member: m,
     title:
@@ -357,6 +417,8 @@ export function planSteps(project, members) {
         : "读取项目材料、准备成果",
   }));
 }
+export const currentFeedback = (doc) =>
+  doc.evaluatedRevision === doc.revision ? doc.feedback : null;
 export const pendingCount = (p) =>
   p.decisions.filter((d) => d.status === "pending").length +
   p.rules.filter((r) => r.status === "proposed").length;
@@ -402,6 +464,7 @@ export function sanitizeHTML(html) {
     "PRE",
     "A",
     "HR",
+    "HUB-DECISION",
   ]);
   function clean(node) {
     if (node.nodeType === 3) return document.createTextNode(node.textContent);
@@ -416,6 +479,12 @@ export function sanitizeHTML(html) {
     const el = allowed.has(node.tagName)
       ? document.createElement(node.tagName.toLowerCase())
       : fragment;
+    if (node.tagName === "HUB-DECISION") {
+      for (const key of ["data-id", "data-selected", "data-choice"]) {
+        const value = node.getAttribute(key);
+        if (value) el.setAttribute(key, value);
+      }
+    }
     if (node.tagName === "A") {
       try {
         const url = new URL(node.getAttribute("href"));
