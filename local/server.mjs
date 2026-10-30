@@ -109,7 +109,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/local/restore-sessions'&&req.method==='POST'){
   if(!runner.maintenance)return json(res,{message:'仅在更新验收期间恢复已确认会话'},409);
   await logins.load();const state=await cloud.state(),results={};
-  for(const a of state.accounts.filter(a=>['muse','grok-bot'].includes(a.platformId)&&a.status!=='disabled'&&logins.records[a.id]?.status==='authenticated')){
+  for(const a of state.accounts.filter(a=>['muse','grok-bot'].includes(a.platformId)&&a.status!=='disabled'&&logins.records[a.id]?.status==='authenticated'&&browsers.active.has(a.id))){
    if(browsers.isManual(a.id))continue;
    await browsers.ensureBackground(a,{url:connections.records[a.id]?.conversationUrl||a.entryUrl||maintainedPlatforms(state.platforms).find(p=>p.id===a.platformId)?.entryUrl});
    for(let i=0;i<20;i++){results[a.id]=await logins.check(a,browsers,{force:true});if(['authenticated','login_required','verification_required'].includes(results[a.id].status))break;await new Promise(r=>setTimeout(r,250));}

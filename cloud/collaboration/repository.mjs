@@ -19,8 +19,8 @@ export const digest = async (value) =>
     (n) => n.toString(16).padStart(2, "0"),
   ).join("");
 
-// One lightweight CAS clock serializes transactions; entities are separate rows,
-// not an ever-growing workspace JSON. Every write is guarded by the same mutation.
+// Commit guards validate records and queried ranges. Unrelated projects do not
+// invalidate one another; a global sequence is only used for the activity feed.
 export class Repository {
   constructor(db, workspaceId) {
     this.db = db;
@@ -36,7 +36,19 @@ export class Repository {
     if (!row && necessary) fail("not_found", "记录不存在", 404);
     return row ? JSON.parse(row.body) : null;
   }
-  async list(kind, { scope, parent, status, after = "", limit = 100 } = {}) {
+  async list(
+    kind,
+    {
+      scope,
+      parent,
+      status,
+      after = "",
+      limit = 100,
+      order = "id",
+      cursor,
+      excludeHidden = false,
+    } = {},
+  ) {
     let sql = "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind=?";
     const params = [this.workspaceId, kind];
     for (const [field, value] of [
@@ -48,8 +60,19 @@ export class Repository {
         sql += ` AND ${field}=?`;
         params.push(value);
       }
-    sql += " AND id>? ORDER BY id LIMIT ?";
-    params.push(after, Math.max(1, Math.min(501, limit)));
+    if (excludeHidden)
+      sql += " AND COALESCE(json_extract(body,'$.hidden'),0)=0";
+    if (order === "recent") {
+      if (cursor) {
+        sql += " AND (updated_at<? OR (updated_at=? AND id<?))";
+        params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+      }
+      sql += " ORDER BY updated_at DESC,id DESC LIMIT ?";
+    } else {
+      sql += " AND id>? ORDER BY id LIMIT ?";
+      params.push(after);
+    }
+    params.push(Math.max(1, Math.min(501, limit)));
     const rows = await this.db
       .prepare(sql)
       .bind(...params)
@@ -59,11 +82,7 @@ export class Repository {
   async transact(requestId, input, callback, now = new Date().toISOString()) {
     required(requestId, "幂等请求编号", 180);
     const fingerprint = await digest(JSON.stringify(input));
-    for (let retry = 0; retry < 8; retry++) {
-      const clock = await this.db
-        .prepare("SELECT revision FROM hub_v2_clock WHERE workspace_id=?")
-        .bind(this.workspaceId)
-        .first();
+    for (let retry = 0; retry < 24; retry++) {
       const previous = await this.db
         .prepare(
           "SELECT fingerprint,result FROM hub_v2_receipts WHERE workspace_id=? AND request_id=?",
@@ -77,8 +96,17 @@ export class Repository {
       }
       const tx = new Transaction(this, now),
         result = await callback(tx);
-      const mutation = crypto.randomUUID(),
-        revision = clock?.revision ?? -1;
+      for (const record of tx.writes.values())
+        if (!tx.reads.has(`${record.kind}:${record.id}`)) {
+          const current = await this.get(record.kind, record.id, false);
+          tx.reads.set(`${record.kind}:${record.id}`, {
+            kind: record.kind,
+            id: record.id,
+            revision: current?.revision ?? -1,
+          });
+          record.revision = (current?.revision || 0) + 1;
+        }
+      const mutation = crypto.randomUUID();
       const idleSql =
         tx.legacyAccounts
           .map(
@@ -90,18 +118,26 @@ export class Repository {
         this.workspaceId,
         a,
       ]);
+      const validation = `NOT EXISTS (SELECT 1 FROM json_each(?) c LEFT JOIN hub_v2_records r ON r.workspace_id=? AND r.kind=json_extract(c.value,'$.kind') AND r.id=json_extract(c.value,'$.id') WHERE COALESCE(r.revision,-1)<>json_extract(c.value,'$.revision')) AND NOT EXISTS (SELECT 1 FROM json_each(?) c LEFT JOIN hub_v2_clock r ON r.workspace_id=json_extract(c.value,'$.key') WHERE COALESCE(r.revision,-1)<>json_extract(c.value,'$.revision')) AND NOT EXISTS (SELECT 1 FROM hub_v2_receipts WHERE workspace_id=? AND request_id=?) AND ${idleSql}`;
+      const validationParams = [
+        JSON.stringify([...tx.reads.values()]),
+        this.workspaceId,
+        JSON.stringify([...tx.ranges.values()]),
+        this.workspaceId,
+        requestId,
+        ...idleParams,
+      ];
       const statements = [
-        revision < 0
-          ? this.db
-              .prepare(
-                `INSERT OR IGNORE INTO hub_v2_clock(workspace_id,revision,mutation_id) SELECT ?,0,? WHERE ${idleSql}`,
-              )
-              .bind(this.workspaceId, mutation, ...idleParams)
-          : this.db
-              .prepare(
-                `UPDATE hub_v2_clock SET revision=revision+1,mutation_id=? WHERE workspace_id=? AND revision=? AND ${idleSql}`,
-              )
-              .bind(mutation, this.workspaceId, revision, ...idleParams),
+        this.db
+          .prepare(
+            `INSERT INTO hub_v2_clock(workspace_id,revision,mutation_id) SELECT ?,0,? WHERE ${validation} ON CONFLICT(workspace_id) DO UPDATE SET revision=hub_v2_clock.revision+1,mutation_id=excluded.mutation_id WHERE ${validation}`,
+          )
+          .bind(
+            this.workspaceId,
+            mutation,
+            ...validationParams,
+            ...validationParams,
+          ),
       ];
       const guard =
         "EXISTS (SELECT 1 FROM hub_v2_clock WHERE workspace_id=? AND mutation_id=?)";
@@ -109,7 +145,7 @@ export class Repository {
         statements.push(
           this.db
             .prepare(
-              `INSERT INTO hub_v2_records(workspace_id,kind,id,scope_id,parent_id,status,revision,sequence,updated_at,body) SELECT ?,?,?,?,?,?,?,?,?,? WHERE ${guard} ON CONFLICT(workspace_id,kind,id) DO UPDATE SET scope_id=excluded.scope_id,parent_id=excluded.parent_id,status=excluded.status,revision=excluded.revision,sequence=excluded.sequence,updated_at=excluded.updated_at,body=excluded.body`,
+              `INSERT INTO hub_v2_records(workspace_id,kind,id,scope_id,parent_id,status,revision,sequence,updated_at,body) SELECT ?,?,?,?,?,?,?,(SELECT revision FROM hub_v2_clock WHERE workspace_id=?),?,? WHERE ${guard} ON CONFLICT(workspace_id,kind,id) DO UPDATE SET scope_id=excluded.scope_id,parent_id=excluded.parent_id,status=excluded.status,revision=excluded.revision,sequence=excluded.sequence,updated_at=excluded.updated_at,body=excluded.body`,
             )
             .bind(
               this.workspaceId,
@@ -119,7 +155,7 @@ export class Repository {
               record.parentId || "",
               record.status || "",
               record.revision,
-              revision + 1,
+              this.workspaceId,
               now,
               JSON.stringify(record),
               this.workspaceId,
@@ -127,6 +163,28 @@ export class Repository {
             ),
         );
       }
+      const rangeKeys = [
+        ...new Set(
+          [...tx.writes.values()].flatMap((r) => [
+            rangeKey(this.workspaceId, r.kind),
+            rangeKey(this.workspaceId, r.kind, { scope: r.scopeId || "" }),
+            rangeKey(this.workspaceId, r.kind, { parent: r.parentId || "" }),
+          ]),
+        ),
+      ];
+      if (rangeKeys.length)
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT INTO hub_v2_clock(workspace_id,revision,mutation_id) SELECT value,0,? FROM json_each(?) WHERE ${guard} ON CONFLICT(workspace_id) DO UPDATE SET revision=hub_v2_clock.revision+1,mutation_id=excluded.mutation_id`,
+            )
+            .bind(
+              mutation,
+              JSON.stringify(rangeKeys),
+              this.workspaceId,
+              mutation,
+            ),
+        );
       statements.push(
         this.db
           .prepare(
@@ -154,28 +212,66 @@ export class Repository {
         ).idle
       )
         fail("resource_busy", "旧版任务仍占用此账号", 409);
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          Math.min(200, 4 * 2 ** Math.min(retry, 5)) +
+            Math.floor(Math.random() * 12),
+        ),
+      );
     }
     fail("conflict", "并发更新，请用相同请求编号重试", 409);
   }
 }
+
+const rangeKey = (workspace, kind, { scope, parent } = {}) =>
+  JSON.stringify([
+    workspace,
+    "range",
+    kind,
+    scope !== undefined
+      ? ["scope", scope]
+      : parent !== undefined
+        ? ["parent", parent]
+        : ["all"],
+  ]);
 
 class Transaction {
   constructor(repo, now) {
     this.repo = repo;
     this.now = now;
     this.writes = new Map();
+    this.reads = new Map();
+    this.snapshots = new Map();
+    this.ranges = new Map();
     this.legacyAccounts = [];
   }
   guardLegacyIdle(accountId) {
     this.legacyAccounts.push(accountId);
   }
   async get(kind, key, necessary = true) {
-    return structuredClone(
-      this.writes.get(`${kind}:${key}`) ||
-        (await this.repo.get(kind, key, necessary)),
-    );
+    const cached = this.writes.get(`${kind}:${key}`);
+    if (cached) return structuredClone(cached);
+    if (this.snapshots.has(`${kind}:${key}`))
+      return structuredClone(this.snapshots.get(`${kind}:${key}`));
+    const record = await this.repo.get(kind, key, necessary);
+    this.snapshots.set(`${kind}:${key}`, record);
+    this.reads.set(`${kind}:${key}`, {
+      kind,
+      id: key,
+      revision: record?.revision ?? -1,
+    });
+    return structuredClone(record);
   }
   async list(kind, options = {}) {
+    const key = rangeKey(this.repo.workspaceId, kind, options);
+    if (!this.ranges.has(key)) {
+      const clock = await this.repo.db
+        .prepare("SELECT revision FROM hub_v2_clock WHERE workspace_id=?")
+        .bind(key)
+        .first();
+      this.ranges.set(key, { key, revision: clock?.revision ?? -1 });
+    }
     const rows = await this.repo.list(kind, { ...options, limit: 501 });
     if (rows.length >= 501)
       fail("query_limit", "本操作涉及记录过多，请缩小范围", 413);

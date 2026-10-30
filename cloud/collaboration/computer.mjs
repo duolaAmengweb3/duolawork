@@ -99,7 +99,7 @@ export async function beginComputerAuth(
     fetchFn: (u, options) =>
       fetcher(platformURL(String(u), "computer"), {
         ...options,
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(15000),
       }),
   });
@@ -142,7 +142,7 @@ export async function finishComputerAuth(
     fetchFn: (u, options) =>
       fetcher(platformURL(String(u), "computer"), {
         ...options,
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(15000),
       }),
   });
@@ -177,7 +177,7 @@ async function accessToken(repo, memberId, secret, fetcher) {
       fetchFn: (u, options) =>
         fetcher(platformURL(String(u), "computer"), {
           ...options,
-          redirect: "error",
+          redirect: "manual",
           signal: AbortSignal.timeout(15000),
         }),
     });
@@ -190,7 +190,7 @@ async function rpc(repo, memberId, secret, method, params, fetcher) {
   const requestId = id("rpc");
   const response = await fetcher(COMPUTER_URL, {
     method: "POST",
-    redirect: "error",
+    redirect: "manual",
     signal: AbortSignal.timeout(20000),
     headers: {
       Authorization: `Bearer ${await accessToken(repo, memberId, secret, fetcher)}`,
@@ -357,7 +357,7 @@ export async function startComputer(repo, identity, row, env, fetcher = fetch) {
         {
           method: "POST",
           body: form,
-          redirect: "error",
+          redirect: "manual",
           signal: AbortSignal.timeout(15000),
         },
       );
@@ -469,7 +469,7 @@ async function saveComputerResult(repo, identity, job, result, env, fetcher) {
     const fileIds = [];
     for (const [index, file] of (data.files || []).slice(0, 10).entries()) {
       const response = await fetcher(platformURL(file.url, "asset"), {
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(15000),
       });
       if (!response.ok)

@@ -90,7 +90,7 @@ export function reduce(input, action, now = new Date().toISOString()) {
       const mode = p.mode || 'connector';
       if (!['connector', 'webhook', 'workspace-api', 'browser'].includes(mode)) fail('invalid_input', '无效接入方式');
       if (p.nativeAgentId && state.members.some(m => m.accountId === a.id && m.nativeAgentId === p.nativeAgentId && m.kind === 'native' && m.status !== 'disabled')) fail('duplicate', '此账号的同一原生 Agent 已添加；可给它新增任务或岗位');
-      const member = { id: uid('member'), accountId: a.id, platformId: a.platformId, name: requireText(p.name, '成员名称', 80), roleId: p.roleId || 'research', mode, kind: p.nativeAgentId ? 'native' : 'role-context', nativeAgentId: String(p.nativeAgentId || '').slice(0, 300), instructions: String(p.instructions || '').slice(0, 4000), status: 'unverified', tokenHash: p.tokenHash || '', createdAt: now, lastSeenAt: null, evidence: null, paused: false };
+      const member = { id: uid('member'), ownerId: 'owner', accountId: a.id, platformId: a.platformId, name: requireText(p.name, '成员名称', 80), roleId: p.roleId || 'research', mode, kind: p.nativeAgentId ? 'native' : 'role-context', nativeAgentId: String(p.nativeAgentId || '').slice(0, 300), instructions: String(p.instructions || '').slice(0, 4000), status: 'unverified', tokenHash: p.tokenHash || '', createdAt: now, lastSeenAt: null, evidence: null, paused: false };
       state.members.push(member); result = member;
       emit('member.created', `已添加成员：${member.name}`, { memberId: member.id, accountId: a.id }); break;
     }

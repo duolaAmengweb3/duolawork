@@ -19,6 +19,44 @@ import { command, workForMember } from "../cloud/collaboration/engine.mjs";
 import { createHmac } from "node:crypto";
 
 const SECRET = "test-only-not-a-real-credential";
+test("Grok automation rejects clipboard text and truncated previews before storage", async (t) => {
+  const f = await fixture(t);
+  for (const token of ["unrelated clipboard", "中文剪贴板", "whsec_...preview=", "whsec_AA=="])
+    await assert.rejects(configureConnection(f.repo, f.identity, {
+      requestId: "invalid-key-" + token.length, memberId: "grok", platform: "grok-bot",
+      url: "https://grok.com/webhook/automation/test", token,
+    }, SECRET), { code: "invalid_signature_key" });
+  assert.equal((await f.repo.get("connection", "grok")).status, "verified");
+});
+test("Grok automation uses signed exact bytes; 202 is acceptance without an Agent claim", async (t) => {
+  const f = await webhook(t), key = Buffer.alloc(32, 17), token = "whsec_" + key.toString("base64");
+  await f.repo.transact("signed-config", {}, async tx => {
+    const c = await tx.get("connection", "grok");
+    tx.put("connection", {...c, credentials: await seal({url:"https://grok.com/webhook/automation/test",token}, SECRET)});
+    return {};
+  });
+  await dispatchOne(f.repo, f.identity, f.row.id, f.env, async (url, init) => {
+    // Workers rejects redirect:"error" before the request is sent. Manual
+    // redirect mode is supported and must never forward the signing headers.
+    assert.equal(init.redirect, "manual");
+    assert.equal(init.headers.Authorization, undefined);
+    const h = init.headers;
+    assert.equal(h["webhook-signature"], "v1," + createHmac("sha256", key).update(`${h["webhook-id"]}.${h["webhook-timestamp"]}.${init.body}`).digest("base64"));
+    return new Response("{}", {status:202});
+  });
+  assert.equal((await f.repo.get("outbox", f.row.id)).status, "accepted");
+  assert.equal((await f.repo.list("attempt")).length, 0);
+});
+test("Grok redirect is rejected without forwarding signed credentials", async t => {
+  const f = await webhook(t);let calls=0;
+  await dispatchOne(f.repo,f.identity,f.row.id,f.env,async (url, init)=>{
+    calls++;assert.equal(init.redirect,"manual");
+    return new Response(null,{status:307,headers:{location:"https://untrusted.example/collect"}});
+  });
+  assert.equal(calls,1);
+  const row=await f.repo.get("outbox",f.row.id);
+  assert.equal(row.status,"rejected");assert.equal(row.httpStatus,307);
+});
 async function webhook(t) {
   const f = await fixture(t);
   await f.repo.transact("webhook-seed", {}, async (tx) => {
@@ -69,6 +107,13 @@ test("发送状态不明不会重发；进程中断保留unknown；没领取不�
     f.send("step.retry", { stepId: f.row.stepId, reason: "重试" }),
     { code: "remote_unknown" },
   );
+});
+test("paused member becomes an explicit missing delivery without canceling or freeing running work",async t=>{
+  const f=await webhook(t);f.identity.members.find(m=>m.id==="grok").paused=true;
+  await maintenance(f.repo,f.identity,f.env,async()=>{throw Error("must not send to paused member")});
+  assert.equal((await f.repo.get("step",f.row.stepId)).status,"needs_review");
+  assert.equal((await f.repo.get("run",f.run.id)).status,"needs_review");
+  assert.equal((await f.repo.list("attempt")).length,0);
 });
 test("429按退避重试，失败不伪装交付，真实claim胜过迟到通知回执", async (t) => {
   const f = await webhook(t);

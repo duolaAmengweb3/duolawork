@@ -1,6 +1,8 @@
+import { oauthFetch, startPairing } from "./pairing.mjs";
 import { fileStore } from "./file-store.mjs";
 import { Repository, fail, digest, required, id } from "./repository.mjs";
 import { command, workForMember, requireProjectAccess } from "./engine.mjs";
+import { canRead } from "./flow.mjs";
 import { RECIPES } from "../../shared/recipes.mjs";
 import {
   PLATFORMS,
@@ -32,6 +34,19 @@ const json = (body, status = 200) =>
       "Referrer-Policy": "no-referrer",
     },
   });
+function encodeCursor(row) {
+  return btoa(JSON.stringify({ updatedAt: row.updatedAt, id: row.id }));
+}
+function decodeCursor(raw) {
+  try {
+    const c = JSON.parse(atob(raw));
+    if (typeof c.updatedAt !== "string" || typeof c.id !== "string")
+      throw new Error();
+    return c;
+  } catch {
+    fail("invalid_cursor", "分页游标无效");
+  }
+}
 const string = { type: "string" };
 const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   type: "object",
@@ -98,6 +113,32 @@ export const TOOLS = [
                 ),
               },
               fileIds: { type: "array", items: string },
+              ...Object.fromEntries(
+                [
+                  "claims",
+                  "dispositions",
+                  "selfCheck",
+                  "conflicts",
+                  "sourceRelations",
+                  "corrections",
+                  "critiques",
+                  "ruleReceipts",
+                ].map((k) => [
+                  k,
+                  {
+                    type: "array",
+                    maxItems: 300,
+                    items: { type: "object", additionalProperties: true },
+                  },
+                ]),
+              ),
+              proposal: {
+                anyOf: [
+                  { type: "object", additionalProperties: true },
+                  { type: "null" },
+                ],
+              },
+              shortfall: string,
             },
             ["title", "body"],
           ),
@@ -163,6 +204,9 @@ const exposedKinds = new Set([
   "feedback_event",
   "schedule",
   "file",
+  "decision",
+  "disagreement",
+  "followup",
 ]);
 
 export async function resolveActor(request, env, identity) {
@@ -172,8 +216,18 @@ export async function resolveActor(request, env, identity) {
   const hashed = await digest(token);
   if (env.ADMIN_KEY && hashed === (await digest(env.ADMIN_KEY)))
     return { owner: true };
+  const access = await new Repository(env.DB, env.WORKSPACE_ID).get(
+    "member_auth",
+    hashed,
+    false,
+  );
   const member = identity.members.find(
-    (m) => m.tokenHash === hashed && m.status !== "disabled" && !m.paused,
+    (m) =>
+      (m.tokenHash === hashed ||
+        (access?.status === "active" &&
+          access.expiresAt > new Date().toISOString() &&
+          access.memberId === m.id)) &&
+      m.status !== "disabled",
   );
   if (
     !member ||
@@ -186,14 +240,34 @@ export async function resolveActor(request, env, identity) {
 }
 async function readDocument(repo, actor, documentId) {
   const document = await repo.get("document", documentId);
-  if (actor.memberId)
+  if (actor.memberId) {
     await requireProjectAccess(repo, document.scopeId, actor.memberId);
+    if (!(await canRead(repo, actor.memberId, document)))
+      fail("not_found", "记录不存在", 404);
+    await repo.transact(
+      id("read"),
+      { documentId, memberId: actor.memberId },
+      (tx) =>
+        tx.put("read_event", {
+          id: id("read"),
+          scopeId: document.scopeId,
+          parentId: document.parentId,
+          memberId: actor.memberId,
+          documentId,
+          workingVersionId: document.workingVersionId,
+          createdAt: tx.now,
+        }),
+    );
+  }
   const original = await repo.get(
       "document_version",
       document.originalVersionId,
     ),
     working = await repo.get("document_version", document.workingVersionId);
-  return { ...document, original, working };
+  const candidate = document.candidateVersionId
+    ? await repo.get("document_version", document.candidateVersionId)
+    : null;
+  return { ...document, original, working, candidate };
 }
 export async function callTool(repo, identity, actor, name, args, env) {
   if (!actor.memberId)
@@ -285,9 +359,12 @@ async function mcp(repo, identity, actor, request, env) {
   try {
     if (rpc.method === "initialize")
       result = {
-        protocolVersion: ["2026-07-28", "2025-06-18", "2025-03-26"].includes(
-          rpc.params?.protocolVersion,
-        )
+        protocolVersion: [
+          "2026-07-28",
+          "2025-11-25",
+          "2025-06-18",
+          "2025-03-26",
+        ].includes(rpc.params?.protocolVersion)
           ? rpc.params.protocolVersion
           : "2025-03-26",
         capabilities: { tools: {}, events: {} },
@@ -301,7 +378,16 @@ async function mcp(repo, identity, actor, request, env) {
         serverInfo: { name: "Agent Hub", version: "2.0.0" },
       };
     else if (rpc.method === "ping") result = {};
-    else if (rpc.method === "tools/list")
+    else if (rpc.method === "tools/list") {
+      await repo.transact(
+        id("tool-seen"),
+        { memberId: actor.memberId },
+        async (tx) => {
+          const c = await tx.get("connection", actor.memberId, false);
+          if (c) tx.put("connection", { ...c, authSeenAt: tx.now });
+          return {};
+        },
+      );
       result = {
         tools: TOOLS.map((t) => ({
           ...t,
@@ -313,7 +399,7 @@ async function mcp(repo, identity, actor, request, env) {
           },
         })),
       };
-    else if (rpc.method === "tools/call") {
+    } else if (rpc.method === "tools/call") {
       try {
         const value = await callTool(
           repo,
@@ -385,7 +471,25 @@ export async function v2Fetch(request, env, ctx, identity) {
         url.origin,
       ),
     );
-  const actor = await resolveActor(request, env, identity);
+  const oauth = await oauthFetch(request, repo, identity, url.origin, env);
+  if (oauth) return oauth;
+  let actor;
+  try {
+    actor = await resolveActor(request, env, identity);
+  } catch (e) {
+    if (e.status === 401)
+      return new Response(
+        JSON.stringify({ error: "unauthorized", message: "需要授权" }),
+        {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+            "WWW-Authenticate": `Bearer resource_metadata="${url.origin}/.well-known/oauth-protected-resource/v2/mcp"`,
+          },
+        },
+      );
+    throw e;
+  }
   const kick = () =>
     ctx.waitUntil(
       maintenance(repo, identity, env).catch((e) =>
@@ -454,6 +558,55 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
     );
   if (!actor.owner) fail("forbidden", "管理操作需要用户身份", 403);
+  if (url.pathname === "/v2/pairing" && request.method === "POST")
+    return json(
+      await startPairing(
+        repo,
+        identity,
+        (await readJSON(request)).memberId,
+        url.origin,
+      ),
+    );
+  if (url.pathname === "/v2/workspace" && request.method === "GET")
+    return json({
+      members: identity.members
+        .filter((m) => m.status !== "disabled")
+        .map(({ tokenHash, ...m }) => ({
+          ...m,
+          ownerId: m.ownerId || env.WORKSPACE_ID,
+        })),
+      accounts: identity.accounts.map(({ id, name, platformId, status }) => ({
+        id,
+        name,
+        platformId,
+        status,
+      })),
+      connections: await Promise.all(
+        (await repo.list("connection")).map(async (c) => ({
+          ...publicConnection(c),
+          authSeenAt: c.authSeenAt || c.toolSeenAt,
+          authorizedAt:
+            (
+              await env.DB.prepare(
+                "SELECT MAX(updated_at) AS at FROM hub_v2_records WHERE workspace_id=? AND kind='member_auth' AND status='active' AND json_extract(body,'$.memberId')=? AND json_extract(body,'$.expiresAt')>?",
+              )
+                .bind(env.WORKSPACE_ID, c.id, new Date().toISOString())
+                .first()
+            )?.at || null,
+          subscriptionActive: (
+            await repo.list("subscription", { parent: c.id, status: "active" })
+          ).some((s) => s.expiresAt > new Date().toISOString()),
+          lastDeliveryAt:
+            (await repo.list("outbox", { status: "accepted", limit: 100 }))
+              .filter((o) => o.memberId === c.id)
+              .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+              ?.updatedAt || null,
+          probe: (await repo.list("run", { scope: `probe_${c.id}` }))
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            .slice(0, 1).map(({ id, status }) => ({ id, status }))[0] || null,
+        })),
+      ),
+    });
   if (url.pathname === "/v2/catalog")
     return json({ recipes: RECIPES, platforms: PLATFORMS, version: 2 });
   if (url.pathname === "/v2/connections" && request.method === "GET")
@@ -508,6 +661,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     const kind = url.searchParams.get("kind");
     if (!exposedKinds.has(kind)) fail("invalid_kind", "不公开此记录类型");
     const rows = await repo.list(kind, {
+      excludeHidden: true,
       ...(url.searchParams.has("projectId")
         ? { scope: url.searchParams.get("projectId") }
         : {}),
@@ -518,24 +672,37 @@ export async function v2Fetch(request, env, ctx, identity) {
         ? { status: url.searchParams.get("status") }
         : {}),
       after: url.searchParams.get("after") || "",
+      order: url.searchParams.get("order") === "recent" ? "recent" : "id",
+      ...(url.searchParams.has("cursor")
+        ? { cursor: decodeCursor(url.searchParams.get("cursor")) }
+        : {}),
       limit: 101,
     });
     return json({
       items: rows.slice(0, 100).filter((x) => !x.hidden),
-      nextCursor: rows.length > 100 ? rows[99].id : null,
+      nextCursor:
+        rows.length > 100
+          ? url.searchParams.get("order") === "recent"
+            ? encodeCursor(rows[99])
+            : rows[99].id
+          : null,
     });
   }
   if (url.pathname === "/v2/project" && request.method === "GET") {
     const project = await repo.get("project", url.searchParams.get("id"));
     const [runs, messages, documents, knowledge, feedback, schedule] =
       await Promise.all([
-        repo.list("run", { scope: project.id }),
+        repo.list("run", { scope: project.id, order: "recent" }),
         env.DB.prepare(
           "SELECT sequence,id,body FROM hub_v2_records WHERE workspace_id=? AND kind='message' AND scope_id=? ORDER BY sequence DESC,id DESC LIMIT 100",
         )
           .bind(env.WORKSPACE_ID, project.id)
           .all(),
-        repo.list("document", { scope: project.id }),
+        repo.list("document", {
+          scope: project.id,
+          order: "recent",
+          limit: 101,
+        }),
         repo.list("knowledge", { scope: project.id }),
         repo.list("feedback", { scope: project.id }),
         repo.get("schedule", project.id, false),
@@ -546,7 +713,16 @@ export async function v2Fetch(request, env, ctx, identity) {
       runs,
       messages: messages.results.reverse().map((x) => JSON.parse(x.body)),
       activityCursor: last ? `${last.sequence}:${last.id}` : "-1:",
-      documents,
+      documents: documents.slice(0, 100),
+      documentCursor:
+        documents.length > 100 ? encodeCursor(documents[99]) : null,
+      activeRuns: (
+        await Promise.all(
+          ["running", "ready", "paused", "needs_review", "needs_approval"].map(
+            (status) => repo.list("run", { scope: project.id, status }),
+          ),
+        )
+      ).flat(),
       knowledge,
       feedback,
       schedule,

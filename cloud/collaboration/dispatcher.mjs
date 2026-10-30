@@ -1,3 +1,4 @@
+import { signedHeaders } from "./security.mjs";
 import { fail, id } from "./repository.mjs";
 import { platformURL, unseal } from "./security.mjs";
 import { deliverEvents } from "./events.mjs";
@@ -43,7 +44,7 @@ export async function dispatchOne(
       }
       if (
         project.status !== "active" ||
-        run.status !== "running" ||
+        !["running", "needs_review"].includes(run.status) ||
         !member ||
         !account ||
         !["configured", "verified"].includes(c.status)
@@ -72,32 +73,52 @@ export async function dispatchOne(
     now,
   );
   if (!row) return { skipped: true };
-  let outcome;
+  let outcome, failureStage = "prepare";
   try {
     const c = await repo.get("connection", row.memberId);
     if (row.transport === "grok-webhook") {
       const credentials = await unseal(c.credentials, env.ADMIN_KEY);
+      const body = JSON.stringify({
+        delivery_id: row.id,
+        member_id: row.memberId,
+        step_id: row.stepId,
+        run_id: row.parentId,
+        generation: row.generation,
+      });
+      const headers = credentials.token.startsWith("whsec_")
+        ? await signedHeaders(
+            credentials.token,
+            row.id,
+            body,
+            row.id,
+            Date.parse(now),
+          )
+        : {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${credentials.token}`,
+          };
+      failureStage = "platform_fetch";
       const response = await fetcher(platformURL(credentials.url, "grok"), {
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(15000),
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${credentials.token}`,
-        },
-        body: JSON.stringify({
-          delivery_id: row.id,
-          member_id: row.memberId,
-          step_id: row.stepId,
-          run_id: row.parentId,
-          generation: row.generation,
-        }),
+        headers,
+        body,
       });
       const retryAfter = Number(response.headers.get("retry-after"));
       await response.body?.cancel();
-      outcome =
-        response.status === 200
-          ? { status: "accepted" }
+      const signedAutomation = credentials.token.startsWith("whsec_");
+      outcome = (signedAutomation ? response.status === 202 : response.ok)
+        ? { status: "accepted", httpStatus: response.status }
+        : response.status === 400 && !credentials.token.startsWith("whsec_")
+          ? {
+              status: "busy",
+              retry: true,
+              fixedDelay: true,
+              delay: [90000, 180000, 360000][Math.min(2, row.attempts - 1)],
+              httpStatus: 400,
+              reason: "原 Bot 正忙，按固定间隔重试门铃",
+            }
           : {
               status: "rejected",
               retry: response.status === 429 || response.status >= 500,
@@ -109,17 +130,32 @@ export async function dispatchOne(
                 ),
               ),
               httpStatus: response.status,
+              reason: response.ok && signedAutomation ? "平台未返回自动化受理码 202，不能当成送达" : null,
             };
     } else if (row.transport === "dots-events")
       outcome = await deliverEvents(repo, row, env.ADMIN_KEY, fetcher, now);
     else if (row.transport === "computer-mcp")
       outcome = await startComputer(repo, identity, row, env, fetcher);
     else outcome = { status: "needs_review", reason: "无此原生传输适配器" };
-  } catch {
-    outcome = {
-      status: "unknown",
-      reason: "发送结果不明；先核对原任务，不自动重发",
-    };
+  } catch (e) {
+    outcome =
+      row.transport === "grok-webhook" &&
+      (e.name === "TimeoutError" || e.name === "AbortError")
+        ? {
+            status: "busy",
+            retry: true,
+            fixedDelay: true,
+            delay: [90000, 180000, 360000][Math.min(2, row.attempts - 1)],
+            reason: "原 Bot 响应超时，保留同一投递编号重试",
+          }
+        : {
+            status: "unknown",
+            reason: "发送结果不明；先核对原任务，不自动重发",
+            failureStage,
+            errorName: ["TypeError", "Error", "SyntaxError"].includes(e.name) ? e.name : "TransportError",
+            errorCode: /^[a-z_]{1,40}$/.test(e.code || "") ? e.code : null,
+            errorDetail: String(e.message || "").replace(/https?:\/\/\S+/g, "[endpoint]").replace(/[A-Za-z0-9_+/=.-]{16,}/g, "[redacted]").slice(0, 180),
+          };
   }
   return repo.transact(
     id("dispatch-result"),
@@ -139,9 +175,14 @@ export async function dispatchOne(
         current.status = "needs_review";
       current.dueAt = new Date(
         Date.parse(now) +
-          (outcome.delay || 60000) * Math.max(1, current.attempts),
+          (outcome.delay || 60000) *
+            (outcome.fixedDelay ? 1 : Math.max(1, current.attempts)),
       ).toISOString();
       current.reason = outcome.reason || null;
+      current.failureStage = outcome.failureStage || null;
+      current.errorName = outcome.errorName || null;
+      current.errorCode = outcome.errorCode || null;
+      current.errorDetail = outcome.errorDetail || null;
       current.httpStatus = outcome.httpStatus || null;
       current.completedAt = now;
       tx.put("outbox", current);
@@ -170,6 +211,20 @@ export async function maintenance(
   fetcher = fetch,
   now = new Date().toISOString(),
 ) {
+  // A deliberately paused/unavailable member is a known condition, not an
+  // unexplained fifteen-minute timeout. Preserve any running lease untouched.
+  for (const pending of await repo.list("step", {status:"ready",limit:500})) {
+    const m=identity.members.find(m=>m.id===pending.memberId && m.status!=="disabled" && !m.paused);
+    if (m && identity.accounts.some(a=>a.id===m.accountId && a.status!=="disabled")) continue;
+    await repo.transact(`unavailable:${pending.id}:${pending.generation}`, {memberId:pending.memberId}, async tx=>{
+      const step=await tx.get("step",pending.id),run=await tx.get("run",step.parentId);
+      if(step.status!=="ready" || run.status!=="running") return {};
+      step.status="needs_review";step.issues=["成员已暂停或不可用，尚未领取"];
+      run.status="needs_review";tx.put("step",step);tx.put("run",run);
+      tx.message(step.scopeId,"member.unavailable","成员不可用；保留已有交付，等待重试、部分成稿或终止",{runId:run.id,stepId:step.id,memberId:step.memberId});
+      return {};
+    },now);
+  }
   const beganAt = Date.now();
   const summary = { notifications: 0, schedules: 0, recovered: 0, errors: [] };
   for (const row of await repo.list("outbox", {
@@ -201,7 +256,9 @@ export async function maintenance(
     for (const row of await repo.list("outbox", { status, limit: 100 })) {
       if (
         status === "accepted" &&
-        Date.parse(row.completedAt) + 15 * 60000 > Date.parse(now)
+        Date.parse(row.completedAt) +
+          (row.transport === "dots-events" ? 60 : 15) * 60000 >
+          Date.parse(now)
       )
         continue;
       await repo.transact(
@@ -256,6 +313,43 @@ export async function maintenance(
           id: schedule.id,
           code: e.code || "failure",
         });
+      }
+    }
+  for (const signal of await repo.list("distill_signal", {
+    status: "pending",
+    limit: 20,
+  }))
+    if (signal.dueAt <= now) {
+      try {
+        const result = await command(
+          repo,
+          identity,
+          { system: true },
+          {
+            type: "document.learn",
+            requestId: "learn:" + signal.id + ":" + signal.dueAt,
+            documentId: signal.id,
+          },
+          now,
+        );
+        await repo.transact(
+          id("learn-signal"),
+          { id: signal.id },
+          async (tx) => {
+            const current = await tx.get("distill_signal", signal.id);
+            if (current.dueAt === signal.dueAt)
+              tx.put("distill_signal", { ...current, status: "dispatched" });
+            return {};
+          },
+          now,
+        );
+      } catch (e) {
+        if (!["project_busy", "learn_busy"].includes(e.code))
+          summary.errors.push({
+            kind: "learn",
+            id: signal.id,
+            code: e.code || "failure",
+          });
       }
     }
   for (const status of ["pending", "retry", "waiting_subscription"])

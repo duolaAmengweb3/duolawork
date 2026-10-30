@@ -77,7 +77,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
-      if (url.pathname.startsWith('/v2/')) return await v2Fetch(request, env, ctx, (await load(env)).state);
+      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, env, ctx, (await load(env)).state);
       if (url.pathname === '/health') return response({ ok: true, service: 'agent-hub-local', version: '0.1.0', time: new Date().toISOString() });
       if (url.pathname === '/openapi.json' && request.method === 'GET') return response(openApi(url.origin));
       if (url.pathname.startsWith('/mcp')) {

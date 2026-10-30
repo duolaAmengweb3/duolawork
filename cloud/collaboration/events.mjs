@@ -92,7 +92,7 @@ export async function eventMethod(
     try {
       response = await fetcher(url, {
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(10000),
         headers: await signedHeaders(
           signingSecret,
@@ -191,7 +191,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
     try {
       const r = await fetcher(url, {
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(10000),
         headers: await signedHeaders(
           c.secret,

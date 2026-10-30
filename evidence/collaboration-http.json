@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-28T16:23:53.381Z",
+  "at": "2026-10-30T08:28:05.257Z",
   "environment": "isolated local workerd + D1 attachments",
   "passed": [
     "Worker + D1 + 真 HTTP/MCP 三个独立测试身份，nonce 往返后才 verified",

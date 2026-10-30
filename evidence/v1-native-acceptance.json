@@ -1,0 +1,454 @@
+{
+  "at": "2026-10-30T11:38:06.894Z",
+  "environment": "production Cloudflare workspace + user-authorized native Grok Automations and ChatGPT Work MCP Events",
+  "sourceBranch": "feat/v1-integrated-20261030",
+  "realCommercialAgentTested": true,
+  "realNativeRoundTrips": [
+    {
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "verified",
+      "verifiedAt": "2026-10-30T11:12:58.705Z"
+    },
+    {
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "verified",
+      "verifiedAt": "2026-10-30T11:37:44.151Z"
+    }
+  ],
+  "originalBotSpecificMemory": "not independently verified; Grok uses a dedicated official account automation, Dot uses an event-monitoring Work conversation",
+  "cases": [
+    {
+      "key": "normal",
+      "projectId": "project_ccec481f6818408284c04a7610e3a419",
+      "runId": "run_fcf23743c6144de9a6be94779573a6e6",
+      "status": "completed",
+      "passed": true,
+      "steps": [
+        {
+          "id": "step_56bcb37d4ad645fda8a29f10cfa61f8f",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_bf9c587fb64d43d3872b23bd405419de",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed",
+          "internalRound": 1
+        },
+        {
+          "id": "step_5a757e7fc487475eaff9f12cc38e2d69",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_07670b37835b49799ae653503446d2e3",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "integrate",
+          "status": "completed"
+        }
+      ],
+      "attempts": [
+        {
+          "id": "attempt_6fbd66d3235946b887e1daadbf443a9f",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_bff2eafec5b14a788ffadf62d811c449",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_5466114f4ca3402aa0249d93c1084281",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_cc58dc4ccd9f43ffa494093aa74c841c",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        }
+      ],
+      "final": {
+        "id": "document_6d134ea195e5455d89542a944dc3c832",
+        "originalVersionId": "version_4d41874da8294875a63f633e5eb754e8",
+        "workingVersionId": "version_4d41874da8294875a63f633e5eb754e8",
+        "title": "原生Agent接入汇总：保留会话入口，交付仍需验收",
+        "body": "材料支持：Work会话与dots可订阅MCP Events，平台提供回调和签名密钥，订阅需保存与刷新；事件是通知，Agent仍需领取、执行、提交。[1] Grok支持签名webhook触发，202仅表示受理，异步开始不代表完成。[2] 以上是所附材料可支持的机制，非本轮独立运行验证。\n\n产品判断：相比只调用通用模型API，这条路径可保留原生会话作为工作入口，让现有Agent承接Hub任务。[1] 这是架构判断；材料未直接比较替换方案，不能据此确认记忆、个性或工具权限完整继承。\n\n完成边界：通知送达、202受理和领取成功均不等于交付；应检查执行后提交的实际成果。[1][2] 上下文范围、登录续期、刷新失败恢复及成果质量仍待实测。不承诺永久登录、零延迟或模型事实准确；多人复述同一材料也不是独立佐证。\n\n来源：[1] 项目所附OpenAI MCP Events；[2] 项目所附Grok Automations Webhook。",
+        "selfCheck": [
+          {
+            "criterion": 0,
+            "pass": true,
+            "reason": "正文约350字，附两份官方材料来源；显式区分材料支持、架构判断和待实测内容，不混称独立验证。",
+            "paragraph": "第1至3段及来源段"
+          },
+          {
+            "criterion": 1,
+            "pass": true,
+            "reason": "处理全部十条登记上游论断，同源补交标记重复；对正文过度验证表述另行指出，保留订阅刷新、上下文、登录、失败恢复和准确性风险。",
+            "paragraph": "第1至3段"
+          }
+        ],
+        "issues": [],
+        "counts": {
+          "unique": 0,
+          "independent": 0,
+          "multiple": 2,
+          "corrections": 0
+        },
+        "upstreamClaimCount": 10,
+        "dispositionCount": 10
+      }
+    },
+    {
+      "key": "conflict",
+      "projectId": "project_c83866d8d6a74202a1f0cf026564da14",
+      "runId": "run_4148609eaaad4203870e75e2f08aa3ae",
+      "status": "partially_met",
+      "passed": true,
+      "steps": [
+        {
+          "id": "step_9de8ecaa628a4649ab0eeefb4e0f46c1",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_ae9e9bde875d4fb9960042eb5b0edc00",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed",
+          "internalRound": 1
+        },
+        {
+          "id": "step_fea43ce6a6ea40e8bb3dbf914bc79814",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_024b4893d41c4008a8508d9f2c80ca30",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "integrate",
+          "status": "completed"
+        },
+        {
+          "id": "step_be369f6b84b541908b974443a965d489",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "verify",
+          "status": "completed",
+          "internalRound": 0
+        },
+        {
+          "id": "step_ad8ad46544ed4b28ad6963aff23d0af1",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "resolve",
+          "status": "completed",
+          "internalRound": 0
+        }
+      ],
+      "attempts": [
+        {
+          "id": "attempt_18b90eab7f2f4a09ab7116893a8c1575",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_bae53ee2bf094aebba378f5241a445db",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_fe9c16937d65428bb88a94ebf6347025",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_01194379e7f54841a06dd9b1bbfcad85",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_4f8888e295ee4197af39f4c2e5adce42",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_d0f80d09a28741999664232bead34f81",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        }
+      ],
+      "final": {
+        "id": "document_ce84601ed5cb495ba40419c01f079e82",
+        "originalVersionId": "version_0ae99202c848470988fed3b195b251b7",
+        "workingVersionId": "version_0ae99202c848470988fed3b195b251b7",
+        "title": "补证后最终稿：7天与30天冲突仍待确认",
+        "body": "第1段｜结论：这是构造验收案例，不是真实新闻或产品政策。本轮结合原汇总、两份A成果、B成果及补证成果修订最终稿，不重复访问测试URL。没有取得可核验的原始政策，K实际任务历史保留期限仍待确认。\n\n第2段｜保留事实冲突：材料A称保存7天，[A] 材料B称保存30天。[B] 双方都没有版本时间，保留期限互相冲突；不能判断谁较新、是否条件不同，不能取平均或按人数、身份、自信选边。两边的实际原始论断ID分别是step_9de8ecaa628a4649ab0eeefb4e0f46c1:0:c1和step_fea43ce6a6ea40e8bb3dbf914bc79814:0:dot_b_retention_30。两种口径均未确认。\n\n第3段｜补证边界：补证成果报告两个原始URL返回示例域名页面，没有K政策正文；前次本成员的打开工具则返回不可访问。两者均未取得可核验政策，但本成员不能宣称独立复现了示例页面内容，也不能把访问失败本身当成政策不存在的证明。已知的是材料所载数字不同；未知的是实际有效期限、版本时间和适用条件。\n\n第4段｜论断处理：全部五份上游的十一条登记论断已逐条处置。保留材料口径与证据缺口；A的补交属同源重复，不增加独立性。补证确认不了任一期限，因此不能将7天或30天改为已验证事实，也没有依据宣告其中一个已被纠正。\n\n第5段｜交付限制：本轮完成带冲突的最终分析，不代表期限核实完成。仍需原始政策正文、版本、生效时间及适用条件才能裁决；当前不再补证，继续保留待确认。未核实前，不将任一天数作为可靠的数据保存安排依据，以免误判可用历史范围。\n\n[A] 测试材料A（非真实产品）：https://example.com/acceptance/policy-a\n[B] 测试材料B（非真实产品）：https://example.com/acceptance/policy-b",
+        "selfCheck": [
+          {
+            "criterion": 0,
+            "pass": true,
+            "reason": "中文最终稿附A/B来源；清楚区分材料记载、上游补证报告及未确认的实际政策，不重复补证或假装证实。",
+            "paragraph": "第1至3、5段"
+          },
+          {
+            "criterion": 1,
+            "pass": true,
+            "reason": "五份上游十一条登记论断均处置；保留双方真实ID的fact冲突、版本及适用条件缺口，未用多数裁定或声称纠错成功。",
+            "paragraph": "第2至5段"
+          }
+        ],
+        "issues": [
+          "补证后仍有未确认事实：受测K任务历史保留时间存在7天与30天冲突；原始政策及版本时间均缺证，补证后仍不能裁决，保持待确认。"
+        ],
+        "counts": {
+          "unique": 0,
+          "independent": 0,
+          "multiple": 2,
+          "corrections": 0
+        },
+        "upstreamClaimCount": 11,
+        "dispositionCount": 11
+      }
+    },
+    {
+      "key": "unmet",
+      "projectId": "project_bcc92007ab094c0f8737bb77c0995c0a",
+      "runId": "run_64e7b04dcd344262b394d0231d85cb7d",
+      "status": "partially_met",
+      "passed": true,
+      "steps": [
+        {
+          "id": "step_2ce1cb941d7c4700b5c44e42313126df",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_cec044c140cf49d2b126e2eb76355c89",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "phase": "explore",
+          "status": "completed",
+          "internalRound": 1
+        },
+        {
+          "id": "step_5c506bb090324df1b31e8eaee89cec77",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "explore",
+          "status": "completed"
+        },
+        {
+          "id": "step_1fd01130fad84d5b88c069ccaf051d7d",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "explore",
+          "status": "completed",
+          "internalRound": 1
+        },
+        {
+          "id": "step_958eccf69ca347baa6416b596399ecdb",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "integrate",
+          "status": "completed"
+        },
+        {
+          "id": "step_c76dc1b24b5c467683da508fc5a0c7cf",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "phase": "integrate",
+          "status": "completed",
+          "internalRound": 1
+        }
+      ],
+      "attempts": [
+        {
+          "id": "attempt_9e3b98fe307f487d99de57d5b2765571",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_d84c153820134539927dbf230b2c2d13",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_e27201dd71534aad8ce17b92ecc1a577",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_c0b22025cf6d4ebbb865f3dcee098bf7",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_e8149b02ed47463ab855e01b802e1435",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        },
+        {
+          "id": "attempt_78b1bdfbcb054ff2808e098ee4d3c893",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "delivered"
+        }
+      ],
+      "final": {
+        "id": "document_2baecc0249db44c8ab7288a441e0f329",
+        "originalVersionId": "version_21c2b438af7e45e3962219f19a66ad33",
+        "workingVersionId": "version_21c2b438af7e45e3962219f19a66ad33",
+        "title": "K产品汇总有限修订：标准0持续缺证",
+        "body": "第1段｜结论：K是否适合需要原始传感器数据的开发者，目前无法确认。若原始数据是必要选型条件，现阶段不能认定K满足要求，应等待补证；这不等于已证实K不具备该能力。本案是构造验收材料，不能当作真实产品调查结果。\n\n第2段｜已知证据：唯一项目材料只说明K是蓝牙戒指，可在手机应用展示睡眠分数。[1] 已完整读取六份获授权上游成果（含上一轮汇总），其可支持的事实均回到同一材料。多名成员复述同一信息，不增加独立证据，也没有新增原始数据接口或SDK资料。\n\n第3段｜保留缺口：原始采样频率未知；可验证的官方SDK下载URL未提供；原始数据获取、导出与SDK授权条件也未说明。有限修订及本次汇总均未补齐这些证据，因此标准0未通过。不得编造采样数值、下载链接或用其他品牌能力代替K资料。\n\n第4段｜上游处理：采纳全部十一条已登记上游论断中关于蓝牙戒指、睡眠分数及证据缺口的内容。但不采纳document_19283c52083f4af4888cee412fc853ef、document_97b86973cb7041fb9271d3333dbbc13a、document_d02936927b4c42a3853a4bc40bfd4678正文中无条件的“结论：不适合”或“K产品不适合”作为已证实的产品事实。这些正文表述没有单独登记的claimId，故以文档标识定位，不虚构原始论断ID。其选型提醒可改为“当前证据不足，暂不能判为满足要求”，不把缺少证明改写为证明不支持。\n\n第5段｜验收与补证：标准1通过，全文保留缺口且未补造能力。要使标准0通过，需取得明确属于K的可核验官方开发文档，包含采样频率、原始数据访问和授权条件及真实SDK下载入口。当前未取得，不宣称整体合格或独立验证通过。\n\n[1]《受测K资料（构造验收材料）》：https://example.com/acceptance/k-ring。该链接为项目所附构造资料标识，未独立确认为官方开发资料。\n\n第6段｜有限修订结果：本轮复核没有新增材料，上一轮缺口仍然成立。原始采样频率：无法确认；可验证的官方SDK下载URL：无法提供。标准0继续未通过，标准1通过。提交成果仅表示交回分析，不表示技术资料已补齐。",
+        "selfCheck": [
+          {
+            "criterion": 0,
+            "pass": false,
+            "reason": "原始采样频率与可验证的官方SDK下载URL仍没有证据，本轮不改变用户标准或编造通过。",
+            "paragraph": "第3、6段"
+          },
+          {
+            "criterion": 1,
+            "pass": true,
+            "reason": "六份上游十一条登记论断全部处理；仅用唯一构造资料并保留缺口，绝对化结论未采纳为产品事实。",
+            "paragraph": "第1至6段"
+          }
+        ],
+        "issues": [
+          "有限汇总修订仍无新增证据。标准0未通过：无法给出K原始采样频率及可验证的官方SDK下载URL。",
+          "标准未达标：必须给出K产品原始采样频率和可验证的官方SDK下载URL"
+        ],
+        "counts": {
+          "unique": 0,
+          "independent": 0,
+          "multiple": 1,
+          "corrections": 0
+        },
+        "upstreamClaimCount": 11,
+        "dispositionCount": 11
+      }
+    },
+    {
+      "key": "human-edit",
+      "passed": true,
+      "documentId": "document_85ac38fa25084d1291861cf49885632d",
+      "revisionRunId": "run_abe96cd29ca041998d50ecc96cf66052",
+      "preservedVersionId": "version_8e9a1b4562294bc5b3d72f8d281ad67a",
+      "candidateVersionId": "version_0e684bb78cdc4b839be81311a82f70a6",
+      "currentVersionUnchanged": true
+    },
+    {
+      "key": "failure",
+      "passed": true,
+      "projectId": "project_f2f1ad329fae48808212843c7dd69361",
+      "runId": "run_05e7d3c913d346c29b9103292ff5fd96",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "injection": "After starting controlled acceptance run, temporarily paused Grok member; no credentials or login state changed.",
+      "pausedAt": "2026-10-30T11:30:52.801Z",
+      "received": "1/2",
+      "retryGeneration": 2,
+      "partialRequestedAt": "2026-10-30T11:31:35.488Z",
+      "memberRestoredAt": "2026-10-30T11:31:35.496Z",
+      "status": "partially_met",
+      "ruleSnapshot": [],
+      "steps": [
+        {
+          "id": "step_bc43cbb66aab4eb1b1ca9cb4933147b8",
+          "phase": "explore",
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "status": "skipped",
+          "generation": 3
+        },
+        {
+          "id": "step_6cdfa534f7f2428baa4adb62c719e81f",
+          "phase": "explore",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "completed",
+          "generation": 1
+        },
+        {
+          "id": "step_0255fa46315744fe8918548c7bd41072",
+          "phase": "integrate",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "completed",
+          "generation": 1
+        }
+      ],
+      "final": {
+        "id": "document_c20ce6d29ae34abcacae4b32feeb7b9b",
+        "originalVersionId": "version_3370d023949740c59b44342d9549b5fc",
+        "title": "异步协作部分汇总：保留缺失成员交付",
+        "body": "第1段｜已有依据：官方MCP Events材料说明，事件只负责通知，仍需真实成员领取、执行并提交成果。[1] 本次仅汇总Dot已交付的独立分析；通知、领取和实际交付不能混为完成。\n\n第2段｜缺失交付：Hub本轮明确列出成员member_dfaf1af46a9a44ac9d44e1cdf77675d4缺少“独立研究”交付，用户选择使用已有结果。因此这是部分成果汇总，不是全员完成；不替缺席成员补写观点，也不将其计为已交付。该成员的研究结论及实际执行情况仍未确认。\n\n第3段｜结论边界：当前解释仅依据已交付分析与项目官方材料，没有双成员交叉验证。缺失成果到来前保留上述限制，不能以通知记录补成成员贡献。\n\n[1] 官方MCP Events（项目所附材料）。",
+        "status": "partially_met",
+        "partial": true,
+        "ruleReceipts": []
+      }
+    },
+    {
+      "key": "rule",
+      "passed": true,
+      "projectId": "project_f4fe319d8f714f04a0b1bd05530757e0",
+      "knowledgeId": "knowledge_d9f2aca4645c439c8c894da17a566093",
+      "runId": "run_959dd71c8d904a65ba6d697105158025",
+      "status": "completed",
+      "ruleSnapshot": [
+        {
+          "id": "knowledge_d9f2aca4645c439c8c894da17a566093",
+          "revision": 2,
+          "title": "产品说明先展示成果，再展开过程",
+          "body": "面向普通用户撰写产品使用说明时，优先呈现交付成果，再展开授权、通知和领取等过程。作为待用户确认的项目写作偏好，不覆盖本轮用户明确要求或已批准规则。"
+        }
+      ],
+      "steps": [
+        {
+          "id": "step_fe04709d5bfe4000a2c93a8d9869d0c3",
+          "phase": "solo",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "completed",
+          "generation": 1
+        }
+      ],
+      "final": {
+        "id": "document_332ef97f50b04b8e824fa01f31393e7c",
+        "originalVersionId": "version_565a17d0e9ec4f9a934c09c0158b4a1e",
+        "title": "Agent Hub 自动接任务使用说明",
+        "body": "交付：Agent执行任务后，还须提交实际成果。通知到达或请求受理都不等于已经交付。[1][2]\n\n授权：仅在你已授权的Hub工作范围内使用。已授权表示允许处理，并不表示成果已产生。项目材料说明，Work和dots可通过插件订阅MCP Events。[1]\n\n通知受理：平台提供回调URL和签名密钥，Hub验证挑战后保存订阅。事件只是通知；xAI的有效Webhook请求返回202 Accepted，仅表示受理并异步开始自动化，不代表完成。[1][2]\n\n领取：收到事件后，Agent仍须读取任务并领取，再执行和提交。订阅有期限及刷新机制。[1] 材料未说明具体授权界面，也没有永久免登录或完成速度保证。\n\n来源：[1] 项目所附OpenAI官方MCP Events；[2] 项目所附xAI官方Webhook Triggers。",
+        "status": "delivered",
+        "partial": false,
+        "ruleReceipts": [
+          {
+            "ruleId": "knowledge_d9f2aca4645c439c8c894da17a566093",
+            "revision": 2,
+            "followed": true,
+            "reason": "首段先说明实际成果交付，再说明授权、通知受理和领取过程；未扩大偏好为全局已批准规则。",
+            "paragraph": "第1段“交付”及第2至4段",
+            "checkedBy": "member_0ff5c20718654c9db5ab3b1d0334133e"
+          }
+        ]
+      }
+    }
+  ],
+  "knownHistory": [
+    "Initial Grok configuration contained unrelated clipboard text; replaced through official Copy -> masked input; strict signing-key validation added. No plaintext included in evidence.",
+    "Cloudflare rejected redirect:error before sending; changed outbound platform requests to manual redirect mode and reject redirects; signed Grok requires exactly202.",
+    "Research shortfall originally triggered redundant preliminary retries; restrict these to structural repairs and final acceptance. Old rounds retained.",
+    "Partial recovery originally had gaps around leases, skipped dependencies and incomplete-input disclosure; regression checks and real controlled missing-member case added."
+  ],
+  "review": {
+    "developerSelfTest": "six paths passed; controlled facts and member pause explicitly disclosed",
+    "independentReviewer": "pending Claude review",
+    "ownerVisualAcceptance": "pending"
+  },
+  "boundaries": [
+    "No claim of permanent login or zero delay.",
+    "Counter-evidence and unsupported statements were retained as unconfirmed or partially met.",
+    "No account passwords, access/refresh tokens, signatures, pairing codes or browser credentials exported."
+  ],
+  "authorizationRetainedAfterPause": {
+    "runId": "run_56b44d124c154a379556bb1332f260c9",
+    "status": "completed",
+    "reauthorizationRequired": false,
+    "verifiedAt": "2026-10-30T11:37:44.151Z"
+  },
+  "desktopBuildId": "5c613e2df8a5b60e"
+}

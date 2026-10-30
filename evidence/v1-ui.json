@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T11:42:52.695Z",
+  "environment": "owned headless Chrome + local server + isolated workerd/D1",
+  "checks": [
+    "三步创建真实项目与工作安排，启动两条独立分支",
+    "增量事件显示真实交付；1440/1280 布局无横向溢出",
+    "正文决策卡真实保存并可撤回，界面不会先伪装成功",
+    "编辑实际写入服务端版本，历史自查不冒充新稿自查，刷新可恢复工作稿",
+    "资料附件实际上传、保存 SHA256，原始字节可完整下载"
+  ],
+  "errors": [],
+  "realCommercialAgentTested": false
+}

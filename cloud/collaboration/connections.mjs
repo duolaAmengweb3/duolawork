@@ -1,5 +1,5 @@
 import { fail, required, id, digest } from "./repository.mjs";
-import { platformURL, seal, publicConnection } from "./security.mjs";
+import { platformURL, seal, publicConnection, signWebhook } from "./security.mjs";
 
 export const PLATFORMS = [
   {
@@ -59,6 +59,13 @@ export async function configureConnection(repo, identity, input, secret) {
   if (platform.id === "grok-bot") {
     config.url = platformURL(input.url, "grok");
     config.token = required(input.token, "Routine 密钥", 4000);
+    if (new URL(config.url).pathname.startsWith("/webhook/automation/") || config.token.startsWith("whsec_")) {
+      // Validate the exact key before persisting it. Clipboard text and a masked
+      // preview are not credentials; never echo the submitted value in errors.
+      await signWebhook(config.token, "validation", "0", "{}");
+    } else if (!/^[\x21-\x7e]+$/.test(config.token)) {
+      fail("invalid_signature_key", "密钥内容不正确，请复制平台提供的完整密钥");
+    }
   }
   const configHash = await digest(
       JSON.stringify({ platform: platform.id, config }),

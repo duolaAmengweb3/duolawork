@@ -1,4 +1,5 @@
 import { digest, fail, id, required } from "./repository.mjs";
+import { canRead } from "./flow.mjs";
 import { attemptFor, requireProjectAccess } from "./engine.mjs";
 import { readBounded } from "./security.mjs";
 
@@ -62,9 +63,25 @@ export async function uploadFile(repo, bucket, actor, input, bytes) {
 }
 export async function downloadFile(repo, bucket, actor, fileId) {
   const file = await repo.get("file", fileId);
-  if (actor.memberId)
+  if (actor.memberId) {
     await requireProjectAccess(repo, file.scopeId, actor.memberId);
-  else if (!actor.owner) fail("forbidden", "无下载权限", 403);
+    if (!(await canRead(repo, actor.memberId, file)))
+      fail("not_found", "记录不存在", 404);
+  } else if (!actor.owner) fail("forbidden", "无下载权限", 403);
+  if (actor.memberId)
+    await repo.transact(
+      id("read-file"),
+      { fileId, memberId: actor.memberId },
+      (tx) =>
+        tx.put("read_event", {
+          id: id("read"),
+          scopeId: file.scopeId,
+          parentId: file.parentId,
+          memberId: actor.memberId,
+          fileId,
+          createdAt: tx.now,
+        }),
+    );
   if (!bucket) fail("files_unconfigured", "文件存储未配置", 503);
   const object = await bucket.get(file.objectKey);
   if (!object) fail("file_missing", "文件字节缺失，不能视为完整交付", 409);

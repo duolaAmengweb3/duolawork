@@ -59,7 +59,8 @@ function DecisionView({ node, updateAttributes }) {
   function select(value, label) {
     if (!value.trim() || context.storageError) return;
     retainReadingPosition();
-    updateAttributes({ selected: value, choice: label });
+    if (!context.persistSelection)
+      updateAttributes({ selected: value, choice: label });
     context.onChoose(item.id, label, value, remember);
     setWriting(false);
   }
@@ -78,7 +79,8 @@ function DecisionView({ node, updateAttributes }) {
             <button
               onClick={() => {
                 retainReadingPosition();
-                updateAttributes({ selected: null, choice: null });
+                if (!context.persistSelection)
+                  updateAttributes({ selected: null, choice: null });
                 context.onChoose(item.id, null, null, false);
               }}
             >
