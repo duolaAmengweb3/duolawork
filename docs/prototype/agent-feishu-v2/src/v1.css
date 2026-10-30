@@ -8,20 +8,22 @@
   min-height: 0;
   padding: 11px 14px;
   display: flex;
+  flex-direction: row;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
 }
 .v1-form .mode-option strong {
-  font-size: 13px;
+  font-size: 14px;
 }
-.v1-form .mode-option > span:first-child {
+.v1-form .mode-option > span:not(.radio-dot) {
   flex: 1;
   text-align: left;
   display: block;
 }
 .v1-form .mode-option .radio-dot {
   flex: 0 0 14px;
+  position: static;
 }
 .v1-form .mode-option small {
   margin-top: 3px;
@@ -60,7 +62,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #245bdb;
   padding: 0;
@@ -174,7 +176,7 @@
   border-radius: 7px;
   background: #f5f8ff;
   color: #52637e;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.75;
   margin: 12px 0;
 }
@@ -189,7 +191,7 @@
   white-space: pre-wrap;
   padding: 18px;
   background: #f5f7fa;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
   border-radius: 6px;
 }
@@ -357,10 +359,9 @@
 .v1-table-head,
 .v1-result-row {
   display: grid;
-  grid-template-columns: minmax(220px, 2.1fr) minmax(
-      150px,
-      1.3fr
-    ) 105px 95px 110px;
+  grid-template-columns:
+    minmax(220px, 2.1fr) minmax(150px, 1.3fr)
+    105px 95px 110px;
   gap: 14px;
   align-items: center;
 }
@@ -380,7 +381,7 @@
   padding: 20px 18px;
   border-top: 1px solid var(--line);
   min-width: 780px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .v1-result-row > button:first-child {
   display: flex;
@@ -419,14 +420,14 @@
   gap: 18px;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 14px;
 }
 .v1-rule-summary strong {
   flex: 1;
   min-width: 180px;
 }
 .v1-rule-row > p {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
   margin: 10px 0;
 }
@@ -462,6 +463,7 @@
 }
 .delivery-card .v1-review-record {
   margin: 10px 0;
+  padding: 12px 16px;
 }
 @media (max-width: 1100px) {
   .v1-table-head,
@@ -476,5 +478,140 @@
   }
   .v1-compare-scroll {
     padding: 14px;
+  }
+}
+
+/* PR #18 follow-up: one source for pending decisions, neutral edit history. */
+.v1-check-trigger.historical {
+  color: var(--muted);
+  font-weight: 400;
+}
+.v1-recheck-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+.v1-recheck-action small {
+  font-size: 12px;
+}
+.v1-criterion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.v1-criterion-row input {
+  flex: 1;
+  min-width: 0;
+}
+.v1-form .mode-option {
+  justify-content: flex-start;
+  text-align: left;
+}
+.v1-form .radio-dot {
+  margin-top: 0;
+}
+.workspace-header {
+  height: 56px;
+  gap: 10px;
+  padding: 0 18px;
+}
+.header-title {
+  flex: 1;
+  gap: 10px;
+}
+.header-title h2 {
+  flex: 0 1 auto;
+  min-width: 60px;
+}
+.v1-header-mode {
+  font-size: 14px;
+  padding: 5px 0;
+  color: #566b90;
+  white-space: nowrap;
+}
+.v1-header-status {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.v1-header-pending {
+  white-space: nowrap;
+}
+.header-actions {
+  gap: 6px;
+}
+.handoff {
+  border: 0;
+  border-radius: 0;
+  margin: 0 0 16px 44px;
+  background: none;
+}
+.handoff summary {
+  padding: 4px 0;
+  gap: 8px;
+  min-height: 28px;
+}
+.handoff summary strong {
+  font-size: 14px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.handoff summary .handoff-view {
+  font-size: 14px;
+  color: var(--blue);
+  white-space: nowrap;
+}
+.handoff summary .handoff-avatars {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  gap: 3px;
+}
+.handoff p {
+  padding: 8px 0 0 60px;
+}
+.document-scroll {
+  overflow-anchor: none;
+}
+.v1-reading-buffer {
+  height: 0;
+  flex-shrink: 0;
+}
+/* Controls and list text are readable; captions are allowed at 12px. */
+.button.small,
+.text-button,
+.rail-item,
+.project-review,
+.badge,
+.v1-record-line,
+.project-form legend,
+.member-choice,
+.v1-scenario select,
+.v1-failure button,
+.v1-result-filters,
+.v1-result-filters select,
+.v1-table-head,
+.v1-result-row .text-button,
+.v1-rule-actions select,
+.v1-check-list p,
+.v1-check-trigger {
+  font-size: 14px;
+}
+@media (max-width: 1380px) {
+  .workspace-header .member-stack {
+    display: none;
+  }
+}
+@media (max-width: 1000px) {
+  .v1-header-status {
+    display: none;
+  }
+  .header-actions .button span {
+    display: none;
   }
 }

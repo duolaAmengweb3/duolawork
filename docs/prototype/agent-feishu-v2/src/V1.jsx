@@ -22,10 +22,21 @@ import {
   sanitizeHTML,
   htmlText,
   currentFeedback,
+  pendingCount,
 } from "./model.mjs";
-import { sampleSections } from "./v1-data.mjs";
+import {
+  sampleSections,
+  criteriaList,
+  extractGoalCriteria,
+} from "./v1-data.mjs";
 
-export function ReviewRecord({ doc, project, members, compact = false }) {
+export function ReviewRecord({
+  doc,
+  project,
+  members = [],
+  compact = false,
+  onRecheck,
+}) {
   const [open, setOpen] = useState(false),
     [evidence, setEvidence] = useState(false);
   const checks = doc.reviewChecks || [],
@@ -39,16 +50,18 @@ export function ReviewRecord({ doc, project, members, compact = false }) {
     corrections: 0,
     decisions: 0,
   };
-  const pending =
-    project?.decisions?.filter((d) => d.status === "pending").length ??
-    record.decisions;
+  const pending = project ? pendingCount(project) : record.decisions;
+  const reviewer = members.find((m) => m.id === doc.author)?.name || "成员";
   return (
     <div
       className={"v1-review-record" + (compact ? " compact" : "")}
       data-testid="review-record"
     >
       <button
-        className={"v1-check-trigger" + (failed && !stale ? " incomplete" : "")}
+        className={
+          "v1-check-trigger" +
+          (stale ? " historical" : failed ? " incomplete" : "")
+        }
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
@@ -57,17 +70,31 @@ export function ReviewRecord({ doc, project, members, compact = false }) {
         ) : (
           <CheckCircle2 size={15} />
         )}
-        {doc.partial
-          ? "部分交付 · 缺少成员交叉检查"
-          : !checks.length
-            ? "待自查"
-            : stale
-              ? "稿件已修改 · 待重新自查"
+        {stale && checks.length
+          ? "自查基于版本 " + doc.selfCheckRevision + " · 之后有你的修改"
+          : doc.partial
+            ? "部分交付 · 缺少成员交叉检查"
+            : !checks.length
+              ? "待自查"
               : failed
                 ? "部分达标 · " + failed + " 项未达标"
                 : "合格标准 " + ok + "/" + checks.length + " 符合"}{" "}
         <ChevronDown size={13} />
       </button>
+      {stale && onRecheck && (
+        <div className="v1-recheck-action">
+          <button
+            className="text-button"
+            onClick={onRecheck}
+            disabled={doc.recheckRequest?.status === "preview_pending"}
+          >
+            {doc.recheckRequest?.status === "preview_pending"
+              ? "已提交复查演示"
+              : "让 " + reviewer + " 按标准再查一次"}
+          </button>
+          <small>由你主动发起；原型不唤醒真实 Agent</small>
+        </div>
+      )}
       {!compact && (
         <button
           className="v1-record-line"
@@ -144,8 +171,8 @@ export function V1ProjectForm({
         ["grok", "dots"].filter((id) => members.some((m) => m.id === id)),
     );
   const [lead, setLead] = useState(project?.lead || "dots"),
-    [criteria, setCriteria] = useState(
-      project?.criteria || "每条结论附来源\n缺少的信息写明缺口",
+    [criteria, setCriteria] = useState(() =>
+      criteriaList(project?.criteria || "每条结论附来源\n缺少的信息写明缺口"),
     );
   const [scheduled, setScheduled] = useState(
       project?.schedule?.enabled || false,
@@ -162,6 +189,7 @@ export function V1ProjectForm({
       reference ? [reference] : project?.materials || [],
     ),
     [link, setLink] = useState("");
+  const extractedGoal = useRef(project?.goal || "");
   const options = modes
     .filter((m) => m.id !== "relay")
     .sort(
@@ -184,8 +212,12 @@ export function V1ProjectForm({
       }
       if (!project) {
         setMode(recommendation);
-        if (/二开/.test(goal) && !criteria.includes("二开"))
-          setCriteria(criteria + "\n明确支持二开的条件");
+      }
+      if (extractedGoal.current !== goal) {
+        setCriteria((current) => [
+          ...new Set([...current, ...extractGoalCriteria(goal)]),
+        ]);
+        extractedGoal.current = goal;
       }
       setStep(2);
       return;
@@ -201,6 +233,10 @@ export function V1ProjectForm({
       return;
     }
     if (step === 2) {
+      if (!criteria.some((c) => c.trim())) {
+        setError("请保留至少一条合格标准");
+        return;
+      }
       setStep(3);
       return;
     }
@@ -226,8 +262,13 @@ export function V1ProjectForm({
         delivery,
         members:
           mode === "solo" && delivery === "final" ? chosen.slice(0, 1) : chosen,
-        lead: mode === "solo" && delivery === "final" ? chosen[0] : chosen.includes(lead) ? lead : chosen[0],
-        criteria,
+        lead:
+          mode === "solo" && delivery === "final"
+            ? chosen[0]
+            : chosen.includes(lead)
+              ? lead
+              : chosen[0],
+        criteria: criteriaList(criteria),
         materials,
         schedule: {
           enabled: scheduled,
@@ -366,13 +407,19 @@ export function V1ProjectForm({
                     className={
                       "mode-option " + (mode === m.id ? "selected" : "")
                     }
-                    onClick={() => { setMode(m.id); if(m.id === "solo") {setSelected(selected.slice(0,1));setLead(selected[0]);} }}
+                    onClick={() => {
+                      setMode(m.id);
+                      if (m.id === "solo") {
+                        setSelected(selected.slice(0, 1));
+                        setLead(selected[0]);
+                      }
+                    }}
                   >
+                    <span className="radio-dot" aria-hidden="true" />
                     <span>
                       <strong>{m.label}</strong>
                       <small>{m.description}</small>
                     </span>
-                    <span className="radio-dot" />
                   </button>
                 ))}
               </div>
@@ -436,15 +483,40 @@ export function V1ProjectForm({
               </select>
             </label>
           )}
-          <label className="field">
-            合格标准
-            <textarea
-              aria-label="合格标准"
-              rows={3}
-              value={criteria}
-              onChange={(e) => setCriteria(e.target.value)}
-            />
-          </label>
+          <fieldset className="v1-criteria" aria-label="合格标准">
+            <legend>合格标准</legend>
+            {criteria.map((criterion, i) => (
+              <div className="v1-criterion-row" key={i}>
+                <input
+                  aria-label={"合格标准 " + (i + 1)}
+                  value={criterion}
+                  onChange={(e) =>
+                    setCriteria(
+                      criteria.map((c, n) => (n === i ? e.target.value : c)),
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className="button quiet"
+                  aria-label={"删除标准 " + (i + 1)}
+                  onClick={() =>
+                    setCriteria(criteria.filter((_, n) => n !== i))
+                  }
+                >
+                  删除
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setCriteria([...criteria, ""])}
+            >
+              <Plus size={14} />
+              添加标准
+            </button>
+          </fieldset>
           <div>
             <button
               type="button"
@@ -648,7 +720,14 @@ function ConnectionWizard({ member, onClose, onReady }) {
   );
 }
 
-export function ComparisonPane({ project, members, patch, onBack, notify, storageError }) {
+export function ComparisonPane({
+  project,
+  members,
+  patch,
+  onBack,
+  notify,
+  storageError,
+}) {
   const draftRef = useRef(project.comparisonDraft || ""),
     save = useRef(patch);
   save.current = patch;
@@ -713,6 +792,7 @@ export function ComparisonPane({ project, members, patch, onBack, notify, storag
               <ReviewRecord
                 doc={d}
                 project={{ ...project, decisions: [] }}
+                members={members}
                 compact
               />
               {sampleSections.map((s, i) => {
@@ -754,7 +834,10 @@ export function ComparisonPane({ project, members, patch, onBack, notify, storag
         <section className="v1-working-draft">
           <header>
             <h3>我的工作稿</h3>
-            <span>{storageError ? "未保存 · 仅保留在内存" : "本机已保存"} · {(project.adoptedSections || []).length} 段</span>
+            <span>
+              {storageError ? "未保存 · 仅保留在内存" : "本机已保存"} ·{" "}
+              {(project.adoptedSections || []).length} 段
+            </span>
           </header>
           <EditorContent editor={editor} />
           <p className="field-note">

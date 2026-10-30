@@ -1,10 +1,12 @@
 {
   "checks": [
     "Five navigation entries and explicit demo boundary",
+    "A1 pending counts exclude rule confirmation in every location",
     "B1 self-check opens criteria, reviewer and paragraph evidence",
     "B2 independent count always explicit and multiple citations parenthesized",
     "Inline choice replaces in place, is undoable and retains context",
-    "Human editing invalidates prior self-check and survives reload",
+    "Human edits preserve historical self-check without assigning unattended work",
+    "A2 recheck is explicit, revision-bound and never overwrites later human edits",
     "Revision carries full draft and candidate cannot silently overwrite newer edits",
     "Comparison is independent answers, each with its own self-check",
     "Adoption keeps verbatim text and provenance, prevents duplicate insertion",
@@ -14,10 +16,13 @@
     "Grok four-step wizard requires delivery and reply; never takes credentials",
     "Dot three-step wizard distinguishes subscription from reply",
     "Arrangement defaults to final delivery; compare hides mode and lead",
+    "Explicit requirements become editable removable criteria without being re-added",
     "Generic goals avoid hard-coded hardware criteria and can start solo",
     "Member failure exposes three actions and partial deliverable is preserved",
     "Unmet criteria remain explicit rather than false completion",
+    "Compact project header, borderless handoff and readable text 1440",
     "Readable review layout 1440",
+    "Compact project header, borderless handoff and readable text 1280",
     "Readable review layout 1280",
     "No JavaScript errors or external Agent requests"
   ],
@@ -37,6 +42,6 @@
       "panel": 771
     }
   ],
-  "htmlSha256": "0ea8c44088bf58dd733d775f827f54842b9cacb528f1c556f9769becb40032d0",
+  "htmlSha256": "e2333b4f7cc328459268a9f29f8f4980ee756e2538e32284164f28799ffb4a8c",
   "boundary": "Isolated UI prototype only; no real account or Agent verified"
 }

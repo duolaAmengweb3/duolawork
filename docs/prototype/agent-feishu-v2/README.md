@@ -1,6 +1,6 @@
 # Agent Hub v1 · 可点击原型
 
-2026-10-30 · Codex。依据 Claude v1 定稿（93292dd）与 [#17 的 13 项评审](https://github.com/duolaAmengweb3/agent-hub/issues/17#issuecomment-6516376826)，在 PR #13 的 React/Tiptap 原型上修改。
+2026-10-30 · Codex。依据 Claude v1 定稿（be1e76c）与 [#17 的 13 项评审](https://github.com/duolaAmengweb3/agent-hub/issues/17#issuecomment-6516376826)，在 PR #13 的 React/Tiptap 原型上修改。
 
 **本轮图片来自实际页面，不是 AI 生图。** 这是本机 UI 原型，尚未连接真实 Agent，未替换正式桌面客户端。
 
@@ -13,7 +13,25 @@
     node docs/prototype/agent-feishu-v2/build.mjs
     python3 -m http.server 8873 --bind 127.0.0.1 --directory docs/prototype/agent-feishu-v2
 
-## 13 项评审对应
+## PR #18 复审修复（本次）
+
+依据 [Claude 的独立审计](https://github.com/duolaAmengweb3/agent-hub/issues/17#issuecomment-6517216550)。原 13 项获确认后，本次修复新发现的两项阻塞和一般问题 1–6：
+
+| 项 | 修复与验证 |
+|---|---|
+| A1 待决计数 | 顶栏、成果卡、记录与导航共用 `pendingCount`，只统计待决卡。规则确认从计数和待决列表中一起移除，仍在知识库与页边单独处理。处理后计数归零，规则仍保留 |
+| A2 用户修改后的自查 | 显示灰色“自查基于版本 n · 之后有你的修改”。不自动创建复查任务。用户点“让 Dot 按标准再查一次”才保存包含正文、版本与成员的复查演示；明确未发送真实请求。复查返回只绑定提交时版本，不覆盖之后修改 |
+| 1 交接 | 无边框单行，点击展开交接依据 |
+| 2 顶栏 | 项目标题、方式、状态与待决入口合并在 56px 顶栏。目标留在工作安排，删除另外两行 |
+| 3 合格标准 | 按含“必须 / 需要 / 要”的原句提取，保留否定。每条可编辑、删除、添加；回退上一步不重新插入已删条目；兼容旧字符串标准 |
+| 4 阅读位置 | 决策卡替换/撤回时保留可见位置，必要时补底部阅读空间；1440 与 1280 下验证位移不超过 2px |
+| 5 单选 | 圆点在左，文字靠左，移除旧版绝对定位样式干扰 |
+| 6 字号 | 列表、按钮、标签正文 14px；辅助文字至少 12px。检查实际渲染字号 |
+| 7 示例标记 | 普通种子消息去掉重复“示例记录”，保留顶部统一提示。涉及授权、派发、复查与核验的演示动作仍明确标注；这尚不是正式客户端 |
+
+**根因与漏检：** 原计数函数沿用了旧版“待决 + 规则提案”，原检查只覆盖逐项功能，没有核对跨区域数量；自查原来只比较稿件版本号，没有区分用户修改与成员交付。此次检查增加跨页计数、显式复查、复查期间并行编辑、标准增删和阅读位置，不能把此前 20 项通过当成没有其他问题。
+
+## 上轮 13 项评审对应
 
 | 项 | 本轮处理 |
 |---|---|
@@ -47,7 +65,7 @@
 
     node docs/prototype/agent-feishu-v2/verify-v1.mjs
 
-**20 项隔离 UI 检查通过**，覆盖导航、两项阻塞意见、正文决定撤回、人工稿持久化与旧自查失效、返工冲突、逐段原文采用、成果引用、规则范围与撤回、Grok/Dot 步骤、通用目标、单人交付、失败三操作、部分交付及未达标、两种尺寸阅读区域，以及对比工作稿保存失败时的状态与内存保留。
+**25 项隔离 UI 检查通过**，覆盖导航、两项阻塞意见、正文决定撤回、人工稿持久化与历史自查标注、主动复查与版本绑定、返工冲突、逐段原文采用、成果引用、规则范围与撤回、Grok/Dot 步骤、通用目标、单人交付、失败三操作、部分交付及未达标、两种尺寸阅读区域与决策替换位置、统一计数、可增删的合格标准，以及对比工作稿保存失败时的状态与内存保留。
 
 无 JavaScript 错误，无对外 Agent 请求。证据和构建哈希：[checks.json](evidence/v1/checks.json)。旧 verify.mjs 和旧 evidence 属于 2.0 历史记录，本轮使用 verify-v1.mjs / evidence/v1。
 
@@ -60,6 +78,7 @@
 | 积累 | [成果列表](evidence/v1/06-results.png)、[规则](evidence/v1/07-knowledge.png) |
 | 接入 | [Grok](evidence/v1/08-grok-connect.png)、[Dot](evidence/v1/09-dot-connect.png) |
 | 安排 | [安排](evidence/v1/10-arrangement.png) |
+| 本次复审 | [修改后主动复查](evidence/v1/13-user-edit-recheck.png)、[标准列表](evidence/v1/14-editable-criteria.png)、[1280 项目](evidence/v1/project-1280.png)、[1440 项目](evidence/v1/project-1440.png) |
 | 尺寸 | [1440](evidence/v1/review-1440.png)、[1280](evidence/v1/review-1280.png) |
 
 ## 正式接线仍需完成

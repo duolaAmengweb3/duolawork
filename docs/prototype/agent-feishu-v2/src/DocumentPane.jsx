@@ -35,6 +35,7 @@ import {
   sanitizeHTML,
   currentFeedback,
   now,
+  uid,
 } from "./model.mjs";
 import { ReviewRecord } from "./V1.jsx";
 
@@ -195,6 +196,44 @@ export default function DocumentPane({
     setOriginal(false);
     notify("候选版本已应用，之前的工作稿保留在版本历史");
   }
+  function requestRecheck() {
+    if (storageError || doc.recheckRequest?.status === "preview_pending")
+      return;
+    updateDoc((d) => ({
+      ...d,
+      recheckRequest: {
+        id: uid("recheck"),
+        status: "preview_pending",
+        author: d.author,
+        baseRevision: d.revision,
+        html: d.html,
+        checks: structuredClone(d.reviewChecks || []),
+        time: now(),
+      },
+    }));
+    notify("复查要求已保留在原型，未唤醒真实 Agent。可演示返回以检查交互。");
+  }
+  function previewRecheckReturn() {
+    updateDoc((d) => {
+      const request = d.recheckRequest;
+      if (request?.status !== "preview_pending") return d;
+      return {
+        ...d,
+        initialReview: d.initialReview || {
+          checks: d.reviewChecks,
+          revision: d.selfCheckRevision,
+        },
+        selfCheckRevision: request.baseRevision,
+        reviewChecks: request.checks.map((c) => ({
+          ...c,
+          evidence:
+            "复查返回演示：沿用所选标准的示例结果，未执行真实内容核验。",
+        })),
+        recheckRequest: { ...request, status: "preview_returned" },
+      };
+    });
+    notify("复查返回演示已展示；结果只对应提交时的版本，不修改正文。");
+  }
   return (
     <section className={`review-layout ${panel ? "context-open" : ""}`}>
       <div className="document-workspace">
@@ -298,6 +337,17 @@ export default function DocumentPane({
             <button onClick={() => setOriginal(false)}>返回工作稿</button>
           </div>
         )}
+        {!original && doc.recheckRequest?.status === "preview_pending" && (
+          <div className="candidate-notice v1-recheck-notice" role="status">
+            <span>
+              复查演示 · 版本 {doc.recheckRequest.baseRevision} · 未发送给真实
+              Agent
+            </span>
+            <button onClick={previewRecheckReturn}>
+              演示复查返回 <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
         <div
           className="document-scroll"
           ref={scroll}
@@ -325,9 +375,22 @@ export default function DocumentPane({
             </div>
             <h1 className="v1-document-title">{doc.title}</h1>
             <ReviewRecord
-              doc={original ? { ...doc, revision: 1 } : doc}
+              doc={
+                original
+                  ? {
+                      ...doc,
+                      revision: 1,
+                      selfCheckRevision: 1,
+                      reviewChecks:
+                        doc.initialReview?.checks || doc.reviewChecks,
+                    }
+                  : doc
+              }
               project={project}
               members={members}
+              onRecheck={
+                !original && !storageError ? requestRecheck : undefined
+              }
             />
             <div style={{ display: original ? "none" : undefined }}>
               <DecisionContext.Provider
@@ -374,6 +437,7 @@ export default function DocumentPane({
               </button>
             )}
           </article>
+          <div className="v1-reading-buffer" aria-hidden="true" />
         </div>
         <footer className="document-actions">
           <span className="feedback-state">

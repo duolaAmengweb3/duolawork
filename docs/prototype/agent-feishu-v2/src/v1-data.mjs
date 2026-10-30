@@ -1,3 +1,19 @@
+export const criteriaList = (value) =>
+  (Array.isArray(value) ? value : String(value || "").split(/\n/))
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+// Only literal requirements are extracted. No semantic claim or model call.
+export function extractGoalCriteria(goal) {
+  // Preserve the entire sentence, including negation such as "不需要联网".
+  const explicit = String(goal)
+    .split(/[。！？；;\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && /必须|需要|要/.test(sentence));
+  if (/二开/.test(goal)) explicit.push("明确支持二开的条件");
+  return [...new Set(explicit)];
+}
+
 export const sampleSections = [
   {
     title: "产品切入点",
@@ -125,13 +141,13 @@ export function seedV1(s) {
       id: "v1-grok",
       author: "grok",
       time: "09:01",
-      text: "先从产品场景与 SDK 开放范围独立研究，保留未确认条件。示例记录。",
+      text: "先从产品场景与 SDK 开放范围独立研究，保留未确认条件。",
     },
     {
       id: "v1-dot",
       author: "dots",
       time: "09:02",
-      text: "我独立核查数据能力和授权要求，尚未读取其他成员的结论。示例记录。",
+      text: "我独立核查数据能力和授权要求，尚未读取其他成员的结论。",
     },
     {
       id: "v1-handoff",
@@ -159,7 +175,7 @@ export function seedV1(s) {
       type: "delivery",
       author: "dots",
       time: "09:06",
-      text: "一份最终成果已准备 · 示例",
+      text: "一份最终成果已准备",
     },
   ];
   p.rules = [
@@ -374,10 +390,8 @@ export function advancePreview(p) {
       pass,
     );
     d.partial = !!p.partial;
-    d.reviewChecks = (p.criteria || "保留依据与缺口")
-      .split(/\n/)
-      .filter(Boolean)
-      .map((title, i, a) => ({
+    d.reviewChecks = criteriaList(p.criteria || "保留依据与缺口").map(
+      (title, i, a) => ({
         title,
         pass: pass || i < a.length - 1,
         by: "示例自查成员",
@@ -385,7 +399,8 @@ export function advancePreview(p) {
         evidence: pass
           ? "本地示例检查，不是真实模型核验。"
           : "示例：本条标准仍有缺口。",
-      }));
+      }),
+    );
     if (p.delivery === "compare") {
       const pair = p.members.map((author, n) => {
         const h =

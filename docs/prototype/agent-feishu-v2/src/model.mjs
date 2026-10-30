@@ -422,8 +422,7 @@ export function planSteps(project, members) {
 export const currentFeedback = (doc) =>
   doc.evaluatedRevision === doc.revision ? doc.feedback : null;
 export const pendingCount = (p) =>
-  p.decisions.filter((d) => d.status === "pending").length +
-  p.rules.filter((r) => r.status === "proposed").length;
+  p.decisions.filter((d) => d.status === "pending").length;
 export function escapeHTML(s) {
   return String(s)
     .replaceAll("&", "&amp;")

@@ -801,6 +801,24 @@ function App() {
                       <Folder size={20} />
                     </span>
                     <h2>{project.name}</h2>
+                    <button
+                      className="v1-header-mode"
+                      onClick={() => setModal({ type: "plan" })}
+                    >
+                      {project.delivery === "compare"
+                        ? "各自提交"
+                        : modes.find((m) => m.id === project.mode)?.short}
+                    </button>
+                    <span className="v1-header-status">
+                      {{
+                        review: "待审阅",
+                        running: "进行中",
+                        paused: "已暂停",
+                        needs_attention: "需要处理",
+                        idle: "未开始",
+                        terminated: "已终止",
+                      }[project.status] || "待安排"}
+                    </span>
                     <div className="member-stack">
                       {project.members.slice(0, 4).map((id) => (
                         <Avatar
@@ -812,6 +830,12 @@ function App() {
                     </div>
                   </div>
                   <div className="header-actions">
+                    <button
+                      className="v1-header-pending text-button"
+                      onClick={() => navigate("decisions")}
+                    >
+                      {pendingCount(project)} 项待决定
+                    </button>
                     <button
                       className="button quiet"
                       onClick={() => setModal({ type: "plan" })}

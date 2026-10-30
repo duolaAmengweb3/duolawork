@@ -81,6 +81,31 @@ try {
       await shot("01-project");
     },
   );
+  await check(
+    "A1 pending counts exclude rule confirmation in every location",
+    async () => {
+      assert.equal(
+        await p.locator(".v1-header-pending").innerText(),
+        "1 项待决定",
+      );
+      assert.match(
+        await p.locator(".delivery-card footer").innerText(),
+        /1 项待决定/,
+      );
+      assert.match(
+        await p.locator(".v1-record-line").innerText(),
+        /待你决定 1/,
+      );
+      assert.match(await p.locator(".sidebar-foot").innerText(), /1 条待确认/);
+      await nav("待我决定");
+      assert.equal(await p.locator(".decision-card").count(), 1);
+      assert.doesNotMatch(
+        await p.locator(".decision-list").innerText(),
+        /改进提案|批准试行/,
+      );
+      await nav("项目");
+    },
+  );
   await review();
   await check(
     "B1 self-check opens criteria, reviewer and paragraph evidence",
@@ -111,11 +136,33 @@ try {
     "Inline choice replaces in place, is undoable and retains context",
     async () => {
       const card = p.locator(".decision-inline");
+      const reader = p.locator(".document-scroll");
+      await card.scrollIntoViewIfNeeded();
+      const initial = await card.boundingBox();
       await card
         .getByRole("button", { name: "采纳此方案", exact: true })
         .first()
         .click();
       assert.match(await card.innerText(), /已按你的选择/);
+      assert.match(
+        await p.locator(".v1-check-trigger").innerText(),
+        /自查基于版本 1/,
+      );
+      assert.doesNotMatch(
+        await p.locator(".v1-review-record").innerText(),
+        /待重新自查/,
+      );
+      await p.evaluate(
+        () =>
+          new Promise((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(r)),
+          ),
+      );
+      const selected = await card.boundingBox();
+      assert(
+        Math.abs(selected.y - initial.y) <= 2,
+        `reading position moved: ${initial.y} -> ${selected.y}`,
+      );
       await card.getByRole("button", { name: "撤回", exact: true }).click();
       assert.equal(
         await card
@@ -123,15 +170,43 @@ try {
           .count(),
         2,
       );
+      await card
+        .getByRole("button", { name: "采纳此方案", exact: true })
+        .last()
+        .click();
+      await p.getByRole("button", { name: "返回群聊", exact: true }).click();
+      assert.equal(
+        await p.locator(".v1-header-pending").innerText(),
+        "0 项待决定",
+      );
+      assert.equal(
+        await p
+          .locator(".delivery-card footer")
+          .getByRole("button", { name: /项待决定/ })
+          .count(),
+        0,
+      );
+      assert.doesNotMatch(
+        await p.locator(".v1-record-line").innerText(),
+        /待你决定/,
+      );
+      assert.match(await p.locator(".sidebar-foot").innerText(), /1 条待确认/);
+      await nav("待我决定");
+      assert.match(
+        await p.locator(".decision-list").innerText(),
+        /暂时没有需要你决定的事/,
+      );
+      await nav("项目");
+      await review();
     },
   );
   await check(
-    "Human editing invalidates prior self-check and survives reload",
+    "Human edits preserve historical self-check without assigning unattended work",
     async () => {
       await p
         .getByRole("textbox", { name: "成果正文" })
         .fill("人工修订：保留我的删除和判断。");
-      await p.getByRole("button", { name: /稿件已修改/ }).waitFor();
+      await p.getByRole("button", { name: /自查基于版本/ }).waitFor();
       await p.reload();
       await p.getByRole("textbox", { name: "成果正文" }).waitFor();
       assert.match(
@@ -140,8 +215,68 @@ try {
       );
       assert.match(
         await p.locator(".v1-check-trigger").innerText(),
-        /待重新自查/,
+        /自查基于版本 1 · 之后有你的修改/,
       );
+    },
+  );
+  await check(
+    "A2 recheck is explicit, revision-bound and never overwrites later human edits",
+    async () => {
+      const before = current(await state()).docs[0];
+      assert.equal(before.recheckRequest, undefined);
+      const trigger = p.getByRole("button", {
+        name: "让 Dot 按标准再查一次",
+        exact: true,
+      });
+      await trigger.click();
+      assert.equal(
+        await p
+          .getByRole("button", { name: "已提交复查演示", exact: true })
+          .isDisabled(),
+        true,
+      );
+      const pending = current(await state()).docs[0].recheckRequest;
+      assert.equal(pending.baseRevision, before.revision);
+      assert.equal(pending.html, before.html);
+      assert.equal(pending.author, "dots");
+      await p
+        .getByRole("textbox", { name: "成果正文" })
+        .fill("复查期间人工修订，不允许被旧结果覆盖。");
+      await p
+        .getByRole("button", { name: "演示复查返回", exact: true })
+        .click();
+      const after = current(await state()).docs[0];
+      assert.match(after.html, /不允许被旧结果覆盖/);
+      assert.equal(after.selfCheckRevision, before.revision);
+      assert(after.revision > after.selfCheckRevision);
+      assert.match(
+        await p.locator(".v1-check-trigger").innerText(),
+        /之后有你的修改/,
+      );
+      await p
+        .getByRole("button", { name: "让 Dot 按标准再查一次", exact: true })
+        .click();
+      await p
+        .getByRole("button", { name: "演示复查返回", exact: true })
+        .click();
+      assert.match(
+        await p.locator(".v1-check-trigger").innerText(),
+        /合格标准/,
+      );
+      assert.match(
+        await p.getByRole("textbox", { name: "成果正文" }).innerText(),
+        /不允许被旧结果覆盖/,
+      );
+      await p.reload();
+      await p.getByRole("textbox", { name: "成果正文" }).waitFor();
+      assert.match(
+        await p.locator(".v1-check-trigger").innerText(),
+        /合格标准/,
+      );
+      await shot("13-user-edit-recheck");
+      await p
+        .getByRole("textbox", { name: "成果正文" })
+        .fill("人工修订：保留我的删除和判断。");
     },
   );
   await check(
@@ -232,15 +367,34 @@ try {
       await shot("05-independent-comparison");
     },
   );
-  await check("Comparison saving failure remains honest and draft stays in memory", async()=>{
-    await p.evaluate(()=>{window.__previewSet=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException("quota","QuotaExceededError");};});
-    await p.getByRole("textbox",{name:"我的工作稿"}).fill("存储失败时，这段内容仍应留在内存。");
-    await p.getByRole("alert").waitFor();
-    assert.match(await p.locator(".v1-working-draft header").innerText(),/未保存/);
-    assert.match(await p.getByRole("textbox",{name:"我的工作稿"}).innerText(),/仍应留在内存/);
-    await p.evaluate(()=>{Storage.prototype.setItem=window.__previewSet;});
-    await p.reload();await p.locator(".v1-comparison").waitFor();
-  });
+  await check(
+    "Comparison saving failure remains honest and draft stays in memory",
+    async () => {
+      await p.evaluate(() => {
+        window.__previewSet = Storage.prototype.setItem;
+        Storage.prototype.setItem = function () {
+          throw new DOMException("quota", "QuotaExceededError");
+        };
+      });
+      await p
+        .getByRole("textbox", { name: "我的工作稿" })
+        .fill("存储失败时，这段内容仍应留在内存。");
+      await p.getByRole("alert").waitFor();
+      assert.match(
+        await p.locator(".v1-working-draft header").innerText(),
+        /未保存/,
+      );
+      assert.match(
+        await p.getByRole("textbox", { name: "我的工作稿" }).innerText(),
+        /仍应留在内存/,
+      );
+      await p.evaluate(() => {
+        Storage.prototype.setItem = window.__previewSet;
+      });
+      await p.reload();
+      await p.locator(".v1-comparison").waitFor();
+    },
+  );
   await nav("成果");
   await check(
     "Global artifacts support search, review and version-specific reuse",
@@ -379,13 +533,84 @@ try {
     },
   );
   await check(
+    "Explicit requirements become editable removable criteria without being re-added",
+    async () => {
+      await p.getByRole("button", { name: "新建项目", exact: true }).click();
+      await p
+        .getByLabel("项目目标")
+        .fill(
+          "研究一个新方向。必须附实测数据；需要列出来源；要保留不确定项。不需要联网。不要编造结果。",
+        );
+      await p.getByRole("button", { name: "下一步", exact: true }).click();
+      const list = p.locator(".v1-criterion-row input");
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "必须附实测数据",
+        ),
+      );
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "需要列出来源",
+        ),
+      );
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "要保留不确定项",
+        ),
+      );
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "不需要联网",
+        ),
+      );
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "不要编造结果",
+        ),
+      );
+      await p.getByRole("button", { name: "删除标准 3", exact: true }).click();
+      assert(
+        !(await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "必须附实测数据",
+        ),
+      );
+      await p.getByRole("button", { name: "上一步", exact: true }).click();
+      await p.getByRole("button", { name: "下一步", exact: true }).click();
+      assert(
+        !(await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "必须附实测数据",
+        ),
+      );
+      await p.getByRole("button", { name: "添加标准", exact: true }).click();
+      await list.last().fill("附可运行的验证步骤");
+      assert(
+        (await list.evaluateAll((els) => els.map((el) => el.value))).includes(
+          "附可运行的验证步骤",
+        ),
+      );
+      await shot("14-editable-criteria");
+      await p
+        .getByRole("button", { name: "下一步：定节奏", exact: true })
+        .click();
+      await p.getByRole("button", { name: "开始", exact: true }).click();
+      const stored = current(await state()).criteria;
+      assert(Array.isArray(stored));
+      assert(stored.includes("附可运行的验证步骤"));
+      await fresh();
+    },
+  );
+  await check(
     "Generic goals avoid hard-coded hardware criteria and can start solo",
     async () => {
       await p.getByRole("button", { name: "新建项目", exact: true }).click();
       await p.getByLabel("项目目标").fill("整理给我的三条备注");
       await p.getByRole("button", { name: "下一步", exact: true }).click();
       assert.doesNotMatch(
-        await p.getByLabel("合格标准", { exact: true }).inputValue(),
+        (
+          await p
+            .locator(".v1-criterion-row input")
+            .evaluateAll((els) => els.map((el) => el.value))
+        ).join("\n"),
         /二开/,
       );
       await p.getByRole("button", { name: /^一位直接完成/ }).click();
@@ -394,7 +619,10 @@ try {
         .click();
       await p.getByRole("button", { name: "开始", exact: true }).click();
       assert.equal(current(await state()).members.length, 1);
-      assert.equal(current(await state()).lead,current(await state()).members[0]);
+      assert.equal(
+        current(await state()).lead,
+        current(await state()).members[0],
+      );
       await p
         .locator(".v1-scenario")
         .getByRole("button", { name: "演示下一步", exact: true })
@@ -460,6 +688,61 @@ try {
   ]) {
     await fresh();
     await p.setViewportSize(size);
+    await check(
+      "Compact project header, borderless handoff and readable text " +
+        size.width,
+      async () => {
+        const metrics = await p.evaluate(() => {
+          const header = document.querySelector(".workspace-header"),
+            handoff = document.querySelector(".handoff");
+          const rows = [
+            ...document.querySelectorAll(
+              ".v1-record-line,.delivery-card .button,.handoff summary strong,.rail-item",
+            ),
+          ];
+          const tiny = [...document.querySelectorAll("body *")]
+            .filter(
+              (el) =>
+                el.getClientRects().length &&
+                [...el.childNodes].some(
+                  (n) => n.nodeType === 3 && n.textContent.trim(),
+                ) &&
+                parseFloat(getComputedStyle(el).fontSize) < 12,
+            )
+            .map((el) => el.className);
+          return {
+            height: header.offsetHeight,
+            border: getComputedStyle(handoff).borderTopWidth,
+            handoffHeight: handoff.querySelector("summary").offsetHeight,
+            primary: rows.map((el) =>
+              parseFloat(getComputedStyle(el).fontSize),
+            ),
+            tiny,
+            horizontal: document.documentElement.scrollWidth > innerWidth,
+          };
+        });
+        assert.equal(metrics.height, 56);
+        assert.equal(metrics.border, "0px");
+        assert(metrics.handoffHeight <= 36);
+        assert(metrics.primary.every((x) => x >= 14));
+        assert.deepEqual(metrics.tiny, []);
+        assert.equal(metrics.horizontal, false);
+        assert.equal(await p.locator(".goal-line,.phase-summary").count(), 0);
+        await shot("project-" + size.width);
+        await p.getByRole("button", { name: "工作安排", exact: true }).click();
+        await p.getByRole("button", { name: "下一步", exact: true }).click();
+        const aligned = await p
+          .locator(".mode-option")
+          .first()
+          .evaluate((el) => {
+            const dot = el.querySelector(".radio-dot").getBoundingClientRect(),
+              text = el.querySelector("strong").getBoundingClientRect();
+            return dot.x < text.x && getComputedStyle(el).textAlign === "left";
+          });
+        assert(aligned);
+        await p.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+      },
+    );
     await review();
     await check("Readable review layout " + size.width, async () => {
       const m = await p.evaluate(() => ({
@@ -471,6 +754,27 @@ try {
       assert.equal(m.width, m.pageWidth);
       assert(m.reading / m.panel >= 0.65);
       layout.push(m);
+      const card = p.locator(".decision-inline");
+      await card
+        .getByRole("button", { name: "采纳此方案", exact: true })
+        .first()
+        .scrollIntoViewIfNeeded();
+      const before = await card.boundingBox();
+      await card
+        .getByRole("button", { name: "采纳此方案", exact: true })
+        .first()
+        .click();
+      await p.evaluate(
+        () =>
+          new Promise((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(r)),
+          ),
+      );
+      assert(
+        Math.abs((await card.boundingBox()).y - before.y) <= 2,
+        "Decision adoption moved the reading position",
+      );
+      await card.getByRole("button", { name: "撤回", exact: true }).click();
       await shot("review-" + size.width);
     });
   }

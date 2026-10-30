@@ -187,65 +187,11 @@ function LegacyManagementPage({ state, project, actions }) {
                     </article>
                   )),
               )}
-              {!done &&
-                projects.flatMap((p) =>
-                  p.rules
-                    .filter((r) => r.status === "proposed")
-                    .map((r) => (
-                      <article className="decision-card" key={r.id}>
-                        <div className="card-meta">
-                          <FolderLabel name={p.name} />
-                          <Badge tone="purple">改进提案</Badge>
-                        </div>
-                        <h2>{r.title}</h2>
-                        <p>{r.body}</p>
-                        <div className="decision-evidence">
-                          <Lightbulb size={17} />
-                          <div>
-                            <strong>为什么提出这条规则</strong>
-                            <p>{r.evidence}</p>
-                          </div>
-                        </div>
-                        <div className="rule-trial-note">
-                          <Clock3 size={15} />
-                          只在本项目的下一轮试行，验证前不自动保留。
-                        </div>
-                        <div className="decision-choices">
-                          <button
-                            className="button primary"
-                            onClick={() => ruleAction(p.id, r.id, "trial")}
-                          >
-                            批准试行
-                            <Check size={15} />
-                          </button>
-                          <button
-                            className="button"
-                            onClick={() =>
-                              setModal({
-                                type: "rule",
-                                projectId: p.id,
-                                ruleId: r.id,
-                              })
-                            }
-                          >
-                            修改提案
-                          </button>
-                          <button
-                            className="button quiet"
-                            onClick={() => ruleAction(p.id, r.id, "rejected")}
-                          >
-                            不采用
-                          </button>
-                        </div>
-                      </article>
-                    )),
-                )}
               {projects.every(
                 (p) =>
                   !p.decisions.some((d) =>
                     done ? d.status !== "pending" : d.status === "pending",
-                  ) &&
-                  (done || !p.rules.some((r) => r.status === "proposed")),
+                  ),
               ) && (
                 <Empty
                   icon={CheckCheckIcon}

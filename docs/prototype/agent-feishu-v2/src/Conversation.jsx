@@ -206,30 +206,6 @@ export default function Conversation({
   const steps = planSteps(project, members);
   return (
     <section className="conversation" aria-label="项目群聊">
-      <button className="goal-line" onClick={onPlan}>
-        <span className="goal-label">
-          <GitBranch size={15} />
-          {modes.find((m) => m.id === project.mode)?.short}
-        </span>
-        <span className="goal-text">{project.goal}</span>
-        <ChevronRight size={15} />
-      </button>
-      {project.mode === "parallel" && project.messages.length > 0 && (
-        <div className="phase-summary">
-          <span>
-            <strong>
-              {project.status === "review" ? "独立研究已汇合" : "独立研究阶段"}
-            </strong>
-            <small title="正式接入时，Hub 不向其他独立分支下发本分支结论；原平台记忆不受 Hub 控制。当前为示例。">
-              互不可见 · 示例
-            </small>
-          </span>
-          <span>
-            {project.decisions.filter((d) => d.status === "pending").length}{" "}
-            项分歧待处理<button onClick={onEvidence}>查看依据</button>
-          </span>
-        </div>
-      )}
       <RunScenario project={project} patch={patch} onNext={onDemo} />
       <div
         className="conversation-scroll"
@@ -243,7 +219,7 @@ export default function Conversation({
         {project.messages.length ? (
           <>
             <div className="day-divider">
-              <span>本轮协作 · 示例记录</span>
+              <span>本轮协作</span>
             </div>
             {project.messages.map((msg) => {
               const m = members.find((m) => m.id === msg.author);
@@ -263,21 +239,15 @@ export default function Conversation({
                   <details className="handoff" key={msg.id}>
                     <summary>
                       <div className="handoff-avatars">
-                        <Avatar member={m} size={26} />
+                        <Avatar member={m} size={20} />
                         <ArrowRight size={12} />
                         <Avatar
                           member={members.find((m) => m.id === msg.to)}
-                          size={26}
+                          size={20}
                         />
                       </div>
-                      <div>
-                        <strong>{msg.text}</strong>
-                        <span>
-                          研究材料 →{" "}
-                          {members.find((m) => m.id === msg.to)?.name} ·
-                          查看交接依据
-                        </span>
-                      </div>
+                      <strong title={msg.text}>{msg.text}</strong>
+                      <span className="handoff-view">· 查看</span>
                       <ChevronRight size={15} />
                     </summary>
                     <p>{msg.detail}</p>
