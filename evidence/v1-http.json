@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T12:43:12.359Z",
+  "environment": "isolated workerd + D1 + real HTTP/MCP test peers",
+  "checks": [
+    "真实 HTTP/MCP：独立阶段同时就绪，文档读取隔离，汇总前不泄露同伴成果",
+    "汇总实际读取上游论断并完整交代去向，自查后仅交一份最终成果",
+    "返工携带完整人工稿和基准版本；候选返回保持当前工作稿不变",
+    "暂停只停止接单，不使有效凭证返回401；恢复后原凭证可继续调用，不要求重登"
+  ],
+  "realCommercialAgentTested": false,
+  "productionDataTouched": false
+}

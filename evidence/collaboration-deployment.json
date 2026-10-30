@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-30T12:44:55.440Z",
+  "endpoint": "https://agent-hub-local.duola-ai-project-radar.workers.dev",
+  "accountId": "d9d2d3d737a0e4f3f99bee632ed94f45",
+  "backendVersion": 2,
+  "platformAdapters": 4,
+  "nativeConnections": [
+    {
+      "id": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "verified"
+    },
+    {
+      "id": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "verified"
+    }
+  ],
+  "legacyAccountsPreserved": true,
+  "uiChanged": false,
+  "realCommercialAgentTested": false,
+  "attachmentStorage": "D1 chunks; 8 MiB per file",
+  "workerVersionId": "a378d713-8aa9-4dbc-8998-7e69a98fdfa9"
+}

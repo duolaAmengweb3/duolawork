@@ -3,6 +3,9 @@ import { createMcpHandler } from 'agents/mcp/server';
 import { z } from 'zod';
 import { publicState, workFor, HubError } from '../shared/domain.mjs';
 import { artifactBody, hash, load, mutate, sameSecret } from './store';
+import { v2Fetch } from './collaboration/api.mjs';
+import { Repository } from './collaboration/repository.mjs';
+import { maintenance } from './collaboration/dispatcher.mjs';
 
 const response = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' } });
 const message = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
@@ -74,6 +77,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
+      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, env, ctx, (await load(env)).state);
       if (url.pathname === '/health') return response({ ok: true, service: 'agent-hub-local', version: '0.1.0', time: new Date().toISOString() });
       if (url.pathname === '/openapi.json' && request.method === 'GET') return response(openApi(url.origin));
       if (url.pathname.startsWith('/mcp')) {
@@ -115,6 +119,7 @@ export default {
   },
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext) {
     const { state } = await load(env), now = new Date();
+    await maintenance(new Repository(env.DB, env.WORKSPACE_ID), state, env);
     for (const routine of state.routines.filter((r: { enabled: boolean; nextAt: string }) => r.enabled && Date.parse(r.nextAt) <= now.getTime())) {
       // Scheduling is claimed in one workspace CAS so overlapping cron invocations do not duplicate a run.
       await scheduleRoutine(env, routine.id, now);

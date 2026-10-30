@@ -15,3 +15,6 @@ evidence/*.png
 evidence/*.jpg
 evidence/*.jpeg
 *.log
+
+node_modules
+.local-acceptance-*/

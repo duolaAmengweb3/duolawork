@@ -13,6 +13,7 @@ import {automaticAvailability,availableMember,workspaceStart,workspaceFollowup,w
 import BUILD from '../shared/build-info.json' with {type:'json'};
 import {DocumentStore,attachDocument} from './documents.mjs';
 import {grokState} from './grok.mjs';
+import {proxyCollaboration} from './collaboration-proxy.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
@@ -27,7 +28,8 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const server=http.createServer(async(req,res)=>{try{const host=req.headers.host||'';if(origin?host!==new URL(origin).host:!host.startsWith('127.0.0.1:'))return json(res,{message:'仅限本机访问'},403);const url=new URL(req.url,origin||'http://127.0.0.1');
  if(url.pathname.startsWith('/api/')){
  if((req.headers.origin&&req.headers.origin!==origin)||['cross-site','same-site'].includes(req.headers['sec-fetch-site']))return json(res,{message:'跨站请求已拒绝'},403);
- if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json'))return json(res,{message:'需要 JSON 请求'},415);
+ if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json')&&!(url.pathname==='/api/v2/files'&&req.headers['content-type']==='application/octet-stream'))return json(res,{message:'需要 JSON 请求'},415);
+ if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
  if(url.pathname==='/api/local/status')return json(res,{...runner.status,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
  if(url.pathname.startsWith('/api/workspace/')&&req.method==='POST'){
@@ -107,7 +109,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/local/restore-sessions'&&req.method==='POST'){
   if(!runner.maintenance)return json(res,{message:'仅在更新验收期间恢复已确认会话'},409);
   await logins.load();const state=await cloud.state(),results={};
-  for(const a of state.accounts.filter(a=>['muse','grok-bot'].includes(a.platformId)&&a.status!=='disabled'&&logins.records[a.id]?.status==='authenticated')){
+  for(const a of state.accounts.filter(a=>['muse','grok-bot'].includes(a.platformId)&&a.status!=='disabled'&&logins.records[a.id]?.status==='authenticated'&&browsers.active.has(a.id))){
    if(browsers.isManual(a.id))continue;
    await browsers.ensureBackground(a,{url:connections.records[a.id]?.conversationUrl||a.entryUrl||maintainedPlatforms(state.platforms).find(p=>p.id===a.platformId)?.entryUrl});
    for(let i=0;i<20;i++){results[a.id]=await logins.check(a,browsers,{force:true});if(['authenticated','login_required','verification_required'].includes(results[a.id].status))break;await new Promise(r=>setTimeout(r,250));}

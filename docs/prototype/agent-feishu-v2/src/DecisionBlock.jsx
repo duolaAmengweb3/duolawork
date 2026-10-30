@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import { Node } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import { Avatar } from "./common.jsx";
@@ -10,6 +16,39 @@ function DecisionView({ node, updateAttributes }) {
   const [writing, setWriting] = useState(false),
     [text, setText] = useState(""),
     [remember, setRemember] = useState(false);
+  const root = useRef(null),
+    readingPosition = useRef(null);
+  function retainReadingPosition() {
+    const anchor = root.current,
+      scroller = anchor?.closest(".document-scroll");
+    if (scroller)
+      readingPosition.current = {
+        scroller,
+        top: anchor.getBoundingClientRect().top,
+      };
+  }
+  useLayoutEffect(() => {
+    const position = readingPosition.current;
+    if (!position || !root.current) return;
+    const restore = () => {
+      const target =
+        position.scroller.scrollTop +
+        root.current.getBoundingClientRect().top -
+        position.top;
+      const max =
+        position.scroller.scrollHeight - position.scroller.clientHeight;
+      const buffer = position.scroller.querySelector(".v1-reading-buffer");
+      if (buffer && target > max)
+        buffer.style.height = buffer.offsetHeight + target - max + "px";
+      position.scroller.scrollTop = target;
+    };
+    restore();
+    const frame = requestAnimationFrame(() => {
+      restore();
+      readingPosition.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [node.attrs.selected]);
   if (!item)
     return (
       <NodeViewWrapper className="decision-inline" contentEditable={false}>
@@ -19,13 +58,16 @@ function DecisionView({ node, updateAttributes }) {
   const positions = item.positions || [];
   function select(value, label) {
     if (!value.trim() || context.storageError) return;
-    updateAttributes({ selected: value, choice: label });
+    retainReadingPosition();
+    if (!context.persistSelection)
+      updateAttributes({ selected: value, choice: label });
     context.onChoose(item.id, label, value, remember);
     setWriting(false);
   }
   return (
     <NodeViewWrapper
       className={`decision-inline ${node.attrs.selected ? "resolved" : ""}`}
+      ref={root}
       data-decision-id={item.id}
       contentEditable={false}
     >
@@ -36,7 +78,9 @@ function DecisionView({ node, updateAttributes }) {
             已按你的选择 · {node.attrs.choice}
             <button
               onClick={() => {
-                updateAttributes({ selected: null, choice: null });
+                retainReadingPosition();
+                if (!context.persistSelection)
+                  updateAttributes({ selected: null, choice: null });
                 context.onChoose(item.id, null, null, false);
               }}
             >
@@ -84,11 +128,11 @@ function DecisionView({ node, updateAttributes }) {
                   <section key={i}>
                     <header>
                       <Avatar
-                        member={context.members.find((m) => m.id === p.member)}
+                        member={context.members.find((m) => m.id === p.member) || {name:"归属未确认",initial:"?",color:"#64748b"}}
                         size={25}
                       />
                       <strong>
-                        {context.members.find((m) => m.id === p.member)?.name}
+                        {context.members.find((m) => m.id === p.member)?.name || "归属未确认"}
                       </strong>
                     </header>
                     <p>{p.text}</p>

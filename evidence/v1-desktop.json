@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T12:55:05.079Z",
+  "packaged": true,
+  "keychain": "temporary test-only mock keychain",
+  "checks": [
+    "真实 Electron 进程关闭后本地服务退出",
+    "固定本地地址与项目选择恢复",
+    "未发送输入完整保留",
+    "人工工作稿从真实 D1 版本恢复",
+    "重开不重复启动运行",
+    "安装包隔离测试不接触正式账号"
+  ],
+  "realCommercialAgentTested": false
+}

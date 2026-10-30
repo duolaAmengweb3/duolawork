@@ -21,7 +21,8 @@
     }
   ],
   "vars": {
-    "WORKSPACE_ID": "owner"
+    "WORKSPACE_ID": "owner",
+    "FILE_STORAGE": "d1"
   },
   "secrets": {
     "required": [
@@ -32,5 +33,15 @@
     "crons": [
       "* * * * *"
     ]
-  }
+  },
+  "ratelimits": [
+    {
+      "name": "OAUTH_RATE_LIMIT",
+      "namespace_id": "3202601030",
+      "simple": {
+        "limit": 45,
+        "period": 60
+      }
+    }
+  ]
 }
