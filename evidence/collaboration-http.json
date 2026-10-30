@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-28T16:23:53.381Z",
+  "environment": "isolated local workerd + D1 attachments",
+  "passed": [
+    "Worker + D1 + 真 HTTP/MCP 三个独立测试身份，nonce 往返后才 verified",
+    "1100000字节附件经真实HTTP与D1分块持久化后逐字节一致",
+    "配方三步接力、前序材料、跨成员拒绝、附件真实字节、文稿版本与反馈均经HTTP验收",
+    "增量消息游标不丢新增事件，MCP 2.0 discovery 对外可用"
+  ],
+  "realCommercialAgentTested": false,
+  "productionDataTouched": false
+}

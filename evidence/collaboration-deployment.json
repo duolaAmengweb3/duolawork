@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-28T16:33:12.679Z",
+  "endpoint": "https://agent-hub-local.duola-ai-project-radar.workers.dev",
+  "accountId": "d9d2d3d737a0e4f3f99bee632ed94f45",
+  "backendVersion": 2,
+  "platformAdapters": 4,
+  "nativeConnections": [],
+  "legacyAccountsPreserved": true,
+  "uiChanged": false,
+  "realCommercialAgentTested": false,
+  "attachmentStorage": "D1 chunks; 8 MiB per file"
+}

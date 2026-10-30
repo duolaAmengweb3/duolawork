@@ -21,7 +21,8 @@
     }
   ],
   "vars": {
-    "WORKSPACE_ID": "owner"
+    "WORKSPACE_ID": "owner",
+    "FILE_STORAGE": "d1"
   },
   "secrets": {
     "required": [
