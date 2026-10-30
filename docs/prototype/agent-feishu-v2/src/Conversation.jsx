@@ -33,10 +33,12 @@ import {
   currentFeedback,
   sanitizeHTML,
 } from "./model.mjs";
+import { ReviewRecord, RunScenario } from "./V1.jsx";
+
 const extensions = [
   StarterKit.configure({ link: { openOnClick: false, autolink: false } }),
 ];
-function Composer({ project, patch, members, onSend, onAttach }) {
+function Composer({ project, patch, members, onSend, onAttach, onReference }) {
   const [format, setFormat] = useState(false);
   const send = useRef(onSend);
   send.current = onSend;
@@ -119,6 +121,10 @@ function Composer({ project, patch, members, onSend, onAttach }) {
         <EditorContent editor={editor} />
         <div className="composer-tools">
           <div>
+            <button className="text-button" onClick={onReference}>
+              <Plus size={13} />
+              引用成果
+            </button>
             <IconButton
               icon={Paperclip}
               label="添加项目资料"
@@ -177,6 +183,7 @@ export default function Conversation({
   onPlan,
   onDecision,
   onAttach,
+  onReference,
   onEvidence,
   onDemo,
   onPause,
@@ -223,26 +230,7 @@ export default function Conversation({
           </span>
         </div>
       )}
-      {["running", "paused"].includes(project.status) && (
-        <div className="demo-progress">
-          <span>
-            <CircleDot size={15} />
-            {project.status === "paused"
-              ? "示例已暂停"
-              : `示例运行 · ${project.demoStep}/3`}
-          </span>
-          <button className="text-button" onClick={onPause}>
-            {project.status === "paused" ? "恢复" : "暂停"}
-          </button>
-          <button
-            className="button small"
-            disabled={project.status === "paused"}
-            onClick={onDemo}
-          >
-            演示下一步 <ArrowRight size={13} />
-          </button>
-        </div>
-      )}
+      <RunScenario project={project} patch={patch} onNext={onDemo} />
       <div
         className="conversation-scroll"
         ref={scroll}
@@ -259,6 +247,9 @@ export default function Conversation({
             </div>
             {project.messages.map((msg) => {
               const m = members.find((m) => m.id === msg.author);
+              const deliveryDocs = msg.documentIds
+                ? project.docs.filter((d) => msg.documentIds.includes(d.id))
+                : project.docs;
               if (msg.type === "system")
                 return (
                   <div className="system-event" key={msg.id}>
@@ -320,12 +311,19 @@ export default function Conversation({
                           <div>
                             <strong>{msg.text}</strong>
                             <span>
-                              {project.docs.length} 份成果 · 保留依据与未确认项
+                              {deliveryDocs.length} 份成果 · 保留依据与未确认项
                             </span>
                           </div>
                         </header>
+                        {deliveryDocs[0] && (
+                          <ReviewRecord
+                            doc={deliveryDocs.at(-1)}
+                            project={project}
+                            members={members}
+                          />
+                        )}
                         <div className="delivery-list">
-                          {project.docs.map((d, i) => (
+                          {deliveryDocs.map((d, i) => (
                             <button key={d.id} onClick={() => openDoc(d.id)}>
                               <span>{String(i + 1).padStart(2, "0")}</span>
                               <strong>{d.title}</strong>
@@ -336,7 +334,7 @@ export default function Conversation({
                         <footer>
                           <button
                             className="button primary"
-                            onClick={() => openDoc(project.docs[0]?.id)}
+                            onClick={() => openDoc(deliveryDocs[0]?.id)}
                           >
                             审阅成果 <ArrowRight size={15} />
                           </button>
@@ -424,6 +422,7 @@ export default function Conversation({
         members={members}
         onSend={onSend}
         onAttach={onAttach}
+        onReference={onReference}
       />
     </section>
   );

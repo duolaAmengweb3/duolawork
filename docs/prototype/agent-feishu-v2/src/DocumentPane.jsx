@@ -36,6 +36,8 @@ import {
   currentFeedback,
   now,
 } from "./model.mjs";
+import { ReviewRecord } from "./V1.jsx";
+
 const extensions = [
   StarterKit.configure({ link: { openOnClick: false, autolink: false } }),
   DecisionNode,
@@ -96,6 +98,7 @@ export default function DocumentPane({
     selector: ({ editor }) =>
       editor
         ? {
+            selected: !editor.state.selection.empty,
             bold: editor.isActive("bold"),
             italic: editor.isActive("italic"),
             heading: editor.isActive("heading", { level: 2 }),
@@ -252,7 +255,11 @@ export default function DocumentPane({
             />
           </div>
         </header>
-        <div className="format-bar">
+        <div
+          className={
+            "format-bar " + (selection?.selected ? "v1-format-visible" : "")
+          }
+        >
           <button
             className="text-style"
             disabled={original}
@@ -316,6 +323,12 @@ export default function DocumentPane({
               <span>·</span>
               <span>{project.name}</span>
             </div>
+            <h1 className="v1-document-title">{doc.title}</h1>
+            <ReviewRecord
+              doc={original ? { ...doc, revision: 1 } : doc}
+              project={project}
+              members={members}
+            />
             <div style={{ display: original ? "none" : undefined }}>
               <DecisionContext.Provider
                 value={{ project, members, storageError, onChoose: onDecision }}
@@ -413,7 +426,7 @@ export default function DocumentPane({
               }}
             >
               <RotateCcw size={16} />
-              交回修改
+              {"让 " + (chosen?.name || "成员") + " 改"}
             </button>
           </div>
         </footer>

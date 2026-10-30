@@ -49,6 +49,9 @@ import {
   planSteps,
 } from "./model.mjs";
 
+import { ComparisonPane } from "./V1.jsx";
+import { advancePreview } from "./v1-data.mjs";
+
 function App() {
   const [state, setState] = useState(loadState);
   const [query, setQuery] = useState("");
@@ -349,56 +352,10 @@ function App() {
   }
   function demoNext() {
     if (project.status === "paused") {
-      notify("本轮已暂停，请先在项目中继续运行");
+      notify("本轮已暂停，请先恢复");
       return;
     }
-    patch((p) => {
-      const start = !["running", "paused"].includes(p.status),
-        step = start ? 1 : Math.min(p.demoStep + 1, 3);
-      const next =
-        start && p.pendingPlan
-          ? {
-              ...p,
-              ...p.pendingPlan,
-              pendingPlan: null,
-              planVersion: p.planVersion + 1,
-            }
-          : p;
-      const labels = [
-        "",
-        "示例运行开始。成员按工作安排领取任务。",
-        "示例输入已汇合，准备交付；未自动执行真实研究。",
-        "示例运行结束。可以审阅产物，实际 Agent 未被调用。",
-      ];
-      const doc = makeDoc(
-        uid("doc"),
-        `${next.name} · 预览成果`,
-        `<h1>${escapeHTML(next.name)}</h1><p>这是用于检查工作流程的示例产物，未调用真实 Agent。</p><h2>本轮目标</h2><p>${escapeHTML(next.goal)}</p><h2>交付标准</h2><p>${escapeHTML(next.criteria)}</p><h2>协作安排</h2><p>${escapeHTML(modes.find((m) => m.id === next.mode)?.label || "")}</p><p>真实接入后，这里承载成员交付的研究、依据和未解决项。你现在可以编辑、交回修改、比较版本和评价成果。</p>`,
-        next.lead,
-      );
-      doc.sourceIds = next.materials.map((material) => material.id);
-      return {
-        ...next,
-        demoStep: step,
-        status: step === 3 ? "review" : "running",
-        docs: step === 3 ? [...next.docs, doc] : next.docs,
-        messages: [
-          ...next.messages,
-          { id: uid(), type: "system", text: labels[step], time: now() },
-          ...(step === 3
-            ? [
-                {
-                  id: uid(),
-                  author: next.lead,
-                  type: "delivery",
-                  time: now(),
-                  text: "示例成果已准备",
-                },
-              ]
-            : []),
-        ],
-      };
-    });
+    patch((p) => advancePreview(p));
   }
   function decide(projectId, decisionId, choice) {
     updateProject(projectId, (p) => ({
@@ -586,6 +543,7 @@ function App() {
   };
   const nav = [
     ["projects", "项目", MessageCircle],
+    ["results", "成果", FileText],
     ["decisions", "待我决定", Inbox],
     ["knowledge", "知识库", BookOpen],
     ["members", "成员", Users],
@@ -597,8 +555,8 @@ function App() {
       <div className="preview-bar">
         <span>
           <span className="preview-dot" />
-          Agent Hub 2.0 <span className="preview-separator">/</span> 交互预览 ·
-          示例工作区
+          Agent Hub v1 <span className="preview-separator">/</span> 可点击原型 ·
+          示例数据 · 未连接真实 Agent
         </span>
         <button onClick={() => setModal({ type: "about" })}>
           查看说明 <CircleHelp size={13} />
@@ -801,23 +759,34 @@ function App() {
           )}
           {state.page === "projects" ? (
             state.review && currentDoc ? (
-              <DocumentPane
-                key={`${project.id}:${currentDoc.id}`}
-                project={project}
-                doc={currentDoc}
-                members={members}
-                updateDoc={(fn) => updateDoc(project.id, currentDoc.id, fn)}
-                requestRevision={() => requestRevision(currentDoc.id)}
-                loadCandidate={() => loadCandidate(currentDoc.id)}
-                notify={notify}
-                storageError={storageError}
-                openSidebar={() => setSidebarOpen(true)}
-                onDecision={chooseInlineDecision}
-                onSuggestion={(action) =>
-                  applySuggestion(currentDoc.id, action)
-                }
-                focusDecision={project.focusDecision}
-              />
+              project.delivery === "compare" ? (
+                <ComparisonPane
+                  storageError={storageError}
+                  project={project}
+                  members={members}
+                  patch={patch}
+                  onBack={() => chooseProject(project.id)}
+                  notify={notify}
+                />
+              ) : (
+                <DocumentPane
+                  key={`${project.id}:${currentDoc.id}`}
+                  project={project}
+                  doc={currentDoc}
+                  members={members}
+                  updateDoc={(fn) => updateDoc(project.id, currentDoc.id, fn)}
+                  requestRevision={() => requestRevision(currentDoc.id)}
+                  loadCandidate={() => loadCandidate(currentDoc.id)}
+                  notify={notify}
+                  storageError={storageError}
+                  openSidebar={() => setSidebarOpen(true)}
+                  onDecision={chooseInlineDecision}
+                  onSuggestion={(action) =>
+                    applySuggestion(currentDoc.id, action)
+                  }
+                  focusDecision={project.focusDecision}
+                />
+              )
             ) : (
               <>
                 <header className="workspace-header">
@@ -878,6 +847,7 @@ function App() {
                     onPlan={() => setModal({ type: "plan" })}
                     onDecision={() => navigate("decisions")}
                     onAttach={() => setModal({ type: "material" })}
+                    onReference={() => setModal({ type: "reference" })}
                     onDemo={demoNext}
                     onPause={() =>
                       patch((p) => ({
@@ -932,6 +902,7 @@ function App() {
               "material-detail": "项目资料",
               run: "运行记录",
               about: "关于这版预览",
+              reference: "引用已有成果",
             }[modal.type]
           }
           description={
@@ -946,6 +917,8 @@ function App() {
         >
           {["create", "plan"].includes(modal.type) && (
             <ProjectForm
+              initialGoal={modal.initialGoal}
+              reference={modal.reference}
               project={modal.type === "plan" ? project : null}
               members={members}
               onSave={saveProject}
@@ -989,6 +962,45 @@ function App() {
               }}
               onCancel={closeModal}
             />
+          )}
+          {modal.type === "reference" && (
+            <div className="v1-reference-list">
+              {state.projects.flatMap((p) =>
+                p.docs.map((d) => (
+                  <button
+                    className="material-table-row"
+                    key={d.id}
+                    onClick={() => {
+                      patch((x) => ({
+                        ...x,
+                        materials: [
+                          ...x.materials,
+                          {
+                            id: uid("material"),
+                            title: d.title + " · 版本 " + d.revision,
+                            type: "引用成果",
+                            body: d.html.replace(/<[^>]*>/g, " "),
+                            sourceDocument: d.id,
+                            version: d.revision,
+                          },
+                        ],
+                      }));
+                      closeModal();
+                      notify("已引用指定工作稿版本，未发送给真实 Agent");
+                    }}
+                  >
+                    <FileText size={16} />
+                    <span>
+                      {d.title}
+                      <small>
+                        {p.name} · 版本 {d.revision}
+                      </small>
+                    </span>
+                    <Plus size={14} />
+                  </button>
+                )),
+              )}
+            </div>
           )}
           {modal.type === "material" && (
             <MaterialForm

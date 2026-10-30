@@ -1,4 +1,5 @@
-export const STORAGE_KEY = "agent-hub-2-ui-preview-v1";
+import { seedV1 } from "./v1-data.mjs";
+export const STORAGE_KEY = "agent-hub-v1-ui-review-20261030";
 export const uid = (prefix = "item") => `${prefix}-${crypto.randomUUID()}`;
 export const now = () =>
   new Date().toLocaleTimeString("zh-CN", {
@@ -9,13 +10,13 @@ export const now = () =>
 export const modes = [
   {
     id: "parallel",
-    label: "赛马互证",
-    short: "赛马互证",
-    description: "几位成员各自独立调查，最后对比、互相核实。",
+    label: "各自研究，再由一位汇总",
+    short: "独立研究后汇总",
+    description: "各自研究，汇总依据与未确认项；有冲突时再补证。",
   },
   {
     id: "solo",
-    label: "单兵直通",
+    label: "一位直接完成",
     short: "独立完成",
     description: "交给一位成员直接完成。",
   },
@@ -27,9 +28,9 @@ export const modes = [
   },
   {
     id: "review",
-    label: "红蓝对抗",
+    label: "一位做，另一位检查",
     short: "执行与复核",
-    description: "一位成员出方案，另一位专门找漏洞。",
+    description: "一位准备成果，另一位按合格标准检查。",
   },
 ];
 export const initialMembers = [
@@ -278,7 +279,7 @@ export function initialState() {
       },
     ],
   });
-  return {
+  return seedV1({
     version: 2,
     page: "projects",
     projectId: "daily",
@@ -305,7 +306,7 @@ export function initialState() {
       }),
     ],
     preferences: { notifications: false },
-  };
+  });
 }
 export function loadState() {
   try {
@@ -347,6 +348,7 @@ export function loadState() {
         }),
         page: [
           "projects",
+          "results",
           "decisions",
           "knowledge",
           "members",
