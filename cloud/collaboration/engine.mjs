@@ -1,5 +1,7 @@
 import { fail, id, required, digest } from "./repository.mjs";
 import { recipeById, nextDaily } from "../../shared/recipes.mjs";
+import { ruleScope, memberSetKey } from "../../shared/policies.mjs";
+import { applicableKnowledge, indexKnowledge } from "./knowledge.mjs";
 import {
   flowCommand,
   prepareSubmission,
@@ -137,7 +139,7 @@ async function advance(tx, run, identity) {
       ))
         await ready(tx, next);
   }
-  if (paused && run.status !== "completed") run.status = "paused";
+  if (paused && !["completed","partially_met"].includes(run.status)) run.status = "paused";
   tx.put("run", run);
   if (
     identity &&
@@ -218,12 +220,9 @@ async function startRun(
           },
         ]
       : project.recipe.steps;
+  const trial = !probe && !instruction ? (await applicableKnowledge(tx,project,"trial")).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).slice(0,1) : [];
   const knowledge = [
-    ...(await tx.list("knowledge", { scope: project.id, status: "approved" })),
-    ...(await tx.list("knowledge", { scope: "global", status: "approved" })),
-    ...(!probe && !instruction
-      ? await tx.list("knowledge", { scope: project.id, status: "trial" })
-      : []),
+    ...(await applicableKnowledge(tx,project,"approved")),...trial,
   ].map((k) => ({
     id: k.id,
     revision: k.revision,
@@ -233,20 +232,21 @@ async function startRun(
     fileIds: k.fileIds || [],
   }));
   if (!probe && !instruction)
-    for (const k of await tx.list("knowledge", {
-      scope: project.id,
-      status: "trial",
-    }))
-      tx.put("knowledge", {
+    for (const k of trial) {
+      const used=tx.put("knowledge", {
         ...k,
         status: "trial_used",
         trialConsumedAt: tx.now,
       });
+      await indexKnowledge(tx,used);
+    }
   const run = tx.put("run", {
     id: id("run"),
     scopeId: project.id,
     status: "running",
     projectRevision: project.revision,
+    projectType: project.projectType || null,
+    memberSetKey: memberSetKey(project.arrangement?.members),
     recipeVersion: project.recipe.version,
     topic: topicOverride || project.topic,
     arrangement: project.arrangement
@@ -671,12 +671,14 @@ export async function command(
                   : run.topic,
               kind: step.phase,
               criteria: run.arrangement?.criteria,
+              important: !!run.arrangement?.important,
+              availableMembers: identity.members.filter(m=>m.status!=="disabled"&&!m.paused).map(m=>({id:m.id,name:m.name,platform:m.platformId,sourcePermissions:"未单独核验；不要仅凭平台名称当作账号已授权"})),
               materials:
                 run.arrangement && step.phase === "verify"
                   ? []
                   : run.materials || [],
               submissionContract: run.arrangement
-                ? "items[].claims=[{id,text,sourceUrls,risk,important}]; 汇总/修订需 dispositions=[{claimId,action:adopt|refute|not_applicable|uncertain|duplicate|irrelevant|insufficient,reason}] 覆盖所有上游论断；确认某条为其他成员没有的独有贡献时才加 unique:true 和具体依据，不确定不计数。最终交付 selfCheck=[{criterion:从0开始的编号,pass,reason,paragraph}] 覆盖所有标准。存在冲突时 conflicts=[{id,type:fact|choice,claimIds,description,options:[{label,text}],paragraph}]；核查来源 sourceRelations=[{claimIds,independent,evidence}]；纠错 corrections=[{originalClaimId,evidence,conditions}]。对本轮携带规则逐条返回 ruleReceipts=[{ruleId,revision,followed,reason,paragraph}]；不得没有段落证据就宣称符合。learn 任务返回 proposal={title,body,evidence} 或 null；recheck 只返回 selfCheck，不改正文。缺资料写 shortfall，不编造。"
+                ? "items[].claims=[{id,text,sourceUrls,risk,important}]; 汇总/修订需 dispositions=[{claimId,action:adopt|refute|not_applicable|uncertain|duplicate|irrelevant|insufficient,reason}] 覆盖所有上游论断；确认某条为其他成员没有的独有贡献时才加 unique:true 和具体依据，不确定不计数。最终交付 selfCheck=[{criterion:从0开始的编号,pass,reason,paragraph}] 覆盖所有标准。存在冲突时 conflicts=[{id,type:fact|choice,claimIds,description,options:[{label,text,memberId,claimIds:[原始论断ID],sourceUrls:[原始链接],evidence:依据与适用条件}],paragraph}]；核查来源 sourceRelations=[{claimIds,independent,evidence}]；纠错 corrections=[{originalClaimId,evidence,conditions}]。对本轮携带规则逐条返回 ruleReceipts=[{ruleId,revision,followed,reason,paragraph}]；不得没有段落证据就宣称符合。learn 任务返回 proposal={title,body,evidence} 或 null；recheck 只返回 selfCheck，不改正文。缺资料写 shortfall，不编造。需要加人可在 proposal.memberSuggestions=[{memberId,reason}] 提议，必须引用 availableMembers 中已存在的成员；不会自动加入或自动开跑。规则回执若本次要求与规则冲突，显式加 conflict:true 并说明本次要求。自己改口在 corrections 中保留 originalClaimId；缺反证或条件会标为未说明理由，不算有据纠错。"
                 : undefined,
               instruction: step.instruction,
               minimum: step.minimum,
@@ -791,17 +793,18 @@ export async function command(
                   issues.push(
                     "人工稿已更新或修订数量不符；新稿独立保存，未覆盖当前工作稿",
                   );
-              } else {
+              } else if (!["learn","recheck"].includes(run.purpose)) {
                 const revised = tx.put("document_version", {
                   ...version,
                   id: id("version"),
                   parentId: target.id,
                   derivedFrom: document.id,
+                  previousId: step.targetDocument.versionId || step.targetDocument.workingVersionId || null,
+                  type: "candidate",
                 });
                 target.candidateVersionId = revised.id;
                 target.candidateBaseRevision = step.targetDocument.revision;
-                if (run.purpose !== "learn" && run.purpose !== "recheck")
-                  tx.put("document", target);
+                tx.put("document", target);
               }
             }
           }
@@ -1072,10 +1075,12 @@ export async function command(
               fail("forbidden", "成员不能写全局规则", 403);
             await requireProjectAccess(tx, scopeId, actor.memberId);
           } else owner(actor);
-          if (scopeId !== "global") await tx.get("project", scopeId);
+          const sourceProject = scopeId !== "global" ? await tx.get("project", scopeId) : null;
           const old = p.knowledgeId
             ? await tx.get("knowledge", p.knowledgeId)
             : null;
+          const scopeTargetId=actor.memberId?scopeId:p.appliesToProjectId || old?.appliesToProjectId;
+          const scopeTarget=scopeTargetId&&scopeTargetId!=="global"?await tx.get("project",scopeTargetId):sourceProject;
           if (old) {
             expect(old, p.revision);
             if (old.scopeId !== scopeId || actor.memberId)
@@ -1113,13 +1118,16 @@ export async function command(
               .length >= 3
           )
             fail("knowledge_capacity", "每个项目最多保留 3 条待确认规则", 409);
-          return tx.put("knowledge", {
+          const item=tx.put("knowledge", {
             ...old,
             id: old?.id || id("knowledge"),
             scopeId,
             title: required(p.title, "知识标题", 160),
             body: required(p.body, "知识正文", 12000),
             category: p.category === "material" ? "material" : "rule",
+            ...ruleScope({...old,...p,...(actor.memberId?{scopeMode:"project"}:{})}, scopeTarget),
+            sourcePublishedAt: p.sourcePublishedAt || old?.sourcePublishedAt || null,
+            collectedAt: old?.collectedAt || tx.now,
             status: actor.memberId
               ? "pending"
               : p.approved === true
@@ -1130,11 +1138,15 @@ export async function command(
             fileIds: files,
             createdAt: old?.createdAt || tx.now,
           });
+          await indexKnowledge(tx,item);
+          return item;
         }
         case "knowledge.review": {
           owner(actor);
           const item = await tx.get("knowledge", p.knowledgeId);
           expect(item, p.revision);
+          const previousKnowledge=structuredClone(item);
+          if (p.scopeMode !== undefined) {const target=p.appliesToProjectId || item.appliesToProjectId || item.scopeId;Object.assign(item,ruleScope(p,target==="global"?null:await tx.get("project",target)));}
           if (!["approved", "trial", "rejected", "revoked"].includes(p.status))
             fail("invalid_input", "无效审批结果");
           if (
@@ -1149,12 +1161,14 @@ export async function command(
           )
             fail("knowledge_capacity", "每个项目最多保留 1 条试行规则", 409);
           tx.put("knowledge_version", {
-            ...item,
+            ...previousKnowledge,
             id: `${item.id}:${item.revision}`,
             parentId: item.id,
           });
           item.status = p.status;
-          return tx.put("knowledge", item);
+          const updated=tx.put("knowledge", item);
+          await indexKnowledge(tx,updated);
+          return updated;
         }
         case "schedule.set": {
           owner(actor);

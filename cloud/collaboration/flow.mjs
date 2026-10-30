@@ -1,5 +1,7 @@
 import { fail, id, required } from "./repository.mjs";
 import { nextDaily } from "../../shared/recipes.mjs";
+import { projectType } from "../../shared/policies.mjs";
+import { indexKnowledge } from "./knowledge.mjs";
 import {
   normalizeArrangement,
   compileArrangement,
@@ -119,10 +121,11 @@ export async function flowCommand(tx, identity, actor, input, h) {
       id: id("project"),
       name: required(p.name || p.goal?.slice(0, 30), "项目名", 160),
       topic: required(p.goal || p.topic, "目标", 8000),
+      projectType: projectType(p.projectType),
       arrangement,
       ...compiled,
       status: "active",
-      materials: (p.materials || []).slice(0, 30),
+      materials: (p.materials || []).slice(0, 30).map(m=>({...m,collectedAt:m.collectedAt||tx.now})),
       createdAt: tx.now,
       planVersion: 1,
     });
@@ -155,6 +158,7 @@ export async function flowCommand(tx, identity, actor, input, h) {
       arrangement,
       ...compileArrangement(arrangement),
       topic: p.goal || project.topic,
+      projectType: p.projectType === undefined ? project.projectType || null : projectType(p.projectType),
     };
     if (active) project.pendingArrangement = next;
     else Object.assign(project, next);
@@ -167,6 +171,7 @@ export async function flowCommand(tx, identity, actor, input, h) {
       material = {
         ...p.material,
         title: required(p.material?.title, "资料名称", 300),
+        collectedAt: p.material?.collectedAt || tx.now,
       };
     if (material.sourceDocument) {
       const source = await tx.get("document", material.sourceDocument);
@@ -335,6 +340,20 @@ export async function flowCommand(tx, identity, actor, input, h) {
     decision.status = p.undo ? "pending" : "resolved";
     decision.choice = choice;
     decision.chosenAt = tx.now;
+    if (p.remember && choice) {
+      const ruleId=decision.ruleId || id("knowledge");
+      const previous=await tx.get("knowledge",ruleId,false);
+      if(previous)tx.put("knowledge_version",{...previous,id:`${previous.id}:${previous.revision}`,parentId:previous.id});
+      const rule=tx.put("knowledge", {
+        ...previous,id:ruleId,scopeId:doc.scopeId,
+        title:"来自决定："+decision.title,body:`遇到“${decision.description || decision.title}”的同类取舍时，优先：${choice}`,
+        category:"rule",scopeMode:"project",status:"approved",author:"owner",source:"decision",sourceDecisionId:decision.id,createdAt:tx.now,
+      });
+      await indexKnowledge(tx,rule);decision.ruleId=rule.id;decision.ruleRevision=rule.revision;
+    } else if (p.undo && decision.ruleId) {
+      const rule=await tx.get("knowledge",decision.ruleId,false);
+      if (rule?.revision===decision.ruleRevision) { tx.put("knowledge_version",{...rule,id:`${rule.id}:${rule.revision}`,parentId:rule.id});const revoked=tx.put("knowledge",{...rule,status:"revoked"});await indexKnowledge(tx,revoked); }
+    }
     const working = await tx.get("document_version", doc.workingVersionId);
     const escape = (text) =>
       String(text || "")
@@ -421,7 +440,7 @@ export async function flowCommand(tx, identity, actor, input, h) {
       scope: project.id,
       status: "pending",
     });
-    if (pending.length >= 3) fail("learn_busy", "待确认规则已满", 409);
+    if (pending.length >= 3 && !pending.some(k=>k.documentId===doc.id)) fail("learn_busy", "待确认规则已满", 409);
     const running = (await tx.list("run", { scope: project.id })).find(
       (r) => r.purpose === "learn" && r.status === "running",
     );
@@ -432,7 +451,7 @@ export async function flowCommand(tx, identity, actor, input, h) {
       return { handled: true, result: { skipped: true } };
     const run = await h.startRun(tx, project, identity, {
       instruction:
-        "根据用户改稿归纳一条可确认的长期写作偏好。只把有改动证据的偏好写入 proposal；没有则 proposal=null，不猜用户意图。",
+        "根据用户改稿归纳一条可确认的长期写作偏好。只把有改动证据的偏好写入 proposal；没有则 proposal=null，不猜用户意图。若用户在已携带规则生效后的稿件再次做同类修改，且有明确差异证据，则 proposal.relatedRuleId 指向该规则，并用 evidence 说明具体修改，不能只因文字相似就判偏离。",
       targetMember: project.arrangement.lead,
       targetDocument: {
         id: doc.id,
@@ -492,10 +511,36 @@ export async function flowCommand(tx, identity, actor, input, h) {
     await h.advance(tx, run);
     return { handled: true, result: run };
   }
+  if (type === "rule.notice.resolve") {
+    owner(actor);const notice=await tx.get("rule_notice",p.noticeId);
+    if(notice.status!=="pending")return {handled:true,result:notice};
+    if (!["keep","revoke","edited"].includes(p.action)) fail("invalid_action","处理方式无效");
+    if(p.action==="revoke") {const rule=await tx.get("knowledge",notice.ruleId);if(p.ruleRevision!==rule.revision)fail("revision_conflict","规则有更新，读取后再处理提醒",409);tx.put("knowledge_version",{...rule,id:`${rule.id}:${rule.revision}`,parentId:rule.id});const updated=tx.put("knowledge",{...rule,status:"revoked"});await indexKnowledge(tx,updated);}
+    return {handled:true,result:tx.put("rule_notice",{...notice,status:"resolved",resolution:p.action,resolvedAt:tx.now})};
+  }
+  if (type === "member.suggestion.review") {
+    owner(actor);const suggestion=await tx.get("member_suggestion",p.suggestionId);
+    if(suggestion.status!=="pending")return {handled:true,result:suggestion};
+    if(!["accept","reject"].includes(p.action))fail("invalid_action","请选择接受或不用");
+    if(p.action==="accept"){
+      const member=identity.members.find(m=>m.id===suggestion.memberId && !m.paused && m.status!=="disabled"),conn=await tx.get("connection",suggestion.memberId,false);
+      if(!member||conn?.status!=="verified")fail("member_unavailable","先完成这位成员的真实接入，再确认加入",409);
+      const project=await tx.get("project",suggestion.scopeId),base=project.pendingArrangement?.arrangement || project.arrangement;
+      const next=normalizeArrangement({...base,members:[...new Set([...base.members,member.id])],mode:base.mode==="solo"?"review":base.mode,lead:base.mode==="solo"?member.id:base.lead},project.topic);
+      const config={arrangement:next,...compileArrangement(next),topic:project.topic,projectType:project.projectType||null};
+      const active=(await tx.list("run",{scope:project.id})).some(r=>["running","paused","needs_review","needs_approval"].includes(r.status));
+      if(active)project.pendingArrangement=config;else Object.assign(project,config);
+      project.planVersion=(project.planVersion||1)+1;tx.put("project",project);
+      suggestion.applies="next_run";tx.message(project.id,"member.suggestion.accepted","已确认成员建议，下一轮按新安排执行；没有额外自动开跑",{memberId:member.id});
+    }
+    suggestion.status=p.action==="accept"?"accepted":"rejected";suggestion.resolvedAt=tx.now;
+    return {handled:true,result:tx.put("member_suggestion",suggestion)};
+  }
   return { handled: false };
 }
 export async function prepareSubmission(tx, step, run, raw, clean) {
   if (!run.arrangement || run.probe) return { issues: [] };
+  if(step.deliverable && raw.items.length!==1)fail("invalid_delivery","每位交付者必须提交一份完整最终稿；附件可附在同一份成果中");
   const issues = [],
     upstream = await dependencySteps(tx, step),
     claims = [];
@@ -517,6 +562,7 @@ export async function prepareSubmission(tx, step, run, raw, clean) {
     ])
       if (raw.items[i][key] !== undefined && !Array.isArray(raw.items[i][key]))
         fail("invalid_delivery", key + " 必须是数组");
+      else if(raw.items[i][key]?.some(x=>!x||typeof x!=="object"||Array.isArray(x)))fail("invalid_delivery",key+" 必须包含结构化对象");
     const item = clean[i],
       v = raw.items[i];
     item.claims = (v.claims || []).slice(0, 100).map((c, n) => ({
@@ -581,10 +627,24 @@ export async function prepareSubmission(tx, step, run, raw, clean) {
         )
           issues.push(`未处理上游论断：${c.id}`);
       }
-    item.conflicts = (v.conflicts || []).slice(0, 12);
+    item.conflicts = structuredClone((v.conflicts || []).slice(0, 12));
+    const evidenceClaims=[...claims,...item.claims];
+    for(const conflict of item.conflicts) if(conflict.type==="choice") {
+      if(!Array.isArray(conflict.options)||conflict.options.length<2) {issues.push("取舍需要至少两条明确的方案");continue;}
+      conflict.options=conflict.options.slice(0,10).map(option=>{
+        const ids=(Array.isArray(option.claimIds)?option.claimIds:[]).map(key=>evidenceClaims.find(c=>c.id===key||c.localId===key)?.id).filter(Boolean);
+        const supported=evidenceClaims.filter(c=>ids.includes(c.id));
+        const owners=[...new Set(supported.map(c=>c.memberId))];
+        const memberId=run.arrangement.members.includes(option.memberId)?option.memberId:owners.length===1?owners[0]:null;
+        const sourceUrls=[...new Set([...supported.flatMap(c=>c.sourceUrls),...(Array.isArray(option.sourceUrls)?option.sourceUrls:[])].map(normalizeSource).filter(Boolean))];
+        if(!memberId||!ids.length||!sourceUrls.length)issues.push("取舍方案的成员、原始论断或来源未确认");
+        return {...option,memberId,claimIds:ids,sourceUrls,evidence:option.evidence || supported.map(c=>c.text).join("；") || "来源和归属尚未确认"};
+      });
+    }
     item.sourceRelations = (v.sourceRelations || []).slice(0, 100);
     item.corrections = (v.corrections || []).slice(0, 100);
     item.proposal = v.proposal || null;
+    if(item.proposal?.memberSuggestions && !Array.isArray(item.proposal.memberSuggestions))fail("invalid_delivery","成员建议必须是数组");
     item.ruleReceipts = (v.ruleReceipts || [])
       .filter(
         (r) =>
@@ -632,11 +692,14 @@ export async function finishFlowStep(tx, step, run, clean, issues, h) {
     const proposal = clean[0]?.proposal;
     if (
       proposal &&
-      (await tx.list("knowledge", { scope: run.scopeId, status: "pending" }))
-        .length < 3
+      ((await tx.list("knowledge", { scope: run.scopeId, status: "pending" })).length < 3 || (await tx.list("knowledge",{scope:run.scopeId,status:"pending"})).some(k=>k.documentId===step.targetDocument.id))
     )
+    {
+      const sameDocument=(await tx.list("knowledge",{scope:run.scopeId,status:"pending"})).find(k=>k.documentId===step.targetDocument.id);
+      if (sameDocument) tx.put("knowledge_version",{...sameDocument,id:`${sameDocument.id}:${sameDocument.revision}`,parentId:sameDocument.id});
       tx.put("knowledge", {
-        id: id("knowledge"),
+        ...sameDocument,
+        id: sameDocument?.id || id("knowledge"),
         scopeId: run.scopeId,
         status: "pending",
         category: "rule",
@@ -649,11 +712,18 @@ export async function finishFlowStep(tx, step, run, clean, issues, h) {
         evidence: proposal.evidence || "",
         createdAt: tx.now,
       });
+      if (proposal.relatedRuleId && proposal.evidence && run.knowledge.some(k=>k.id===proposal.relatedRuleId&&k.kind==="rule")) {
+        const key=`drift:${proposal.relatedRuleId}`;
+        if (!await tx.get("rule_notice",key,false)) tx.put("rule_notice",{id:key,scopeId:run.scopeId,ruleId:proposal.relatedRuleId,documentId:step.targetDocument.id,reason:proposal.evidence,status:"pending",type:"drift",createdAt:tx.now});
+      }
+    }
   }
   if (run.purpose === "recheck") {
     const target = await tx.get("document", step.targetDocument.id);
     target.selfCheckVersionId = step.targetDocument.workingVersionId;
     target.selfCheck = clean[0].selfCheck;
+    target.ruleReceipts=clean[0].ruleReceipts;
+    target.ruleReceiptVersionId=step.targetDocument.workingVersionId;
     target.checkedBy = step.memberId;
     tx.put("document", target);
   }
@@ -712,6 +782,17 @@ export async function finishFlowStep(tx, step, run, clean, issues, h) {
     d.selfCheckVersionId = d.originalVersionId;
     d.checkedBy = step.memberId;
     d.ruleReceipts = item.ruleReceipts;
+    d.ruleReceiptVersionId=d.originalVersionId;
+    for(const suggestion of (item.proposal?.memberSuggestions || []).slice(0,5)) {
+      if(!h.identity.members.some(m=>m.id===suggestion.memberId&&m.status!=="disabled") || run.arrangement.members.includes(suggestion.memberId) || !suggestion.reason)continue;
+      const key=`${run.id}:${suggestion.memberId}`;
+      if(!await tx.get("member_suggestion",key,false))tx.put("member_suggestion",{id:key,scopeId:run.scopeId,parentId:run.id,status:"pending",memberId:suggestion.memberId,suggestedBy:step.memberId,reason:String(suggestion.reason).slice(0,1000),createdAt:tx.now});
+    }
+    for(const receipt of item.ruleReceipts.filter(r=>step.deliverable&&r.conflict===true&&!r.followed&&run.knowledge.some(k=>k.id===r.ruleId&&k.kind==="rule"))) {
+      const key=`conflict:${d.id}:${receipt.ruleId}`;
+      if(!await tx.get("rule_notice",key,false))tx.put("rule_notice",{id:key,scopeId:run.scopeId,ruleId:receipt.ruleId,documentId:d.id,type:"conflict",status:"pending",reason:receipt.reason,createdAt:tx.now});
+    }
+    d.unexplainedChanges=(item.corrections||[]).filter(c=>c.originalClaimId && item.upstreamClaims.some(x=>x.id===c.originalClaimId && x.memberId===step.memberId) && (!c.evidence || !c.conditions)).map(c=>({originalClaimId:c.originalClaimId,label:"改口 · 未说明理由"}));
     if (
       step.deliverable &&
       !["plan", "learn", "recheck"].includes(run.purpose)

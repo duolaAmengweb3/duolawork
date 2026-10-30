@@ -17,6 +17,9 @@ import {
   base64,
 } from "./security.mjs";
 import { EVENT, eventMethod } from "./events.mjs";
+import { resultPage, projectPage, pairingFacts, allPairingFacts, ruleUsage } from "./views.mjs";
+import { projectType } from "../../shared/policies.mjs";
+import { applicableKnowledge } from "./knowledge.mjs";
 import { maintenance } from "./dispatcher.mjs";
 import {
   beginComputerAuth,
@@ -207,6 +210,8 @@ const exposedKinds = new Set([
   "decision",
   "disagreement",
   "followup",
+  "rule_notice",
+  "member_suggestion",
 ]);
 
 export async function resolveActor(request, env, identity) {
@@ -569,6 +574,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     );
   if (url.pathname === "/v2/workspace" && request.method === "GET")
     return json({
+      pendingByProject: Object.fromEntries((await env.DB.prepare("SELECT scope_id,COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND kind IN ('knowledge','rule_notice','member_suggestion') AND status='pending' GROUP BY scope_id").bind(env.WORKSPACE_ID).all()).results.map(r=>[r.scope_id,r.total])),
       members: identity.members
         .filter((m) => m.status !== "disabled")
         .map(({ tokenHash, ...m }) => ({
@@ -657,6 +663,22 @@ export async function v2Fetch(request, env, ctx, identity) {
   }
   if (url.pathname === "/v2/maintenance" && request.method === "POST")
     return json(await maintenance(repo, identity, env));
+  if (url.pathname === "/v2/results" && request.method === "GET") {
+    const rows=await resultPage(repo,url.searchParams,url.searchParams.has("cursor")?decodeCursor(url.searchParams.get("cursor")):null);
+    return json({items:rows.slice(0,100),nextCursor:rows.length>100?encodeCursor(rows[99]):null});
+  }
+  if(url.pathname==="/v2/projects"&&request.method==="GET"){
+    const rows=await projectPage(repo,url.searchParams,url.searchParams.has("cursor")?decodeCursor(url.searchParams.get("cursor")):null);
+    return json({items:rows.slice(0,100),nextCursor:rows.length>100?encodeCursor(rows[99]):null});
+  }
+  if (url.pathname === "/v2/pairing-facts" && request.method === "GET") {
+    if (!url.searchParams.has("projectId")&&!url.searchParams.has("members")) return json({groups:await allPairingFacts(repo)});
+    const p=url.searchParams.get("projectId")?await repo.get("project",url.searchParams.get("projectId")):{id:"",arrangement:{members:[]}};
+    if(url.searchParams.has("projectType"))p.projectType=projectType(url.searchParams.get("projectType"));
+    if(url.searchParams.has("members")){const members=url.searchParams.get("members").split(",").filter(Boolean);if(members.length>10)fail("invalid_arrangement","成员数量过多");p.arrangement={...p.arrangement,members};}
+    return json({facts:await pairingFacts(repo,p)});
+  }
+  if (url.pathname === "/v2/rule-usage" && request.method === "GET") return json({usage:await ruleUsage(repo)});
   if (url.pathname === "/v2/records" && request.method === "GET") {
     const kind = url.searchParams.get("kind");
     if (!exposedKinds.has(kind)) fail("invalid_kind", "不公开此记录类型");
@@ -723,7 +745,9 @@ export async function v2Fetch(request, env, ctx, identity) {
           ),
         )
       ).flat(),
-      knowledge,
+      knowledge: [...new Map([...knowledge,...await applicableKnowledge(repo,project,"approved")].map(k=>[k.id,k])).values()],
+      ruleNotices: await repo.list("rule_notice",{scope:project.id,status:"pending"}),
+      memberSuggestions: await repo.list("member_suggestion",{scope:project.id,status:"pending"}),
       feedback,
       schedule,
       pagination: "/v2/records",

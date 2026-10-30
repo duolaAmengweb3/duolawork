@@ -37,6 +37,7 @@ try {
   await page
     .getByRole("textbox", { name: "项目目标" })
     .fill("调研智能戒指的个人开发机会");
+  await page.getByRole("textbox", { name: "项目类型",exact:true }).fill("产品研究");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("textbox", { name: "合格标准 1" }).fill("附原始出处");
   await page.getByRole("textbox", { name: "合格标准 2" }).fill("缺口明确");
@@ -117,8 +118,8 @@ try {
             description: "下一步工作优先级取舍",
             title: "先验证还是先扩展",
             options: [
-              { label: "先验证", text: "先验证样机原始数据权限" },
-              { label: "先扩展", text: "先做更多应用效果" },
+              { label: "先验证", text: "先验证样机原始数据权限",memberId:grok.id,claimIds:[upstream.find(c=>c.memberId===grok.id).id],sourceUrls:upstream.find(c=>c.memberId===grok.id).sourceUrls },
+              { label: "先扩展", text: "先做更多应用效果",memberId:dot.id,claimIds:[upstream.find(c=>c.memberId===dot.id).id],sourceUrls:upstream.find(c=>c.memberId===dot.id).sourceUrls },
             ],
           },
         ],
@@ -163,6 +164,11 @@ try {
   await decision.getByRole("button", { name: "撤回", exact: true }).waitFor();
   let ds = await h.request("/v2/records?kind=decision&projectId=" + p.id);
   assert.equal(ds.items[0].status, "resolved");
+  // Let the debounce window elapse: changing editability must not autosave an old card.
+  await page.waitForTimeout(900);
+  assert.match((await h.request("/v2/document?id="+out.documentIds[0])).working.body,/data-selected=/);
+  await page.reload();
+  await decision.getByRole("button",{name:"撤回",exact:true}).waitFor();
   await decision.getByRole("button", { name: "撤回", exact: true }).click();
   await decision.getByRole("heading", { name: /待你决定/ }).waitFor();
   ds = await h.request("/v2/records?kind=decision&projectId=" + p.id);
@@ -183,6 +189,19 @@ try {
   checks.push(
     "编辑实际写入服务端版本，历史自查不冒充新稿自查，刷新可恢复工作稿",
   );
+  const learn=await h.command("document.learn",{documentId:d.id});
+  const lw=(await dot.call("list_work")).work.find(w=>w.runId===learn.id);
+  const lc=await dot.call("claim_work",{requestId:crypto.randomUUID(),stepId:lw.stepId});
+  await dot.call("submit_work",{requestId:crypto.randomUUID(),attemptId:lc.attemptId,lease:lc.lease,items:[{title:"改稿偏好",body:"根据明确编辑差异整理偏好，不冒充模型训练。",proposal:{title:"保留用户重点",body:"优先保留用户明确写入的验证重点",evidence:"用户将验证重点写入了人工工作稿"}}]});
+  await page.reload();
+  const note=page.getByLabel("改稿偏好便签");await note.waitFor();
+  await note.getByLabel("规则适用范围").selectOption("type");
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:"evidence/v1-ui-rule-note.png",fullPage:true});
+  await note.getByRole("button",{name:"以后都这样",exact:true}).click();await note.waitFor({state:"hidden"});
+  const learned=(await h.request("/v2/records?kind=knowledge&projectId="+p.id)).items.find(k=>k.source==="human_edit");
+  assert.equal(learned.scopeMode,"type");assert.equal(learned.projectType,"产品研究");assert.equal(learned.status,"approved");
+  checks.push("改稿归纳在页边确认范围，同类规则按显式项目类型批准；1280布局无溢出");
   await page.getByRole("button", { name: "返回项目" }).click();
   await page.getByRole("tab", { name: "资料", exact: true }).click();
   await page
@@ -212,12 +231,34 @@ try {
     0,
     "completed operations must not leave an error alert",
   );
+  await page.getByRole("button",{name:"成果",exact:true}).first().click();
+  await page.getByLabel("搜索成果").fill("UI-PERSIST");
+  await page.getByRole("button",{name:"智能戒指：开发机会与验证清单",exact:true}).waitFor();
+  await page.getByLabel("成果状态",{exact:true}).selectOption("adopted");
+  await page.getByRole("heading",{name:"没有符合筛选的成果",exact:true}).waitFor();
+  await page.getByRole("button",{name:"清除筛选",exact:true}).click();
+  await page.getByRole("button",{name:"智能戒指：开发机会与验证清单",exact:true}).waitFor();
+  await page.screenshot({path:"evidence/v1-ui-results.png",fullPage:true});
+  checks.push("成果按当前正文检索，状态筛选与清除可操作，未采用不会混入已采用");
+  await page.getByRole("button",{name:"智能戒指：开发机会与验证清单",exact:true}).click();
+  const {Repository}=await import("../cloud/collaboration/repository.mjs");
+  const fixtureRepo=new Repository(h.db,"v1-test");
+  await fixtureRepo.transact("ui-project-pagination",{},tx=>{for(let n=0;n<110;n++)tx.put("project",{id:"paged-project-"+n,name:"分页项目 "+n,topic:"仅分页测试，不是真实项目",status:"active",hidden:false});return {}});
+  await page.reload();
+  await page.getByRole("textbox",{name:"成果正文"}).waitFor();
+  assert.equal(await page.evaluate(()=>localStorage.getItem("agent-hub-current-project")),p.id,"latest100 must not redirect a selected older project");
+  await page.getByRole("button",{name:"加载更多项目",exact:true}).click();
+  await page.getByLabel("搜索项目").fill("智能戒指");
+  await page.getByRole("button",{name:/调研智能戒指的个人开发机会/}).waitFor();
+  assert.equal(await page.getByRole("alert").count(),0);
+  checks.push("超过100个项目后保留当前旧项目和工作稿，支持加载更多及服务端搜索");
   assert.deepEqual(errors, []);
   await fs.writeFile(
     "evidence/v1-ui.json",
     JSON.stringify(
       {
         at: new Date().toISOString(),
+        buildId: JSON.parse(await fs.readFile("shared/build-info.json","utf8")).id,
         environment:
           "owned headless Chrome + local server + isolated workerd/D1",
         checks,

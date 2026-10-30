@@ -61,6 +61,7 @@ export function normalizeArrangement(input, goal = "") {
       ),
     ),
     crossCheck: input.crossCheck === true,
+    important: input.important === true,
   };
 }
 export function compileArrangement(a) {
@@ -93,8 +94,9 @@ export function compileArrangement(a) {
   else if (a.mode === "review") {
     const writer = a.members.find((m) => m !== a.lead) || a.members[0];
     add("draft", "draft", writer);
-    add("review", "review", a.lead, ["draft"]);
-    add("revise", "revise", writer, ["draft", "review"], true);
+    const reviewers=a.members.filter(m=>m!==writer);
+    reviewers.forEach((m,i)=>add(`review-${i}`,"review",m,["draft"]));
+    add("revise", "revise", writer, ["draft", ...reviewers.map((_,i)=>`review-${i}`)], true);
   } else {
     a.members.forEach((m, i) => add(`explore-${i}`, "explore", m));
     add(
@@ -107,12 +109,12 @@ export function compileArrangement(a) {
   }
   if (a.crossCheck && a.delivery === "final" && a.mode === "parallel") {
     const integrate = specs.at(-1);
+    const exploration=[...integrate.dependencies];
     a.members.forEach((m, i) => {
-      if (m !== a.lead) {
         const slot = `cross-${i}`;
-        add(slot, "review", m, [...integrate.dependencies]);
+        add(slot, "review", m, exploration);
+        specs.at(-1).instruction += " 这是全员交叉检查：重点核对其他成员的原始论断，保留自己的首轮判断；改口须提供原论断ID、反证和适用条件。";
         integrate.dependencies.push(slot);
-      }
     });
   }
   return {

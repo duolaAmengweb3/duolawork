@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-30T11:41:41.850Z",
+  "at": "2026-10-30T12:43:12.359Z",
   "environment": "isolated workerd + D1 + real HTTP/MCP test peers",
   "checks": [
     "真实 HTTP/MCP：独立阶段同时就绪，文档读取隔离，汇总前不泄露同伴成果",

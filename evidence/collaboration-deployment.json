@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-30T11:41:54.993Z",
+  "at": "2026-10-30T12:44:55.440Z",
   "endpoint": "https://agent-hub-local.duola-ai-project-radar.workers.dev",
   "accountId": "d9d2d3d737a0e4f3f99bee632ed94f45",
   "backendVersion": 2,
@@ -17,5 +17,6 @@
   "legacyAccountsPreserved": true,
   "uiChanged": false,
   "realCommercialAgentTested": false,
-  "attachmentStorage": "D1 chunks; 8 MiB per file"
+  "attachmentStorage": "D1 chunks; 8 MiB per file",
+  "workerVersionId": "a378d713-8aa9-4dbc-8998-7e69a98fdfa9"
 }

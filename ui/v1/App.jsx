@@ -63,6 +63,7 @@ import {
   upload,
 } from "./api.mjs";
 import { COLLAB_MODES } from "../../shared/modes.mjs";
+import { PairingFacts, ResultFilters, RuleScope, RuleNotice, RunHistory } from "./Support.jsx";
 function Face({ member }) {
   return (
     <Avatar className="size-8 shrink-0">
@@ -109,6 +110,7 @@ export default function App() {
   const [page, setPage] = useState("projects"),
     [workspace, setWorkspace] = useState(null),
     [projects, setProjects] = useState([]),
+    [projectCursor,setProjectCursor]=useState(null),
     [projectId, setProjectId] = useState(
       () => localStorage.getItem("agent-hub-current-project") || "",
     ),
@@ -135,6 +137,7 @@ export default function App() {
     [globalRows, setGlobalRows] = useState([]),
     [next, setNext] = useState(null),
     [statusFilter, setStatusFilter] = useState("all");
+  const [resultFilters,setResultFilters]=useState({projectId:"",status:"all",from:"",to:""}),[ruleStats,setRuleStats]=useState({}),[ruleNotices,setRuleNotices]=useState([]),[olderMessages,setOlderMessages]=useState([]),[historyDone,setHistoryDone]=useState(false);
   useEffect(() => {
     localStorage.setItem(
       "agent-hub-v1-view",
@@ -146,9 +149,11 @@ export default function App() {
     [lastSync, setLastSync] = useState(null),
     [offline, setOffline] = useState(false);
   const cursor = useRef("-1:"),
+    projectMeta=useRef(null),extraProjects=useRef(new Map()),extraProjectCursor=useRef(null),lastWorkspaceSync=useRef(0),searchRef=useRef(query),pageRef=useRef(page),
     currentProject = useRef(projectId),
     scroll = useRef(null);
   currentProject.current = projectId;
+  searchRef.current=query;pageRef.current=page;
   const notify = useCallback((t) => setToast(t), []);
   useEffect(() => {
     if (!toast) return;
@@ -158,14 +163,21 @@ export default function App() {
   const refreshWorkspace = useCallback(async () => {
     const [w, p] = await Promise.all([
       api("/v2/workspace"),
-      records("project"),
+      api("/v2/projects?"+new URLSearchParams({q:pageRef.current==="projects"?searchRef.current:""})),
     ]);
     setWorkspace(w);
-    setProjects(p.items.filter((p) => !p.hidden));
+    let selected=projectMeta.current;
+    if(currentProject.current && !p.items.some(p=>p.id===currentProject.current) && selected?.id!==currentProject.current){
+      try{selected=(await api("/v2/project?id="+currentProject.current)).project;projectMeta.current=selected;}catch(e){if(e.status!==404)throw e;selected=null;}
+    }
+    const list=[...p.items,...extraProjects.current.values()];
+    if(selected && !(pageRef.current==="projects"&&searchRef.current) && !list.some(p=>p.id===selected.id))list.push(selected);
+    setProjects([...new Map(list.map(p=>[p.id,p])).values()]);
+    setProjectCursor(extraProjects.current.size?extraProjectCursor.current:p.nextCursor);lastWorkspaceSync.current=Date.now();
     setOffline(false);
     setError("");
     if (
-      !p.items.some((p) => p.id === currentProject.current) &&
+      (!currentProject.current || (!selected && !p.items.some(p=>p.id===currentProject.current))) &&
       p.items.some((p) => !p.hidden)
     )
       setProjectId(p.items.find((p) => !p.hidden).id);
@@ -175,6 +187,7 @@ export default function App() {
     const snap = await api("/v2/project?id=" + id);
     const decisions = await records("decision", { projectId: id });
     if (currentProject.current !== id) return;
+    projectMeta.current=snap.project;
     setSnapshot({ ...snap, decisions: decisions.items });
     cursor.current = snap.activityCursor;
     setLastSync(new Date().toISOString());
@@ -192,6 +205,8 @@ export default function App() {
   }, [refreshWorkspace]);
   useEffect(() => {
     setSnapshot(null);
+    setOlderMessages([]);
+    setHistoryDone(false);
     setMessage(localStorage.getItem("agent-hub-composer-" + projectId) || "");
     if (projectId) {
       localStorage.setItem("agent-hub-current-project", projectId);
@@ -211,7 +226,7 @@ export default function App() {
           );
           if (r.events?.length) await refreshProject();
         }
-        if (page === "members" || !workspace) await refreshWorkspace();
+        if (page === "members" || !workspace || Date.now()-lastWorkspaceSync.current>15000) await refreshWorkspace();
         setOffline(false);
       } catch (e) {
         setOffline(true);
@@ -219,8 +234,10 @@ export default function App() {
     }, 3000);
     return () => clearInterval(t);
   }, [page, workspace, refreshProject, refreshWorkspace]);
+  useEffect(()=>{extraProjects.current.clear();extraProjectCursor.current=null;if(page!=="projects"||!workspace)return;const t=setTimeout(()=>refreshWorkspace().catch(e=>setError(e.message)),200);return()=>clearTimeout(t)},[page,query]);
   useEffect(() => {
     if (page === "projects" || !workspace) return;
+    if (page === "results") return;
     const kind = {
       results: "document",
       decisions: "decision",
@@ -234,6 +251,13 @@ export default function App() {
         })
         .catch((e) => setError(e.message));
   }, [page, workspace]);
+  useEffect(()=>{
+    if(page!=="results" || !workspace)return;
+    let active=true;
+    const timer=setTimeout(()=>api("/v2/results?"+new URLSearchParams({...resultFilters,q:query,offset:String(-new Date().getTimezoneOffset())})).then(r=>{if(active){setGlobalRows(r.items);setNext(r.nextCursor)}}).catch(e=>{if(active)setError(e.message)}),200);
+    return()=>{active=false;clearTimeout(timer)};
+  },[page,workspace,query,resultFilters]);
+  useEffect(()=>{if(page!=="knowledge")return;Promise.all([api("/v2/rule-usage"),records("rule_notice",{status:"pending"})]).then(([u,n])=>{setRuleStats(u.usage);setRuleNotices(n.items)}).catch(e=>setError(e.message));},[page,workspace]);
   async function run(fn, success) {
     setBusy(true);
     setError("");
@@ -253,8 +277,7 @@ export default function App() {
   const members = workspace?.members || [],
     project = snapshot?.project;
   const name = (id) => memberName(members, id);
-  const nativeReady = (id) =>
-    workspace?.connections.find((c) => c.id === id)?.status === "verified";
+  const nativeReady = (id) => {const m=workspace?.members.find(m=>m.id===id);return !!m&&!m.paused&&workspace?.connections.find(c=>c.id===id)?.status==="verified";};
   async function send() {
     if (!message.trim()) return;
     try {
@@ -273,6 +296,8 @@ export default function App() {
   }
   function navigate(p) {
     setPage(p);
+    setGlobalRows([]);
+    setNext(null);
     setDocId("");
     setQuery("");
     setStatusFilter("all");
@@ -294,6 +319,7 @@ export default function App() {
   ).length;
   const controls =
     runDetails?.steps.filter((s) => s.status === "needs_review") || [];
+  const actualPhase = project?.status==="paused" ? "项目已暂停，原平台执行可能继续" : !runDetails ? "尚未开始" : ["completed","partially_met"].includes(runDetails.run.status) ? `${label(runDetails.run.status)}${pending?` · ${pending}项待你决定`:""}` : runDetails.steps.some(s=>["integrate","resolve"].includes(s.phase)&&["running","ready"].includes(s.status)) ? "正在汇总成果" : runDetails.steps.some(s=>s.phase==="verify"&&["running","ready"].includes(s.status)) ? "正在核对冲突依据" : runDetails.steps.filter(s=>s.phase==="explore").map(s=>`${name(s.memberId)} ${s.status==="completed"?"已交付":label(s.status)}`).join(" · ") || label(runDetails.run.status);
   return (
     <div className="hub" data-build-id={BUILD.id}>
       <div className="app-body">
@@ -354,7 +380,7 @@ export default function App() {
             />
             <div className="project-items">
               <small className="block px-2 py-2">
-                我的工作空间 · {projects.length}
+                我的工作空间 · 已载入 {projects.length}{projectCursor?"+":""}
               </small>
               {visibleProjects.map((p) => (
                 <div
@@ -371,7 +397,7 @@ export default function App() {
                   >
                     <Folder className="mt-1 shrink-0" size={17} />
                     <span>
-                      <strong>{p.name}</strong>
+                      <strong>{p.name}{workspace?.pendingByProject?.[p.id]>0&&<i className="status-dot ml-2 inline-block bg-amber-500" title="有待确认事项" aria-label="有待确认事项"/>}</strong>
                       <small>{p.topic?.slice(0, 36)}</small>
                     </span>
                   </button>
@@ -385,6 +411,7 @@ export default function App() {
                   )}
                 </div>
               ))}
+              {projectCursor&&<Button variant="ghost" className="w-full" disabled={busy} onClick={async()=>{setBusy(true);try{const r=await api("/v2/projects?"+new URLSearchParams({q:query,cursor:projectCursor}));for(const p of r.items)extraProjects.current.set(p.id,p);extraProjectCursor.current=r.nextCursor;setProjectCursor(r.nextCursor);setProjects(old=>[...new Map([...old,...r.items].map(p=>[p.id,p])).values()]);}catch(e){setError(e.message)}finally{setBusy(false)}}}>加载更多项目</Button>}
             </div>
             <button
               className="list-foot text-left"
@@ -450,6 +477,7 @@ export default function App() {
                   onBack={() => setDocId("")}
                   onChange={() => refreshProject().catch(() => {})}
                   notify={notify}
+                  onRule={(rule,notice)=>setModal({type:"rule",rule,notice})}
                 />
               </React.Suspense>
             ) : !project ? (
@@ -473,11 +501,7 @@ export default function App() {
                   <Folder size={19} className="text-primary" />
                   <h2>{project.name}</h2>
                   <span className="mode">
-                    {project.arrangement?.delivery === "compare"
-                      ? "各自提交，并排对比"
-                      : COLLAB_MODES.find(
-                          (m) => m.id === project.arrangement?.mode,
-                        )?.label || "已有项目"}
+                    {actualPhase}
                   </span>
                   <div className="head-actions">
                     <Button
@@ -503,6 +527,7 @@ export default function App() {
                     >
                       <Clock size={17} />
                     </Button>
+                    <Button variant="outline" size="sm" disabled={busy} onClick={()=>run(()=>command("project.control",{projectId,control:project.status==="active"?"pause":"resume"})).catch(()=>{})}>{project.status==="active"?"暂停项目":"恢复项目"}</Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -564,6 +589,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                {(snapshot.memberSuggestions||[]).map(s=><div className="status-line" key={s.id}><span>{name(s.suggestedBy)} 建议加 {name(s.memberId)}：{s.reason} · 确认后下一轮生效</span><Button size="sm" disabled={!nativeReady(s.memberId)||busy} onClick={()=>run(()=>command("member.suggestion.review",{suggestionId:s.id,action:"accept"})).catch(()=>{})}>同意</Button><Button size="sm" variant="ghost" onClick={()=>run(()=>command("member.suggestion.review",{suggestionId:s.id,action:"reject"})).catch(()=>{})}>不用</Button>{!nativeReady(s.memberId)&&<small>此成员尚不可接任务，请先处理接入。</small>}</div>)}
                 {controls.length > 0 && (
                   <div className="failure-strip">
                     <strong>
@@ -629,13 +655,14 @@ export default function App() {
                 <div className="project-body">
                   <section className="chat">
                     <div className="chat-scroll" ref={scroll}>
+                      {!historyDone&&snapshot.messages.length>=100&&<Button variant="ghost" size="sm" onClick={async()=>{try{const first=olderMessages[0]||snapshot.messages[0],r=await records("message",{projectId,cursor:btoa(JSON.stringify({updatedAt:first.updatedAt,id:first.id}))});setOlderMessages([...r.items.reverse(),...olderMessages]);if(!r.nextCursor)setHistoryDone(true);}catch(e){setError(e.message)}}}>加载更早记录</Button>}
                       {snapshot.messages.length === 0 ? (
                         <Empty
                           title="团队已经准备好"
                           body="在下方说这次要拿到什么，后续任务沿用本项目安排。"
                         />
                       ) : (
-                        snapshot.messages.filter(m => snapshot.runs.find(r => r.id === m.runId)?.purpose !== "learn").map((m) =>
+                        [...olderMessages,...snapshot.messages].filter((m,i,all)=>all.findIndex(x=>x.id===m.id)===i).filter(m => snapshot.runs.find(r => r.id === m.runId)?.purpose !== "learn").map((m) =>
                           m.type === "handoff" ? (
                             <details className="handoff-line" key={m.id}>
                               <summary className="cursor-pointer">
@@ -793,6 +820,7 @@ export default function App() {
                           </TabsTrigger>
                           <TabsTrigger value="materials">资料</TabsTrigger>
                           <TabsTrigger value="members">成员</TabsTrigger>
+                          <TabsTrigger value="evidence">依据</TabsTrigger>
                         </TabsList>
                         <TabsContent value="results" className="pt-4">
                           {project.arrangement?.delivery === "compare" &&
@@ -885,6 +913,11 @@ export default function App() {
                               </div>
                             </div>
                           ))}
+                          <PairingFacts project={project} members={members}/>
+                        </TabsContent>
+                        <TabsContent value="evidence" className="pt-4">
+                          {deliverables.map(d=><div className="source-row" key={d.id}><strong>{d.title}</strong><p>独有发现 {d.record?.unique||0} · 独立互证 {d.record?.independent||0} · 有据纠错 {d.record?.corrections||0}</p>{d.sourceEvidence?.claims?.filter(c=>c.important||c.risk).map(c=><p key={c.id}>{c.text}</p>)}<Button size="sm" variant="link" onClick={()=>setDocId(d.id)}>查看完整依据</Button></div>)}
+                          {!deliverables.length&&<p>成果交回后，论断、来源和核查依据会出现在这里。</p>}
                         </TabsContent>
                       </Tabs>
                     </aside>
@@ -923,6 +956,7 @@ export default function App() {
                         </div>
                       </div>
                       <State status={m.paused ? "paused" : c?.status || "未连接"} />
+                      <small>唤醒方式：{m.platformId==="grok-bot"||m.platformId==="chatgpt-agent"?"主动叫醒":"定时检查"}</small>
                       <p>
                         {c?.verifiedAt
                           ? "最近一次真实任务成功：" + time(c.verifiedAt)
@@ -954,6 +988,7 @@ export default function App() {
                   );
                 })}
               </div>
+              <PairingFacts all members={members}/>
               <p className="scope-note">
                 Agent Hub 只能约束经过 Hub
                 的操作；成员在自己平台上的工具和权限不受影响。现有浏览器资料不因升级、改名或连接配置而重建。
@@ -974,12 +1009,14 @@ export default function App() {
                 onChange={(e) => setQuery(e.target.value)}
                 className="max-w-sm mb-6"
               />
+              <ResultFilters projects={projects} value={resultFilters} onChange={setResultFilters}/>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>成果名称</TableHead>
                     <TableHead>项目 / 成员</TableHead>
                     <TableHead>更新</TableHead>
+                    <TableHead>版本数</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>继续使用</TableHead>
                   </TableRow>
@@ -988,8 +1025,7 @@ export default function App() {
                   {globalRows
                     .filter(
                       (d) =>
-                        d.deliverable &&
-                        d.title.toLowerCase().includes(query.toLowerCase()),
+                        d.deliverable,
                     )
                     .map((d) => (
                       <TableRow key={d.id}>
@@ -1010,6 +1046,7 @@ export default function App() {
                           <small className="block">{name(d.memberId)}</small>
                         </TableCell>
                         <TableCell>{time(d.updatedAt)}</TableCell>
+                        <TableCell>{d.versionCount || 1}</TableCell>
                         <TableCell>
                           <State
                             status={
@@ -1047,7 +1084,7 @@ export default function App() {
                   variant="outline"
                   className="mt-5"
                   onClick={async () => {
-                    const r = await records("document", { cursor: next });
+                    const r = await api("/v2/results?"+new URLSearchParams({...resultFilters,q:query,offset:String(-new Date().getTimezoneOffset()),cursor:next}));
                     setGlobalRows([...globalRows, ...r.items]);
                     setNext(r.nextCursor);
                   }}
@@ -1057,8 +1094,8 @@ export default function App() {
               )}
               {!globalRows.some((d) => d.deliverable) && (
                 <Empty
-                  title="还没有最终成果"
-                  body="团队的最终交付会保存在这里，过程材料仍留在项目中。"
+                    title={query||resultFilters.projectId||resultFilters.from||resultFilters.to||resultFilters.status!=="all"?"没有符合筛选的成果":"还没有最终成果"}
+                    body="可调整筛选或清空搜索；团队的最终交付保存在这里，过程材料仍留在项目中。"
                 />
               )}
             </div>
@@ -1096,6 +1133,7 @@ export default function App() {
                       <strong>{d.title}</strong>
                     </div>
                     <p>{d.description}</p>
+                    {d.status!=="pending"&&<p>你的选择：{d.choice} · {time(d.chosenAt)}{d.ruleId&&" · 已关联长期规则"}</p>}
                     <Button
                       variant="outline"
                       onClick={() => {
@@ -1138,6 +1176,7 @@ export default function App() {
                   <TabsTrigger value="materials">资料</TabsTrigger>
                 </TabsList>
                 <TabsContent value="rules">
+                  {ruleNotices.map(n=><RuleNotice key={n.id} notice={n} rule={globalRows.find(k=>k.id===n.ruleId)} busy={busy} onAction={run} onEdit={(rule,notice)=>setModal({type:"rule",rule,notice})}/>)}
                   {globalRows
                     .filter((k) => k.category !== "material")
                     .sort(
@@ -1150,23 +1189,26 @@ export default function App() {
                         <div className="row-top">
                           <strong>{k.title}</strong>
                           <Badge variant="secondary">
-                            {k.scopeId === "global"
-                              ? "全局"
-                              : projects.find((p) => p.id === k.scopeId)
+                            {(k.scopeMode || (k.scopeId === "global" ? "global" : "project")) === "global"
+                              ? "全部项目"
+                              : k.scopeMode === "type" ? `同类 · ${k.projectType}`
+                              : projects.find((p) => p.id === (k.appliesToProjectId || k.scopeId))
                                   ?.name || "本项目"}
                           </Badge>
                           <State status={k.status} />
                         </div>
                         <p>{k.body}</p>
+                        {k.status==="pending"&&<RuleScope value={k.scopeMode || "project"} project={projects.find(p=>p.id===(k.appliesToProjectId||k.scopeId))} onChange={scopeMode=>setGlobalRows(rows=>rows.map(r=>r.id===k.id?{...r,scopeMode}:r))}/>}
                         <small>
                           来源：
-                          {k.source === "human_edit"
+                          {k.source === "decision" ? "来自你的决定" : k.source === "human_edit"
                             ? "来自你的改稿"
                             : k.author === "owner"
                               ? "手动添加"
                               : "成员提议"}{" "}
                           · {time(k.createdAt)}
                         </small>
+                        <small className="block">已用于 {ruleStats[k.id]?.rounds || 0} 轮 · {ruleStats[k.id]?.latest?.status==="followed"?"结果已符合（有段落回执）":ruleStats[k.id]?.latest?.status==="deviated"?"发现偏离":"结果未确认"}{ruleStats[k.id]?.latest?.paragraph&&` · ${ruleStats[k.id].latest.paragraph}`}</small>
                         <div className="row-actions">
                           {k.status === "pending" ? (
                             <>
@@ -1178,6 +1220,7 @@ export default function App() {
                                       knowledgeId: k.id,
                                       revision: k.revision,
                                       status: "approved",
+                                      scopeMode: k.scopeMode || "project",
                                     }),
                                   ).catch(() => {})
                                 }
@@ -1403,6 +1446,7 @@ export default function App() {
                       revision: project.revision,
                       goal: config.goal,
                       arrangement: config.arrangement,
+                      projectType: config.projectType,
                     });
                     if (config.times.length || snapshot.schedule)
                       await command("schedule.set", {
@@ -1478,29 +1522,8 @@ export default function App() {
           )}
           {modal?.type === "run" && (
             <div className="space-y-4">
-              {runDetails ? (
-                <>
-                  <State status={runDetails.run.status} />
-                  {runDetails.steps.map((s) => (
-                    <div className="source-row" key={s.id}>
-                      <strong>
-                        {name(s.memberId)} · {s.title}
-                      </strong>
-                      <State status={s.status} />
-                      <p>{s.issues?.join("；")}</p>
-                      <small>
-                        领取{" "}
-                        {runDetails.attempts.find(
-                          (a) => a.id === s.activeAttemptId,
-                        )?.claimedAt || "尚未领取"}{" "}
-                        · 内部修订 {s.internalRound || 0} 次
-                      </small>
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <p>还没有运行记录。</p>
-              )}
+              <RunHistory projectId={projectId} members={members}/>
+
             </div>
           )}
           {modal?.type === "reference" && (
@@ -1536,6 +1559,7 @@ export default function App() {
                     title: m.title,
                     body: m.body,
                     url: m.url,
+                    sourcePublishedAt:m.sourcePublishedAt||null,
                     ...(file
                       ? {
                           fileId: file.id,
@@ -1552,6 +1576,7 @@ export default function App() {
                       category: "material",
                       approved: true,
                       fileIds: file ? [file.id] : [],
+                      sourcePublishedAt:m.sourcePublishedAt||null,
                     });
                   return command("project.material", {
                     projectId: scope,
@@ -1565,12 +1590,12 @@ export default function App() {
           {modal?.type === "rule" && (
             <RuleForm
               rule={modal.rule}
-              projectId={projectId}
+              projectId={modal.notice?.scopeId || projectId}
               projects={projects}
               onSave={async (p) => {
                 await run(
-                  () =>
-                    command("knowledge.write", {
+                  async () => {
+                    const item=await command("knowledge.write", {
                       ...p,
                       ...(modal.rule
                         ? {
@@ -1578,7 +1603,10 @@ export default function App() {
                             revision: modal.rule.revision,
                           }
                         : {}),
-                    }),
+                    });
+                    if(modal.notice)await command("rule.notice.resolve",{noticeId:modal.notice.id,action:"edited"});
+                    return item;
+                  },
                   "规则已保留",
                 );
                 setModal(null);
@@ -1619,13 +1647,14 @@ function ProjectWizard({
 }) {
   const [step, setStep] = useState(1),
     [goal, setGoal] = useState(project?.topic || ""),
+    [kind,setKind]=useState(project?.projectType || ""),
     [a, setA] = useState(
       project?.arrangement || {
         mode: "parallel",
         delivery: "final",
         members: members
           .filter((m) =>
-            connections.some((c) => c.id === m.id && c.status === "verified"),
+            !m.paused && connections.some((c) => c.id === m.id && c.status === "verified"),
           )
           .slice(0, 2)
           .map((m) => m.id),
@@ -1710,6 +1739,7 @@ function ProjectWizard({
         adviceRunId: adviceRun,
         name: project?.name || goal.slice(0, 24),
         goal,
+        projectType: kind,
         materials,
         arrangement: {
           ...a,
@@ -1751,6 +1781,7 @@ function ProjectWizard({
                 onChange={(e) => setGoal(e.target.value)}
               />
             </label>
+            <label className="grid gap-2">项目类型（可选）<Input aria-label="项目类型" maxLength={40} placeholder="例如：内容创作、旅行研究" value={kind} onChange={e=>setKind(e.target.value)}/><small>同类型项目可共享你确认的规则。留空只按本项目使用，不自动猜类型。</small></label>
             <div className="flex gap-2">
               <Input
                 placeholder="添加资料链接"
@@ -1830,7 +1861,7 @@ function ProjectWizard({
                     <Checkbox
                       checked={a.members.includes(m.id)}
                       disabled={
-                        !connections.some(
+                        m.paused || !connections.some(
                           (c) => c.id === m.id && c.status === "verified",
                         )
                       }
@@ -1867,6 +1898,10 @@ function ProjectWizard({
                 </select>
               </label>
             )}
+            <small>信源标签只是平台能力提示；是否已接入具体应用、邮箱及账号权限，以成员实际返回为准，未知时不会视为可用。</small>
+            <PairingFacts project={{...project,projectType:kind,arrangement:a}} members={members}/>
+            <label className="flex gap-2 items-center"><Checkbox checked={!!a.important} onCheckedChange={v=>patch({important:!!v})}/>这项工作很重要</label>
+            {a.important && a.mode==="solo" && <div className="scope-note">你标了重要，可以加一位检查。{members.find(m=>!m.paused&&!a.members.includes(m.id)&&connections.some(c=>c.id===m.id&&c.status==="verified")) && <Button variant="link" onClick={()=>{const checker=members.find(m=>!m.paused&&!a.members.includes(m.id)&&connections.some(c=>c.id===m.id&&c.status==="verified"));patch({mode:"review",members:[a.members[0],checker.id],lead:checker.id});}}>加一位检查</Button>}</div>}
             <div>
               <label>合格标准</label>
               {a.criteria.map((c, i) => (
@@ -2312,6 +2347,7 @@ function ReferencePicker({ onPick }) {
 }
 function MaterialForm({ onSave, projectId, library, projects = [] }) {
   const [title, setTitle] = useState(""),
+    [sourcePublishedAt,setSourcePublishedAt]=useState(""),
     [body, setBody] = useState(""),
     [url, setUrl] = useState(""),
     [file, setFile] = useState(null),
@@ -2359,6 +2395,7 @@ function MaterialForm({ onSave, projectId, library, projects = [] }) {
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
+      <label className="grid gap-2">来源发布时间（可选）<Input type="date" aria-label="来源发布时间" value={sourcePublishedAt} onChange={e=>setSourcePublishedAt(e.target.value)}/></label>
       {scope !== "global" && (
         <label className="grid gap-2">
           原始附件（最多 8 MB）
@@ -2380,7 +2417,7 @@ function MaterialForm({ onSave, projectId, library, projects = [] }) {
           setBusy(true);
           setError("");
           try {
-            await onSave({ title, body, url, file, projectId: scope });
+            await onSave({ title, body, url, file, projectId: scope,sourcePublishedAt });
           } catch (e) {
             setError(e.message);
           } finally {
@@ -2397,8 +2434,8 @@ function RuleForm({ rule, projectId, projects, onSave }) {
   const [title, setTitle] = useState(rule?.title || ""),
     [body, setBody] = useState(rule?.body || ""),
     [scope, setScope] = useState(
-      rule?.scopeId || projectId || projects[0]?.id || "global",
-    );
+      rule?.appliesToProjectId || (rule?.scopeId!=="global"?rule?.scopeId:null) || projectId || projects[0]?.id || "global",
+    ),[scopeMode,setScopeMode]=useState(rule?.scopeMode || (rule?.scopeId==="global"||!projects.length?"global":"project"));
   return (
     <div className="space-y-5">
       <Input
@@ -2415,20 +2452,20 @@ function RuleForm({ rule, projectId, projects, onSave }) {
       <select
         className="border rounded-md px-3 py-2"
         value={scope}
-        disabled={!!rule}
         onChange={(e) => setScope(e.target.value)}
       >
-        <option value="global">全局</option>
+        <option value="global">无关联项目</option>
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
           </option>
         ))}
       </select>
+      <RuleScope value={scopeMode} onChange={setScopeMode} project={projects.find(p=>p.id===scope)}/>
       <Button
         disabled={!title || !body}
         onClick={() =>
-          onSave({ title, body, projectId: scope, approved: true })
+          onSave({ title, body, projectId: rule?.scopeId || scope, appliesToProjectId:scope==="global"?undefined:scope,scopeMode, approved: true })
         }
       >
         确认保存

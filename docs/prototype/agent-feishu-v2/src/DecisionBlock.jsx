@@ -128,11 +128,11 @@ function DecisionView({ node, updateAttributes }) {
                   <section key={i}>
                     <header>
                       <Avatar
-                        member={context.members.find((m) => m.id === p.member)}
+                        member={context.members.find((m) => m.id === p.member) || {name:"归属未确认",initial:"?",color:"#64748b"}}
                         size={25}
                       />
                       <strong>
-                        {context.members.find((m) => m.id === p.member)?.name}
+                        {context.members.find((m) => m.id === p.member)?.name || "归属未确认"}
                       </strong>
                     </header>
                     <p>{p.text}</p>

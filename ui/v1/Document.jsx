@@ -33,6 +33,7 @@ import {
   DecisionContext,
 } from "../../docs/prototype/agent-feishu-v2/src/DecisionBlock.jsx";
 import { api, command, memberName } from "./api.mjs";
+import { RuleNote, RuleNotice } from "./Support.jsx";
 export const renderHTML = (body = "", format = "markdown") =>
   DOMPurify.sanitize(
     format === "html"
@@ -58,6 +59,7 @@ export default function Document({
   onBack,
   onChange,
   notify,
+  onRule,
 }) {
   const [doc, setDoc] = useState(null),
     [error, setError] = useState(""),
@@ -82,10 +84,11 @@ export default function Document({
     .map((d) => ({
       ...d,
       positions: (d.options || []).map((o, i) => ({
-        member: o.memberId || project.project.arrangement?.members[i],
+        member: o.memberId || null,
         label: o.label,
         text: o.text,
         evidence: o.evidence || d.description,
+        url: o.sourceUrls?.[0] || o.url,
       })),
       conditional: d.conditional || d.options?.map((o) => o.text).join("；"),
     }));
@@ -245,7 +248,7 @@ export default function Document({
     const anchorTop = anchorId ? find()?.getBoundingClientRect().top : null;
     if (actionBusy) return;
     setActionBusy(true);
-    editor?.setEditable(false);
+    editor?.setEditable(false, false);
     try {
       await save();
       await fn(latest.current);
@@ -269,7 +272,7 @@ export default function Document({
       setError(e.message);
     } finally {
       setActionBusy(false);
-      editor?.setEditable(!original);
+      editor?.setEditable(!original, false);
     }
   }
   async function choose(id, choice, text, remember) {
@@ -279,14 +282,8 @@ export default function Document({
         revision: d.revision,
         text,
         undo: !choice,
+        remember,
       });
-      if (remember)
-        await command("knowledge.write", {
-          projectId: d.scopeId,
-          title: "来自你的决定",
-          body: text,
-          approved: true,
-        });
     }, id);
   }
   async function openPanel(name) {
@@ -310,6 +307,8 @@ export default function Document({
       </div>
     );
   const criteria = project.project.arrangement?.criteria || [];
+  const notes=project.knowledge.filter(k=>k.status==="pending"&&k.documentId===documentId).slice(0,1);
+  const notices=(project.ruleNotices||[]).filter(n=>n.documentId===documentId);
   const record = doc.record || {},
     pendingCount = decisions.filter((d) => d.status === "pending").length;
   return (
@@ -451,7 +450,7 @@ export default function Document({
         </div>
       )}
       <div className="doc-scroll document-scroll">
-        <article className="doc-paper">
+        <article className={"doc-paper"+((notes.length||notices.length)?" has-rule-margin":"")}><div className="doc-copy">
           <small>
             {memberName(members, doc.memberId)} 的交付 · {project.project.name}
           </small>
@@ -460,7 +459,7 @@ export default function Document({
             doc={
               original
                 ? { ...doc, workingVersionId: doc.originalVersionId }
-                : doc
+                : dirty.current ? {...doc,workingVersionId:"local-unsaved"} : doc
             }
             criteria={criteria}
             members={members}
@@ -531,52 +530,10 @@ export default function Document({
               ))}
             </section>
           )}
-          {project.knowledge
-            .filter(
-              (k) => k.status === "pending" && k.documentId === documentId,
-            )
-            .slice(0, 1)
-            .map((k) => (
-              <aside className="connect-box" key={k.id}>
-                <small>{memberName(members, k.author)} 从你的修改中总结</small>
-                <p>{k.body}</p>
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      action(() =>
-                        command("knowledge.review", {
-                          knowledgeId: k.id,
-                          revision: k.revision,
-                          status: "approved",
-                        }),
-                      )
-                    }
-                  >
-                    以后都这样
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      action(() =>
-                        command("knowledge.review", {
-                          knowledgeId: k.id,
-                          revision: k.revision,
-                          status: "rejected",
-                        }),
-                      )
-                    }
-                  >
-                    只这次
-                  </Button>
-                </div>
-              </aside>
-            ))}
           <div className="mt-10 text-xs text-muted-foreground">
             —— 成果正文结束 ——
           </div>
-        </article>
+        </div>{(notes.length>0||notices.length>0)&&<aside className="rule-margin">{notes.map(k=><RuleNote key={k.id} rule={k} project={project.project} members={members} busy={actionBusy} onAction={action}/>)}{notices.map(n=><RuleNotice key={n.id} notice={n} rule={project.knowledge.find(k=>k.id===n.ruleId)} onAction={action} onEdit={onRule} busy={actionBusy}/>)}</aside>}</article>
         <div className="v1-reading-buffer" aria-hidden="true" />
       </div>
       <footer className="doc-actions">
@@ -668,7 +625,7 @@ export default function Document({
                     return;
                   }
                   setOriginal(!original);
-                  editor.setEditable(original);
+                  editor.setEditable(original, false);
                   editor.commands.setContent(
                     renderHTML(
                       original ? doc.working.body : doc.original.body,
@@ -705,14 +662,14 @@ export default function Document({
                   </small>
                 </div>
               ))}
-              <h3 className="font-semibold mt-5">本轮规则</h3>
+              <h3 className="font-semibold mt-5">本轮规则与资料</h3>
               {receipt?.run.knowledge.map((k) => (
                 <div className="source-row" key={k.id}>
                   <strong>{k.title}</strong>
                   <p>{k.body}</p>
                   <small>
                     版本 {k.revision} · 本轮已带入 ·{" "}
-                    {doc.ruleReceipts?.find(
+                    {(doc.ruleReceiptVersionId||doc.selfCheckVersionId)!==doc.workingVersionId ? "历史回执，当前稿未确认" : doc.ruleReceipts?.find(
                       (r) => r.ruleId === k.id && r.revision === k.revision,
                     )?.followed === true
                       ? "成员核对符合（见段落）"
@@ -738,6 +695,7 @@ export default function Document({
             </>
           ) : (
             <div className="space-y-4 text-sm">
+              {doc.unexplainedChanges?.map(c=><p className="scope-note" key={c.originalClaimId}>{c.label} · 原论断 {c.originalClaimId} 保留在依据中，不计入有据纠错。</p>)}
               {doc.sourceEvidence?.claims?.map((c) => (
                 <div className="source-row" key={c.id}>
                   <strong>{memberName(members, c.memberId)}</strong>

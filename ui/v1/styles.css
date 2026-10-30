@@ -867,3 +867,14 @@ h3 {
 .doc-paper .tiptap > h1:first-child {
   margin-top: 16px;
 }
+
+.result-filters { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:0 0 24px; }
+.result-filters label { display:grid; gap:6px; font-size:12px; min-width:130px; max-width:240px; }
+.result-filters select { border:1px solid var(--border); border-radius:7px; padding:8px 10px; background:white; color:var(--foreground); font:inherit; }
+.rule-note { border:1px solid #ccd9e9; border-radius:10px; background:#f6f9ff; padding:14px; margin-bottom:14px; font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
+.rule-note p { margin:8px 0; }
+.rule-note.warning { background:#fff8eb; border-color:#ead7ad; }
+.doc-paper.has-rule-margin { max-width:1040px; display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:24px; padding-left:24px; padding-right:24px; }
+.doc-copy { min-width:0; }
+.rule-margin { position:sticky; top:24px; align-self:start; margin-top:72px; }
+@media(max-width:1000px) { .doc-paper.has-rule-margin { display:block; } .rule-margin { position:static; margin-top:24px; } }

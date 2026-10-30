@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-30T11:38:06.894Z",
+  "at": "2026-10-30T13:03:07.750Z",
   "environment": "production Cloudflare workspace + user-authorized native Grok Automations and ChatGPT Work MCP Events",
   "sourceBranch": "feat/v1-integrated-20261030",
   "realCommercialAgentTested": true,
@@ -426,29 +426,74 @@
           }
         ]
       }
+    },
+    {
+      "key": "native-preference",
+      "passed": true,
+      "at": "2026-10-30T12:46:29.142Z",
+      "buildId": "02b0d385d282c46b",
+      "environment": "production native Grok + Dot artifact; controlled choices; owned fresh headless Chrome testing local product UI",
+      "projectId": "project_1990a7a27180483cb0575f02d5fcf3ca",
+      "runId": "run_f3f0a2a2b5074a62b26f3fde7ee19442",
+      "purpose": "controlled real-native inline preference case; both routes are test assignments, not spontaneous model votes",
+      "status": "completed",
+      "documentId": "document_fe57f504902c4603be4d8cfcaddeb6f7",
+      "originalVersionId": "version_5ab0d5914e2e4d089075e5bfa12a8d52",
+      "selectedVersionId": "version_c06a7256df3d4d9c945c6752d92160fc",
+      "restoredVersionId": "version_4bf867eaef03431393d41cfc568a2544",
+      "decisionId": "run_f3f0a2a2b5074a62b26f3fde7ee19442:下一步资源投入偏好",
+      "ruleId": "knowledge_990699a510d54980a9b1b34b41d1b194",
+      "memberAttribution": [
+        {
+          "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+          "claimIds": [
+            "step_7b7736f41d1f43e384c6b87ae71d16df:0:claim_a_grok"
+          ],
+          "sourceUrls": [
+            "https://developers.openai.com/plugins/build/mcp-events"
+          ]
+        },
+        {
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "claimIds": [
+            "step_a8f884fcec6f48bda6f53e9c7f63d7b1:0:dot_prefer_needs"
+          ],
+          "sourceUrls": [
+            "https://developers.openai.com/plugins/build/mcp-events"
+          ]
+        }
+      ],
+      "checks": [
+        "真实成员的取舍卡具有原始论断、来源及真实成员归属",
+        "原位采纳和长期规则原子保存",
+        "撤回后规则同步撤回，保留全部版本",
+        "刷新后仍待决定，没有页面错误"
+      ],
+      "nativeCommercialReplies": true,
+      "desktopAccessibilityRead": "separate CUA inspection timed out; not claimed as passed",
+      "errors": []
     }
   ],
   "knownHistory": [
     "Initial Grok configuration contained unrelated clipboard text; replaced through official Copy -> masked input; strict signing-key validation added. No plaintext included in evidence.",
     "Cloudflare rejected redirect:error before sending; changed outbound platform requests to manual redirect mode and reject redirects; signed Grok requires exactly202.",
     "Research shortfall originally triggered redundant preliminary retries; restrict these to structural repairs and final acceptance. Old rounds retained.",
-    "Partial recovery originally had gaps around leases, skipped dependencies and incomplete-input disclosure; regression checks and real controlled missing-member case added."
+    "Partial recovery originally had gaps around leases, skipped dependencies and incomplete-input disclosure; regression checks and real controlled missing-member case added.",
+    "Native inline preference testing exposed Tiptap setEditable emitting an autosave update. Selection could be overwritten with an older body. Disabled update emission for editability-only changes; isolated and native browser recheck waited past debounce and reloaded successfully. Versions retained.",
+    "Native desktop main thread became unresponsive inside an NSAlert modal. Only the verified owned Hub process was stopped after confirming no running tasks; protected Chrome PIDs, config, vault and browser profile index retained. Explicit cold recovery succeeded; underlying modal error message was not captured. Runtime agent-connections metadata changed and is not claimed byte-identical. A transient proxy connection timeout during activation was retried successfully without changing the VPN.",
+    "The first native UI collector used a title-dependent locator that stopped matching after the card compacted; corrected to stable card scope. This is a test selector correction, separate from the autosave bug."
   ],
   "review": {
-    "developerSelfTest": "six paths passed; controlled facts and member pause explicitly disclosed",
+    "developerSelfTest": "six real-native paths plus controlled native inline preference/remember/undo UI passed; 104 unit checks and eight isolated browser flows passed",
     "independentReviewer": "pending Claude review",
-    "ownerVisualAcceptance": "pending"
+    "ownerVisualAcceptance": "pending",
+    "knownResidual": "One native modal hang recovered; underlying exception not established. Original Bot-specific memory inheritance and independent review remain unverified."
   },
   "boundaries": [
     "No claim of permanent login or zero delay.",
     "Counter-evidence and unsupported statements were retained as unconfirmed or partially met.",
     "No account passwords, access/refresh tokens, signatures, pairing codes or browser credentials exported."
   ],
-  "authorizationRetainedAfterPause": {
-    "runId": "run_56b44d124c154a379556bb1332f260c9",
-    "status": "completed",
-    "reauthorizationRequired": false,
-    "verifiedAt": "2026-10-30T11:37:44.151Z"
-  },
-  "desktopBuildId": "5c613e2df8a5b60e"
+  "buildId": "02b0d385d282c46b",
+  "backendWorkerVersionId": "a378d713-8aa9-4dbc-8998-7e69a98fdfa9"
 }
