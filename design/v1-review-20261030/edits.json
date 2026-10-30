@@ -1,0 +1,25 @@
+{
+  "engine": "built-in image_gen",
+  "edits": [
+    {
+      "file": "02-final-result.png",
+      "prompt": "Precise UI correction of this existing screenshot. Preserve all document content, layout, colors, Chinese typography, decision card, page edge note, and mockup disclaimer. Change only the persistent left navigation rail so it has FIVE clearly separated labeled icon buttons in this exact order: 项目 (selected), 成果, 待我决定, 知识库, 成员. Keep settings and avatar at bottom. The current rail is missing 待我决定; insert it and adjust the vertical spacing, without shrinking font size. Also in the inline amber choice card, add a small source link '查看依据 [1]' under Grok's three points and '查看依据 [2]' under Dot's three points, above each blue 采纳此方案 button. Fix any corrupted Chinese in the buttons to exactly '采纳此方案'. Keep the screen 16:10. Do not add or remove any other UI element."
+    },
+    {
+      "file": "03-side-by-side.png",
+      "prompt": "Precise UI correction of this existing screenshot. Preserve the side by side Grok / Dot independent deliverables, every aligned section, adopt-paragraph links, and the editable 我的工作稿 at bottom, all colors and design. Change only these details: 1) Persistent left navigation rail must have FIVE labeled icon buttons in exact order 项目, 成果 (selected in blue), 待我决定, 知识库, 成员; keep settings/avatar bottom. The current selected button says 待我决定 but it must be 成果, and add separate 待我决定 below it. 2) Remove the invented 2024-05-20 timestamps in both document headers. Replace with only '3 段内容 · 示例'. 3) The paragraph already highlighted and marked 已加入工作稿 must not also show 采用这段 action; keep only 已加入工作稿 for that paragraph. All other paragraphs still have 采用这段. Keep mockup disclaimer at top. Do not change anything else."
+    },
+    {
+      "file": "04-reuse-and-rules.png",
+      "prompt": "Precise UI edit of this knowledge library screenshot. Keep all layout, light theme, typography, five left navigation items, rule table, expanded pending rule and bottom reuse strip. Correct ONLY the right-hand panel and invented dates: the three rule statuses are mutually exclusive alternatives, NOT steps in a timeline. Remove the vertical colored timeline and all April10 timestamps. At top right under 本次使用记录 show selected rule 引用旧价格时，重新核查来源, scope 本项目, then ONE current blue status pill 本轮已带入, and text 规则版本 2 · 示例 / 对应任务：智能戒指机会研究 / 核验方式：结果尚未检查 / 查看派发记录 link. Below a divider add a small subsection 状态说明（非处理步骤）, with three plain informational rows: 本轮已带入：仅证明派发时携带规则; 结果已符合：有具体检查或审阅记录; 未确认 / 发现偏离：尚未检查，或结果偏离. These rows must be plain explanatory copy, not connected dots, not green checkmarks. Remove the invented April10 timestamp in the bottom artifact strip and replace with 示例成果. Preserve every other screen detail including mockup disclaimer. No new features or data."
+    },
+    {
+      "file": "01-work-arrangement.png",
+      "prompt": "Precise single-region UI correction. Keep this screenshot exactly as it is except the leftmost narrow navigation rail. It currently has 4 items and is missing 成果. Change the rail to FIVE icon+label buttons in this exact vertical order: 项目 (selected blue speech bubble), 成果 (document icon), 待我决定 (inbox icon), 知识库 (book icon), 成员 (people icon). Keep the app logo above, settings and avatar at the bottom. Adjust vertical spacing to fit all five, font size unchanged. Do not change any content, layout, typography or colors anywhere outside the narrow left rail. Keep the top mockup disclaimer unchanged. Especially preserve the three-step arrangement form, radio choices, Grok and Dot chips, criteria and bottom buttons."
+    },
+    {
+      "file": "03-side-by-side.png",
+      "prompt": "Image1 is the TARGET screenshot of side-by-side Grok/Dot answers. Image2 is the REFERENCE with the CORRECT left navigation rail. Edit only the narrow 80px left rail of Image1: copy the complete FIVE-item rail design from Image2. The labels top to bottom MUST be: 项目, 成果, 待我决定, 知识库, 成员. In Image1 SELECT 成果 (the SECOND item) in blue; other items unselected. Each item has its own icon and label, exactly FIVE buttons. Keep app logo above and settings/avatar below. Do not reuse the mistaken four-item rail from Image1. Preserve the entire rest of Image1 pixel-identically: two member documents, paragraph adoption links, bottom 我的工作稿 editor, all text and colors, top mockup disclaimer. No content or layout modifications outside the rail."
+    }
+  ]
+}

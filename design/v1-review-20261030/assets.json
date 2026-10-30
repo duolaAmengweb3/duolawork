@@ -1,0 +1,36 @@
+{
+  "kind": "static AI mockup gallery check",
+  "figures": 4,
+  "allImagesLoaded": true,
+  "jsErrors": [],
+  "assets": [
+    {
+      "name": "01-work-arrangement.png",
+      "width": 1586,
+      "height": 992,
+      "bytes": 1638857,
+      "sha256": "d254ac8fe62ffb47718c22e3fce8483221d39b3587331e08eeb9e9c1e252f424"
+    },
+    {
+      "name": "02-final-result.png",
+      "width": 1586,
+      "height": 992,
+      "bytes": 1665662,
+      "sha256": "09e165a606d310cd7d588590b4e59266161dc1fe353be270bccd7d64b4d13c5d"
+    },
+    {
+      "name": "03-side-by-side.png",
+      "width": 1586,
+      "height": 992,
+      "bytes": 1757047,
+      "sha256": "b0eae69d934f7b37cbd37ba9779e7de104d77581adb0a14d6b68191b25858cc0"
+    },
+    {
+      "name": "04-reuse-and-rules.png",
+      "width": 1685,
+      "height": 934,
+      "bytes": 1624176,
+      "sha256": "257f82ce971f2a11a3a6f0cbb472a25801badf4781d2cf0df11ea10b79fe9501"
+    }
+  ]
+}
