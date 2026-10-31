@@ -29,6 +29,9 @@ try{
  // Keep a target owned by the updater until the successor has its own one.
  const pid=entry.child.pid;holder=await BackgroundPage.create(entry.endpoint,'about:blank');
  await entry.browser.close();entry.workPage.close();
+ // The successor owns this exact PID now. The obsolete test manager must not
+ // close an already-disconnected Playwright handle a second time in cleanup.
+ current.active.delete(account.id);
  next=new BrowserManager({root,testMode:true});await next.recover([account]);await next.ensureBackground(account);
  holder.close();holder=null;entry=next.active.get(account.id);page=entry.workPage;
  assert.equal(entry.child.pid,pid,'windowless update retains the same Chrome PID');

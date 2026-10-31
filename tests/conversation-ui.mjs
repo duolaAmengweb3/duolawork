@@ -64,6 +64,17 @@ try {
       requestId: crypto.randomUUID(),
       stepId: work.stepId,
     });
+  await p.getByRole("button", { name: "群设置", exact: true }).click();
+  await p.getByRole("checkbox", { name: "选择 Dot", exact: true }).uncheck();
+  await p.getByRole("button", { name: "保存群设置", exact: true }).click();
+  await p
+    .getByRole("dialog")
+    .getByRole("alert")
+    .getByText("此成员正在回应，请等它完成后移出", { exact: true })
+    .waitFor();
+  await p.getByRole("button", { name: "Close", exact: true }).click();
+  assert((await h.request("/v2/channels")).items[0].memberIds.includes(dot.id));
+  checks.push("移出正在回应的成员时在当前弹窗说明原因，保留原成员和通知");
   await dot.call("post_message", {
     requestId: crypto.randomUUID(),
     channelId: c.id,

@@ -78,7 +78,7 @@ function Face({ name, id, small = false }) {
     </span>
   );
 }
-function Modal({ title, description, children, onClose }) {
+function Modal({ title, description, children, error, onClose }) {
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-xl">
@@ -86,6 +86,11 @@ function Modal({ title, description, children, onClose }) {
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+        )}
         {children}
       </DialogContent>
     </Dialog>
@@ -1097,6 +1102,7 @@ export default function App() {
       </main>
       {modal && (
         <Modal
+          error={error}
           title={
             {
               create: "新建群聊",

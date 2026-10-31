@@ -77,7 +77,7 @@ const report = {
   activity: snapshot.activity,
   documents: snapshot.documents,
   realAgentReplied: snapshot.messages.some((m) => m.authorId !== "owner"),
-  bidirectionalMentions: snapshot.messages
+  mentionEdges: snapshot.messages
     .filter((m) => m.authorId !== "owner" && m.mentions?.length)
     .map((m) => ({
       id: m.id,
@@ -85,7 +85,8 @@ const report = {
       mentions: m.mentions,
       replyTo: m.replyTo,
     })),
-  fullCollaborationAccepted: false,
+  acceptanceRecord:
+    "evidence/conversation-acceptance.json (capture, not verdict)",
   identityBoundary:
     "Grok account Automation and Dot Work event session. Existing personal Bot/Dot memory inheritance unverified.",
 };
@@ -118,7 +119,7 @@ console.log(
         title: d.title,
         status: d.status,
       })),
-      bidirectionalMentions: report.bidirectionalMentions,
+      mentionEdges: report.mentionEdges,
     },
     null,
     2,

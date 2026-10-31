@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-31T02:29:49.007Z",
+  "at": "2026-10-31T02:42:30.601Z",
   "channelId": "channel_deb6fbb6cc7242909b90e37ca67f0464",
   "identities": [
     {
@@ -381,7 +381,7 @@
     }
   ],
   "realAgentReplied": true,
-  "bidirectionalMentions": [
+  "mentionEdges": [
     {
       "id": "chat_72b3937f51ca443f8e16870f1c8e9e64",
       "authorId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
@@ -407,6 +407,6 @@
       "replyTo": "chat_4daf757c2499468db91a96f39c95a525"
     }
   ],
-  "fullCollaborationAccepted": false,
+  "acceptanceRecord": "evidence/conversation-acceptance.json (capture, not verdict)",
   "identityBoundary": "Grok account Automation and Dot Work event session. Existing personal Bot/Dot memory inheritance unverified."
 }
