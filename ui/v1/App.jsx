@@ -107,7 +107,7 @@ function State({ status }) {
   );
 }
 export default function App() {
-  const [page, setPage] = useState("projects"),
+  const [page, setPage] = useState(new URLSearchParams(location.search).get("page")||"projects"),
     [workspace, setWorkspace] = useState(null),
     [projects, setProjects] = useState([]),
     [projectCursor,setProjectCursor]=useState(null),
@@ -2054,7 +2054,7 @@ function ProjectWizard({
     </>
   );
 }
-function ConnectWizard({ member, connection, refresh, notify, onError }) {
+export function ConnectWizard({ member, connection, refresh, notify, onError }) {
   const grok = member.platformId === "grok-bot",
     steps = grok
       ? ["命名", "连接", "接收任务", "测试"]
@@ -2193,7 +2193,7 @@ function ConnectWizard({ member, connection, refresh, notify, onError }) {
             variant="outline"
             onClick={() => {
               navigator.clipboard.writeText(
-                "请创建只由 webhook 触发的自动化或 Routine：收到通知后调用 Agent Hub 的 list_work、claim_work，按领取上下文执行，最后 submit_work；通知本身只带编号，不把通知送达当作完成。",
+                "请创建只由 webhook 触发的自动化或 Routine：收到通知后调用 Agent Hub 的 list_work、claim_work；kind=conversation 时 read_channel 读群，用 post_message 回复和 @ 群内成员，没有新内容 stay_silent。文档、会议、事项按需使用，不预设分工和发言顺序。负责人由用户指定且可更换，不是唯一发言入口。旧项目工作按领取上下文执行；通知只是门铃，不把通知送达当作完成。",
               );
               notify("已复制 Routine 说明");
             }}

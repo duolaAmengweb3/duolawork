@@ -10,7 +10,7 @@ import {
 
 export const EVENT = {
   name: "work.ready",
-  description: "本成员有待领取的项目工作。仅包含标识，完整资料从工具读取。",
+  description: "本成员有待处理的群消息或项目工作。仅包含标识；list_work、claim_work 返回真实类型与上下文。普通群聊不创建正式任务。",
   delivery: ["webhook"],
   inputSchema: {
     type: "object",

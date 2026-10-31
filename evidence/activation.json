@@ -1,9 +1,9 @@
 {
-  "at": "2026-10-30T13:01:47.166Z",
+  "at": "2026-10-31T02:15:54.701Z",
   "url": "http://127.0.0.1:8766",
-  "buildId": "02b0d385d282c46b",
-  "processId": 73459,
-  "desktopBuildId": "02b0d385d282c46b",
+  "buildId": "a946a7cefabee2b8",
+  "processId": 30575,
+  "desktopBuildId": "a946a7cefabee2b8",
   "backendAndDesktopMatch": true,
   "cloudOnline": true,
   "protectedLocalDataUnchanged": null,
@@ -12,24 +12,5 @@
   "observedProfileProcessesPreserved": 2,
   "profileVerification": "运行中 Chrome 保留相同 PID 和资料目录；未受控进程未附加或重登；关闭资料目录核对字节",
   "workspaceDataUnchanged": true,
-  "realCommercialAgentTested": false,
-  "recovery": {
-    "at": "2026-10-30T13:00:22.715Z",
-    "method": "SIGKILL only this hung Hub process; no browser terminated; not a hot handoff",
-    "reason": "Owned Electron main thread stuck inside native NSAlert modal; all localhost requests timed out; cloud available; no active runs.",
-    "unchangedMetadata": [
-      "config.json",
-      "vault.enc",
-      "vault-key.oscrypt",
-      "browser-profiles.json"
-    ],
-    "changedRuntimeMetadata": [
-      "agent-connections.json"
-    ],
-    "runtimeMetadataChangeDetails": "not reconstructed from a before image; do not claim all metadata identical across recovery",
-    "protectedBrowserCount": 2,
-    "browserProcessesPreservedAcrossRecovery": true,
-    "rootErrorMessage": "native modal content was not readable; underlying exception not established",
-    "automaticRecoveryClaim": false
-  }
+  "realCommercialAgentTested": false
 }

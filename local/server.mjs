@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readConfig, openVault, dataDir, privateJson } from './storage.mjs';
-import { cloudClient, networkStatus } from './transport.mjs';
+import { cloudClient, networkStatus, requestJson } from './transport.mjs';
 import { BrowserManager, normalizeBrowserProxy, checkBrowserNetwork } from './browser.mjs';
 import { Runner } from './runner.mjs';
 import { LoginMonitor } from './login-status.mjs';
@@ -98,6 +98,8 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  }
  if(url.pathname==='/api/local/prepare-update'&&req.method==='POST'){
   const state=await cloud.state();
+  const active=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
+  if(active.active)return json(res,{message:'Agent 仍在回应，等待本轮结束后再更新；群消息与登录资料保留'},409);
   if(runner.jobs.size||connections.jobs.size||browsers.starting.size||state.tasks.some(t=>t.steps.some(s=>s.status==='running')))return json(res,{message:'任务、接入验证或登录窗口正在启动，暂不接管更新'},409);
   await logins.snapshot(state.accounts,browsers);
   await runner.stop({keepBrowsers:true});keepBrowsersOnShutdown=true;

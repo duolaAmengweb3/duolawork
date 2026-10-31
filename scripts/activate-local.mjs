@@ -8,6 +8,7 @@ import { BrowserManager } from "../local/browser.mjs";
 import { BackgroundPage } from "../local/background-page.mjs";
 import { assertArtifactPath } from "../local/data-policy.mjs";
 import { cloudClient } from "../local/transport.mjs";
+import { requestJson } from "../local/transport.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
   expected = JSON.parse(
     await fs.readFile(path.join(root, "shared/build-info.json"), "utf8"),
@@ -38,6 +39,8 @@ const durable = (s) => ({
   settings: s.settings,
   artifacts: s.artifacts,
 });
+const activeWork=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
+if(activeWork.active)throw new Error('原生 Agent 仍在回应，未重启本机软件。');
 const digest = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 async function localDigest() {

@@ -54,7 +54,7 @@ execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", out]);
 console.log("本机可运行构建：" + out + "（本机签名，尚无 Developer ID 公证）");
 
 // Acceptance uses temporary workerd/D1 and a mock test keychain, never production profiles.
-execFileSync(process.execPath, [path.join(root, "tests/v1-desktop.mjs")], {
+execFileSync(process.execPath, [path.join(root, "tests/conversation-desktop.mjs")], {
   cwd: root,
   env: {
     ...process.env,

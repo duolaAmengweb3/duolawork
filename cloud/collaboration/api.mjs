@@ -27,6 +27,7 @@ import {
   respondComputer,
 } from "./computer.mjs";
 import { uploadFile, downloadFile } from "./files.mjs";
+import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -58,6 +59,7 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   additionalProperties: false,
 });
 export const TOOLS = [
+  ...CHANNEL_TOOLS,
   {
     name: "read_file",
     description: "读取本项目附件的真实字节，按64KB分页，不截断伪装完整文件。",
@@ -281,8 +283,23 @@ export async function callTool(repo, identity, actor, name, args, env) {
       "原生工具必须使用成员身份，不能用管理凭证冒充",
       403,
     );
+  if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
   if (name === "list_work")
-    return { work: await workForMember(repo, identity, actor.memberId) };
+    return { work: [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)] };
+  // Preserve approved legacy tool semantics while platforms refresh their tool
+  // lists. The response explicitly identifies a conversation delivery. No run,
+  // formal task, document, fabricated speaker or silent tool-scope expansion.
+  if (name === "claim_work" && args.stepId?.startsWith("turn_")) {
+    const claim=await claimConversation(repo,identity,actor,args);
+    const context=await readChannel(repo,identity,actor,{channelId:claim.channelId});
+    return {...claim,input:{...claim.input,channel:context.channel,members:context.members,messages:context.messages,earlierMessagesBefore:context.before,documents:context.documents,knowledge:context.knowledge,decisions:context.decisions,tasks:context.tasks,meetings:context.meetings}};
+  }
+  if (["submit_work","report_progress"].includes(name) && args.attemptId?.startsWith("turn_")) {
+    const turn=await repo.get("channel_turn",args.attemptId);
+    if(turn.memberId!==actor.memberId||turn.lease!==args.lease||turn.status!=="active") fail("invalid_lease","通知领取已失效",409);
+    if(name==="submit_work")return conversationCommand(repo,identity,actor,{type:"channel.post",requestId:args.requestId,channelId:turn.scopeId,turnId:turn.id,body:args.items?.map(i=>i.body).join("\n\n")});
+    return repo.transact(args.requestId,{...args,actor},async tx=>{const current=await tx.get("channel_turn",turn.id);if(current.status!=="active")fail("invalid_lease","通知已结束",409);return tx.put("channel_turn",{...current,progress:required(args.message,"进度",2000),expiresAt:new Date(Date.now()+30*60000).toISOString()});});
+  }
   if (name === "read_file") {
     const file = await repo.get("file", args.fileId),
       offset = args.offset || 0;
@@ -397,7 +414,7 @@ async function mcp(repo, identity, actor, request, env) {
         tools: TOOLS.map((t) => ({
           ...t,
           annotations: {
-            readOnlyHint: ["list_work", "read_document"].includes(t.name),
+            readOnlyHint: ["list_work", "read_document", "read_channel", "read_doc", "read_file"].includes(t.name),
             destructiveHint: false,
             idempotentHint: true,
             openWorldHint: false,
@@ -513,7 +530,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   }
   if (url.pathname === "/v2/signal" && request.method === "GET") {
     if (!actor.memberId) fail("member_required", "需要成员身份", 403);
-    const work = await workForMember(repo, identity, actor.memberId);
+    const work = [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)];
     return json({
       hasWork: work.some((x) => x.status === "ready"),
       pending: work.filter((x) => x.status === "ready").length,
@@ -563,6 +580,13 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
     );
   if (!actor.owner) fail("forbidden", "管理操作需要用户身份", 403);
+  if(url.pathname==="/v2/active-work"&&request.method==="GET"){
+    const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
+    return json({active:r.total});
+  }
+  if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await repo.list("channel",{order:"recent",limit:500})});
+  if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
+  if(url.pathname==="/v2/channel-doc"&&request.method==="GET")return json(await conversationTool(repo,identity,actor,"read_doc",{documentId:url.searchParams.get("id")}));
   if (url.pathname === "/v2/pairing" && request.method === "POST")
     return json(
       await startPairing(
@@ -652,11 +676,12 @@ export async function v2Fetch(request, env, ctx, identity) {
       await respondComputer(repo, identity, await readJSON(request), env),
     );
   if (url.pathname === "/v2/commands" && request.method === "POST") {
-    const result = await command(
+    const input=await readJSON(request);
+    const result = await (input.type?.startsWith("channel.")?conversationCommand:command)(
       repo,
       identity,
       actor,
-      await readJSON(request),
+      input,
     );
     kick();
     return json({ result });

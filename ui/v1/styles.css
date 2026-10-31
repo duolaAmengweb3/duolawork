@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "./**/*.{js,jsx,ts,tsx}";
+@source "../conversation/**/*.{js,jsx}";
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --color-background: var(--background);

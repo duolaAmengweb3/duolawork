@@ -4,6 +4,7 @@ import { platformURL, unseal } from "./security.mjs";
 import { deliverEvents } from "./events.mjs";
 import { command } from "./engine.mjs";
 import { startComputer, pollComputer } from "./computer.mjs";
+import { conversationMaintenance } from "./conversation.mjs";
 
 export async function dispatchOne(
   repo,
@@ -18,10 +19,12 @@ export async function dispatchOne(
     lock,
     { rowId },
     async (tx) => {
-      const row = await tx.get("outbox", rowId),
-        step = await tx.get("step", row.stepId),
-        run = await tx.get("run", row.parentId),
-        project = await tx.get("project", row.scopeId);
+      const row = await tx.get("outbox", rowId);
+      const turn = row.conversation ? await tx.get("channel_turn", row.stepId) : null;
+      const channel = row.conversation ? await tx.get("channel", row.scopeId) : null;
+      const step = turn ? {...turn,generation:1} : await tx.get("step",row.stepId);
+      const run = channel ? {status:channel.status==="active"?"running":"canceled"} : await tx.get("run",row.parentId);
+      const project = channel || await tx.get("project",row.scopeId);
       if (
         !["pending", "retry", "waiting_subscription"].includes(row.status) ||
         row.dueAt > now
@@ -63,6 +66,15 @@ export async function dispatchOne(
       }
       const resource = await tx.get("resource", c.resourceKey, false);
       if (resource?.status === "busy") return null;
+      if(channel){
+        const cursorId=`${channel.id}:${row.memberId}`,cursor=await tx.get("channel_cursor",cursorId,false);
+        const earliest=Date.parse(cursor?.lastNotifiedAt||"1970-01-01")+channel.wakeIntervalSeconds*1000;
+        if(earliest>Date.parse(now)){tx.put("outbox",{...row,dueAt:new Date(earliest).toISOString()});return null;}
+        tx.put("channel_cursor",{...cursor,id:cursorId,scopeId:channel.id,parentId:row.memberId,lastNotifiedAt:now});
+        // One platform wake can read all queued messages for this group. Keep
+        // every turn ready until the native Agent actually claims them.
+        for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation)tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
+      }
       row.status = "sending";
       row.dispatchId = lock;
       row.sendingAt = now;
@@ -186,7 +198,7 @@ export async function dispatchOne(
       current.httpStatus = outcome.httpStatus || null;
       current.completedAt = now;
       tx.put("outbox", current);
-      tx.message(
+      if(!current.conversation) tx.message(
         current.scopeId,
         "notification",
         current.status === "accepted"
@@ -211,6 +223,7 @@ export async function maintenance(
   fetcher = fetch,
   now = new Date().toISOString(),
 ) {
+  await conversationMaintenance(repo,identity,now);
   // A deliberately paused/unavailable member is a known condition, not an
   // unexplained fifteen-minute timeout. Preserve any running lease untouched.
   for (const pending of await repo.list("step", {status:"ready",limit:500})) {
@@ -265,6 +278,11 @@ export async function maintenance(
         `notice-stalled:${row.id}`,
         { id: row.id },
         async (tx) => {
+          if(row.conversation){
+            const turn=await tx.get("channel_turn",row.stepId);
+            if(turn.status==="ready")tx.put("channel_turn",{...turn,status:"stalled",reason:"平台已接收通知，但尚无真实回应；消息保留，可继续"});
+            return {};
+          }
           const step = await tx.get("step", row.stepId),
             run = await tx.get("run", row.parentId);
           if (

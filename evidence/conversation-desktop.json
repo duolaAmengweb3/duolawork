@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-31T02:15:43.726Z",
+  "packaged": true,
+  "isolated": true,
+  "checks": [
+    "真实 Electron 完整退出及重开",
+    "群选择、用户指定负责人、普通消息保留",
+    "未发送草稿保留",
+    "重开未重复发消息或创建任务"
+  ],
+  "commercialAgentTest": false
+}

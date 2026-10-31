@@ -1,0 +1,196 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { chromium } from "playwright-core";
+import { startHarness } from "./v1-harness.mjs";
+const h = await startHarness();
+process.env.AGENT_HUB_DATA_DIR = path.join(h.directory, "local");
+const { start } = await import("../local/server.mjs");
+let local, browser;
+const checks = [],
+  errors = [];
+try {
+  await h.request("/admin/action", {
+    type: "settings.update",
+    payload: { automation: false },
+  });
+  const grok = await h.member("grok-bot", "Grok"),
+    dot = await h.member("chatgpt-agent", "Dot"),
+    muse = await h.member("muse", "Muse");
+  local = await start({
+    port: 0,
+    maintenance: true,
+    vaultKey: Buffer.alloc(32, 17),
+    config: {
+      endpoint: h.base,
+      adminKey: h.key,
+      runnerId: "conversation-ui-isolated",
+    },
+  });
+  browser = await chromium.launch({ channel: "chrome", headless: true });
+  const p = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(local.url);
+  await p
+    .getByRole("button", { name: "新建群聊", exact: true })
+    .first()
+    .click();
+  await p
+    .getByRole("textbox", { name: "群名称", exact: true })
+    .fill("产品讨论室");
+  await p.getByRole("checkbox", { name: "选择 Grok", exact: true }).check();
+  await p.getByRole("checkbox", { name: "选择 Dot", exact: true }).check();
+  await p.getByLabel("群负责人", { exact: true }).selectOption(grok.id);
+  await p.getByRole("button", { name: "创建并开始沟通", exact: true }).click();
+  await p.getByRole("dialog").waitFor({ state: "hidden" });
+  await p
+    .getByRole("textbox", { name: "群消息", exact: true })
+    .fill("都在线吗？");
+  await p.getByRole("button", { name: "发送消息", exact: true }).click();
+  await p.getByText("都在线吗？", { exact: true }).waitFor();
+  let c = (await h.request("/v2/channels")).items[0];
+  assert.equal(c.coordinatorId, grok.id);
+  assert.equal(
+    (await h.request("/v2/records?kind=run")).items.filter(
+      (r) => r.purpose === "goal",
+    ).length,
+    0,
+  );
+  checks.push("创建群聊、用户选择负责人、普通消息不创建任务");
+  const work = (await dot.call("list_work")).work.find(
+      (w) => w.channelId === c.id,
+    ),
+    claim = await dot.call("claim_work", {
+      requestId: crypto.randomUUID(),
+      stepId: work.stepId,
+    });
+  await dot.call("post_message", {
+    requestId: crypto.randomUUID(),
+    channelId: c.id,
+    turnId: claim.turnId,
+    body: "我在。@Grok，你觉得先讨论哪一点？",
+    mentions: [grok.id],
+  });
+  await p
+    .getByRole("main")
+    .getByText("我在。@Grok，你觉得先讨论哪一点？", { exact: true })
+    .waitFor({ timeout: 20000 });
+  checks.push("原生协议成员回复、@ 显示、无成果审阅卡");
+  await p.getByRole("button", { name: "群设置", exact: true }).click();
+  await p.getByLabel("群负责人", { exact: true }).selectOption(dot.id);
+  await p.getByRole("checkbox", { name: "选择 Muse", exact: true }).check();
+  await p.getByRole("button", { name: "保存群设置", exact: true }).click();
+  await p.getByRole("dialog").waitFor({ state: "hidden" });
+  c = (await h.request("/v2/channels")).items[0];
+  assert.equal(c.coordinatorId, dot.id);
+  assert(c.memberIds.includes(muse.id));
+  await p.getByRole("button", { name: "群设置", exact: true }).click();
+  await p.getByRole("checkbox", { name: "选择 Muse", exact: true }).uncheck();
+  await p.getByRole("button", { name: "保存群设置", exact: true }).click();
+  await p.getByRole("dialog").waitFor({ state: "hidden" });
+  assert.equal(
+    (await h.request("/v2/channels")).items[0].memberIds.includes(muse.id),
+    false,
+  );
+  assert(
+    (await h.request("/v2/workspace")).members.some((m) => m.id === muse.id),
+  );
+  checks.push("负责人更换，成员直接添加和移出，账号和聊天保留");
+  await p.getByRole("button", { name: "新建共享文档", exact: true }).click();
+  await p
+    .getByRole("textbox", { name: "工具标题", exact: true })
+    .fill("共创笔记");
+  await p
+    .getByRole("textbox", { name: "工具正文", exact: true })
+    .fill("先记录真实问题，不预设分工。");
+  await p.getByRole("button", { name: "保存", exact: true }).click();
+  await p.getByRole("button", { name: "编辑文档", exact: true }).click();
+  await p
+    .getByRole("textbox", { name: "共享文档正文", exact: true })
+    .fill("用户可以随时更换负责人，其他成员直接交流。");
+  await p
+    .getByRole("textbox", { name: "修改原因", exact: true })
+    .fill("补充负责人原则");
+  await p.getByRole("button", { name: "保存修改", exact: true }).click();
+  await p.getByRole("button", { name: "编辑文档", exact: true }).waitFor();
+  await p.reload();
+  await p
+    .getByRole("main")
+    .getByRole("button", { name: /共创笔记/ })
+    .first()
+    .click();
+  await p
+    .getByText("用户可以随时更换负责人，其他成员直接交流。", { exact: true })
+    .waitFor();
+  await p.getByRole("button", { name: "Close", exact: true }).click();
+  checks.push("共同文档编辑、版本保存，刷新后正文保留");
+  const q = await dot.call("ask_user", {
+    requestId: crypto.randomUUID(),
+    channelId: c.id,
+    question: "先看哪个方向？",
+    options: ["产品需求", "技术实现"],
+  });
+  await p
+    .getByRole("button", { name: "产品需求", exact: true })
+    .waitFor({ timeout: 20000 });
+  await p.getByRole("button", { name: "产品需求", exact: true }).click();
+  await p.getByText("用户选择：产品需求", { exact: true }).waitFor();
+  checks.push("用户决定卡直接回复，提问者收到继续消息");
+  await p.getByRole("textbox", { name: "群消息", exact: true }).fill("@Do");
+  await p.getByRole("button", { name: "提及 Dot", exact: true }).click();
+  await p
+    .getByRole("textbox", { name: "群消息", exact: true })
+    .fill("只请 Dot 看一下。");
+  await p.getByRole("button", { name: "发送消息", exact: true }).click();
+  await p
+    .getByRole("main")
+    .getByText("只请 Dot 看一下。", { exact: true })
+    .waitFor();
+  const directed = await h.request("/v2/channel?id=" + c.id);
+  assert.deepEqual(directed.messages.at(-1).mentions, [dot.id]);
+  checks.push("键入 @ 自动选择成员，定向通知真实群内 ID");
+  await p
+    .getByRole("textbox", { name: "群消息", exact: true })
+    .fill("未发送的草稿");
+  await p.reload();
+  await p.getByRole("textbox", { name: "群消息", exact: true }).waitFor();
+  assert.equal(
+    await p.getByRole("textbox", { name: "群消息", exact: true }).inputValue(),
+    "未发送的草稿",
+  );
+  checks.push("群选择与草稿刷新后保留");
+  await fs.mkdir("evidence/screenshots", { recursive: true });
+  await p.screenshot({
+    path: "evidence/screenshots/conversation-desktop.png",
+    fullPage: true,
+  });
+  await p.setViewportSize({ width: 1000, height: 760 });
+  await p.screenshot({
+    path: "evidence/screenshots/conversation-compact.png",
+    fullPage: true,
+  });
+  assert.equal(
+    await p.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+    false,
+  );
+  assert.deepEqual(errors, []);
+  await fs.writeFile(
+    "evidence/conversation-ui.json",
+    JSON.stringify(
+      {
+        at: new Date().toISOString(),
+        scope:
+          "isolated Chromium + Worker/D1 + scripted protocol peers, not real commercial Agents",
+        checks,
+        errors,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
+} finally {
+  await browser?.close();
+  await local?.close();
+  await h.stop();
+}
