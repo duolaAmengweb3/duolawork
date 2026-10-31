@@ -545,3 +545,52 @@ test("changing the coordinator during a live response preserves its lease and th
   );
   assert.equal((await f.repo.get("channel_turn", c.turnId)).status, "done");
 });
+test("editing a delivered document keeps the fixed delivery version and marks new changes as a draft", async (t) => {
+  const f = await setup(t);
+  const d = await f.send("channel.doc.create", {
+    channelId: f.c.id,
+    title: "共同稿",
+    body: "原交付",
+  });
+  const delivery = await f.send(
+    "channel.doc.deliver",
+    { documentId: d.id, summary: "交付第一版" },
+    agent("check"),
+  );
+  await f.send("channel.doc.edit", {
+    documentId: d.id,
+    expectedVersion: 1,
+    body: "尚未交付的新修改",
+    reason: "新增意见",
+  });
+  const latest = await f.repo.get("channel_doc", d.id);
+  assert.equal(latest.status, "draft");
+  assert.equal(latest.deliveredVersion, 1);
+  assert.equal(latest.version, 2);
+  assert.equal((await f.repo.get("channel_delivery", delivery.id)).version, 1);
+});
+test("explicit document delivery completes the active notification so the next question is not blocked", async (t) => {
+  const f = await setup(t);
+  await f.send("channel.post", {
+    channelId: f.c.id,
+    body: "请交付文档",
+    mentions: ["check"],
+  });
+  const w = (await conversationWork(f.repo, f.identity, "check"))[0];
+  const c = await claimConversation(f.repo, f.identity, agent("check"), {
+    requestId: "deliver-active",
+    stepId: w.stepId,
+  });
+  const d = await f.send(
+    "channel.doc.create",
+    { channelId: f.c.id, title: "真实成果", body: "完整正文" },
+    agent("check"),
+  );
+  await f.send(
+    "channel.doc.deliver",
+    { documentId: d.id, summary: "已交付" },
+    agent("check"),
+  );
+  assert.equal((await f.repo.get("channel_turn", c.turnId)).status, "done");
+  assert.equal((await f.repo.get("resource", "check")).status, "idle");
+});

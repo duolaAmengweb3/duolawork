@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-31T02:25:39.041Z",
+  "scope": "owned isolated browser to installed Hub UI, real Dot-authored card",
+  "questionId": "question_ab9c2d9e45584eb9a070898c966e2fc5",
+  "answer": "带示例版",
+  "answerMethod": "automated UI QA choice by Codex for synthetic game; not a human business approval",
+  "checks": [
+    "real Dot ask_user renders a choice card",
+    "clicking the card writes the answer through the actual installed UI",
+    "answer appears as a group message and re-notifies the asking native Agent"
+  ]
+}

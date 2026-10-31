@@ -1661,6 +1661,9 @@ function SharedDocument({
           <DialogDescription>
             v{base} · {name(doc?.lastEditorId)} 最后修改 ·
             共同编辑，保留每个版本
+            {doc?.deliveredVersion && base > doc.deliveredVersion && (
+              <span> · 新修改尚未交付（上次为 v{doc.deliveredVersion}）</span>
+            )}
           </DialogDescription>
         </DialogHeader>
         {error && (

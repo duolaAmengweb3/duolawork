@@ -735,6 +735,7 @@ export async function conversationCommand(
           body,
           version: doc.version + 1,
           versionId,
+          status: "draft",
           lastEditorId: actor.memberId || "owner",
         });
         tx.put("channel_doc_version", {
@@ -791,6 +792,13 @@ export async function conversationCommand(
             version: doc.version,
           },
         );
+        if (actor.memberId)
+          for (const turn of await tx.list("channel_turn", {
+            scope: channel.id,
+            parent: actor.memberId,
+            status: "active",
+          }))
+            await finishTurn(tx, actor, turn.id, "done", "已交付共享文档");
         return delivery;
       }
       if (type === "channel.ask") {
@@ -888,6 +896,7 @@ export async function conversationCommand(
             body: suggestion.body,
             version: d.version + 1,
             versionId,
+            status: "draft",
             lastEditorId: "owner",
           });
           tx.put("channel_doc_version", {
