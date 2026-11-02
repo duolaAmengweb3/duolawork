@@ -53,6 +53,34 @@ try {
     });
   app = await launch();
   let p = await app.firstWindow();
+  await p.getByRole('textbox', { name: '群消息', exact: true }).waitFor();
+  await p.evaluate(() => {
+    const copy = document.createElement('button');
+    copy.textContent = 'COPY-PERMISSION-REGRESSION';
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText('HUB-OWN-WORKBENCH-COPY'); copy.dataset.result = 'copied'; }
+      catch { copy.dataset.result = 'denied'; }
+    };
+    document.body.append(copy);
+  });
+  await p.getByRole('button', { name: 'COPY-PERMISSION-REGRESSION' }).click();
+  await p.waitForFunction(() => document.querySelector('[data-result]')?.dataset.result === 'copied');
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'HUB-OWN-WORKBENCH-COPY');
+  assert.equal(await p.evaluate(async () => {
+    try { await navigator.clipboard.readText(); return 'unexpected-read'; }
+    catch { return 'denied'; }
+  }), 'denied', 'the renderer must not gain clipboard reading');
+  await p.evaluate(() => {
+    const frame = document.createElement('iframe'); frame.src = '/'; frame.id = 'clipboard-subframe';
+    document.body.append(frame);
+  });
+  await p.locator('#clipboard-subframe').contentFrame().locator('body').waitFor();
+  assert.equal(await p.locator('#clipboard-subframe').contentFrame().locator('body').evaluate(async () => {
+    try { await navigator.clipboard.writeText('SUBFRAME-MUST-NOT-COPY'); return 'unexpected-write'; }
+    catch { return 'denied'; }
+  }), 'denied', 'an embedded document must not overwrite the clipboard');
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'HUB-OWN-WORKBENCH-COPY');
+  await p.evaluate(() => { document.querySelector('#clipboard-subframe')?.remove(); document.querySelector('[data-result]')?.remove(); });
   await p
     .getByRole("textbox", { name: "群消息", exact: true })
     .fill("未发出的草稿 CONVERSATION-RESTART");
@@ -94,6 +122,7 @@ try {
     isolated: true,
     checks: [
       "真实 Electron 完整退出及重开",
+      "本地工作台复制可用，剪贴板读取及内嵌页面写入仍被拒绝",
       "群选择、用户指定负责人、普通消息保留",
       "未发送草稿保留",
       "重开未重复发消息或创建任务",

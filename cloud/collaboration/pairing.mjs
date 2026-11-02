@@ -38,7 +38,7 @@ const allowedRedirect = (raw) => {
     fail("invalid_redirect", "只接受原平台官方授权回调");
   return u.href;
 };
-async function grant(tx, memberId, clientId, now) {
+export async function grant(tx, memberId, clientId, now) {
   const access = random("ahv1_"),
     refresh = random("ahr_");
   tx.put("member_auth", {
@@ -63,7 +63,7 @@ async function grant(tx, memberId, clientId, now) {
     scope: "hub:member",
   };
 }
-export async function startPairing(repo, identity, memberId, origin) {
+export async function startPairing(repo, identity, memberId, origin, purpose = "oauth") {
   const member = identity.members.find(
     (m) => m.id === memberId && m.status !== "disabled",
   );
@@ -93,6 +93,7 @@ export async function startPairing(repo, identity, memberId, origin) {
     tx.put("pairing", {
       id: key,
       memberId,
+      purpose,
       status: "pending",
       expiresAt: new Date(Date.parse(tx.now) + 15 * 60000).toISOString(),
     }),

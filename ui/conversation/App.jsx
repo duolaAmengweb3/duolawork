@@ -1535,6 +1535,16 @@ function Members({ workspace, perform, refresh, setModal }) {
           onSubmit={async (e) => {
             e.preventDefault();
             try {
+              const target = platforms.find(p => p.id === platform);
+              if (!target?.registered) try {
+                await api("/action", { type: "platform.create", payload: {
+                  id: platform, name: target?.name || platform, nativeAgents: true,
+                } });
+              } catch (error) {
+                // Another window may have added this platform concurrently.
+                const current = await api("/state");
+                if (!current.platforms?.some(p => p.id === platform)) throw error;
+              }
               const { result: a } = await perform(() =>
                 api("/action", {
                   type: "account.create",
@@ -1569,7 +1579,7 @@ function Members({ workspace, perform, refresh, setModal }) {
             >
               {platforms.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.name}{p.status === "acceptance_target" ? " · 待联测" : ""}
                 </option>
               ))}
             </select>

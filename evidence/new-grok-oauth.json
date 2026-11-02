@@ -173,8 +173,10 @@
     "actualAuthorizationPageObservedInBrowserInventory": true,
     "actualCallback": "https://www.cursor.com/agents/mcp/oauth/callback",
     "authorizationSubmitted": false,
-    "status": "waiting_for_explicit_new_member_access_confirmation",
-    "completeAutomaticCollaborationVerified": false
+    "status": "owner_consented_then_requested_single_skill; OAuth form not submitted; Skill redemption later succeeded",
+    "completeAutomaticCollaborationVerified": false,
+    "ownerAccessConsentGiven": true,
+    "followUpEvidence": "evidence/agent-skill-onboarding.json"
   },
   "limitations": [
     "Opening native Bot OAuth flow is fixed; consent, real tool use and native Routine wake remain separate acceptance steps.",

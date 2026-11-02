@@ -1,0 +1,58 @@
+{
+  "at": "2026-11-02T10:35:31.214610+00:00",
+  "buildId": "568a12a7138d543d",
+  "workerVersionId": "e5ce3a01-5352-40db-b980-a6bc44e2ce5b",
+  "targets": {
+    "total": 18,
+    "coding": 10,
+    "personal": 8,
+    "allNativeProvidersTested": false
+  },
+  "engineering": {
+    "checksPassed": 145,
+    "typecheckPassed": true,
+    "installedDesktopCopyWorks": true,
+    "clipboardReadDenied": true,
+    "subframeClipboardWriteDenied": true,
+    "activation": {
+      "at": "2026-11-02T10:32:26.877Z",
+      "url": "http://127.0.0.1:8766",
+      "buildId": "568a12a7138d543d",
+      "processId": 12629,
+      "desktopBuildId": "568a12a7138d543d",
+      "backendAndDesktopMatch": true,
+      "cloudOnline": true,
+      "protectedLocalDataUnchanged": true,
+      "protectedLocalMetadataUnchanged": true,
+      "ownedBrowsersPreserved": 0,
+      "observedProfileProcessesPreserved": 0,
+      "profileVerification": "关闭浏览器时核对完整资料字节",
+      "workspaceDataUnchanged": true,
+      "realCommercialAgentTested": false
+    }
+  },
+  "nativeGrok": {
+    "botName": "Duola2号",
+    "memberName": "grok2",
+    "singleSkillSent": true,
+    "ownerAccessConsentGiven": true,
+    "authorizedAt": "2026-11-02T10:23:47.280Z",
+    "nativeRoutineCreated": true,
+    "providerCredentialStorage": "Agent reported private 0600 file; filesystem not independently inspected",
+    "configurationObserved": "Native Bot reports only type=webhook; current Routine details UI has no POST to/key/header section",
+    "statusReportWrittenByNativeMember": {
+      "stage": "waiting_platform",
+      "message": "已配对并创建原生例程；当前账号的工具与详情页均未提供Webhook接收地址和密钥，自动唤醒尚未通过。",
+      "at": "2026-11-02T10:33:05.984Z"
+    },
+    "automaticWakeAndRoundTripPassed": false,
+    "fallbackAccountAutomationUsed": false,
+    "recurringModelPollingEnabled": false
+  },
+  "checksScope": "Automated protocol fixtures are not native CLI acceptance. No VPS Claude Code access, subscription/model replacement or login reset.",
+  "stillOpen": [
+    "New native Grok webhook receiver parameters are unavailable in this account/tool/UI.",
+    "Coding provider native runtime acceptance remains pending by provider.",
+    "Issue #23 native wake latency remains unresolved."
+  ]
+}

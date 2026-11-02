@@ -35,10 +35,15 @@ export const PLATFORMS = [
 ];
 export async function configureConnection(repo, identity, input, secret) {
   required(input.requestId, "请求编号", 120);
-  const platform = PLATFORMS.find((x) => x.id === input.platform);
+  // Existing Dot members retain their account/profile IDs from the early UI.
+  let platform = PLATFORMS.find((x) => x.id === (input.platform === "chatgpt-agent" ? "dots" : input.platform));
   const member = identity.members.find(
     (x) => x.id === input.memberId && x.status !== "disabled",
   );
+  // Pull is a member-authenticated protocol, not a Muse-only capability.
+  // It cannot cause a server-side request to an arbitrary callback endpoint.
+  if (member && input.transport === "muse-poll")
+    platform = { id: member.platformId, transport: "muse-poll" };
   if (
     !platform ||
     !member ||
@@ -56,7 +61,7 @@ export async function configureConnection(repo, identity, input, secret) {
   )
     fail("resource_busy", "旧版任务仍在运行，请先结束后启用原生协作", 409);
   const config = {};
-  if (platform.id === "grok-bot") {
+  if (platform.transport === "grok-webhook") {
     config.url = platformURL(input.url, "grok");
     config.token = required(input.token, "Routine 密钥", 4000);
     if (new URL(config.url).pathname.startsWith("/webhook/automation/") || config.token.startsWith("whsec_")) {
@@ -105,8 +110,8 @@ export async function configureConnection(repo, identity, input, secret) {
         needsAuthorization:
           platform.id === "perplexity-computer" && (!old || changed),
         pollSeconds:
-          platform.id === "muse"
-            ? Math.max(60, Number(input.pollSeconds) || 300)
+          platform.transport === "muse-poll"
+            ? Math.max(15, Number(input.pollSeconds) || 60)
             : null,
       });
       return publicConnection(c);

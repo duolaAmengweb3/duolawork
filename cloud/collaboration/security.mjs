@@ -167,4 +167,5 @@ export const publicConnection = (c) =>
     deliveryEvidence: c.deliveryEvidence || null,
     pollSeconds: c.pollSeconds || null,
     needsAuthorization: c.needsAuthorization || false,
+    setup: c.setup || null,
   };

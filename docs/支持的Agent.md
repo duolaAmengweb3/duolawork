@@ -1,4 +1,50 @@
-# 支持的 Agent（调研结果）
+# Agent 接入清单与验收状态
+
+## 2026-11-02 当前范围：Personal Agent 与 Coding Agent 混编
+
+所有者本轮明确：不再限定 Personal Agent；Coding Agent 是正式场景，国内外都覆盖。默认接入体验是用户复制一段带短时配对码的 Skill，由原 Agent 自己完成接入、配置和验证。此决定取代 10 月 28—30 日“先只做个人 Agent”的范围限制；不恢复已废弃的固定步骤编排。
+
+**下面是明确的产品适配目标，不是全部已可用的宣传清单。** 对外“已支持”必须依据当前产品的真实往返记录；支持 CLI 不等于已接管用户某个 IDE 窗口，也不等于更换成该品牌的模型 API。
+
+| 类别 | 明确进入适配与验收的产品 | 主接法 | 当前工程状态 |
+|---|---|---|---|
+| 海外 Coding Agent | Codex、Claude Code、Gemini CLI、Cursor CLI、OpenCode、GitHub Copilot CLI | 官方 CLI / SDK / 会话服务；保留各自登录、模型、工具和会话 | 已有历史接口研究及有限旧测试；当前自由群聊版的持续会话与自动协作尚未整组验收 |
+| 国内 Coding Agent | Kimi Code CLI、Qwen Code、CodeBuddy Code、Qoder CLI | 官方 CLI / SDK；支持时采用原生会话协议，避免操作 IDE 页面 | Kimi 已有前轮研究；本轮补核 Qwen/Qoder 的官方非交互与 MCP 文档、CodeBuddy 官方资料。未冒充真实账号测试通过 |
+| 海外 Personal Agent | Grok Bot、ChatGPT Dot、Muse、Perplexity Computer、OpenClaw、Hermes | 各平台原生事件、Webhook、SDK 或服务接口 | Dot 与 Grok 账号 Automation 已做真实协作；指定 Grok Bot 的新授权注册已修复，接入仍在验证。其余逐家状态见下文，不混称全部已接通 |
+| 国内 Personal Agent | WorkBuddy、千问办公 QwenWork | 官方连接器与后台任务；依能力选择事件或检查机制 | 有官方路线研究，尚未完成当前产品的真实账号验收 |
+
+补充候选：Devin、Jules、Manus 等云端执行产品继续保留在接口台账中；需分别核实账户/API用量与产品权益，不能假定网页订阅包含外部调用。TRAE IDE、Antigravity、Cursor IDE 等现有界面会话单列核验，不用“能加 MCP”或“同品牌 CLI 能跑”直接推成可在后台接收消息。
+
+### 当前实测与未通过项
+
+- 18家是明确适配目标，不是18家全量支持。国内外 Coding 都进入产品目录；当前通用协议的 Codex/Qwen fixture 不能替代原 CLI 的真实验收。
+- Duola2号的单段 Skill 配对和成员身份状态回报已实测通过。当前账号的原生例程没有提供Webhook接收地址/密钥，自动唤醒与完整协作未通过；不拿 grok1 的账号 Automation 代替它，也未改成定时模型空跑。
+- 只能用户在平台面板取得的配置，当前仍可能需要一次平台操作；不能宣传所有目标都已达到一段话全自动接入。产品会在同一入口呈现具体卡点，不让用户猜是否就绪。
+
+### 通用性落实在哪里
+
+- **一个用户入口：** 选具体 Agent，复制接入 Skill；命令、地址、接收参数和自检由 Agent 与 Hub 处理。默认不再摊出四步技术表单，保留高级入口处理平台明确要求的授权。
+- **一套协作能力：** 持续群聊、定向 @、共享文档、事项、会议及资料访问，对 Personal 与 Coding Agent 一致。谁负责、如何分工由用户与 Agent 决定，不按产品类别写死岗位。
+- **可替换适配器：** 平台差异放在启动/唤醒、会话续接、进度与结果、取消/恢复中；每位成员只有一条生效执行通道，不因超时偷偷换模型或重发到另一个入口。
+- **Coding Agent 的完整能力：** 沿用用户原订阅或已配置服务、原技能/MCP、仓库和明确绑定的会话。多人改代码默认各自工作区，交换改动和验证结果，不让互相覆盖成为协作机制。不能把新增 CLI 会话宣称为继承了旧 IDE 的全部聊天。
+- **同类多个成员：** 同品牌多个 Agent、多个账号和不同品牌混编都进入设计；凭证、会话、工作区和运行状态各自绑定。共享账号的额度及资源限制按实际平台计算，不虚构独立额度。
+
+### 同一份验收口径
+
+每家分别记录：① 身份配对与一次真实工具调用；② 从 Hub 发消息到正确原 Agent 被唤醒并回群；③ 同会话追问和双向 @；④ 使用自身工具完成真实任务并交回完整产物；⑤ 重启后保留登录和会话，断线/重复消息不重复执行。Coding 另验仓库修改、测试结果与工作区隔离。五项通过前，不把“已配对”或“命令可运行”展示成完整支持。
+
+### 本轮核对依据
+
+- 既有研究：[Codex 原生范围核验](../collab/codex/2026-10-28-原生接入范围核验.md)、[Claude 通用接入方案](../collab/claude/通用接入方案.md)、[竞品源码拆解](../collab/claude/2026-10-28-竞品实现拆解与复用清单.md)。这些是研究或历史测试，不能替代当前实现验收。
+- [Qwen Code 非交互与会话续接](https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/)、[Qwen MCP](https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/)。
+- [Kimi Code 命令](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-command.html)、[会话](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/sessions.html)。
+- [CodeBuddy Code 官方实践](https://www.codebuddy.ai/docs/cli/best-practices)；本轮搜索索引可读，页面直读返回502，具体参数仍需继续核对。
+- [Qoder CLI 参数与会话](https://docs.qoder.com/cli/cli-reference)、[Qoder MCP](https://docs.qoder.com/cli/mcp-servers)。
+- [Cursor CLI](https://cursor.com/docs/cli/overview)；逐版本核对，不混用旧版 cursor-agent 与新版 agent 命令。
+
+---
+
+## 历史调研档案（下面旧的范围与优先级不覆盖本轮决定）
 
 > **2026-10-28 更新：本文保留历史调研，不能当作“已支持”白名单。** 最新逐家能力、原生接入限制和实际测试见 [Codex 原生接入范围核验](../collab/codex/2026-10-28-原生接入范围核验.md)。旧文关于 Dots 只能 Slack、WorkBuddy/千问缺少官方组合依据、Kimi 只有 Code 支持 MCP 等结论需要按新证据更正；本项目尚未完成商业云端 Agent 原生自动接力验收。
 

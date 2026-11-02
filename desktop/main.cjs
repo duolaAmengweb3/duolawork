@@ -22,7 +22,15 @@ app.whenReady().then(async()=>{
  })();
  const {start}=await import(pathToFileURL(path.join(__dirname,'../local/server.mjs')).href);runtime=await start({resolveVaultKey,maintenance:process.env.AGENT_HUB_ACTIVATING==='1',notify:(title,body)=>{if(Notification.isSupported())new Notification({title,body}).show();}});
  // This window contains only the local workbench; provider logins live in persistent full Chrome profiles.
- const uiSession=session.fromPartition('persist:agent-hub-workbench');uiSession.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+ const uiSession=session.fromPartition('persist:agent-hub-workbench');
+ // Copy is a workbench action. Only its own top-level document may write;
+ // clipboard reads, embedded documents and every other permission stay denied.
+ const allowCopy=(contents,permission,origin,details)=>{
+  if(!win||contents!==win.webContents||permission!=='clipboard-sanitized-write'||details?.isMainFrame!==true)return false;
+  try{return new URL(origin).origin===runtime.url&&new URL(contents.getURL()).origin===runtime.url;}catch{return false;}
+ };
+ uiSession.setPermissionCheckHandler((contents,permission,origin,details)=>allowCopy(contents,permission,origin,details));
+ uiSession.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowCopy(contents,permission,details.requestingUrl,details)));
  win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1',title:'Agent Hub · 你的 AI 团队',backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return{action:'deny'};});
  win.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==runtime.url){event.preventDefault();if(/^https:\/\//.test(url))shell.openExternal(url);}});

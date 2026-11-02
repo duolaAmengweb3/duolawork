@@ -2054,7 +2054,36 @@ function ProjectWizard({
     </>
   );
 }
-export function ConnectWizard({ member, connection, refresh, notify, onError }) {
+export function ConnectWizard(props) {
+  const { member, connection, refresh, notify, onError } = props;
+  const [advanced, setAdvanced] = useState(false), [skill, setSkill] = useState(null),
+    [busy, setBusy] = useState(false), [error, setError] = useState("");
+  if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
+  const complete = connection?.status === "verified";
+  const stage = complete ? "已接入" : connection?.setup?.stage === "waiting_platform" ? "等待平台接收能力" : connection?.probe ? "正在验证实际回应" : connection?.authorizedAt ? "Agent 正在配置接收" : "等待 Agent 接入";
+  return <div className="space-y-5 py-3">
+    <div><h3 className="text-lg font-semibold">把 {member.name} 加入团队</h3>
+      <p className="text-muted-foreground leading-7 mt-2">复制下面的接入 Skill，发给你正在使用的 Agent。它会自己完成配置和验证，你不需要逐项填写参数。</p></div>
+    <div className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete ? "接入遇到问题" : stage}</span></div>
+    {connection?.setup?.message && !complete && <p className="text-sm text-muted-foreground">{connection.setup.message}</p>}
+    <Button disabled={busy} onClick={async () => {
+      setBusy(true); setError("");
+      try {
+        const result = await api("/v2/connect/skill", { memberId: member.id });
+        setSkill(result);
+        await navigator.clipboard.writeText(result.skill);
+        notify("已复制接入 Skill，发给你的 Agent 即可");
+        await refresh();
+      } catch (e) { setError(e.message); onError(e.message); }
+      finally { setBusy(false); }
+    }}><Copy size={15}/>{busy ? "正在准备接入 Skill" : complete ? "复制重新接入 Skill" : "复制接入 Skill"}</Button>
+    {skill && <><p className="text-sm text-muted-foreground">已包含本成员的一次性配对码，15 分钟内有效。Agent 完成真实往返后，上方状态会自动更新。</p><details><summary className="cursor-pointer text-sm text-muted-foreground">查看接入 Skill</summary><Textarea className="mt-3 min-h-48" aria-label="接入 Skill" value={skill.skill} readOnly/></details></>}
+    {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <div className="border-t pt-3"><Button size="sm" variant="ghost" onClick={() => setAdvanced(true)}>高级 / 手动接入</Button></div>
+  </div>;
+}
+
+function AdvancedConnectWizard({ member, connection, refresh, notify, onError }) {
   const grok = member.platformId === "grok-bot",
     steps = grok
       ? ["命名", "连接", "接收任务", "测试"]

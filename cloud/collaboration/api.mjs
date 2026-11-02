@@ -29,6 +29,7 @@ import {
 import { uploadFile, downloadFile } from "./files.mjs";
 import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
 import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
+import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup } from "./onboarding.mjs";
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -61,6 +62,21 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 });
 export const TOOLS = [
   ...CHANNEL_TOOLS,
+  {
+    name: "report_setup_status",
+    description: "上报你自己的接入进度或平台卡点，显示在 Hub；不能自行标记验证通过。",
+    inputSchema: schema({ stage: { type: "string", enum: ["configuring", "waiting_platform", "blocked"] }, message: string }, ["stage", "message"]),
+  },
+  {
+    name: "setup_connection",
+    description: "替用户配置你自己的 Hub 接收方式，回填原生接收地址与密钥。只能配置当前成员；不会修改其他成员。随后调用 check_connection 验证真实往返。",
+    inputSchema: schema({ requestId: string, transport: { type: "string", enum: ["webhook", "events", "pull"] }, url: string, token: string, pollSeconds: { type: "integer", minimum: 15 } }, ["requestId", "transport"]),
+  },
+  {
+    name: "check_connection",
+    description: "启动自己的无外部副作用往返验证。启动不等于验证通过；由下一次原生接收运行领取并回传验证消息。",
+    inputSchema: schema({ requestId: string }),
+  },
   {
     name: "receive_messages",
     description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
@@ -291,6 +307,9 @@ export async function callTool(repo, identity, actor, name, args, env, options =
       403,
     );
   if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
+  if (name === "setup_connection") return selfConnection(repo, identity, actor, args, env.ADMIN_KEY);
+  if (name === "report_setup_status") return reportSetup(repo, actor, args);
+  if (name === "check_connection") return selfCheck(repo, identity, actor, args);
   if (name === "receive_messages") return receiveMessages(repo, identity, actor, args, options);
   // Stable write-tool transport for hosts caching their MCP catalog. Both
   // entries use the same inbox implementation and member-scoped authorization.
@@ -498,6 +517,8 @@ export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
   if (url.pathname === "/v2/openapi.json") return json(openapi(url.origin));
+  const onboarding = await publicOnboarding(request, repo, identity, env, url.origin);
+  if (onboarding) return onboarding;
   if (url.pathname === "/v2/oauth/callback")
     return json(
       await finishComputerAuth(
@@ -538,6 +559,17 @@ export async function v2Fetch(request, env, ctx, identity) {
         ),
       ),
     );
+  if (url.pathname === "/v2/self/connection" && request.method === "POST") {
+    const result = await selfConnection(repo, identity, actor, await readJSON(request), env.ADMIN_KEY);
+    return json(result);
+  }
+  if (url.pathname === "/v2/self/check" && request.method === "POST") {
+    const result = await selfCheck(repo, identity, actor, await readJSON(request));
+    kick();
+    return json(result);
+  }
+  if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
+  if (url.pathname === "/v2/self/status" && request.method === "POST") return json(await reportSetup(repo, actor, await readJSON(request)));
   if (url.pathname === "/v2/mcp") {
     const result = await mcp(repo, identity, actor, request, env);
     if (request.method === "POST") kick();
@@ -596,6 +628,8 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
     );
   if (!actor.owner) fail("forbidden", "管理操作需要用户身份", 403);
+  if (url.pathname === "/v2/connect/skill" && request.method === "POST")
+    return json(await issueAgentSkill(repo, identity, (await readJSON(request)).memberId, url.origin));
   if(url.pathname==="/v2/active-work"&&request.method==="GET"){
     const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
     return json({active:r.total});
@@ -654,7 +688,11 @@ export async function v2Fetch(request, env, ctx, identity) {
       ),
     });
   if (url.pathname === "/v2/catalog")
-    return json({ recipes: RECIPES, platforms: PLATFORMS, version: 2 });
+    return json({ recipes: RECIPES, platforms: [
+      ...PLATFORMS,
+      ...AGENT_TARGETS.filter(target => !PLATFORMS.some(p => p.id === target.id))
+        .map(target => ({ ...target, auth: "接入 Skill；逐家真实验证后才显示接通", transport: "member-selected" })),
+    ].map(platform => ({ ...platform, registered: identity.platforms?.some(p => p.id === platform.id) || false })), version: 3 });
   if (url.pathname === "/v2/connections" && request.method === "GET")
     return json({
       connections: (await repo.list("connection")).map(publicConnection),
