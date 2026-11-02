@@ -6,7 +6,7 @@ import { isIP } from 'node:net';
 import { spawn, execFileSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
 import { dataDir, privateJson } from './storage.mjs';
-import { prepareBrowserProfile, browserVersionRecord } from './data-policy.mjs';
+import { prepareBrowserProfile, browserVersionRecord, installedBrowserVersion } from './data-policy.mjs';
 import { assertHttpUrl } from '../shared/platforms.mjs';
 import {BackgroundPage} from './background-page.mjs';
 import {ManualLoginSessions} from './manual-login.mjs';
@@ -56,7 +56,7 @@ export class BrowserManager {
  // Non-default dedicated profile. A recorded PID is never blindly killed after restart.
  try{await fs.access(path.join(dir,'SingletonLock'));throw new Error('此专用账号目录已有浏览器在运行；请先从工作台关闭该账号窗口，不会结束未知进程。');}catch(e){if(e.code!=='ENOENT')throw e;}
  await fs.rm(path.join(dir,'DevToolsActivePort'),{force:true});
- const profile=await prepareBrowserProfile(dir,account.id,()=>this.findChrome(),{requestedBrowser:this.executable||process.env.AGENT_HUB_CHROME});profile.accountId=account.id;const executable=profile.executable;const version=execFileSync(executable,['--version'],{encoding:'utf8',timeout:5000}).trim();await privateJson(profile.info,browserVersionRecord(profile,version));if(this.closingAll||this.closingAccounts.has(account.id))throw new Error('专用浏览器正在退出，已取消启动');const child=spawn(executable,[`--user-data-dir=${dir}`,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--no-first-run','--no-default-browser-check','--restore-last-session',...browserProxyArgs(proxyUrl),...(background?['--no-startup-window']:visible?[]:['--headless=new']),...(background?[]:['about:blank'])],{stdio:'ignore'});
+ const profile=await prepareBrowserProfile(dir,account.id,()=>this.findChrome(),{requestedBrowser:this.executable||process.env.AGENT_HUB_CHROME});profile.accountId=account.id;const executable=profile.executable;const version=installedBrowserVersion(executable);await privateJson(profile.info,browserVersionRecord(profile,version));if(this.closingAll||this.closingAccounts.has(account.id))throw new Error('专用浏览器正在退出，已取消启动');const child=spawn(executable,[`--user-data-dir=${dir}`,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--no-first-run','--no-default-browser-check','--restore-last-session',...browserProxyArgs(proxyUrl),...(background?['--no-startup-window']:visible?[]:['--headless=new']),...(background?[]:['about:blank'])],{stdio:'ignore'});
  launch={child,accountId:account.id};this.pendingLaunches.set(account.id,launch);let spawnError;child.on('error',error=>{spawnError=error;});
  let endpoint;for(let i=0;i<120;i++){if(this.closingAll||this.closingAccounts.has(account.id))throw new Error('专用浏览器正在退出，已取消启动');if(spawnError)throw spawnError;if(child.exitCode!==null||child.signalCode)throw new Error('专用浏览器退出：资料目录可能已被占用，请在工作台关闭该账号窗口再重试。');try{const txt=await fs.readFile(path.join(dir,'DevToolsActivePort'),'utf8');const [port,route]=txt.trim().split('\n');endpoint=`ws://127.0.0.1:${Number(port)}${route}`;if(Number(port)>0)break;}catch{}await pause(100);}
  if(!endpoint)throw new Error('专用浏览器启动超时，未修改日常 Chrome。');

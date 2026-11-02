@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-02T10:35:31.214610+00:00",
-  "buildId": "568a12a7138d543d",
-  "workerVersionId": "e5ce3a01-5352-40db-b980-a6bc44e2ce5b",
+  "at": "2026-11-02T12:22:25.350484+00:00",
+  "buildId": "eeb5039ec7f2e2b8",
+  "workerVersionId": "f7fe75bd-a9ec-4033-bc36-d48d62cfe2be",
   "targets": {
     "total": 18,
     "coding": 10,
@@ -9,17 +9,17 @@
     "allNativeProvidersTested": false
   },
   "engineering": {
-    "checksPassed": 145,
+    "checksPassed": 152,
     "typecheckPassed": true,
     "installedDesktopCopyWorks": true,
     "clipboardReadDenied": true,
     "subframeClipboardWriteDenied": true,
     "activation": {
-      "at": "2026-11-02T10:32:26.877Z",
+      "at": "2026-11-02T12:11:31.491Z",
       "url": "http://127.0.0.1:8766",
-      "buildId": "568a12a7138d543d",
-      "processId": 12629,
-      "desktopBuildId": "568a12a7138d543d",
+      "buildId": "eeb5039ec7f2e2b8",
+      "processId": 34088,
+      "desktopBuildId": "eeb5039ec7f2e2b8",
       "backendAndDesktopMatch": true,
       "cloudOnline": true,
       "protectedLocalDataUnchanged": true,
@@ -29,30 +29,188 @@
       "profileVerification": "关闭浏览器时核对完整资料字节",
       "workspaceDataUnchanged": true,
       "realCommercialAgentTested": false
-    }
+    },
+    "initialChecksPassed": 145,
+    "sessionProtectionGatesPassed": true,
+    "finalCloudStatusRegressionPassed": true,
+    "publicStatusSupersedesEarlierSetupBlocker": true
   },
   "nativeGrok": {
     "botName": "Duola2号",
     "memberName": "grok2",
-    "singleSkillSent": true,
-    "ownerAccessConsentGiven": true,
-    "authorizedAt": "2026-11-02T10:23:47.280Z",
-    "nativeRoutineCreated": true,
-    "providerCredentialStorage": "Agent reported private 0600 file; filesystem not independently inspected",
-    "configurationObserved": "Native Bot reports only type=webhook; current Routine details UI has no POST to/key/header section",
-    "statusReportWrittenByNativeMember": {
-      "stage": "waiting_platform",
-      "message": "已配对并创建原生例程；当前账号的工具与详情页均未提供Webhook接收地址和密钥，自动唤醒尚未通过。",
-      "at": "2026-11-02T10:33:05.984Z"
+    "initialAttempt": {
+      "botName": "Duola2号",
+      "memberName": "grok2",
+      "singleSkillSent": true,
+      "ownerAccessConsentGiven": true,
+      "authorizedAt": "2026-11-02T10:23:47.280Z",
+      "nativeRoutineCreated": true,
+      "providerCredentialStorage": "Agent reported private 0600 file; filesystem not independently inspected",
+      "configurationObserved": "Native Bot reports only type=webhook; current Routine details UI has no POST to/key/header section",
+      "statusReportWrittenByNativeMember": {
+        "stage": "waiting_platform",
+        "message": "已配对并创建原生例程；当前账号的工具与详情页均未提供Webhook接收地址和密钥，自动唤醒尚未通过。",
+        "at": "2026-11-02T10:33:05.984Z"
+      },
+      "automaticWakeAndRoundTripPassed": false,
+      "fallbackAccountAutomationUsed": false,
+      "recurringModelPollingEnabled": false
     },
-    "automaticWakeAndRoundTripPassed": false,
+    "singleSkillRedeemedByNativeBot": true,
+    "officialDesktopClient": {
+      "version": "0.78.1",
+      "source": "Official Grok Bot download link from cursor.com",
+      "codesignVerified": true,
+      "macOSAssessment": "Notarized Developer ID"
+    },
+    "configurationObserved": "Official desktop Routine panel exposes Cursor-hosted receiver URL and Bearer sender key; website omitted these fields. Earlier website-only limitation was incorrect.",
+    "receiverFamily": "https://api2.cursor.sh/automations/webhook/<id>",
+    "ownerTermsConsentGiven": true,
+    "status": "verified",
+    "verifiedAt": "2026-11-02T11:54:54.881Z",
+    "probe": {
+      "id": "run_373404ce27cb436e888f876ff3e761a2",
+      "status": "completed"
+    },
+    "deliveryEvidence": {
+      "runId": "run_373404ce27cb436e888f876ff3e761a2",
+      "attemptId": "attempt_06811a4ce5a54a23b15205bb447230b3",
+      "documentIds": [
+        "document_b0fb3b9c9507420187fb82af76b184d3"
+      ]
+    },
+    "successfulOutbox": {
+      "id": "step_966433049b8d487db245ffb4ed12fbe9_1",
+      "status": "claimed",
+      "httpStatus": 200,
+      "attemptFinishedAt": "2026-11-02T11:53:42.663Z",
+      "dispatchElapsedMs": 900
+    },
+    "firstSenderKeyAttempt": {
+      "runId": "run_490d598e20d746f7aafc4f722df38066",
+      "httpStatus": 401,
+      "at": "2026-11-02T11:48:37.286Z",
+      "preserved": true
+    },
+    "automaticWakeAndRoundTripPassed": true,
     "fallbackAccountAutomationUsed": false,
-    "recurringModelPollingEnabled": false
+    "recurringModelPollingEnabled": false,
+    "plainChat": {
+      "channelId": "channel_92a353c8d0ff46818d614e1b9316862c",
+      "messages": [
+        {
+          "id": "chat_c04aa28a11e4406590d3ca785951d7ac",
+          "authorId": "owner",
+          "body": "@grok2 请用一句话告诉我你是谁、现在能否直接在这个群里交流；不要搜索，不创建文档或正式任务，这只是普通聊天。",
+          "createdAt": "2026-11-02T11:56:25.412Z",
+          "replyTo": null,
+          "rootId": null,
+          "mentions": [
+            "member_785ba0d4e7964814bf65102b90867efd"
+          ]
+        },
+        {
+          "id": "chat_b60b5408ce304736be470b3b8ba9dc11",
+          "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+          "body": "我是 grok2（Duola2号），现在可以直接在这个群里交流。",
+          "createdAt": "2026-11-02T11:56:51.918Z",
+          "replyTo": "chat_c04aa28a11e4406590d3ca785951d7ac",
+          "rootId": "chat_c04aa28a11e4406590d3ca785951d7ac",
+          "mentions": []
+        },
+        {
+          "id": "chat_6aa3e1622900461fa3ff186bfc69a027",
+          "authorId": "owner",
+          "body": "grok2，接着请你 @Dot 问一句：不先建任务，也能在群里商量事情吗？你们各回应一次就好，不搜索、不建文档。",
+          "createdAt": "2026-11-02T11:57:44.644Z",
+          "replyTo": null,
+          "rootId": null,
+          "mentions": [
+            "member_785ba0d4e7964814bf65102b90867efd"
+          ]
+        },
+        {
+          "id": "chat_ef0ac2700a8a45869ede8853611ff6ea",
+          "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+          "body": "@Dot 不先建任务，也能在群里商量事情吗？",
+          "createdAt": "2026-11-02T11:57:59.269Z",
+          "replyTo": "chat_6aa3e1622900461fa3ff186bfc69a027",
+          "rootId": "chat_6aa3e1622900461fa3ff186bfc69a027",
+          "mentions": [
+            "member_0ff5c20718654c9db5ab3b1d0334133e"
+          ]
+        },
+        {
+          "id": "chat_0971550e16e84386af49e4bf1d6203b0",
+          "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "body": "能，直接在群里发消息就可以商量、追问或提不同意见，不用先建任务。",
+          "createdAt": "2026-11-02T12:02:12.186Z",
+          "replyTo": "chat_ef0ac2700a8a45869ede8853611ff6ea",
+          "rootId": "chat_6aa3e1622900461fa3ff186bfc69a027",
+          "mentions": []
+        }
+      ],
+      "formalTasksCreated": 0,
+      "documentsCreated": 0,
+      "coordinatorAssigned": false,
+      "humanRelayUsed": false,
+      "firstReplySeconds": 26.506,
+      "followupReplySeconds": 14.625,
+      "dotReplyToGrokSeconds": 252.917
+    },
+    "completeNativeSupportClaimed": false,
+    "perMemberCredentialIsolation": {
+      "reportedCompleteAt": "2026-11-02T12:13:35.172Z",
+      "nativeReplyId": "chat_e79fa2dc56bf4afc85df7b7465e16b8f",
+      "sameRoutineUpdated": true,
+      "nativeRoutineInstructionsIndependentlyObserved": true,
+      "privatePathTemplate": "/home/box/.agent-hub/private/<hub-host>/<member-id>/redeem.json",
+      "fileModeReportedByAgent": "0600",
+      "directoryModeReportedByAgent": "0700",
+      "remoteFileModesIndependentlyInspected": false,
+      "unknownOwnershipLegacyFilePreserved": true,
+      "tokensRotated": false,
+      "otherMembersModified": false,
+      "postUpdateRoundTrip": {
+        "ownerMessageId": "chat_d6d04f9064e6408a90ef50fa428c099c",
+        "reply": {
+          "id": "chat_d7742373b0db43dabb572311bbfe1e3e",
+          "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+          "body": "接入仍正常",
+          "createdAt": "2026-11-02T12:16:50.034Z",
+          "replyTo": "chat_d6d04f9064e6408a90ef50fa428c099c"
+        },
+        "elapsedSeconds": 35.598,
+        "originalNativeBotUsed": true
+      }
+    }
   },
   "checksScope": "Automated protocol fixtures are not native CLI acceptance. No VPS Claude Code access, subscription/model replacement or login reset.",
   "stillOpen": [
-    "New native Grok webhook receiver parameters are unavailable in this account/tool/UI.",
     "Coding provider native runtime acceptance remains pending by provider.",
-    "Issue #23 native wake latency remains unresolved."
+    "Issue #23 native wake latency remains unresolved; current Dot Agent-to-Agent sample took 252.917 seconds.",
+    "Grok2 full native tools, long-task behavior, original-memory inheritance and native-provider restart acceptance were not established by this chat test.",
+    "Some providers expose first-time sender keys only to the owner; no claim that every platform onboards with one fully automatic message."
+  ],
+  "sourceReview": [
+    {
+      "repository": "sabotage-dev/botline",
+      "commit": "c27a93b5177cf3c057ae84463b12df586eb710ab",
+      "files": [
+        "docs/recipes/grokbot.md",
+        "docs/spike-log.md",
+        "src/adapters/grokbot_webhook.ts"
+      ]
+    },
+    {
+      "repository": "paperclipai/paperclip",
+      "commit": "8ea240218dc1d3a94afea1294b377021045dd9c9",
+      "files": [
+        "ui/src/components/new-agent/GrokBotSetupContent.tsx",
+        "ui/src/lib/grok-bot-setup-prompt.ts",
+        "server/src/services/grok-bot/webhook.ts",
+        "server/src/services/grok-bot/routine.ts"
+      ]
+    }
   ]
 }

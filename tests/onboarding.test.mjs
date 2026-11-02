@@ -4,7 +4,7 @@ import { fixture } from "./collaboration-helper.mjs";
 import { issueAgentSkill, redeemAgentSkill, selfConnection, selfCheck, selfStatus, reportSetup, publicOnboarding, onboardingManifest } from "../cloud/collaboration/onboarding.mjs";
 import { startPairing } from "../cloud/collaboration/pairing.mjs";
 import { resolveActor, callTool } from "../cloud/collaboration/api.mjs";
-import { unseal } from "../cloud/collaboration/security.mjs";
+import { unseal, publicConnection } from "../cloud/collaboration/security.mjs";
 import { digest } from "../cloud/collaboration/repository.mjs";
 
 const origin = "https://hub.example.com", secret = "isolated-onboarding-fixture-secret";
@@ -51,9 +51,11 @@ test("配对并发只授权一个请求，旧OAuth码不能误用，过期/停�
 test("自配置只操作本成员，保留原生Webhook密钥加密和其他成员状态", async t => {
   const f = await fixture(t); f.identity.members[0].platformId = "grok-bot";
   const other = await f.repo.get("connection", "check"), actor = { memberId: "grok" };
+  await reportSetup(f.repo, actor, { stage: "waiting_platform", message: "之前未找到平台入口" });
   await assert.rejects(() => selfConnection(f.repo, f.identity, actor, { memberId: "check", requestId: "foreign", transport: "pull" }, secret), e => e.code === "forbidden");
   const result = await selfConnection(f.repo, f.identity, actor, { requestId: "native-receiver", transport: "webhook", url: "https://grok.com/native-hook/fixture", token: "isolated-native-webhook-key" }, secret);
   assert.equal(result.status, "configured"); assert(!JSON.stringify(result).includes("isolated-native-webhook-key"));
+  assert.equal(result.setup.stage, "configuring");
   const saved = await f.repo.get("connection", "grok");
   assert.equal((await unseal(saved.credentials, secret)).token, "isolated-native-webhook-key");
   assert.deepEqual(await f.repo.get("connection", "check"), other);
@@ -88,7 +90,14 @@ test("相同通用契约接Coding与Personal成员，配对或自配置不能把
   const run = await f.repo.get("run", probe.runId);
   await callTool(f.repo, f.identity, actor, "submit_work", { requestId: "submit-probe", attemptId: claim.attemptId, lease: claim.lease,
     items: [{ title: "连接验证", body: run.probeNonce, sources: [] }] }, {});
-  assert.equal((await selfStatus(f.repo, actor, origin)).complete, true);
+  const verified = await selfStatus(f.repo, actor, origin);
+  assert.equal(verified.complete, true);
+  assert.equal(verified.connection.setup.stage, "verified");
+  assert.equal((await f.repo.get("connection", "grok")).setup.stage, "verified");
+  const legacy = { ...await f.repo.get("connection", "grok"), setup: { stage: "waiting_platform", message: "过时卡点" } };
+  assert.equal(publicConnection(legacy).setup.stage, "verified");
+  const laterBlock = { ...legacy, setup: { stage: "blocked", message: "后续新卡点", at: new Date(Date.parse(legacy.verifiedAt) + 1000).toISOString() } };
+  assert.equal(publicConnection(laterBlock).setup.stage, "blocked");
   assert.equal((await selfStatus(f.repo, { memberId: "check" }, origin)).complete, false);
 });
 

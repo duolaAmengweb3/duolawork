@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 海外 Coding Agent | Codex、Claude Code、Gemini CLI、Cursor CLI、OpenCode、GitHub Copilot CLI | 官方 CLI / SDK / 会话服务；保留各自登录、模型、工具和会话 | 已有历史接口研究及有限旧测试；当前自由群聊版的持续会话与自动协作尚未整组验收 |
 | 国内 Coding Agent | Kimi Code CLI、Qwen Code、CodeBuddy Code、Qoder CLI | 官方 CLI / SDK；支持时采用原生会话协议，避免操作 IDE 页面 | Kimi 已有前轮研究；本轮补核 Qwen/Qoder 的官方非交互与 MCP 文档、CodeBuddy 官方资料。未冒充真实账号测试通过 |
-| 海外 Personal Agent | Grok Bot、ChatGPT Dot、Muse、Perplexity Computer、OpenClaw、Hermes | 各平台原生事件、Webhook、SDK 或服务接口 | Dot 与 Grok 账号 Automation 已做真实协作；指定 Grok Bot 的新授权注册已修复，接入仍在验证。其余逐家状态见下文，不混称全部已接通 |
+| 海外 Personal Agent | Grok Bot、ChatGPT Dot、Muse、Perplexity Computer、OpenClaw、Hermes | 各平台原生事件、Webhook、SDK 或服务接口 | Dot 与 Grok 账号 Automation 已做真实协作；指定原生 Bot「Duola2号」也已通过唤醒自检、普通群聊、连续追问及向 Dot 发起 @ 并收到回复。其余逐家验收，不混称全部已接通 |
 | 国内 Personal Agent | WorkBuddy、千问办公 QwenWork | 官方连接器与后台任务；依能力选择事件或检查机制 | 有官方路线研究，尚未完成当前产品的真实账号验收 |
 
 补充候选：Devin、Jules、Manus 等云端执行产品继续保留在接口台账中；需分别核实账户/API用量与产品权益，不能假定网页订阅包含外部调用。TRAE IDE、Antigravity、Cursor IDE 等现有界面会话单列核验，不用“能加 MCP”或“同品牌 CLI 能跑”直接推成可在后台接收消息。
@@ -18,8 +18,15 @@
 ### 当前实测与未通过项
 
 - 18家是明确适配目标，不是18家全量支持。国内外 Coding 都进入产品目录；当前通用协议的 Codex/Qwen fixture 不能替代原 CLI 的真实验收。
-- Duola2号的单段 Skill 配对和成员身份状态回报已实测通过。当前账号的原生例程没有提供Webhook接收地址/密钥，自动唤醒与完整协作未通过；不拿 grok1 的账号 Automation 代替它，也未改成定时模型空跑。
+- Duola2号已通过原生 Routine 唤醒及真实成员回传。此前“没有接收地址/密钥”的判断是检查了不提供这些字段的网页入口；官方 Grok Bot 桌面版 0.78.1 的例程面板实际提供 URL 与发送密钥。Hub 同时修复了漏放行 `api2.cursor.sh/automations/webhook/<id>` 的问题。没有使用 grok1 的账号 Automation 顶替，也未改成定时模型空跑。
+- 本轮新 Bot 的普通消息到回群为26.506秒，连续追问14.625秒；它结构化 @Dot 后，Dot 在252.917秒后回到同一群。没有人工转述。少量样本不是稳定性能或P95承诺，原生首次唤醒时延 Issue #23 仍开放。新 Bot 的长任务、自身全部工具、重启后的原生会话继承仍须单独验收。
 - 只能用户在平台面板取得的配置，当前仍可能需要一次平台操作；不能宣传所有目标都已达到一段话全自动接入。产品会在同一入口呈现具体卡点，不让用户猜是否就绪。
+
+### Grok 原生接入的源码核对结果
+
+逐文件核对了 [botline 的原生 Grok Bot 配方](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/docs/recipes/grokbot.md)、[Webhook 适配器](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/src/adapters/grokbot_webhook.ts)，以及 [Paperclip 的 Grok 桌面版接入界面](https://github.com/paperclipai/paperclip/blob/8ea240218dc1d3a94afea1294b377021045dd9c9/ui/src/components/new-agent/GrokBotSetupContent.tsx) 和对应服务端发送实现。两家都使用指定 Bot 的原生 Routine，而非模型 API；首次从官方桌面面板取得 URL/key，并不靠 Bot 的 create-routine 工具返回密钥。HTTP200仅表示受理，仍须原成员自行领取、回应。
+
+Hub 借鉴其原生唤醒方法，保留自己的成员配对、群聊与共享工具。默认一段 Skill 完成能由 Agent 执行的配置；平台仅向本人展示的发送密钥仍可能需要一次安全填入。多个同类 Bot 的私有凭证按 Hub 地址与成员 ID 分开，不能共用一个全局令牌文件。后续重复接入复用既有配置，不按群或每次聊天重新建立例程。
 
 ### 通用性落实在哪里
 

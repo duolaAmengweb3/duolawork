@@ -826,6 +826,7 @@ export async function command(
             const c = await tx.get("connection", step.memberId);
             c.status = "verified";
             c.verifiedAt = tx.now;
+            c.setup = { stage: "verified", message: "原 Agent 已完成真实往返验证。", at: tx.now };
             c.deliveryEvidence = {
               runId: run.id,
               attemptId: attempt.id,

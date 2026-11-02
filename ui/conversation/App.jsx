@@ -1602,12 +1602,12 @@ function Members({ workspace, perform, refresh, setModal }) {
               {c?.status === "verified" && (
                 <small>
                   {c.transport === "grok-webhook"
-                    ? "账号 Automation 通道"
+                    ? "Grok 自动接收通道"
                     : c.transport === "dots-events"
                       ? "Work 事件会话通道"
                       : "原生连接通道"}
                   <br />
-                  既有 Bot 的记忆继承尚未验证
+                  已完成真实往返验证
                 </small>
               )}
               <Button

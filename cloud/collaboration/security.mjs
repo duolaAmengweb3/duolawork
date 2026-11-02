@@ -90,12 +90,18 @@ export function platformURL(raw, product) {
       computer: ["perplexity.ai"],
       asset: ["perplexity.ai", "amazonaws.com"],
     }[product] || [];
+  // Grok Bot routines use Cursor's backend, unlike grok.com account
+  // Automations. This is the exact receiver family used in botline's
+  // native Bot implementation; it does not allow other Cursor endpoints.
+  const nativeGrok = product === "grok" && url.hostname === "api2.cursor.sh"
+    && /^\/automations\/webhook\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)
+    && !url.search && !url.hash;
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     (url.port && url.port !== "443") ||
-    !domains.some((d) => url.hostname === d || url.hostname.endsWith("." + d))
+    !(nativeGrok || domains.some((d) => url.hostname === d || url.hostname.endsWith("." + d)))
   )
     fail("untrusted_endpoint", "地址不是该平台允许的官方 HTTPS 域名", 400);
   return url.href;
@@ -167,5 +173,9 @@ export const publicConnection = (c) =>
     deliveryEvidence: c.deliveryEvidence || null,
     pollSeconds: c.pollSeconds || null,
     needsAuthorization: c.needsAuthorization || false,
-    setup: c.setup || null,
+    // Old records can retain an earlier setup blocker after a real probe
+    // succeeds. Only the server-owned verification state resolves it.
+    setup: c.status === "verified" && c.verifiedAt && (!c.setup?.at || c.setup.at <= c.verifiedAt)
+      ? { stage: "verified", message: "原 Agent 已完成真实往返验证。", at: c.verifiedAt || null }
+      : c.setup || null,
   };

@@ -136,7 +136,7 @@ export async function dispatchOne(
       const retryAfter = Number(response.headers.get("retry-after"));
       await response.body?.cancel();
       const signedAutomation = credentials.token.startsWith("whsec_");
-      outcome = (signedAutomation ? response.status === 202 : response.ok)
+      outcome = (signedAutomation ? response.status === 202 : response.status === 200)
         ? { status: "accepted", httpStatus: response.status }
         : response.status === 400 && !credentials.token.startsWith("whsec_")
           ? {
@@ -225,6 +225,19 @@ export async function dispatchOne(
       current.httpStatus = outcome.httpStatus || null;
       current.completedAt = now;
       tx.put("outbox", current);
+      // A rejected nonce-only self-check must not leave the setup screen
+      // waiting forever. Preserve its history and leave business work alone.
+      if (!current.conversation && ["rejected", "needs_review", "unknown"].includes(current.status)) {
+        const probe = await tx.get("run", current.parentId);
+        const step = await tx.get("step", current.stepId);
+        if (probe.probe && probe.status === "running" && step.status === "ready") {
+          const issue = current.httpStatus
+            ? `原平台返回 HTTP ${current.httpStatus}，自检未收到确认；核对接收配置后可重试。`
+            : "接入自检的发送结果尚未确认；核对原平台记录后可重试。";
+          tx.put("step", { ...step, status: "needs_review", issues: [issue] });
+          tx.put("run", { ...probe, status: "needs_review" });
+        }
+      }
       if(!current.conversation) tx.message(
         current.scopeId,
         "notification",

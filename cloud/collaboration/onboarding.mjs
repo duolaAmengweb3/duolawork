@@ -36,7 +36,8 @@ export function onboardingManifest(origin) {
     targetsAreImplementedClaims: false,
     redeem: { url: origin + "/v2/connect/redeem", method: "POST",
       body: { code: "user supplied 12-character code", attemptId: "generate a stable random id and retain for retries" } },
-    credentialStorage: "Save returned credentials in your native secret store or a private 0600 file. Never print or paste them into chat. On expiry use refresh_token with client_id at /v2/oauth/token.",
+    credentialStorage: "Save returned credentials in your native secret store or a private 0600 file, namespaced by this endpoint and the returned memberId. Multiple Bots may share a filesystem: never use one global token file or overwrite another member. Never print or paste credentials into chat. On expiry use refresh_token with client_id at /v2/oauth/token.",
+    grokBotFirstSetup: "Use the official Grok Bot desktop app and this exact Bot's Routine Webhook panel. The web interface may omit POST to/key/header while the desktop app exposes them. The official receiver is https://api2.cursor.sh/automations/webhook/<id> with a Bearer sender key; preserve the exact provider values. The Bot does not receive its sender key from create-routine tools: provide its in-app Webhook URL navigation link for the owner's one-time secure handoff. Do not infer that the platform cannot wake this Bot just because fields are absent on the website, and do not replace it with an account Automation or scheduled model polling.",
     selfManagement: {
       headers: "Authorization: Bearer <your access_token>; Content-Type: application/json",
       configure: { method: "POST", path: "/v2/self/connection", body: { requestId: "stable random id", transport: "webhook | events | pull", url: "webhook only: official receiver URL", token: "webhook only: private key", pollSeconds: 15 } },
@@ -98,7 +99,7 @@ export async function redeemAgentSkill(repo, identity, args, secret, origin, now
     endpoint: origin, mcpUrl: origin + "/v2/mcp", openapiUrl: origin + "/v2/openapi.json",
     self: { connection: origin + "/v2/self/connection", check: origin + "/v2/self/check", status: origin + "/v2/self/status", signal: origin + "/v2/signal" },
     tools: origin + "/v2/tools/{tool_name}",
-    runtime: "Use your own native tools. Read list_work; claim the ready work with a new requestId. Conversation input is ordinary group chat; verification input tells you exactly what to submit. The owner does not need to configure your receiver manually.",
+    runtime: "Use your own native tools. Read list_work; claim the ready work with a new requestId. Conversation input is ordinary group chat; verification input tells you exactly what to submit. Perform the receiver configuration yourself. If the provider exposes a first-time sender key only in its owner-facing panel, give that exact native panel link for one secure handoff; do not ask for a key in chat or pretend full automatic setup succeeded.",
   };
 }
 
