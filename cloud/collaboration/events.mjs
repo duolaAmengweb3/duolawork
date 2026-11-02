@@ -162,7 +162,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
   ).filter((s) => s.expiresAt > now);
   if (!subscriptions.length)
     return { status: "waiting_subscription", retry: true, delay: 60000 };
-  let allAccepted = true;
+  let allAccepted = true, platformRespondedAt = null;
   for (const sub of subscriptions) {
     const deliveryId = `${row.id}:${sub.id}`,
       prior = await repo.get("event_delivery", deliveryId, false);
@@ -204,6 +204,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
         body,
       });
       httpStatus = r.status;
+      platformRespondedAt = new Date().toISOString();
       await r.body?.cancel();
       status = r.ok
         ? "accepted"
@@ -223,6 +224,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
           parentId: row.id,
           status,
           httpStatus,
+          platformRespondedAt,
         });
         if (httpStatus === 410)
           tx.put("subscription", { ...sub, status: "revoked" });
@@ -236,5 +238,6 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
     status: allAccepted ? "accepted" : "event_retry",
     retry: !allAccepted,
     delay: 60000,
+    platformRespondedAt,
   };
 }

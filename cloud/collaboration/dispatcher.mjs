@@ -67,6 +67,8 @@ export async function dispatchOne(
       const resource = await tx.get("resource", c.resourceKey, false);
       if (resource?.status === "busy") return null;
       if(channel){
+        const waiter=await tx.get("channel_wait",`${channel.id}:${row.memberId}`,false);
+        if(waiter?.status==="waiting"&&waiter.expiresAt>now&&waiter.configVersion===c.configVersion)return null;
         // A delivered wake that has not been claimed will read the new input
         // too. Preserve the turn, without launching another platform run.
         const outstanding=(await Promise.all(["accepted","sending"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat();
@@ -98,6 +100,7 @@ export async function dispatchOne(
     now,
   );
   if (!row) return { skipped: true };
+  const dispatchStartedAt = Date.now();
   let outcome, failureStage = "prepare";
   try {
     const c = await repo.get("connection", row.memberId);
@@ -182,14 +185,25 @@ export async function dispatchOne(
             errorDetail: String(e.message || "").replace(/https?:\/\/\S+/g, "[endpoint]").replace(/[A-Za-z0-9_+/=.-]{16,}/g, "[redacted]").slice(0, 180),
           };
   }
+  const attemptFinishedAt = new Date().toISOString();
+  const timing = {
+    attemptFinishedAt,
+    dispatchElapsedMs: Date.now() - dispatchStartedAt,
+    platformRespondedAt: outcome.platformRespondedAt || (outcome.httpStatus ? attemptFinishedAt : null),
+  };
   return repo.transact(
     id("dispatch-result"),
     { rowId, lock, outcome },
     async (tx) => {
       const current = await tx.get("outbox", rowId);
       // A real claim can race with the webhook response; never downgrade its state.
-      if (current.dispatchId !== lock || current.status !== "sending")
+      if (current.dispatchId !== lock)
         return { status: current.status };
+      Object.assign(current, timing);
+      if (current.status !== "sending") {
+        tx.put("outbox", current);
+        return { status: current.status };
+      }
       current.status =
         outcome.retry && current.attempts < 4
           ? outcome.status === "waiting_subscription"

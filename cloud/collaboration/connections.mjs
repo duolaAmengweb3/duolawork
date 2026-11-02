@@ -114,7 +114,7 @@ export async function configureConnection(repo, identity, input, secret) {
   );
 }
 export function setupInstructions(connection, memberId, origin) {
-  const common = `你仍使用自己的原模型、工具和授权。Hub 提供群聊和共享工具，不替你编排协作。用专用成员凭证访问 ${origin}/v2/mcp 或 ${origin}/v2/tools/{工具名}，凭证通过平台安全输入保管，不写入聊天、稿件或日志。先 list_work，再 claim_work；领取后遵循真实类型：kind=conversation 时先 read_channel，直接 post_message 回复，需对方行动时用 mentions @ 群内成员，无新内容 stay_silent。负责人由用户指定且随时可更换，不是唯一发言入口。需要时才 create_doc/edit_doc/ask_user/deliver/remember，不把普通聊天变成任务或文档。旧项目工作仍按领取上下文完成，长任务 report_progress。每次写入使用稳定 requestId。重复通知先查看现有任务，不重复执行。不发布、不付款，遇到授权需求交回用户。`;
+  const common = `你仍使用自己的原模型、工具和授权。Hub 提供群聊和共享工具，不替你编排协作。用专用成员凭证访问 ${origin}/v2/mcp 或 ${origin}/v2/tools/{工具名}，凭证通过平台安全输入保管，不写入聊天、稿件或日志。群消息优先调用 receive_messages 一次接收并取得上下文；工具尚未显示时调用既有 claim_work，stepId=inbox，同样一次接收。领取结果已有 messages 时不重复 read_channel，需要更早消息才分页。kind=conversation 直接 post_message 回复，需对方行动时用 mentions @ 群内成员，无新内容 stay_silent。负责人由用户指定且随时可更换，不是唯一发言入口。需要时才 create_doc/edit_doc/ask_user/deliver/remember，不把普通聊天变成任务或文档。旧项目工作仍按领取上下文完成，长任务 report_progress。回应后可按 input.continuation 在同一次运行等待后续消息一次，最多45秒；empty/busy 后停止，不反复空跑。每次写入使用稳定 requestId。重复通知先查看现有任务，不重复执行。不发布、不付款，遇到授权需求交回用户。`;
   if (connection.transport === "muse-poll")
     return `${common}\n连接 OpenAPI：${origin}/v2/openapi.json。定时或轻量 hook 先 GET ${origin}/v2/signal，只在 hasWork=true 时执行；不把轮询结果当成已领取。建议间隔 ${connection.pollSeconds} 秒，实际取决于原平台支持，不承诺即时。`;
   if (connection.transport === "grok-webhook")

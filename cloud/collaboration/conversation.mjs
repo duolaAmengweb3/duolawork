@@ -321,8 +321,38 @@ export async function claimConversation(
     args.requestId,
     { ...args, actor },
     async (tx) => {
-      const turn = await tx.get("channel_turn", args.stepId || args.turnId),
+      let turn, channel;
+      if (args.receiveNext) {
+        const member = activeMember(identity, actor.memberId),
+          connection = await tx.get("connection", actor.memberId);
+        if (!member || member.paused || connection.status !== "verified")
+          fail("unavailable", "成员当前不可接收消息", 409);
+        if (args.channelId) {
+          const selected = await tx.get("channel", args.channelId);
+          scoped(selected, actor);
+          if (selected.status !== "active")
+            return { status: "empty", reason: "channel_inactive" };
+        }
+        const resource = await tx.get("resource", connection.resourceKey, false);
+        if (resource?.status === "busy") return { status: "busy" };
+        const pending = (await tx.list("channel_turn", {
+          parent: actor.memberId,
+          status: "ready",
+          ...(args.channelId ? { scope: args.channelId } : {}),
+          limit: 500,
+        })).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+        for (const candidate of pending) {
+          const group = await tx.get("channel", candidate.scopeId, false);
+          if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
+          turn = candidate;
+          channel = group;
+          break;
+        }
+        if (!turn) return { status: "empty" };
+      } else {
+        turn = await tx.get("channel_turn", args.stepId || args.turnId);
         channel = await tx.get("channel", turn.scopeId);
+      }
       scoped(channel, actor);
       if (turn.memberId !== actor.memberId)
         fail("forbidden", "通知不属于此成员", 403);
@@ -385,6 +415,7 @@ export async function claimConversation(
         readThrough: Math.max(...pending.map((t) => t.number)),
       });
       return {
+        ...(args.receiveNext ? { status: "claimed" } : {}),
         attemptId: turn.id,
         turnId: turn.id,
         lease,
@@ -470,6 +501,9 @@ export async function readChannel(repo, identity, actor, args) {
             dueAt,
             sendingAt,
             attempts,
+            platformRespondedAt,
+            dispatchElapsedMs,
+            attemptFinishedAt,
           }) => ({
             id,
             stepId,
@@ -482,6 +516,9 @@ export async function readChannel(repo, identity, actor, args) {
             dueAt,
             sendingAt,
             attempts,
+            platformRespondedAt,
+            dispatchElapsedMs,
+            attemptFinishedAt,
           }),
         )
       : [],

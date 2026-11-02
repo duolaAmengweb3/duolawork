@@ -28,6 +28,7 @@ import {
 } from "./computer.mjs";
 import { uploadFile, downloadFile } from "./files.mjs";
 import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
+import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -61,6 +62,12 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 export const TOOLS = [
   ...CHANNEL_TOOLS,
   {
+    name: "receive_messages",
+    description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string,
+      waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
+  },
+  {
     name: "read_file",
     description: "读取本项目附件的真实字节，按64KB分页，不截断伪装完整文件。",
     inputSchema: schema(
@@ -76,7 +83,7 @@ export const TOOLS = [
   {
     name: "claim_work",
     description:
-      "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整任务上下文。",
+      "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整上下文。群聊 stepId=inbox 一次接收；回应后 stepId=inbox:after:<turnId> 有限等待一次。不改变真实步骤 ID 的原领取语义。",
     inputSchema: schema({ requestId: string, stepId: string }),
   },
   {
@@ -276,7 +283,7 @@ async function readDocument(repo, actor, documentId) {
     : null;
   return { ...document, original, working, candidate };
 }
-export async function callTool(repo, identity, actor, name, args, env) {
+export async function callTool(repo, identity, actor, name, args, env, options = {}) {
   if (!actor.memberId)
     fail(
       "member_required",
@@ -284,6 +291,14 @@ export async function callTool(repo, identity, actor, name, args, env) {
       403,
     );
   if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
+  if (name === "receive_messages") return receiveMessages(repo, identity, actor, args, options);
+  // Stable write-tool transport for hosts caching their MCP catalog. Both
+  // entries use the same inbox implementation and member-scoped authorization.
+  if (name === "claim_work" && (args.stepId === "inbox" || args.stepId?.startsWith("inbox:after:")))
+    return receiveMessages(repo, identity, actor, {
+      requestId: args.requestId,
+      ...(args.stepId === "inbox" ? {} : { afterTurnId: args.stepId.slice(12), waitSeconds: MAX_MESSAGE_WAIT_SECONDS }),
+    }, options);
   if (name === "list_work")
     return { work: [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)] };
   // Preserve approved legacy tool semantics while platforms refresh their tool
@@ -291,8 +306,7 @@ export async function callTool(repo, identity, actor, name, args, env) {
   // formal task, document, fabricated speaker or silent tool-scope expansion.
   if (name === "claim_work" && args.stepId?.startsWith("turn_")) {
     const claim=await claimConversation(repo,identity,actor,args);
-    const context=await readChannel(repo,identity,actor,{channelId:claim.channelId});
-    return {...claim,input:{...claim.input,channel:context.channel,members:context.members,messages:context.messages,earlierMessagesBefore:context.before,documents:context.documents,knowledge:context.knowledge,decisions:context.decisions,tasks:context.tasks,meetings:context.meetings}};
+    return withConversationContext(repo, identity, actor, claim);
   }
   if (["submit_work","report_progress"].includes(name) && args.attemptId?.startsWith("turn_")) {
     const turn=await repo.get("channel_turn",args.attemptId);
@@ -430,6 +444,7 @@ async function mcp(repo, identity, actor, request, env) {
           rpc.params?.name,
           rpc.params?.arguments || {},
           env,
+          { signal: request.signal },
         );
         result = {
           content: [{ type: "text", text: JSON.stringify(value) }],
@@ -546,6 +561,7 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
       await readJSON(request),
       env,
+      { signal: request.signal },
     );
     kick();
     return json(result);
