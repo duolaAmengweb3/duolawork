@@ -76,7 +76,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   if(connections.jobs.has(accountId)||state.tasks.some(t=>t.steps.some(s=>s.accountId===accountId&&s.status==='running')))return json(res,{message:'这个账号正在执行或验证任务，未切换或关闭原浏览器'},409);
   const target=account.entryUrl||maintainedPlatforms(state.platforms).find(p=>p.id===account.platformId)?.entryUrl;
   if(!target)throw new Error('没有可用的官方登录入口');
-  if(url.pathname==='/api/account/manual-login')return json(res,await browsers.openManual(account,{url:target}));
+  if(url.pathname==='/api/account/manual-login'){await connections.enable(account);return json(res,await browsers.openManual(account,{url:target}));}
   if(!browsers.isManual(accountId))throw new Error('此账号不在纯手动登录状态');
   await browsers.manual.close(accountId,{finish:true});
   await browsers.ensureBackground(account,{url:target});await connections.enable(account);
@@ -135,7 +135,12 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   const result=req.method==='GET'?await documents.read(artifact,original):await documents.save(artifact,original,await body(req));return json(res,result);
  }
  if(url.pathname==='/api/account/open'&&req.method==='POST'){const {accountId}=await body(req),state=await cloud.state(),account=state.accounts.find(a=>a.id===accountId&&a.status!=='disabled');if(!account)throw new Error('账号不存在');const platform=maintainedPlatforms(state.platforms).find(p=>p.id===account.platformId),url=account.entryUrl||platform?.entryUrl;if(!url)throw new Error('此平台尚未提供登录入口，请查看平台接入说明');await connections.enable(account);return json(res,await browsers.open(account,{url,visible:true,navigate:false}));}
- if(url.pathname==='/api/account/close'&&req.method==='POST')return json(res,await browsers.close((await body(req)).accountId));
+ if(url.pathname==='/api/account/close'&&req.method==='POST'){
+  const {accountId}=await body(req),state=await cloud.state(),account=state.accounts.find(a=>a.id===accountId&&a.status!=='disabled');
+  if(!account)throw new Error('账号不存在');
+  if(connections.jobs.has(accountId)||state.tasks.some(t=>t.steps.some(s=>s.accountId===accountId&&s.status==='running')))return json(res,{message:'此账号正在执行或验证任务，待结束后再关闭专用浏览器'},409);
+  await connections.pauseBrowser(account);return json(res,await browsers.close(accountId));
+ }
  if(url.pathname==='/api/account/disconnect'&&req.method==='POST'){await vault.unlock();const {accountId}=await body(req);await browsers.close(accountId);const data=await cloud.action({type:'account.remove',accountId});delete vault.data.accounts[accountId];for(const id of data.result.affectedMembers)delete vault.data.members[id];await vault.save();return json(res,data);}
  if(url.pathname==='/api/member/setup'&&req.method==='POST'){await vault.unlock();const {memberId,rotate=false}=await body(req),state=await cloud.state(),member=state.members.find(m=>m.id===memberId);if(!member)throw new Error('成员不存在');if(member.status==='disabled')throw new Error('成员已断开，请先重新连接账号');let credentials=vault.data.members[memberId]||{};if(!credentials.token||rotate){const c=await cloud.credential(memberId);credentials={...credentials,...c};vault.data.members[memberId]=credentials;await vault.save();}
  const challenge=(await cloud.action({type:'member.challenge',memberId})).result;

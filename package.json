@@ -15,7 +15,7 @@
     "hub:types": "wrangler types --config cloud/wrangler.jsonc cloud/env.d.ts",
     "hub:deploy": "python3 scripts/cloud.py deploy",
     "package:mac": "npm run verify:session && node scripts/package-mac.mjs",
-    "verify:session": "npm test && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
+    "verify:session": "npm test && node tests/browser-lifecycle.mjs && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
     "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs",
     "verify:collaboration": "node --test tests/collaboration*.test.mjs && node tests/collaboration-http.mjs",
     "verify:v1": "node --test tests/collaboration*.test.mjs && node tests/collaboration-v1-http.mjs && node tests/v1-oauth-browser.mjs && node tests/v1-ui.mjs && node tests/v1-desktop.mjs",
