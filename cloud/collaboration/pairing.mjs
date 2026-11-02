@@ -11,6 +11,14 @@ const random = (prefix) =>
   prefix +
   crypto.randomUUID().replaceAll("-", "") +
   crypto.randomUUID().replaceAll("-", "");
+// Grok Bot uses Cursor's connector backend, separate from grok.com's web
+// connector. Its registration includes a fixed loopback callback alongside the
+// cloud callback. Keep exact URLs; do not open arbitrary Cursor/localhost URLs.
+const nativeBotCallbacks = new Set([
+  "https://www.cursor.com/agents/mcp/oauth/callback",
+  "https://www.cursor.com/bot/mcp/oauth/callback",
+  "http://localhost:8787/callback",
+]);
 const allowedRedirect = (raw) => {
   let u;
   try {
@@ -19,12 +27,13 @@ const allowedRedirect = (raw) => {
     fail("invalid_redirect", "回调地址无效");
   }
   if (
-    u.protocol !== "https:" ||
     u.username ||
     u.password ||
-    !["openai.com", "chatgpt.com", "grok.com", "x.ai"].some(
-      (d) => u.hostname === d || u.hostname.endsWith("." + d),
-    )
+    (!nativeBotCallbacks.has(u.href) &&
+      (u.protocol !== "https:" ||
+        !["openai.com", "chatgpt.com", "grok.com", "x.ai"].some(
+          (d) => u.hostname === d || u.hostname.endsWith("." + d),
+        )))
   )
     fail("invalid_redirect", "只接受原平台官方授权回调");
   return u.href;
@@ -149,7 +158,24 @@ export async function oauthFetch(request, repo, identity, origin, env = {}) {
     });
   if (path === "/v2/oauth/register" && request.method === "POST") {
     const data = await readJSON(request);
-    const redirects = (data.redirect_uris || []).map(allowedRedirect);
+    let redirects;
+    try {
+      redirects = (data.redirect_uris || []).map(allowedRedirect);
+    } catch (error) {
+      // Platform clients often collapse DCR errors into "unreachable". Keep
+      // only the error category and host names, never callback query strings,
+      // client secrets, pairing codes or authorization credentials.
+      console.warn(JSON.stringify({
+        event: "hub_oauth_registration_rejected",
+        reason: error.code || "invalid_client_metadata",
+        redirectHosts: Array.isArray(data.redirect_uris)
+          ? data.redirect_uris.slice(0, 5).map(raw => {
+              try { return new URL(raw).host; } catch { return "invalid_url"; }
+            })
+          : [],
+      }));
+      throw error;
+    }
     if (!redirects.length || redirects.length > 5)
       fail("invalid_client", "需要官方回调地址");
     const authMethod = data.token_endpoint_auth_method || "client_secret_basic";

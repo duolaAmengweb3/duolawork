@@ -3,6 +3,66 @@ import assert from "node:assert/strict";
 import { fixture } from "./collaboration-helper.mjs";
 import { oauthFetch, startPairing } from "../cloud/collaboration/pairing.mjs";
 import { digest } from "../cloud/collaboration/repository.mjs";
+
+test("Grok Bot cloud callbacks register and pair with PKCE without changing an existing Grok connection", async t => {
+  const f = await fixture(t), origin = "https://hub.example.com";
+  const redirects = [
+    "https://www.cursor.com/agents/mcp/oauth/callback",
+    "https://www.cursor.com/bot/mcp/oauth/callback",
+    "http://localhost:8787/callback",
+  ];
+  const before = await f.repo.get("connection", "grok");
+  const request = (path, body) => oauthFetch(new Request(origin + path, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }), f.repo, f.identity, origin);
+  const registered = await request("/v2/oauth/register", {
+    client_name: "Grok Bot", redirect_uris: redirects, token_endpoint_auth_method: "none",
+  });
+  assert.equal(registered.status, 201);
+  const client = await registered.json();
+  const verifier = "g".repeat(64), challenge = Buffer.from(await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(verifier))).toString("base64url");
+  const pair = await startPairing(f.repo, f.identity, "check", origin);
+  const params = { client_id: client.client_id, redirect_uri: redirects[1],
+    response_type: "code", state: "isolated-grok-bot-state", code_challenge_method: "S256", code_challenge: challenge };
+  const page = await oauthFetch(new Request(origin + "/v2/oauth/authorize?" + new URLSearchParams(params)), f.repo, f.identity, origin);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /12 位配对码/);
+  const authorized = await oauthFetch(new Request(origin + "/v2/oauth/authorize", {
+    method: "POST", body: new URLSearchParams({ ...params, pair_code: pair.code }),
+  }), f.repo, f.identity, origin);
+  const callback = new URL(authorized.headers.get("location"));
+  assert.equal(callback.origin + callback.pathname, redirects[1]);
+  const args = { grant_type: "authorization_code", client_id: client.client_id,
+    redirect_uri: redirects[1], code: callback.searchParams.get("code"), code_verifier: verifier };
+  await assert.rejects(() => request("/v2/oauth/token", { ...args, redirect_uri: redirects[0] }), e => e.code === "invalid_grant");
+  const tokens = await (await request("/v2/oauth/token", args)).json();
+  assert.equal((await f.repo.get("member_auth", await digest(tokens.access_token))).memberId, "check");
+  assert.deepEqual(await f.repo.get("connection", "grok"), before);
+});
+
+test("Grok Bot callback compatibility does not allow arbitrary Cursor URLs, lookalikes or local redirects", async t => {
+  const f = await fixture(t), origin = "https://hub.example.com";
+  for (const redirect of [
+    "https://www.cursor.com.attacker.example/bot/mcp/oauth/callback",
+    "https://www.cursor.com/anything-else",
+    "https://evil.cursor.com/bot/mcp/oauth/callback",
+    "https://www.cursor.com/bot/mcp/oauth/callback?next=https://attacker.example",
+    "http://www.cursor.com/bot/mcp/oauth/callback",
+    "http://localhost:8788/callback",
+    "http://localhost:8787/anything-else",
+    "http://127.0.0.1:8787/callback",
+    "http://localhost.attacker.example:8787/callback",
+    "https://www.cursor.com/bot/mcp/oauth/callback#fragment",
+  ]) {
+    await assert.rejects(() => oauthFetch(new Request(origin + "/v2/oauth/register", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: [redirect], token_endpoint_auth_method: "none" }),
+    }), f.repo, f.identity, origin), e => e.code === "invalid_redirect");
+  }
+  assert.equal((await f.repo.list("oauth_client")).length, 0);
+});
+
 test("native pairing: one-use owner code, PKCE bound to client/redirect; persistent refresh rotates without user login", async (t) => {
   const f = await fixture(t),
     origin = "https://hub.example.com";
