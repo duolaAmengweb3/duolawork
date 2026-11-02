@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-02T03:08:59.051Z",
+  "at": "2026-11-02T05:21:04.855Z",
   "disconnectedSessionCycles": 3,
   "checks": [
     "failed headless and windowless startup leave no Chrome process",
@@ -9,14 +9,5 @@
     "session cookie survives cleanup and reopen in the same profile",
     "all isolated Chrome processes exit"
   ],
-  "realCommercialAgentTested": false,
-  "installedRuntime": {
-    "buildId": "f2ad953321997c26",
-    "installedSourceMatches": true,
-    "desktopAndBackendMatch": true,
-    "cloudOnline": true,
-    "protectedLocalDataUnchanged": true,
-    "accountBrowserCount": 0,
-    "dailyChromeStillRunning": true
-  }
+  "realCommercialAgentTested": false
 }

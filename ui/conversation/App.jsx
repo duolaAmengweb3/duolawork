@@ -621,7 +621,17 @@ export default function App() {
                           (t) => t.memberId === mid && t.status === "active",
                         )
                           ? "正在处理"
-                          : "等待回应"}
+                          : snapshot.notifications?.some(
+                                (n) =>
+                                  n.memberId === mid &&
+                                  n.status === "accepted" &&
+                                  snapshot.activity.some(
+                                    (t) =>
+                                      t.id === n.stepId && t.status === "ready",
+                                  ),
+                              )
+                            ? "等待平台唤醒"
+                            : "等待投递"}
                       </span>
                     ))}
                     {snapshot.activity.some((t) =>
@@ -1388,7 +1398,7 @@ function GroupForm({ channel, workspace, busy, onSave }) {
             />
           </label>
           <label>
-            同一成员唤醒间隔（秒）
+            Agent 自动连续唤醒间隔（秒，用户消息不等待）
             <Input
               type="number"
               min="0"

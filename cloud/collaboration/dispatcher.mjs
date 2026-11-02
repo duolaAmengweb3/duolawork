@@ -67,9 +67,22 @@ export async function dispatchOne(
       const resource = await tx.get("resource", c.resourceKey, false);
       if (resource?.status === "busy") return null;
       if(channel){
+        // A delivered wake that has not been claimed will read the new input
+        // too. Preserve the turn, without launching another platform run.
+        const outstanding=(await Promise.all(["accepted","sending"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat();
+        for(const notice of outstanding){
+          if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion)continue;
+          const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
+          if(notifiedTurn?.status!=="ready")continue;
+          tx.put("outbox",{...row,status:"coalesced",coalescedInto:notice.id});
+          return null;
+        }
+        // Trust stored message authorship, never caller-supplied priority.
+        // Older queued turns do not have wakeSource yet.
+        const userInput=turn.wakeSource==="user"||(turn.wakeSource===undefined&&(await tx.get("channel_message",turn.messageId)).authorId==="owner");
         const cursorId=`${channel.id}:${row.memberId}`,cursor=await tx.get("channel_cursor",cursorId,false);
         const earliest=Date.parse(cursor?.lastNotifiedAt||"1970-01-01")+channel.wakeIntervalSeconds*1000;
-        if(earliest>Date.parse(now)){tx.put("outbox",{...row,dueAt:new Date(earliest).toISOString()});return null;}
+        if(!userInput&&earliest>Date.parse(now)){tx.put("outbox",{...row,dueAt:new Date(earliest).toISOString()});return null;}
         tx.put("channel_cursor",{...cursor,id:cursorId,scopeId:channel.id,parentId:row.memberId,lastNotifiedAt:now});
         // One platform wake can read all queued messages for this group. Keep
         // every turn ready until the native Agent actually claims them.
@@ -377,8 +390,8 @@ export async function maintenance(
         summary.notifications < 2 &&
         Date.now() - beganAt < 18000
       ) {
-        await dispatchOne(repo, identity, row.id, env, fetcher, now);
-        summary.notifications++;
+        const result=await dispatchOne(repo, identity, row.id, env, fetcher, now);
+        if(!result.skipped)summary.notifications++;
       }
     }
   for (const status of ["working", "checkpoint", "waiting_user"])

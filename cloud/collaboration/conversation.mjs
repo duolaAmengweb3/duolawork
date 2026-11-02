@@ -222,6 +222,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     parentId: memberId,
     memberId,
     messageId: message.id,
+    wakeSource: message.authorId === "owner" ? "user" : "agent",
     number: message.number,
     rootId: message.rootId || message.id,
     hops: message.hops || 0,
@@ -245,7 +246,9 @@ async function outbox(tx, channel, turn, c) {
     Math.max(
       Date.parse(tx.now),
       Date.parse(cursor?.lastWakeAt || tx.now) +
-        (cursor?.lastWakeAt ? channel.wakeIntervalSeconds * 1000 : 0),
+        (turn.wakeSource !== "user" && cursor?.lastWakeAt
+          ? channel.wakeIntervalSeconds * 1000
+          : 0),
     ),
   ).toISOString();
   tx.put("outbox", {
@@ -464,6 +467,9 @@ export async function readChannel(repo, identity, actor, args) {
             httpStatus,
             createdAt,
             completedAt,
+            dueAt,
+            sendingAt,
+            attempts,
           }) => ({
             id,
             stepId,
@@ -473,6 +479,9 @@ export async function readChannel(repo, identity, actor, args) {
             httpStatus,
             createdAt,
             completedAt,
+            dueAt,
+            sendingAt,
+            attempts,
           }),
         )
       : [],
