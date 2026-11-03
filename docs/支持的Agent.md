@@ -2,6 +2,8 @@
 
 > **11月3日维护入口已统一：** 后续接入研发从 [Agent接入/README.md](../Agent接入/README.md) 开始，工程路线、开源依据、Grok 已有实现和真实验收均在同一文件夹维护，不再重开相互冲突的方案。Codex 官方 App Server 与 Gemini 官方 Antigravity ACP 1.4.5 已在安装版通过真实回群、原生文件读写和完整重开续接，默认完整授权、可选权限管理；原 IDE 会话与全局设置独立。具体场景及速度见[验收记录](../Agent接入/03-实现状态与验收记录.md)。下文其他品牌仍是逐家适配目标，不因本次结果一并变成已支持。
 
+> **同日原工作会话补验：** Codex VSCode 官方扩展、Antigravity 桌面 App 的原 GUI 会话，以及 DeepSeek Harness 官方 npm `0.2.1-rc.5` Web Host 的原生会话，均已实际完成“先本地工作 → 后加入 Hub 回群 → 继续原项目”。DSH 使用用户提供的 B.ai `deepseek-v4.1-flash`，另通过整个 Host 重启后原会话上下文恢复；官方本地运行端已安装。DSH 会话由 Host API 创建，不混称 GUI 创建；三条路线的新成员页绑定均未正式发布。Claude 按要求只调研、不运行。具体证据与边界见 [04](../Agent接入/04-已有工作会话加入协作-可行性验证.md)。
+
 ## 2026-11-02 当前范围：Personal Agent 与 Coding Agent 混编
 
 所有者本轮明确：不再限定 Personal Agent；Coding Agent 是正式场景，国内外都覆盖。默认接入体验是用户复制一段带短时配对码的 Skill，由原 Agent 自己完成接入、配置和验证。此决定取代 10 月 28—30 日“先只做个人 Agent”的范围限制；不恢复已废弃的固定步骤编排。

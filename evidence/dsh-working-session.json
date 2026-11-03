@@ -1,0 +1,150 @@
+{
+  "at": "2026-11-03T14:46:40.325Z",
+  "runtime": "Official @deepseek-ai/dsh 0.2.1-rc.5 Web Host",
+  "model": "deepseek-v4.1-flash",
+  "provider": "B.AI via native openai-completions adapter",
+  "project": "/Users/duola/.local/share/agent-hub/deepseek-proof/project",
+  "productionHubChanged": false,
+  "claudeTouched": false,
+  "checks": [
+    "Original DSH Web Host session changed local code and passed npm test before Hub attachment",
+    "Automatic connector queued the original session; its scoped native Hub tools claimed and replied with original conversation context",
+    "Same original native DSH session continued local code work and passed tests; project, branch and pre-existing note preserved"
+  ],
+  "guiCreated": false,
+  "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+  "originalWork": {
+    "seconds": 24.068,
+    "text": "I'll start by reading the project instructions and structure.\nNow let me confirm the current failure, then fix.\nFailure confirmed: `scale(4)` returns 8 but the test expects 12, so the contract is ×3.\nDone. Results:\n\n**Initial failure (actual run):** `npm test` → exit 1, `AssertionError: 8 !== 12` at [test.mjs:3](test.mjs#L3). The test's contract is `scale(4) === 12`, but [scale.mjs:1](scale.mjs#L1) multiplied by 2.\n\n**Fix:** changed the one line in [scale.mjs](scale.mjs) to `export const scale = n => n * 3;`\n\n**Final run (actual):**\n```\n> test\n> node test.mjs\n\nproject tests passed\n[exit: 0]\n```\n\n**Preservation checks:**\n- Branch still `proof-existing-work` (no branch created/deleted/renamed).\n- `notes.txt` untouched: still `Preserve this pre-existing user note.` (remains untracked, exactly as found).\n- `git status --short`: only `M scale.mjs`, no other files changed.\n- No credential, other-session, or other-project inspection; no Hub work performed.\n\nThe conversation-only marker `dsh_context_4f14fbc3` was kept in this conversation only and not written to any file.",
+    "turnEnd": {
+      "type": "turn/end",
+      "seq": 65,
+      "time": 1793717223823,
+      "data": {
+        "turn": 1,
+        "reason": {
+          "kind": "completed"
+        }
+      }
+    }
+  },
+  "hub": {
+    "channelId": "channel_3f2b12d53390424aaf68bfb584abf102",
+    "messageId": "chat_9af2a168b02d427f84b584b8ce322f2a",
+    "replyId": "chat_cd17a4ed30e64c58b591c3ca9d6b378c",
+    "reply": "收到，只在此回复，未修改任何文件、未创建任务或文档。\n\n一、实际代码修改（1 行，仅 scale.mjs）\n- 文件：scale.mjs\n- 原内容：export const scale = n => n * 2;\n- 改为：export const scale = n => n * 3;\n- 原因：test.mjs 断言 scale(4) === 12，即契约是 ×3，而原实现为 ×2。\n\n二、真实测试结果（两次实际执行）\n1. 修改前：npm test → 退出码 1，AssertionError: 8 !== 12（test.mjs:3，actual 8 / expected 12）。\n2. 修改后：npm test → 退出码 0，输出\n   > test\n   > node test.mjs\n   project tests passed\n   环境为 Node.js v26.3.0。\n\n三、保留项核对\n- 当前分支仍为 proof-existing-work，未新建/删除/改名分支。\n- notes.txt 未改动，内容仍为「Preserve this pre-existing user note.」（保持原有未跟踪状态）。\n- git status --short 显示仅 ` M scale.mjs`，加上原本就未跟踪的 notes.txt；无其他改动。\n- 未查看凭证、其他会话或其他项目；本轮无 Hub 文档/任务创建。\n\n四、识别词\n本会话此前记住的、仅存在于对话中的标记是：dsh_context_4f14fbc3。按要求未写入任何文件。",
+    "seconds": 12.067,
+    "tools": [
+      {
+        "name": "list_work",
+        "at": "2026-11-03T14:47:09.077Z"
+      },
+      {
+        "name": "claim_work",
+        "at": "2026-11-03T14:47:12.018Z"
+      },
+      {
+        "name": "post_message",
+        "at": "2026-11-03T14:47:16.461Z"
+      }
+    ],
+    "dispatches": [
+      {
+        "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+        "stepId": "turn_chat_9af2a168b02d427f84b584b8ce322f2a_member_3638648d57fa4d7bb74ff137a2bf047b",
+        "requestId": "734cf67e0539c5c653c9b3e2fc1a4d40f656f3c91bc5b56638831a9c1f58d5e9",
+        "at": "2026-11-03T14:47:06.300Z"
+      }
+    ]
+  },
+  "branch": "proof-existing-work",
+  "continuedWork": {
+    "seconds": 12.046,
+    "text": "Done — local work only, no Hub tools used.\n\n**Change:** added `assert.equal(scale(0), 0);` to [test.mjs](test.mjs), right after the existing `scale(4) === 12` assertion.\n\n**Actual test run:**\n```\n> test\n> node test.mjs\n\nproject tests passed\n[exit: 0]\n```\nThe new assertion passes because `scale.mjs` uses `n * 3` and `0 * 3 === 0`.\n\n**Preservation checks:**\n- [scale.mjs](scale.mjs) unchanged: still `export const scale = n => n * 3;`\n- [notes.txt](notes.txt) unchanged: `Preserve this pre-existing user note.`\n- Branch still `proof-existing-work`.\n- `git status --short`: `M scale.mjs` (from the earlier turn), `M test.mjs` (this turn), `?? notes.txt` — no other files touched.",
+    "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+    "cwd": "/Users/duola/.local/share/agent-hub/deepseek-proof/project"
+  },
+  "finishedAt": "2026-11-03T14:47:34.196Z",
+  "isolatedMemberGrantRemoved": true,
+  "restartVerification": {
+    "at": "2026-11-03T15:42:02.268Z",
+    "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+    "replyId": "chat_d5b08b3569474eb3b99d9b90e30e2965",
+    "reply": "收到，不改文件、不建任务或文档，只在此回复。\n\n识别词：dsh_context_4f14fbc3（只保留在本会话对话里，从未写入任何文件）。\n\n之前在本项目的实际修改与测试：\n1. scale.mjs：`export const scale = n => n * 2;` 改为 `export const scale = n => n * 3;`。原因是 test.mjs 断言 scale(4) === 12，而原实现只返回 8。\n2. test.mjs：在 scale(4)===12 之后新增 `assert.equal(scale(0), 0);`。\n3. 真实测试：改前 npm test 退出码 1，报 AssertionError: 8 !== 12；修 scale.mjs 后退出码 0、输出 `project tests passed`；加入 scale(0) 断言后再跑仍退出码 0、`project tests passed`（Node.js v26.3.0）。\n4. 保留项：分支仍是 proof-existing-work；notes.txt 未被改动，内容仍为「Preserve this pre-existing user note.」；git status 仅有 M scale.mjs、M test.mjs 和原本就未跟踪的 notes.txt。\n\n本轮未修改任何文件，未查看凭证、其他会话或其他项目。",
+    "seconds": 13.599
+  },
+  "installation": {
+    "npmPackage": "@deepseek-ai/dsh",
+    "version": "0.2.1-rc.5",
+    "source": "https://github.com/deepseek-ai/deepseek-harness",
+    "providerBaseUrl": "https://api.b.ai/v1",
+    "modelDiscovery": {
+      "request": "GET /v1/models",
+      "status": 200,
+      "modelCount": 68,
+      "selected": "deepseek-v4.1-flash",
+      "selectedPresent": true
+    },
+    "privateModelConfig": "~/.config/agent-hub-dsh-test/model.json",
+    "apiKeyIncluded": false,
+    "nativeWebBoundTo": "127.0.0.1",
+    "formalHubMemberPageShipped": false,
+    "initialPythonWebPackagingFailure": {
+      "sdk": "0.2.1rc2",
+      "minimalModelSmokePassed": true,
+      "missingModules": [
+        "@deepseek-ai/dsh-host-directory-picker",
+        "@deepseek-ai/libreoffice-kit"
+      ],
+      "finalProofUsed": "complete official npm Web Host"
+    }
+  },
+  "validation": {
+    "connectorUnitTests": {
+      "passed": 6,
+      "failed": 0
+    },
+    "fullNpmTest": {
+      "passed": 209,
+      "failed": 0,
+      "skipped": 0
+    },
+    "nativeUiReadback": {
+      "originalSessionVisible": true,
+      "modelVisible": "deepseek-v4.1-flash",
+      "messageInputAvailable": true,
+      "screenshot": "dsh-native-session.png",
+      "allFiveTurnsVisible": true,
+      "finalNormalModeLaunchVerified": true
+    },
+    "idlePollingUsesModel": false
+  },
+  "restartVerifications": [
+    {
+      "at": "2026-11-03T14:58:33.324Z",
+      "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+      "replyId": "chat_776eb253d397491aa4e33fcc105b5ee8",
+      "reply": "收到，不改文件、不建任务或文档，只在此回复。\n\n识别词：dsh_context_4f14fbc3（仅存在于本会话对话中，未写入任何文件）。\n\n之前在本项目的实际修改与测试：\n1. scale.mjs：把 `export const scale = n => n * 2;` 改为 `export const scale = n => n * 3;` —— 因为 test.mjs 断言 scale(4) === 12，原实现返回 8。\n2. test.mjs：新增一条断言 `assert.equal(scale(0), 0);`，放在 scale(4)===12 之后。\n3. 测试：改前 npm test 退出码 1，报 AssertionError: 8 !== 12；修 scale.mjs 后退出码 0，输出 `project tests passed`；加 scale(0) 断言后再跑仍是退出码 0、`project tests passed`（Node.js v26.3.0）。\n4. 保留项：分支仍是 proof-existing-work；notes.txt 未改动，内容仍为「Preserve this pre-existing user note.」；git status 只有 M scale.mjs、M test.mjs 和原本未跟踪的 notes.txt。\n\n本轮未查看凭证、其他会话或其他项目，也未修改任何文件。",
+      "seconds": 12.058
+    },
+    {
+      "at": "2026-11-03T15:42:02.268Z",
+      "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+      "replyId": "chat_d5b08b3569474eb3b99d9b90e30e2965",
+      "reply": "收到，不改文件、不建任务或文档，只在此回复。\n\n识别词：dsh_context_4f14fbc3（只保留在本会话对话里，从未写入任何文件）。\n\n之前在本项目的实际修改与测试：\n1. scale.mjs：`export const scale = n => n * 2;` 改为 `export const scale = n => n * 3;`。原因是 test.mjs 断言 scale(4) === 12，而原实现只返回 8。\n2. test.mjs：在 scale(4)===12 之后新增 `assert.equal(scale(0), 0);`。\n3. 真实测试：改前 npm test 退出码 1，报 AssertionError: 8 !== 12；修 scale.mjs 后退出码 0、输出 `project tests passed`；加入 scale(0) 断言后再跑仍退出码 0、`project tests passed`（Node.js v26.3.0）。\n4. 保留项：分支仍是 proof-existing-work；notes.txt 未被改动，内容仍为「Preserve this pre-existing user note.」；git status 仅有 M scale.mjs、M test.mjs 和原本就未跟踪的 notes.txt。\n\n本轮未修改任何文件，未查看凭证、其他会话或其他项目。",
+      "seconds": 13.599
+    }
+  ],
+  "deliveryLaunch": {
+    "normalMode": true,
+    "testControlRoutesEnabled": false,
+    "pluginLoadedFromCanonicalProject": true,
+    "sameSessionResumeAndHubReplyPassed": true,
+    "temporaryBindingRemoved": true,
+    "initialCanonicalLaunchFailure": {
+      "reason": "Canonical checkout lacked two shared connector helper modules",
+      "remediation": "Copied only missing coding-client.mjs and native-agent.mjs from the verified source branch; kept existing canonical transport unchanged; native restart and actual Hub reply retested successfully"
+    },
+    "reproduction": "Run the probe from the complete feat/conversation-first-20261031 source checkout with its matching cloud and test harness; the local launcher uses the canonical project directory."
+  }
+}
