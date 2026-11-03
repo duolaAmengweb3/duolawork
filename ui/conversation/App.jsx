@@ -138,7 +138,7 @@ export default function App() {
   const name = (id) =>
     id === "owner"
       ? "我"
-      : workspace.members.find((m) => m.id === id)?.name || "已移出成员";
+      : workspace.members.find((m) => m.id === id)?.name || workspace.formerMembers?.find(m=>m.id===id)?.name || "已移出成员";
   const refreshWorkspace = useCallback(async () => {
     const [w, c] = await Promise.all([
       api("/v2/workspace"),
@@ -225,6 +225,11 @@ export default function App() {
     perform(() => command(type, { channelId: current, ...args })).catch(
       () => {},
     );
+  const openDirect = async (member) => {
+    let dm = channels.find(c => c.direct && c.status !== "archived" && c.memberIds.length === 1 && c.memberIds[0] === member.id);
+    if (!dm) dm = await perform(() => command("channel.create", { name: member.name, memberIds: [member.id], coordinatorId: null, direct: true }));
+    setCurrent(dm.id); setPage("chat"); setModal(null);
+  };
   const channel = snapshot?.channel,
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
@@ -300,7 +305,7 @@ export default function App() {
           成员与连接<span>{workspace.members.length}</span>
         </button>
         <div className="sidebar-caption">
-          群聊与项目
+          单聊与群聊
           <button
             aria-label="新建群聊"
             onClick={() => setModal({ type: "create" })}
@@ -322,7 +327,7 @@ export default function App() {
                   setPage("chat");
                 }}
               >
-                <Hash size={17} />
+                {c.direct ? <MessageSquare size={17} /> : <Hash size={17} />}
                 <span>
                   {c.name}
                   <small>{c.lastMessage || "开始一段对话"}</small>
@@ -371,6 +376,7 @@ export default function App() {
             refresh={refreshWorkspace}
             perform={perform}
             setModal={setModal}
+            onChat={openDirect}
             name={name}
           />
         ) : !channel ? (
@@ -398,20 +404,20 @@ export default function App() {
             <header className="comm-header">
               <div>
                 <span className="header-hash">
-                  <Hash size={23} />
+                  {channel.direct ? <MessageSquare size={23} /> : <Hash size={23} />}
                 </span>
                 <div>
                   <h1>{channel.name}</h1>
                   <p>
-                    {groupMembers.length} 位 Agent ·{" "}
+                    {channel.direct ? "单聊 · 只有你和这位 Agent" : <>{groupMembers.length} 位 Agent ·{" "}
                     {channel.coordinatorId
                       ? `${name(channel.coordinatorId)} 负责协调`
-                      : "尚未指定负责人"}
+                      : "尚未指定负责人"}</>}
                   </p>
                 </div>
               </div>
               <div>
-                <button
+                {!channel.direct && <><button
                   className="member-stack"
                   aria-label="管理群成员"
                   onClick={() => setModal({ type: "group" })}
@@ -428,7 +434,7 @@ export default function App() {
                   onClick={() => setModal({ type: "group" })}
                 >
                   <Settings2 size={18} />
-                </Button>
+                </Button></>}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -924,27 +930,7 @@ export default function App() {
                             </div>
                             <button
                               aria-label={"私聊 " + m.name}
-                              onClick={async () => {
-                                try {
-                                  let dm = channels.find(
-                                    (c) =>
-                                      c.direct &&
-                                      c.memberIds.length === 1 &&
-                                      c.memberIds[0] === m.id,
-                                  );
-                                  if (!dm)
-                                    dm = await perform(() =>
-                                      command("channel.create", {
-                                        name: m.name,
-                                        memberIds: [m.id],
-                                        coordinatorId: null,
-                                        direct: true,
-                                      }),
-                                    );
-                                  setCurrent(dm.id);
-                                  setPage("chat");
-                                } catch {}
-                              }}
+                              onClick={() => openDirect(m).catch(()=>{})}
                             >
                               <MessageSquare size={16} />
                             </button>
@@ -1122,6 +1108,7 @@ export default function App() {
               meeting: "开始讨论",
               "close-meeting": "记录会议结论",
               connect: "连接 " + modal.member?.name,
+              disconnect: "解除 " + modal.member?.name + " 的连接？",
               import: "继续以前的项目",
               history: "历史工作区",
             }[modal.type] || "设置"
@@ -1135,7 +1122,10 @@ export default function App() {
           }
           onClose={() => setModal(null)}
         >
-          {modal.type === "history" ? (
+          {modal.type === "disconnect" ? <div className="space-y-5">
+            <p className="leading-7">解除后，{modal.member.name} 会从成员列表和当前群中移出，不能再访问 Hub 或接收新消息。聊天和交付记录会保留，原平台账号及登录不会退出，也不会影响其他成员。</p>
+            <div className="flex justify-end gap-3"><Button variant="outline" onClick={()=>setModal(null)}>取消</Button><Button variant="destructive" disabled={busy} onClick={async()=>{try{await perform(()=>api('/action',{type:'member.disconnect',memberId:modal.member.id}));setModal(null);setNotice('已解除连接，聊天记录和原平台登录已保留。');}catch{}}}>确认解除连接</Button></div>
+          </div> : modal.type === "history" ? (
             <ReadOnlyHistory
               perform={perform}
               onSelect={(c) => {
@@ -1181,6 +1171,7 @@ export default function App() {
                 refresh={refreshWorkspace}
                 notify={setNotice}
                 onError={setError}
+                onStartChat={openDirect}
               />
             </Suspense>
           ) : modal.type === "import" ? (
@@ -1508,7 +1499,7 @@ function ImportProjects({ channels, perform, onSelect }) {
     </div>
   );
 }
-function Members({ workspace, perform, refresh, setModal }) {
+function Members({ workspace, perform, refresh, setModal, onChat }) {
   const [adding, setAdding] = useState(false),
     [title, setTitle] = useState(""),
     [platform, setPlatform] = useState("grok-bot"),
@@ -1614,11 +1605,19 @@ function Members({ workspace, perform, refresh, setModal }) {
                 </small>
               )}
               <Button
+                disabled={c?.status !== "verified"}
+                aria-label={"聊天 " + m.name}
+                onClick={()=>onChat(m).catch(()=>{})}
+              >
+                <MessageSquare size={15}/>聊天
+              </Button>
+              <Button
                 variant="outline"
                 onClick={() => setModal({ type: "connect", member: m })}
               >
                 查看接入
               </Button>
+              <Button variant="ghost" className="text-red-600" aria-label={"解除连接 " + m.name} onClick={()=>setModal({type:'disconnect',member:m})}>解除连接</Button>
             </article>
           );
         })}

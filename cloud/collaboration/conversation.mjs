@@ -556,6 +556,10 @@ export async function conversationCommand(
           fail("invalid_member", "所选成员不可用");
         if (cmd.direct && memberIds.length !== 1)
           fail("invalid_direct", "私聊只能选择一位 Agent");
+        if (cmd.direct) {
+          const priorDM = (await tx.list("channel")).find(c => c.direct && c.status !== "archived" && c.memberIds.length === 1 && c.memberIds[0] === memberIds[0]);
+          if (priorDM) return priorDM;
+        }
         const coordinatorId = cmd.coordinatorId ?? null;
         if (coordinatorId && !memberIds.includes(coordinatorId))
           fail("invalid_coordinator", "负责人必须在群里");
@@ -596,6 +600,7 @@ export async function conversationCommand(
           channel.name = required(cmd.name, "群名称", 100);
         if (cmd.memberIds !== undefined) {
           const ids = listIds(cmd.memberIds);
+          if (channel.direct && (ids.length !== 1 || ids[0] !== channel.memberIds[0])) fail("invalid_direct", "单聊不能添加或更换成员，请另外新建群聊");
           if (ids.some((mid) => !activeMember(identity, mid)))
             fail("invalid_member", "所选成员不可用");
           const removed = channel.memberIds.filter((mid) => !ids.includes(mid));

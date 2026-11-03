@@ -2076,10 +2076,10 @@ export function ConnectWizard(props) {
     finally { setBusy(false); }
   }
   return <div className="space-y-5 py-3">
-    <div><h3 className="text-lg font-semibold">把 {member.name} 加入团队</h3>
-      <p className="text-muted-foreground leading-7 mt-2">把接入说明发给你正在使用的 Agent。它负责准备连接；需要你确认的步骤会直接显示在这里。</p></div>
+    <div><h3 className="text-lg font-semibold">{complete ? `${member.name} 接入完成` : `把 ${member.name} 加入团队`}</h3>
+      <p className="text-muted-foreground leading-7 mt-2">{complete ? '连接已保存，接下来可以单聊，或将它加入群聊协作。' : '把接入说明发给你正在使用的 Agent。它负责准备连接；需要你确认的步骤会直接显示在这里。'}</p></div>
     <ol className="grid grid-cols-3 gap-2 text-sm" aria-label="接入进度">
-      {[['发送说明', paired], ['完成确认', complete || pending], ['真实回复', complete]].map(([text, done], i) => <li key={text} className={`rounded-lg border px-3 py-2 ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'text-slate-500'}`}>{done ? '✓' : i + 1} {text}</li>)}
+      {[['发送说明', paired], ['完成确认', complete || pending], ['接入完成', complete]].map(([text, done], i) => <li key={text} className={`rounded-lg border px-3 py-2 ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'text-slate-500'}`}>{done ? '✓' : i + 1} {text}</li>)}
     </ol>
     <div role="status" className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete && !failed && !pending ? "Agent 报告接入遇到问题" : stage}</span></div>
     {connection?.setup?.message && !complete && !pending && !failed && <p className="text-sm text-muted-foreground">{connection.setup.message}</p>}
@@ -2094,8 +2094,9 @@ export function ConnectWizard(props) {
       <div><h4 className="font-semibold">只需首次确认，后续自动复用</h4><p className="mt-2 text-sm leading-6 text-slate-600">Grok 只向本人显示发送密钥。不要发到聊天里，直接填在下方。请等 Agent 准备好接收器后再操作。</p></div>
       <ol className="list-decimal pl-5 text-sm leading-7 space-y-1">
         <li>打开官方 <strong>Grok Bot 桌面版</strong>，选择正在接入的 Bot。网页版可能看不到密钥。</li>
-        <li>点击 Agent 发来的「Webhook URL」或「打开例行任务」卡片，找到 <strong>{routineName}</strong>。</li>
-        <li>把面板里的「Webhook URL」和「Webhook 密钥」复制到下面，点击保存即可。</li>
+        <li>先点击聊天里的「打开例行任务」卡片，进入 Bot 详情；再点击其中名为 <strong>{routineName}</strong> 的接收器。这一步打开后才会显示参数。</li>
+        <li>在右侧接收器面板里向下找到 <strong>Webhook</strong>。点击第一行 <strong>「POST 到」</strong>最右侧的复制图标，粘到下面的 URL 框。</li>
+        <li>点击第二行 <strong>「密钥」</strong>最右侧的复制图标，粘到下面的密钥框。遮着也可以复制完整值，第三行「标头」不需要。</li>
       </ol>
       <div className="flex flex-wrap gap-3 items-center"><Button type="button" variant="outline" disabled={busy} onClick={() => perform(() => api('/local/open-provider', {platformId:'grok-bot'}))}>打开 Grok Bot 桌面版</Button><a className="text-sm underline" href="https://cursor.com/docs/grok-bot/get-started" target="_blank" rel="noreferrer">未安装？查看官方入口</a></div>
       {failed && <Alert variant="destructive"><AlertTitle>尚未接通</AlertTitle><AlertDescription>{connection.probe.message || '原 Agent 未完成验证。请确认复制的是这个 Bot 的接收器，并重新核对完整密钥。'}</AlertDescription></Alert>}
@@ -2114,7 +2115,11 @@ export function ConnectWizard(props) {
     </section>}
     {pending && <p className="text-sm leading-7 text-muted-foreground">已自动发出验证，正在等原 Agent 实际回复。平台可能排队；不用重复点、不用再发送 Skill，可以关闭窗口，结果会保留。{connection?.lastDeliveryAt ? ' 原平台已受理通知。' : ''}</p>}
     {!grok && paired && !complete && !pending && <><p className="text-sm leading-7 text-muted-foreground">由 Agent 完成它自己的接收配置并自检。若它报告需要本人授权，请在原平台完成；这里会自动显示结果。</p>{failed && <Alert variant="destructive"><AlertDescription>{connection.probe.message || '验证尚未完成，请先查看 Agent 的接入说明。'}</AlertDescription></Alert>}{connection?.status === 'configured' && <Button disabled={busy} onClick={() => perform(()=>command('connection.probe',{memberId:member.id}))}>重新验证接入</Button>}</>}
-    {complete && <p className="text-sm leading-7 text-emerald-800">{member.name} 已从原生环境实际回复。可以关闭此窗口，在群里 @ 它开始交流；本次接入配置会保留。</p>}
+    {complete && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-3" aria-label="接入完成">
+      <h4 className="text-lg font-semibold text-emerald-900">✓ 现在可以开始使用</h4>
+      <p className="text-sm leading-7 text-emerald-800">现在可以和它单聊，也可以把它加入群聊一起协作。本次配置已保存，下次打开软件无需重复接入。</p>
+      {props.onStartChat && <Button disabled={busy} onClick={()=>perform(()=>props.onStartChat(member))}><MessageSquare size={16}/>开始聊天</Button>}
+    </section>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">高级 / 修复已有连接</summary><p className="text-sm text-muted-foreground my-3">仅在你需要改用其他接法或修复既有连接时使用，正常接入无需进入。</p><Button size="sm" variant="ghost" onClick={() => setAdvanced(true)}>进入高级接入</Button></details>
   </div>;

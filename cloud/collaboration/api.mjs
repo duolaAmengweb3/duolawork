@@ -660,6 +660,7 @@ export async function v2Fetch(request, env, ctx, identity) {
           ...m,
           ownerId: m.ownerId || env.WORKSPACE_ID,
         })),
+      formerMembers: identity.members.filter(m => m.status === "disabled").map(({id,name}) => ({id,name})),
       accounts: identity.accounts.map(({ id, name, platformId, status }) => ({
         id,
         name,

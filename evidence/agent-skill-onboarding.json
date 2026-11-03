@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-03T01:12:33.413584+00:00",
-  "buildId": "bcc4031b901b2f7a",
-  "workerVersionId": "c9a45d97-4269-4e91-b3e7-5a4d266059f5",
+  "at": "2026-11-03T01:51:40.188123+00:00",
+  "buildId": "7585e89dc996a508",
+  "workerVersionId": "113d55c0-86f1-4424-9f73-c554f89808e9",
   "targets": {
     "total": 18,
     "coding": 10,
@@ -9,17 +9,17 @@
     "allNativeProvidersTested": false
   },
   "engineering": {
-    "checksPassed": 155,
+    "checksPassed": 159,
     "typecheckPassed": true,
     "installedDesktopCopyWorks": true,
     "clipboardReadDenied": true,
     "subframeClipboardWriteDenied": true,
     "activation": {
-      "at": "2026-11-03T01:07:57.325Z",
+      "at": "2026-11-03T01:47:59.791Z",
       "url": "http://127.0.0.1:8766",
-      "buildId": "bcc4031b901b2f7a",
-      "processId": 71679,
-      "desktopBuildId": "bcc4031b901b2f7a",
+      "buildId": "7585e89dc996a508",
+      "processId": 80370,
+      "desktopBuildId": "7585e89dc996a508",
       "backendAndDesktopMatch": true,
       "cloudOnline": true,
       "protectedLocalDataUnchanged": true,
@@ -333,5 +333,25 @@
     },
     "realCommercialAgentTested": true,
     "selfServiceGrokAcceptancePassed": true
+  },
+  "memberActions20261103": {
+    "buildId": "7585e89dc996a508",
+    "workerVersionId": "113d55c0-86f1-4424-9f73-c554f89808e9",
+    "guidanceIncludesSecondReceiverClick": true,
+    "guidanceNamesExactProviderFields": true,
+    "explicitSuccessPanelWithStartChat": true,
+    "memberCardChatOpensIndependentDM": true,
+    "concurrentDMCreationDeduplicated": true,
+    "directChatCannotSilentlyBecomeGroup": true,
+    "disconnectRequiresConfirmation": true,
+    "disconnectRevokesTokensAndSubscriptions": true,
+    "busyDisconnectRejectedAtomically": true,
+    "sharedAccountPeersPreserved": true,
+    "messageHistoryAndProviderLoginRetained": true,
+    "fixtures": "evidence/onboarding-ui.json",
+    "nativeCommercialDisconnectTested": false,
+    "productionDisconnectIssued": false,
+    "grok3ObservedVerifiedAfterDeployment": true,
+    "liveDraftLeftUntouched": true
   }
 }

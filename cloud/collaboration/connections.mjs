@@ -82,6 +82,7 @@ export async function configureConnection(repo, identity, input, secret) {
     async (tx) => {
       tx.guardLegacyIdle(member.accountId);
       const old = await tx.get("connection", member.id, false);
+      if (old?.status === "disconnected") fail("member_disconnected", "该成员已解除连接，请重新添加成员后接入", 403);
       const resource = await tx.get("resource", member.accountId, false);
       if (resource?.status === "busy")
         fail("resource_busy", "此账号有未结束的原生执行，不能切换通道", 409);
