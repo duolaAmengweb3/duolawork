@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fixture } from "./collaboration-helper.mjs";
-import { issueAgentSkill, redeemAgentSkill, selfConnection, selfCheck, selfStatus, reportSetup, publicOnboarding, onboardingManifest } from "../cloud/collaboration/onboarding.mjs";
+import { issueAgentSkill, redeemAgentSkill, selfConnection, selfCheck, selfStatus, reportSetup, publicOnboarding, onboardingManifest, completeGuidedConnection } from "../cloud/collaboration/onboarding.mjs";
 import { startPairing } from "../cloud/collaboration/pairing.mjs";
 import { resolveActor, callTool } from "../cloud/collaboration/api.mjs";
 import { unseal, publicConnection } from "../cloud/collaboration/security.mjs";
@@ -120,4 +120,35 @@ test("公开发现不授予权限，兑换限流不生成凭证；候选清单�
     { ADMIN_KEY: secret, OAUTH_RATE_LIMIT: { limit: async () => ({ success: false }) } }, origin);
   assert.equal(result.status, 429);
   assert.equal((await f.repo.list("member_auth")).length, 0);
+});
+
+test("新成员默认接入：本人确认后自动发自检，网络重试幂等，不冒充已回应", async t => {
+  const f=await fixture(t); f.identity.members[0].platformId='grok-bot';
+  await f.db.prepare("DELETE FROM hub_v2_records WHERE workspace_id='test' AND kind='connection' AND id='grok'").run();
+  const s=await skillFor(f); await redeemAgentSkill(f.repo,f.identity,{code:s.code,attemptId:'fresh-bot'},secret,origin);
+  await reportSetup(f.repo,{memberId:'grok'},{stage:'waiting_owner',action:'grok_routine',routineName:'Agent Hub 成员 新Bot 接收器',message:'接收器已就绪'});
+  assert.equal((await selfStatus(f.repo,{memberId:'grok'},origin)).connection.setup.ownerAction.routineName,'Agent Hub 成员 新Bot 接收器');
+  const input={requestId:'one-owner-handoff',memberId:'grok',url:'https://api2.cursor.sh/automations/webhook/fresh-fixture',token:'crsr_isolated_fixture_key'};
+  const before=await f.repo.get('connection','check');
+  const a=await completeGuidedConnection(f.repo,f.identity,input,secret),b=await completeGuidedConnection(f.repo,f.identity,input,secret);
+  assert.equal(a.probe.runId,b.probe.runId);
+  assert.equal((await f.repo.list('run')).length,1);
+  assert.equal((await f.repo.list('outbox')).length,1);
+  assert.equal((await selfStatus(f.repo,{memberId:'grok'},origin)).complete,false);
+  assert.deepEqual(await f.repo.get('connection','check'),before);
+  const stored=JSON.stringify((await f.db.prepare('SELECT body FROM hub_v2_records').all()).results);
+  const receipts=JSON.stringify((await f.db.prepare('SELECT result FROM hub_v2_receipts').all()).results);
+  assert(!stored.includes(input.token)); assert(!receipts.includes(input.token)); assert(!JSON.stringify(a).includes(input.token));
+});
+
+test("接入确认拒绝未配对成员、账号聊天页和未知动作，进度不泄漏原生密钥",async t=>{
+ const f=await fixture(t);f.identity.members[0].platformId='grok-bot';
+ const input={requestId:'not-paired',memberId:'grok',url:'https://api2.cursor.sh/automations/webhook/fixture',token:'crsr_fixture_only'};
+ await assert.rejects(()=>completeGuidedConnection(f.repo,f.identity,input,secret),e=>e.code==='pairing_required');
+ await f.db.prepare("DELETE FROM hub_v2_records WHERE workspace_id='test' AND kind='connection' AND id='grok'").run();
+ const s=await skillFor(f);await redeemAgentSkill(f.repo,f.identity,{code:s.code,attemptId:'new'},secret,origin);
+ await assert.rejects(()=>completeGuidedConnection(f.repo,f.identity,{...input,url:'https://grok.com/bot/fixture'},secret),e=>e.code==='wrong_receiver');
+ await assert.rejects(()=>reportSetup(f.repo,{memberId:'check'},{stage:'waiting_owner',action:'grok_routine',routineName:'bad',message:'bad'}),e=>e.code==='invalid_action');
+ await reportSetup(f.repo,{memberId:'grok'},{stage:'waiting_owner',action:'grok_routine',routineName:'crsr_private_value_should_not_leak',message:'crsr_private_value_should_not_leak'});
+ assert(!JSON.stringify((await selfStatus(f.repo,{memberId:'grok'},origin)).connection.setup).includes('private_value'));
 });

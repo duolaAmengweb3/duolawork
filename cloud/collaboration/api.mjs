@@ -29,7 +29,7 @@ import {
 import { uploadFile, downloadFile } from "./files.mjs";
 import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
 import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
-import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup } from "./onboarding.mjs";
+import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup, completeGuidedConnection } from "./onboarding.mjs";
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -65,7 +65,7 @@ export const TOOLS = [
   {
     name: "report_setup_status",
     description: "上报你自己的接入进度或平台卡点，显示在 Hub；不能自行标记验证通过。",
-    inputSchema: schema({ stage: { type: "string", enum: ["configuring", "waiting_platform", "blocked"] }, message: string }, ["stage", "message"]),
+    inputSchema: schema({ stage: { type: "string", enum: ["configuring", "waiting_owner", "waiting_platform", "blocked"] }, message: string, action: { type: "string", enum: ["grok_routine"] }, routineName: string }, ["stage", "message"]),
   },
   {
     name: "setup_connection",
@@ -630,6 +630,11 @@ export async function v2Fetch(request, env, ctx, identity) {
   if (!actor.owner) fail("forbidden", "管理操作需要用户身份", 403);
   if (url.pathname === "/v2/connect/skill" && request.method === "POST")
     return json(await issueAgentSkill(repo, identity, (await readJSON(request)).memberId, url.origin));
+  if (url.pathname === "/v2/connect/complete" && request.method === "POST") {
+    const result = await completeGuidedConnection(repo, identity, await readJSON(request), env.ADMIN_KEY);
+    kick();
+    return json(result);
+  }
   if(url.pathname==="/v2/active-work"&&request.method==="GET"){
     const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
     return json({active:r.total});
@@ -683,7 +688,7 @@ export async function v2Fetch(request, env, ctx, identity) {
               ?.updatedAt || null,
           probe: (await repo.list("run", { scope: `probe_${c.id}` }))
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .slice(0, 1).map(({ id, status }) => ({ id, status }))[0] || null,
+            .slice(0, 1).map(({ id, status, probeError }) => ({ id, status, message: probeError || null }))[0] || null,
         })),
       ),
     });

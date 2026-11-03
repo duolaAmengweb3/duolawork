@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-02T12:22:25.350484+00:00",
-  "buildId": "eeb5039ec7f2e2b8",
-  "workerVersionId": "f7fe75bd-a9ec-4033-bc36-d48d62cfe2be",
+  "at": "2026-11-03T01:12:33.413584+00:00",
+  "buildId": "bcc4031b901b2f7a",
+  "workerVersionId": "c9a45d97-4269-4e91-b3e7-5a4d266059f5",
   "targets": {
     "total": 18,
     "coding": 10,
@@ -9,17 +9,17 @@
     "allNativeProvidersTested": false
   },
   "engineering": {
-    "checksPassed": 152,
+    "checksPassed": 155,
     "typecheckPassed": true,
     "installedDesktopCopyWorks": true,
     "clipboardReadDenied": true,
     "subframeClipboardWriteDenied": true,
     "activation": {
-      "at": "2026-11-02T12:11:31.491Z",
+      "at": "2026-11-03T01:07:57.325Z",
       "url": "http://127.0.0.1:8766",
-      "buildId": "eeb5039ec7f2e2b8",
-      "processId": 34088,
-      "desktopBuildId": "eeb5039ec7f2e2b8",
+      "buildId": "bcc4031b901b2f7a",
+      "processId": 71679,
+      "desktopBuildId": "bcc4031b901b2f7a",
       "backendAndDesktopMatch": true,
       "cloudOnline": true,
       "protectedLocalDataUnchanged": true,
@@ -212,5 +212,126 @@
         "server/src/services/grok-bot/routine.ts"
       ]
     }
-  ]
+  ],
+  "selfService20261103": {
+    "buildId": "bcc4031b901b2f7a",
+    "workerVersionId": "c9a45d97-4269-4e91-b3e7-5a4d266059f5",
+    "memberId": "member_5d17c9dc1b0549119c318a05230d602d",
+    "memberName": "Hub 首次接入验收",
+    "channelId": "channel_a890cf9af5d340a5b85c2c59940b1ed9",
+    "freshNativeBotCreated": true,
+    "ownerConsentGiven": true,
+    "singleSkillSent": true,
+    "nativeAgentRedeemedItself": true,
+    "nativeAgentCreatedRoutineItself": true,
+    "nativeAgentReportedOwnerAction": true,
+    "exactReportedRoutineNameDisplayed": "Agent Hub 成员 接收器",
+    "advancedConfigurationUsed": false,
+    "backendConfiguredByDeveloper": false,
+    "manualProviderInputs": 2,
+    "manualProviderInputRounds": 1,
+    "verificationStartedBySaveButton": true,
+    "probe": {
+      "id": "run_35772f005f6c4549866886d7c8ef3c4a",
+      "status": "completed",
+      "message": null
+    },
+    "verifiedAt": "2026-11-03T00:55:32.972Z",
+    "deliveryEvidence": {
+      "runId": "run_35772f005f6c4549866886d7c8ef3c4a",
+      "attemptId": "attempt_731aa82ddf0748e49224bc42fca8404c",
+      "documentIds": [
+        "document_bb1fd85814ba42c2a0323caa50e1ddb7"
+      ]
+    },
+    "saveToVerifiedSeconds": 67.978,
+    "firstChatReplySeconds": 68.468,
+    "followupReplySeconds": 17.033,
+    "messages": [
+      {
+        "id": "chat_4cf33b5e66bf4a5aba10b44400f16e69",
+        "authorId": "owner",
+        "body": "你好，请直接在这个群里回一句“新成员已能正常交流”，不要建任务或文档。",
+        "createdAt": "2026-11-03T01:04:33.456Z",
+        "replyTo": null
+      },
+      {
+        "id": "chat_52c4c1dbb0ac4ec082fbceba99d71f1e",
+        "authorId": "member_5d17c9dc1b0549119c318a05230d602d",
+        "body": "新成员已能正常交流",
+        "createdAt": "2026-11-03T01:05:41.924Z",
+        "replyTo": "chat_4cf33b5e66bf4a5aba10b44400f16e69"
+      },
+      {
+        "id": "chat_0ff0c395b1244d4bbc5b5941e1eb7df6",
+        "authorId": "owner",
+        "body": "接着上一句，请只回复“连续交流也正常”，仍然直接发在群里。",
+        "createdAt": "2026-11-03T01:06:19.705Z",
+        "replyTo": null
+      },
+      {
+        "id": "chat_2851f50257ff491db6b9dab3829614ef",
+        "authorId": "member_5d17c9dc1b0549119c318a05230d602d",
+        "body": "连续交流也正常",
+        "createdAt": "2026-11-03T01:06:36.738Z",
+        "replyTo": "chat_0ff0c395b1244d4bbc5b5941e1eb7df6"
+      },
+      {
+        "id": "chat_f54491b79c5844d2a7cbaee0d1b5eb49",
+        "authorId": "owner",
+        "body": "软件已经重新打开，请只在群里回复“重开后仍可用”。不做其他操作。",
+        "createdAt": "2026-11-03T01:09:04.049Z",
+        "replyTo": null
+      },
+      {
+        "id": "chat_029e3fbf311c4e1f8605bae941f87c2e",
+        "authorId": "member_5d17c9dc1b0549119c318a05230d602d",
+        "body": "重开后仍可用",
+        "createdAt": "2026-11-03T01:10:26.485Z",
+        "replyTo": "chat_f54491b79c5844d2a7cbaee0d1b5eb49"
+      }
+    ],
+    "humanRelayUsed": false,
+    "tasksCreated": 0,
+    "documentsCreated": 0,
+    "originalVerifiedConnectionsUnchanged": true,
+    "isolatedUIEvidence": "evidence/onboarding-ui.json",
+    "runtimeRestartAcceptance": {
+      "restartedInstalledApp": true,
+      "activation": {
+        "at": "2026-11-03T01:07:57.325Z",
+        "url": "http://127.0.0.1:8766",
+        "buildId": "bcc4031b901b2f7a",
+        "processId": 71679,
+        "desktopBuildId": "bcc4031b901b2f7a",
+        "backendAndDesktopMatch": true,
+        "cloudOnline": true,
+        "protectedLocalDataUnchanged": true,
+        "protectedLocalMetadataUnchanged": true,
+        "ownedBrowsersPreserved": 0,
+        "observedProfileProcessesPreserved": 0,
+        "profileVerification": "关闭浏览器时核对完整资料字节",
+        "workspaceDataUnchanged": true,
+        "realCommercialAgentTested": false
+      },
+      "selectedGroupAndMessagesRestored": true,
+      "reLoginRequired": false,
+      "reConfigurationRequired": false,
+      "finalPostRestartReply": {
+        "id": "chat_029e3fbf311c4e1f8605bae941f87c2e",
+        "authorId": "member_5d17c9dc1b0549119c318a05230d602d",
+        "body": "重开后仍可用",
+        "createdAt": "2026-11-03T01:10:26.485Z",
+        "replyTo": "chat_f54491b79c5844d2a7cbaee0d1b5eb49"
+      },
+      "replySeconds": 82.436
+    },
+    "clipboardAcceptance": {
+      "initialBackgroundAXCopyFailedForFocus": true,
+      "normalVisiblePointerClickCopied": true,
+      "clipboardReadPermissionGranted": false
+    },
+    "realCommercialAgentTested": true,
+    "selfServiceGrokAcceptancePassed": true
+  }
 }

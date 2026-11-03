@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-03T00:44:02.367Z",
+  "checks": [
+    "界面新增成员后直接进入默认接入，Skill兑换和本人确认无需高级表单",
+    "聊天页地址先被拦截，错误密钥真实模拟401后显示原因并能直接修正",
+    "保存自动发起验证，HTTP200不冒充已回复，刷新后保留原验证而不重新配置",
+    "只有成员自己的正确回传才能点亮接入；密钥不进入浏览器持久存储，成功后不再重复要求填写"
+  ],
+  "fixtureOnly": true,
+  "realCommercialAgentTested": false,
+  "unexpectedOutboundRequests": 0,
+  "providerResponses": [
+    401,
+    200
+  ]
+}

@@ -113,7 +113,7 @@ export default function App() {
     [channels, setChannels] = useState([]),
     [current, setCurrent] = useState(saved.current.channelId || ""),
     [snapshot, setSnapshot] = useState(null),
-    [page, setPage] = useState("chat"),
+    [page, setPage] = useState(saved.current.page === "members" ? "members" : "chat"),
     [tab, setTab] = useState("documents"),
     [side, setSide] = useState(true),
     [modal, setModal] = useState(null),
@@ -190,9 +190,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current, drafts }),
+      JSON.stringify({ channelId: current, drafts, page: page === "members" ? "members" : "chat" }),
     );
-  }, [current, drafts]);
+  }, [current, drafts, page]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
@@ -1551,7 +1551,7 @@ function Members({ workspace, perform, refresh, setModal }) {
                   payload: { platformId: platform, label: title },
                 }),
               );
-              await perform(() =>
+              const { result: newMember } = await perform(() =>
                 api("/action", {
                   type: "member.create",
                   payload: { accountId: a.id, name: title, mode: "connector" },
@@ -1560,12 +1560,14 @@ function Members({ workspace, perform, refresh, setModal }) {
               setAdding(false);
               setTitle("");
               await refresh();
+              setModal({ type: "connect", member: newMember });
             } catch {}
           }}
         >
           <label>
             备注名称
             <Input
+              aria-label="成员备注名称"
               value={title}
               required
               onChange={(e) => setTitle(e.target.value)}
@@ -1574,6 +1576,7 @@ function Members({ workspace, perform, refresh, setModal }) {
           <label>
             平台
             <select
+              aria-label="成员平台"
               value={platform}
               onChange={(e) => setPlatform(e.target.value)}
             >

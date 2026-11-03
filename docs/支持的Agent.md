@@ -17,6 +17,10 @@
 
 ### 当前实测与未通过项
 
+- **11月3日真实新成员验收通过：** 独立新 Bot「Hub 首次接入验收」仅发送一次 Skill，自行配对和创建接收器；默认页填一次平台信息后自动验证，群聊、追问及软件重开后继续回群均通过。没有用开发者管理接口代配，原 Grok2/Dot 未重建。首次自检约68秒、群聊首句68.468秒、追问17.033秒、重开后82.436秒；不承诺秒回，也不代表其他17个目标均已验收。
+
+- **11月3日默认接入更新：** 新增成员后直接显示接入页。用户复制一段 Skill 发给原 Agent；Grok 创建自己的接收例程后，主动把准确名称和“需要本人确认”状态回报到 Hub。默认页直接提供桌面版入口、步骤和 URL/密钥安全输入框，保存后自动启动真实往返验证，不必进入高级配置或另找测试按钮。失败可在同页修正重试；只有原成员正确回传才显示已接入。其他平台继续按各自原生接法报告进度，不套用 Grok 表单。
+
 - 18家是明确适配目标，不是18家全量支持。国内外 Coding 都进入产品目录；当前通用协议的 Codex/Qwen fixture 不能替代原 CLI 的真实验收。
 - Duola2号已通过原生 Routine 唤醒及真实成员回传。此前“没有接收地址/密钥”的判断是检查了不提供这些字段的网页入口；官方 Grok Bot 桌面版 0.78.1 的例程面板实际提供 URL 与发送密钥。Hub 同时修复了漏放行 `api2.cursor.sh/automations/webhook/<id>` 的问题。没有使用 grok1 的账号 Automation 顶替，也未改成定时模型空跑。
 - 本轮新 Bot 的普通消息到回群为26.506秒，连续追问14.625秒；它结构化 @Dot 后，Dot 在252.917秒后回到同一群。没有人工转述。少量样本不是稳定性能或P95承诺，原生首次唤醒时延 Issue #23 仍开放。新 Bot 的长任务、自身全部工具、重启后的原生会话继承仍须单独验收。
@@ -26,7 +30,7 @@
 
 逐文件核对了 [botline 的原生 Grok Bot 配方](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/docs/recipes/grokbot.md)、[Webhook 适配器](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/src/adapters/grokbot_webhook.ts)，以及 [Paperclip 的 Grok 桌面版接入界面](https://github.com/paperclipai/paperclip/blob/8ea240218dc1d3a94afea1294b377021045dd9c9/ui/src/components/new-agent/GrokBotSetupContent.tsx) 和对应服务端发送实现。两家都使用指定 Bot 的原生 Routine，而非模型 API；首次从官方桌面面板取得 URL/key，并不靠 Bot 的 create-routine 工具返回密钥。HTTP200仅表示受理，仍须原成员自行领取、回应。
 
-Hub 借鉴其原生唤醒方法，保留自己的成员配对、群聊与共享工具。默认一段 Skill 完成能由 Agent 执行的配置；平台仅向本人展示的发送密钥仍可能需要一次安全填入。多个同类 Bot 的私有凭证按 Hub 地址与成员 ID 分开，不能共用一个全局令牌文件。后续重复接入复用既有配置，不按群或每次聊天重新建立例程。
+Hub 借鉴其原生唤醒方法，保留自己的成员配对、群聊与共享工具。默认一段 Skill 完成能由 Agent 执行的配置；Grok 首次把本人可见的 URL 与发送密钥填到默认页，属于一次性操作，不能宣传成完全无需本人操作。多个同类 Bot 的私有凭证按 Hub 地址与成员 ID 分开，不能共用一个全局令牌文件。后续复用既有配置，不按群或每次聊天重新建立例程。
 
 ### 通用性落实在哪里
 

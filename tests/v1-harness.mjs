@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-export async function startHarness() {
+export async function startHarness({outboundService} = {}) {
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hub-v1-integration-"),
   );
@@ -32,6 +32,7 @@ export async function startHarness() {
       bindings: { ADMIN_KEY: key, WORKSPACE_ID: "v1-test", FILE_STORAGE: "d1" },
       d1Databases: { DB: "v1-test" },
       r2Buckets: { FILES: "v1-files" },
+      ...(outboundService ? {outboundService} : {}),
     }),
   );
   const base = String(await mf.ready).replace(/\/$/, "");

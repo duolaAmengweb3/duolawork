@@ -2055,31 +2055,68 @@ function ProjectWizard({
   );
 }
 export function ConnectWizard(props) {
-  const { member, connection, refresh, notify, onError } = props;
+  const { member, connection, refresh, notify } = props;
   const [advanced, setAdvanced] = useState(false), [skill, setSkill] = useState(null),
-    [busy, setBusy] = useState(false), [error, setError] = useState("");
+    [busy, setBusy] = useState(false), [error, setError] = useState(""),
+    [url, setUrl] = useState(""), [token, setToken] = useState("");
+  const submission = useRef(null);
   if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
   const complete = connection?.status === "verified";
-  const stage = complete ? "已接入" : connection?.setup?.stage === "waiting_platform" ? "等待平台接收能力" : connection?.probe ? "正在验证实际回应" : connection?.authorizedAt ? "Agent 正在配置接收" : "等待 Agent 接入";
+  const grok = member.platformId === "grok-bot";
+  const paired = !!(connection?.authorizedAt || connection?.authSeenAt || connection?.toolSeenAt);
+  const pending = !complete && ["running", "ready"].includes(connection?.probe?.status);
+  const failed = !complete && connection?.probe?.status === "needs_review";
+  const ownerNeeded = grok && paired && !complete && !pending;
+  const routineName = connection?.setup?.ownerAction?.routineName || `Agent Hub 成员 ${member.name} 接收器`;
+  const stage = complete ? "已接入，可以开始聊天" : pending ? "正在等待原 Agent 回复" : failed ? "验证未通过，请核对后重试" : ownerNeeded ? "还差一次 Grok 确认" : paired ? "Agent 正在准备接入" : "先把接入说明发给 Agent";
+  async function perform(fn) {
+    setBusy(true); setError("");
+    try { await fn(); await refresh(); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
   return <div className="space-y-5 py-3">
     <div><h3 className="text-lg font-semibold">把 {member.name} 加入团队</h3>
-      <p className="text-muted-foreground leading-7 mt-2">复制下面的接入 Skill，发给你正在使用的 Agent。它会自己完成配置和验证，你不需要逐项填写参数。</p></div>
-    <div className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete ? "接入遇到问题" : stage}</span></div>
-    {connection?.setup?.message && !complete && <p className="text-sm text-muted-foreground">{connection.setup.message}</p>}
-    <Button disabled={busy} onClick={async () => {
-      setBusy(true); setError("");
-      try {
+      <p className="text-muted-foreground leading-7 mt-2">把接入说明发给你正在使用的 Agent。它负责准备连接；需要你确认的步骤会直接显示在这里。</p></div>
+    <ol className="grid grid-cols-3 gap-2 text-sm" aria-label="接入进度">
+      {[['发送说明', paired], ['完成确认', complete || pending], ['真实回复', complete]].map(([text, done], i) => <li key={text} className={`rounded-lg border px-3 py-2 ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'text-slate-500'}`}>{done ? '✓' : i + 1} {text}</li>)}
+    </ol>
+    <div role="status" className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete && !failed && !pending ? "Agent 报告接入遇到问题" : stage}</span></div>
+    {connection?.setup?.message && !complete && !pending && !failed && <p className="text-sm text-muted-foreground">{connection.setup.message}</p>}
+    {!complete && !pending && !ownerNeeded && <Button disabled={busy} onClick={() => perform(async () => {
         const result = await api("/v2/connect/skill", { memberId: member.id });
         setSkill(result);
         await navigator.clipboard.writeText(result.skill);
-        notify("已复制接入 Skill，发给你的 Agent 即可");
-        await refresh();
-      } catch (e) { setError(e.message); onError(e.message); }
-      finally { setBusy(false); }
-    }}><Copy size={15}/>{busy ? "正在准备接入 Skill" : complete ? "复制重新接入 Skill" : "复制接入 Skill"}</Button>
-    {skill && <><p className="text-sm text-muted-foreground">已包含本成员的一次性配对码，15 分钟内有效。Agent 完成真实往返后，上方状态会自动更新。</p><details><summary className="cursor-pointer text-sm text-muted-foreground">查看接入 Skill</summary><Textarea className="mt-3 min-h-48" aria-label="接入 Skill" value={skill.skill} readOnly/></details></>}
+        notify("已复制，发给正在接入的那个 Agent；完成后回到这里查看。");
+    })}><Copy size={15}/>{busy ? "正在准备接入说明" : skill ? "重新复制接入 Skill" : "复制接入 Skill"}</Button>}
+    {skill && !complete && !paired && <><p className="text-sm text-muted-foreground">{Date.parse(skill.expiresAt) < Date.now() ? "本次接入码已过期，请重新复制后发送。" : "包含一次性配对码，15分钟内发送。配对之后无需反复发送。"}</p><details><summary className="cursor-pointer text-sm text-muted-foreground">查看接入 Skill（也可手动复制）</summary><Textarea className="mt-3 min-h-48" aria-label="接入 Skill" value={skill.skill} readOnly/></details></>}
+    {ownerNeeded && <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4" aria-label="Grok 首次确认">
+      <div><h4 className="font-semibold">只需首次确认，后续自动复用</h4><p className="mt-2 text-sm leading-6 text-slate-600">Grok 只向本人显示发送密钥。不要发到聊天里，直接填在下方。请等 Agent 准备好接收器后再操作。</p></div>
+      <ol className="list-decimal pl-5 text-sm leading-7 space-y-1">
+        <li>打开官方 <strong>Grok Bot 桌面版</strong>，选择正在接入的 Bot。网页版可能看不到密钥。</li>
+        <li>点击 Agent 发来的「Webhook URL」或「打开例行任务」卡片，找到 <strong>{routineName}</strong>。</li>
+        <li>把面板里的「Webhook URL」和「Webhook 密钥」复制到下面，点击保存即可。</li>
+      </ol>
+      <div className="flex flex-wrap gap-3 items-center"><Button type="button" variant="outline" disabled={busy} onClick={() => perform(() => api('/local/open-provider', {platformId:'grok-bot'}))}>打开 Grok Bot 桌面版</Button><a className="text-sm underline" href="https://cursor.com/docs/grok-bot/get-started" target="_blank" rel="noreferrer">未安装？查看官方入口</a></div>
+      {failed && <Alert variant="destructive"><AlertTitle>尚未接通</AlertTitle><AlertDescription>{connection.probe.message || '原 Agent 未完成验证。请确认复制的是这个 Bot 的接收器，并重新核对完整密钥。'}</AlertDescription></Alert>}
+      <form className="space-y-4" onSubmit={e => { e.preventDefault(); perform(async () => {
+        const fingerprint = JSON.stringify([member.id, url.trim(), token.trim()]);
+        if (submission.current?.fingerprint !== fingerprint) submission.current = {fingerprint, requestId:crypto.randomUUID()};
+        await api('/v2/connect/complete', {memberId:member.id, requestId:submission.current.requestId, url:url.trim(), token:token.trim()});
+        setToken(''); setUrl(''); submission.current = null;
+        notify('已保存并开始自动验证，等原 Agent 回复即可。');
+      }); }}>
+        <label className="grid gap-2 text-sm">Webhook URL<Input aria-label="Grok 接收器地址" type="url" autoComplete="off" placeholder="复制桌面例程里的 Webhook URL" required value={url} onChange={e=>setUrl(e.target.value)}/></label>
+        <label className="grid gap-2 text-sm">Webhook 密钥<Input aria-label="Grok 接收器密钥" type="password" autoComplete="new-password" placeholder="复制完整密钥，不是掩码或聊天内容" required value={token} onChange={e=>setToken(e.target.value)}/></label>
+        <Button disabled={busy || !url.trim() || !token.trim()}>{busy ? '正在保存' : failed ? '修正并自动验证' : '保存并自动验证'}</Button>
+      </form>
+      {failed && connection?.status === 'configured' && <Button variant="ghost" disabled={busy} onClick={() => perform(()=>command('connection.probe',{memberId:member.id}))}>用已保存配置重新验证</Button>}
+    </section>}
+    {pending && <p className="text-sm leading-7 text-muted-foreground">已自动发出验证，正在等原 Agent 实际回复。平台可能排队；不用重复点、不用再发送 Skill，可以关闭窗口，结果会保留。{connection?.lastDeliveryAt ? ' 原平台已受理通知。' : ''}</p>}
+    {!grok && paired && !complete && !pending && <><p className="text-sm leading-7 text-muted-foreground">由 Agent 完成它自己的接收配置并自检。若它报告需要本人授权，请在原平台完成；这里会自动显示结果。</p>{failed && <Alert variant="destructive"><AlertDescription>{connection.probe.message || '验证尚未完成，请先查看 Agent 的接入说明。'}</AlertDescription></Alert>}{connection?.status === 'configured' && <Button disabled={busy} onClick={() => perform(()=>command('connection.probe',{memberId:member.id}))}>重新验证接入</Button>}</>}
+    {complete && <p className="text-sm leading-7 text-emerald-800">{member.name} 已从原生环境实际回复。可以关闭此窗口，在群里 @ 它开始交流；本次接入配置会保留。</p>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    <div className="border-t pt-3"><Button size="sm" variant="ghost" onClick={() => setAdvanced(true)}>高级 / 手动接入</Button></div>
+    <details className="border-t pt-3"><summary className="cursor-pointer text-sm text-muted-foreground">高级 / 修复已有连接</summary><p className="text-sm text-muted-foreground my-3">仅在你需要改用其他接法或修复既有连接时使用，正常接入无需进入。</p><Button size="sm" variant="ghost" onClick={() => setAdvanced(true)}>进入高级接入</Button></details>
   </div>;
 }
 

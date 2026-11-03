@@ -1,6 +1,6 @@
 import { digest, fail, id, required } from "./repository.mjs";
 import { grant, startPairing } from "./pairing.mjs";
-import { readJSON, seal, unseal, publicConnection } from "./security.mjs";
+import { readJSON, seal, unseal, publicConnection, platformURL } from "./security.mjs";
 import { configureConnection, setupInstructions } from "./connections.mjs";
 import { command } from "./engine.mjs";
 
@@ -19,6 +19,8 @@ export const AGENT_TARGETS = [
 const json = (data, status = 200) => Response.json(data, {
   status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
 });
+const setupText = value => value.replace(/https?:\/\/\S+/g, "[地址]")
+  .replace(/(?:Bearer\s+|ahv1_|ahr_|whsec_|crsr_|sk-)[A-Za-z0-9_+/=.-]+/g, "[凭证已隐藏]");
 
 export async function issueAgentSkill(repo, identity, memberId, origin) {
   const pair = await startPairing(repo, identity, memberId, origin, "agent-skill");
@@ -37,13 +39,13 @@ export function onboardingManifest(origin) {
     redeem: { url: origin + "/v2/connect/redeem", method: "POST",
       body: { code: "user supplied 12-character code", attemptId: "generate a stable random id and retain for retries" } },
     credentialStorage: "Save returned credentials in your native secret store or a private 0600 file, namespaced by this endpoint and the returned memberId. Multiple Bots may share a filesystem: never use one global token file or overwrite another member. Never print or paste credentials into chat. On expiry use refresh_token with client_id at /v2/oauth/token.",
-    grokBotFirstSetup: "Use the official Grok Bot desktop app and this exact Bot's Routine Webhook panel. The web interface may omit POST to/key/header while the desktop app exposes them. The official receiver is https://api2.cursor.sh/automations/webhook/<id> with a Bearer sender key; preserve the exact provider values. The Bot does not receive its sender key from create-routine tools: provide its in-app Webhook URL navigation link for the owner's one-time secure handoff. Do not infer that the platform cannot wake this Bot just because fields are absent on the website, and do not replace it with an account Automation or scheduled model polling.",
+    grokBotFirstSetup: "Create or reuse ONE webhook-only Routine named 'Agent Hub 成员 <memberName> 接收器' in this exact native Bot; use the member-private credentials and conversation instructions. Give the owner its in-app 'Webhook URL' navigation link. If URL/key are owner-only, POST self.status with stage=waiting_owner, action=grok_routine, routineName=<exact name>, message='接收器已准备好，请回到 Hub 完成一次确认。' and stop this setup turn so the receiver is free to wake. Hub now presents the secure URL/key form in the DEFAULT connection screen and starts the real check automatically after the owner saves; do not send them through chat or direct the owner into advanced configuration. The official Grok Bot desktop app exposes these fields while the website may omit them. The official receiver is https://api2.cursor.sh/automations/webhook/<id> with a Bearer sender key. Never invent values, infer inability from the website, create account Automations as a substitute, or enable recurring model polling. If all values are available through your tools, configure yourself and run self.check without asking the owner.",
     selfManagement: {
       headers: "Authorization: Bearer <your access_token>; Content-Type: application/json",
       configure: { method: "POST", path: "/v2/self/connection", body: { requestId: "stable random id", transport: "webhook | events | pull", url: "webhook only: official receiver URL", token: "webhook only: private key", pollSeconds: 15 } },
       check: { method: "POST", path: "/v2/self/check", body: { requestId: "stable random id" } },
       readStatus: { method: "GET", path: "/v2/self/status" },
-      reportProgress: { method: "POST", path: "/v2/self/status", body: { stage: "configuring | waiting_platform | blocked", message: "short concrete progress or blocker; no secrets" } },
+      reportProgress: { method: "POST", path: "/v2/self/status", body: { stage: "configuring | waiting_owner | waiting_platform | blocked", message: "short concrete progress or blocker; no secrets", action: "optional: grok_routine", routineName: "exact existing Routine name when action=grok_routine" } },
       mcpProgressTool: "report_setup_status",
     },
     next: [
@@ -138,13 +140,34 @@ export async function selfStatus(repo, actor, origin) {
 
 export async function reportSetup(repo, actor, input) {
   if (!actor.memberId) fail("member_required", "需要成员身份", 403);
-  if (!["configuring", "waiting_platform", "blocked"].includes(input.stage)) fail("invalid_stage", "无效接入进度");
-  const message = required(input.message, "进度说明", 500)
-    .replace(/https?:\/\/\S+/g, "[地址]")
-    .replace(/(?:Bearer\s+|ahv1_|ahr_|whsec_|sk-)[A-Za-z0-9_+/=.-]+/g, "[凭证已隐藏]");
-  return repo.transact(id("setup-status"), { memberId: actor.memberId, stage: input.stage, message }, async tx => {
+  if (!["configuring", "waiting_owner", "waiting_platform", "blocked"].includes(input.stage)) fail("invalid_stage", "无效接入进度");
+  let ownerAction;
+  if (input.action) {
+    const c = await repo.get("connection", actor.memberId);
+    if (input.action !== "grok_routine" || c.platform !== "grok-bot" || input.stage !== "waiting_owner") fail("invalid_action", "此接入确认不适用于该成员");
+    ownerAction = { type: "grok_routine", routineName: setupText(required(input.routineName, "接收器名称", 120)) };
+  }
+  const message = setupText(required(input.message, "进度说明", 500));
+  return repo.transact(id("setup-status"), { memberId: actor.memberId, stage: input.stage, message, ownerAction }, async tx => {
     const c = await tx.get("connection", actor.memberId);
-    tx.put("connection", { ...c, setup: { stage: input.stage, message, at: tx.now } });
+    tx.put("connection", { ...c, setup: { stage: input.stage, message, ...(ownerAction ? { ownerAction } : {}), at: tx.now } });
     return { recorded: true };
   });
+}
+
+// This is the owner's one-time provider handoff, not a second pairing flow.
+// Both writes are idempotent. A retry after a lost response reuses the same
+// encrypted configuration and the same nonce-only check.
+export async function completeGuidedConnection(repo, identity, input, secret) {
+  required(input.requestId, "请求编号", 80);
+  const member = identity.members.find(m => m.id === input.memberId && m.status !== "disabled" && !m.paused);
+  if (!member || member.platformId !== "grok-bot") fail("unsupported_handoff", "此确认仅适用于已配对的 Grok Bot");
+  const auth = await repo.db.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND kind='member_auth' AND status='active' AND json_extract(body,'$.memberId')=? AND json_extract(body,'$.expiresAt')>?")
+    .bind(repo.workspaceId, member.id, new Date().toISOString()).first();
+  if (!auth?.total) fail("pairing_required", "请先把接入 Skill 发给这个 Agent，等它完成配对后再确认。", 409);
+  const url = platformURL(input.url, "grok");
+  if (new URL(url).hostname !== "api2.cursor.sh") fail("wrong_receiver", "请复制 Grok Bot 桌面例程里的 Webhook URL，不是聊天页或账号自动化地址。");
+  const connection = await configureConnection(repo, identity, { requestId: "guided:" + input.requestId, memberId: member.id, platform: "grok-bot", url, token: input.token }, secret);
+  const probe = await command(repo, identity, { owner: true }, { type: "connection.probe", memberId: member.id, requestId: "guided-check:" + input.requestId });
+  return { connection, probe, message: "已保存，正在等待原 Agent 实际回复；你可以关闭此页，结果会保留。" };
 }

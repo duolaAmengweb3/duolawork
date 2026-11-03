@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-02T05:22:28.486Z",
+  "at": "2026-11-03T00:48:43.252Z",
   "scope": "isolated Chromium + Worker/D1 + scripted protocol peers, not real commercial Agents",
   "checks": [
     "创建群聊、用户选择负责人、普通消息不创建任务",

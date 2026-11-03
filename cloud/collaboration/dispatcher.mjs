@@ -235,7 +235,7 @@ export async function dispatchOne(
             ? `原平台返回 HTTP ${current.httpStatus}，自检未收到确认；核对接收配置后可重试。`
             : "接入自检的发送结果尚未确认；核对原平台记录后可重试。";
           tx.put("step", { ...step, status: "needs_review", issues: [issue] });
-          tx.put("run", { ...probe, status: "needs_review" });
+          tx.put("run", { ...probe, status: "needs_review", probeError: issue });
         }
       }
       if(!current.conversation) tx.message(
