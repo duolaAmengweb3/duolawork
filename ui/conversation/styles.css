@@ -955,6 +955,13 @@
   margin-top: 10px;
   font-size: 11px;
 }
+.comm-sync-status {
+  padding: 10px 20px;
+  color: #805b18;
+  background: #fff9eb;
+  border-bottom: 1px solid #eee1c4;
+  font-size: 13px;
+}
 .comm-error {
   display: flex;
   align-items: center;

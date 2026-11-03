@@ -170,6 +170,46 @@ try {
     "未发送的草稿",
   );
   checks.push("群选择与草稿刷新后保留");
+  let failReads = true, loseAcknowledgement = false, postRequests = 0;
+  await p.route('**/api/v2/**', async route => {
+    const request = route.request();
+    if (request.method() === 'GET' && failReads) return route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'network_unavailable', message: '连接暂时中断，正在自动重连。' }) });
+    if (request.method() === 'POST' && request.url().endsWith('/commands') && request.postDataJSON().type === 'channel.post') {
+      postRequests++;
+      if (loseAcknowledgement) { loseAcknowledgement = false; await route.fetch(); return route.abort('failed'); }
+    }
+    return route.continue();
+  });
+  await p.getByRole('status').getByText(/正在恢复同步/).waitFor({ timeout: 20000 });
+  assert.equal(await p.getByRole('textbox', { name: '群消息', exact: true }).inputValue(), '未发送的草稿');
+  await p.getByText('都在线吗？', { exact: true }).waitFor();
+  failReads = false;
+  await p.locator('.comm-sync-status').waitFor({ state: 'hidden', timeout: 20000 });
+  checks.push('连接中断保留聊天和草稿，恢复后自动清除提示，无需重启或重新登录');
+  // The write succeeds; only the following refresh fails. Do not report the write as failed.
+  failReads = true;
+  await p.getByRole('textbox', { name: '群消息', exact: true }).fill('写入确认后的读取故障');
+  await p.getByRole('button', { name: '发送消息', exact: true }).click();
+  await p.waitForFunction(() => document.querySelector('textarea[aria-label="群消息"]')?.value === '');
+  assert.equal((await h.request('/v2/channel?id=' + c.id)).messages.filter(m => m.body === '写入确认后的读取故障').length, 1);
+  assert.equal(await p.getByRole('alert').count(), 0);
+  failReads = false;
+  await p.getByRole('main').getByText('写入确认后的读取故障', { exact: true }).waitFor({ timeout: 20000 });
+  checks.push('消息已保存但随后刷新失败时仍确认发送，服务端仅有一条消息');
+  loseAcknowledgement = true;
+  postRequests = 0;
+  await p.getByRole('textbox', { name: '群消息', exact: true }).fill('响应丢失后的幂等重试');
+  await p.getByRole('button', { name: '发送消息', exact: true }).click();
+  await p.getByRole('alert').getByText(/操作结果尚未确认/).waitFor();
+  assert.equal(postRequests, 1, '写入失败不自动重发');
+  assert.equal(await p.getByRole('textbox', { name: '群消息', exact: true }).inputValue(), '响应丢失后的幂等重试');
+  await p.getByRole('button', { name: '发送消息', exact: true }).click();
+  await p.waitForFunction(() => document.querySelector('textarea[aria-label="群消息"]')?.value === '');
+  assert.equal(postRequests, 2);
+  assert.equal((await h.request('/v2/channel?id=' + c.id)).messages.filter(m => m.body === '响应丢失后的幂等重试').length, 1);
+  await p.getByRole('textbox', { name: '群消息', exact: true }).fill('未发送的草稿');
+  await p.unroute('**/api/v2/**');
+  checks.push('服务端已收消息但回执丢失时保留草稿，用户重试沿用原编号、不重复落消息');
   await fs.mkdir("evidence/screenshots", { recursive: true });
   await p.screenshot({
     path: "evidence/screenshots/conversation-desktop.png",

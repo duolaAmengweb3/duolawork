@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readConfig, openVault, dataDir, privateJson } from './storage.mjs';
-import { cloudClient, networkStatus, requestJson } from './transport.mjs';
+import { cloudClient, networkStatus, networkDiagnostics, requestJson } from './transport.mjs';
 import { BrowserManager, normalizeBrowserProxy, checkBrowserNetwork } from './browser.mjs';
 import { Runner } from './runner.mjs';
 import { LoginMonitor } from './login-status.mjs';
@@ -33,7 +33,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
  if(url.pathname==='/api/local/open-provider'&&req.method==='POST')return json(res,await openProviderApp((await body(req)).platformId));
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
- if(url.pathname==='/api/local/status')return json(res,{...runner.status,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
+ if(url.pathname==='/api/local/status')return json(res,{...runner.status,network:networkDiagnostics(),build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
  if(url.pathname.startsWith('/api/workspace/')&&req.method==='POST'){
   const input=await body(req),state=await cloud.state(),ready=availability(state);let command;
   if(url.pathname==='/api/workspace/start')command=workspaceStart(state,input,ready);
@@ -159,7 +159,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const requested=decodeURIComponent(url.pathname);let target=path.resolve(root,'dist','.'+requested);if(!target.startsWith(path.join(root,'dist')+path.sep)&&target!==path.join(root,'dist'))return json(res,{message:'路径无效'},400);let data;try{data=await fs.readFile(target);}catch{target=path.join(root,'dist/index.html');data=await fs.readFile(target);}
  const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'}[path.extname(target)]||'application/octet-stream';
  res.writeHead(200,{'Content-Type':mime,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; frame-ancestors 'none'",'Cache-Control':'no-cache'});res.end(data);
- }catch(e){json(res,{message:e.message||'操作失败'},e.status||400);}});
+ }catch(e){if(res.headersSent||res.destroyed||req.aborted){res.destroy();return;}json(res,{message:e.message||'操作失败',...(e.code?{error:e.code}:{}),...(e.uncertain?{uncertain:true}:{})},e.status||400);}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();
  return{url:origin,server,runner,browsers,setClientView(value){clientView={...clientView,...value};},async close(){await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
 }

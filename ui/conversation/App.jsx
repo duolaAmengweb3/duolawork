@@ -46,6 +46,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { api, command, time } from "../v1/api.mjs";
+import { startPolling } from "../v1/polling.mjs";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import BUILD from "../../shared/build-info.json";
@@ -118,6 +119,7 @@ export default function App() {
     [side, setSide] = useState(true),
     [modal, setModal] = useState(null),
     [error, setError] = useState(""),
+    [syncError, setSyncError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [drafts, setDrafts] = useState(saved.current.drafts || {}),
@@ -140,10 +142,13 @@ export default function App() {
       ? "我"
       : workspace.members.find((m) => m.id === id)?.name || workspace.formerMembers?.find(m=>m.id===id)?.name || "已移出成员";
   const refreshWorkspace = useCallback(async () => {
-    const [w, c] = await Promise.all([
+    const results = await Promise.allSettled([
       api("/v2/workspace"),
       api("/v2/channels"),
     ]);
+    const failure = results.find(result => result.status === "rejected");
+    if (failure) throw failure.reason;
+    const [w, c] = results.map(result => result.value);
     setWorkspace(w);
     setChannels(c.items);
     if (!currentRef.current && c.items[0]) setCurrent(c.items[0].id);
@@ -160,19 +165,17 @@ export default function App() {
   }, []);
   useEffect(() => {
     let alive = true;
-    async function tick() {
-      try {
+    const stop = startPolling({
+      run: async () => {
         await refreshWorkspace();
         if (alive) await refresh();
-      } catch (e) {
-        if (alive) setError(e.message);
-      }
-    }
-    tick();
-    const timer = setInterval(tick, 6000);
+      },
+      onSuccess: () => setSyncError(""),
+      onError: e => setSyncError(e.message),
+    });
     return () => {
       alive = false;
-      clearInterval(timer);
+      stop();
     };
   }, [refreshWorkspace, refresh]);
   useEffect(() => {
@@ -185,7 +188,7 @@ export default function App() {
     setShowMentions(false);
     lastMessage.current = "";
     nearBottom.current = true;
-    refresh().catch((e) => setError(e.message));
+    refresh().then(() => setSyncError("")).catch((e) => setSyncError(e.message));
   }, [current, refresh]);
   useEffect(() => {
     localStorage.setItem(
@@ -212,7 +215,10 @@ export default function App() {
     setError("");
     try {
       const result = await fn();
-      await Promise.all([refreshWorkspace(), refresh()]);
+      // A committed action remains successful even if the following read fails.
+      await Promise.all([refreshWorkspace(), refresh()])
+        .then(() => setSyncError(""))
+        .catch(e => setSyncError(e.message));
       return result;
     } catch (e) {
       setError(e.message);
@@ -356,6 +362,11 @@ export default function App() {
         </div>
       </aside>
       <main className="comm-main">
+        {syncError && (
+          <div className="comm-sync-status" role="status" aria-live="polite">
+            {syncError} 正在恢复同步，连接恢复后此提示会自动消失。
+          </div>
+        )}
         {error && (
           <div className="comm-error" role="alert">
             {error}
