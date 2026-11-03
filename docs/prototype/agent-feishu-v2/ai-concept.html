@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent Hub · 新产品交互原型</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:#17243b;background:#edf1f6;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button,a{touch-action:manipulation}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.48}
+    button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #8aadff;outline-offset:3px}
+    .viewer{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 22px;background:#fffffff5;backdrop-filter:blur(16px);border-bottom:1px solid #dce3ee}
+    .brand{font-weight:750;letter-spacing:-.3px}.tag{font-size:12px;color:#2455ac;background:#edf3ff;padding:5px 9px;border-radius:6px}
+    .scenes{display:flex;gap:5px;margin:auto}.scenes button,.quiet{border:1px solid transparent;background:none;color:#425573;border-radius:8px;padding:8px 13px;font-size:13px}
+    .scenes button.active{color:#1459e9;background:#eaf1ff;font-weight:650}.quiet:hover{background:#f0f4fa}.tools{display:flex;align-items:center;gap:5px}.tools a{font-size:13px;text-decoration:none;color:#345994;padding:8px}
+    .intro{display:flex;justify-content:space-between;gap:20px;margin:14px auto 10px;max-width:1600px;padding:0 16px;font-size:13px;color:#4c5f7b}
+    .intro strong{color:#263f66}.stage{position:relative;width:min(100%,1600px);margin:auto;background:white;border:1px solid #d9e2ee;border-radius:12px;overflow:hidden;box-shadow:0 10px 32px #2034510b}
+    .screen{display:block;width:100%;height:auto}.hotspot{position:absolute;background:transparent;border:0;border-radius:7px;z-index:2;padding:0;color:transparent}
+    .hotspot:hover,.hotspot:focus-visible{background:#296aff14;outline:2px solid #4e83ef;outline-offset:-2px}.show-hotspots .hotspot{outline:1px dashed #2464e699;background:#2464e608}
+    .hotspot.selected{outline:3px solid #18a378;background:#18a37820}.hotspot[aria-disabled=true]{cursor:default}
+    .metric-layer{position:absolute;right:1.25%;top:16.85%;width:14.8%;background:#f2f6fc;color:#40557b;padding:.35% .25%;border-radius:5px;font-size:clamp(8px,.85vw,13px);text-align:center;z-index:3;white-space:nowrap}
+    .approved-layer{position:absolute;right:1.4%;top:87.8%;background:#e8f8f0;color:#08764c;padding:.3% .7%;font-size:clamp(9px,.85vw,13px);border-radius:5px;z-index:3}
+    .footer{max-width:1600px;margin:12px auto 30px;padding:0 16px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:#526681}
+    .footer a{color:#315f9d}.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(680px,90vw);z-index:60;background:#153058;color:white;border-radius:12px;padding:14px 20px;box-shadow:0 8px 30px #1b31502b;line-height:1.6;font-size:14px;display:none}
+    .toast.visible{display:block}dialog{width:min(720px,92vw);max-height:88vh;border:1px solid #dce4ef;border-radius:18px;padding:0;color:#17243b;box-shadow:0 25px 90px #20345138}
+    dialog::backdrop{background:#17284155;backdrop-filter:blur(4px)}.modal-head{display:flex;align-items:center;justify-content:space-between;padding:22px 26px 16px;border-bottom:1px solid #e6ebf2}
+    h2{font-size:21px;margin:0;font-weight:700;letter-spacing:-.4px}.close{border:0;background:#f3f6fa;border-radius:8px;padding:5px 10px;color:#3c5270;font-size:20px}
+    .modal-body{padding:22px 26px;line-height:1.7}.notice{font-size:13px;color:#375886;background:#eef4ff;border-radius:9px;padding:11px 14px;margin:0 0 19px}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px;padding:13px 15px;border:1px solid #e0e7f0;border-radius:10px}
+    .row strong{display:block;font-size:14px}.sub{display:block;font-size:12px;color:#526987}.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:5px;background:#e9f8f0;color:#08784b}.pill.warn{background:#fff3dd;color:#986112}
+    .field{display:block;margin:0 0 16px;font-size:14px;font-weight:600}.field input,.field select,.field textarea{display:block;width:100%;margin-top:7px;padding:11px 12px;border:1px solid #ced9e8;border-radius:8px;background:white;color:#1c3351}
+    .row select{padding:8px 10px;min-width:155px;border:1px solid #d5deea;border-radius:7px;background:#fff}.inline{display:flex;align-items:center;gap:9px;font-size:14px;margin:14px 0}
+    .actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:9px;margin-top:23px}.button{border:1px solid #d4deec;background:white;color:#28486f;padding:10px 16px;border-radius:9px;font-size:14px}
+    .button.primary{background:#1761f4;border-color:#1761f4;color:white}.button.danger{color:#b33e42}.steps{counter-reset:step;padding:0;list-style:none}.steps li{display:flex;gap:12px;align-items:flex-start;margin:15px 0}
+    .steps li:before{counter-increment:step;content:counter(step);background:#edf3ff;color:#225cc9;width:26px;height:26px;text-align:center;line-height:26px;flex-shrink:0;border-radius:50%;font-size:13px}
+    .editor{width:100%;min-height:270px;resize:vertical;border:1px solid #ccd9ea;border-radius:10px;padding:16px;font-size:16px;line-height:1.9;color:#1d304b}
+    .muted{font-size:12px;color:#536b87}.kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}.kpi div{border:1px solid #e0e7f1;border-radius:10px;padding:14px}.kpi strong{display:block;font-size:23px;color:#1f4f9a}.kpi span{font-size:12px;color:#4c6280}
+    .rule{border-left:3px solid #467eea;padding:9px 13px;background:#f5f8fe;margin:11px 0}.screen-note{font-weight:500}.small-link{background:none;border:0;color:#235fc2;padding:4px 0;font-size:13px}
+    @media(max-width:950px){.viewer{padding:10px;gap:7px}.scenes{order:3;width:100%;justify-content:center}.tools{margin-left:auto}.intro{font-size:12px}.stage{min-width:820px}.canvas-scroll{overflow-x:auto;padding:0 7px}.tools a{display:none}.footer{font-size:11px}}
+  </style>
+</head>
+<body>
+  <header class="viewer">
+    <div class="brand">Agent Hub</div><span class="tag">AI 视觉稿＋可点击演示</span>
+    <nav class="scenes" aria-label="原型场景">
+      <button data-scene="recipe">01 配方起步</button>
+      <button data-scene="group">02 项目群协作</button>
+      <button data-scene="delivery">03 成果与反馈</button>
+    </nav>
+    <div class="tools">
+      <button class="quiet" id="toggle-hotspots">显示可点区域</button>
+      <button class="quiet" id="reset-demo">重置</button>
+      <a href="../../../collab/codex/2026-10-28-Agent飞书产品细化与原型.md" target="_blank">细化方案 ↗</a>
+    </div>
+  </header>
+  <div class="intro"><span id="scene-help"></span><strong>仅示例：不连接账号、不调用 Agent、不发布</strong></div>
+  <main class="canvas-scroll"><div class="stage" id="stage">
+    <img class="screen" id="screen" alt="">
+    <div id="hotspots"></div><div id="dynamic-layer"></div>
+  </div></main>
+  <footer class="footer"><span>按 01 → 02 → 03 查看完整路径。也可直接点击图片里的配方、标签、成果和反馈按钮。</span><a id="original-link" target="_blank">查看 AI 原图 ↗</a></footer>
+  <dialog id="modal"><div id="modal-content"></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const KEY = 'agent-hub-feishu-prototype-v2';
+    const initialDraft = '01 让 Agent 互相派活，卡在哪？\n\n能传话，只是开始。\n\n真正难的是：谁接任务、怎么交结果，中断后还能不能继续。\n\n看一个工具，先看它能不能把这件事做完整。\n\n来源 1、来源 2 为原型占位；本次演示没有核验实际新闻。';
+    const defaults = () => ({scene:'recipe',connected:false,writer:'Dot',checker:'Perplexity',topic:'AI 工具与实操案例',schedule:false,feedback:null,approved:false,notes:'短句，先给判断。\n保留原始来源。\n不自动发布。',draft:initialDraft,revision:3,paused:false});
+    let state = defaults();
+    try { const saved=JSON.parse(localStorage.getItem(KEY)); if(saved && ['recipe','group','delivery'].includes(saved.scene)) state=Object.assign(state,saved); } catch {}
+    const $ = id => document.getElementById(id);
+    const scenes = {
+      recipe:{image:'01-recipe.png',alt:'配方广场：每日 X 内容包及示例成员分工',help:'从「使用配方」开始，试一下组队、补连接与创建项目群。'},
+      group:{image:'02-project-group.png',alt:'项目群协作：用户与 Agent 对话、资料交接、右侧成果空间',help:'点群里的交接、右侧标签或输入框；点「今日内容包」查看交付。'},
+      delivery:{image:'03-delivery-feedback.png',alt:'成果编辑与四类采纳反馈、待批准的项目知识',help:'点正文编辑；试选四类反馈，再点「加入项目知识」，看数据与状态变化。'}
+    };
+    let toastTimer, saveTimer;
+    function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch{}}
+    function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4200);}
+    function setScene(name){if(!scenes[name])return;state.scene=name;persist();render();}
+    function hotspot(label,x,y,w,h,action,arg){return '<button class="hotspot" aria-label="'+esc(label)+'" title="'+esc(label)+'" style="left:'+x+'%;top:'+y+'%;width:'+w+'%;height:'+h+'%" data-act="'+esc(action)+'"'+(arg?' data-arg="'+esc(arg)+'"':'')+'></button>';}
+    function stats(){const evaluated=14+(state.feedback?1:0);const adopted=10+(['direct','minor'].includes(state.feedback)?1:0);return {evaluated,adopted,pending:state.feedback?2:3,rate:Math.round(adopted/evaluated*100)};}
+    function render(){
+      const s=scenes[state.scene];$('screen').src=s.image;$('screen').alt=s.alt;$('scene-help').textContent=s.help+((state.writer!=='Dot'||state.checker!=='Perplexity')?'（配置已保存；AI 视觉稿展示默认团队，可在成员面板查看所选分工。）':'');$('original-link').href=s.image;
+      document.querySelectorAll('[data-scene]').forEach(b=>{b.classList.toggle('active',b.dataset.scene===state.scene);b.setAttribute('aria-current',b.dataset.scene===state.scene?'step':'false');});
+      let hs='';
+      [['项目群',17.6,'group'],['配方广场',22.6,'recipe'],['知识库',27.5,'knowledge'],['成员',32.4,'members'],['目标（后续能力）',37.3,'goals']].forEach(([label,y,act])=>hs+=hotspot(label,.7,y,15.3,4.2,act));
+      hs+=hotspot('打开每日 X 内容包',.7,49.7,15.3,4.4,'group');
+      if(state.scene==='recipe'){
+        hs+=hotspot('使用配方',50.6,25.2,10.4,6.2,'setup');
+        hs+=hotspot('配置项目成员',64,26,33.5,27.4,'setup');
+        hs+=hotspot('设置运行节奏',64,56,33.5,8.2,'setup');
+        hs+=hotspot('查看完整交付示例',88,68.8,9.5,5.4,'delivery');
+        hs+=hotspot('预览内容包',18,75.5,80,21,'delivery');
+      }else{
+        hs+=hotspot('本次运行详情',52,6.9,9.2,5.7,'run');
+        hs+=hotspot(state.scene==='delivery'?'再次运行（演示）':'暂停（演示）',61.2,6.9,7,5.7,state.scene==='delivery'?'rerun':'pause');
+        hs+=hotspot('成果',72.4,6,6.5,7.8,state.scene==='delivery'?'editor':'delivery');
+        hs+=hotspot('本项目成员',79,6,6.6,7.8,'members');
+        hs+=hotspot('项目知识',85.6,6,6.5,7.8,'knowledge');
+        hs+=hotspot('项目设置',92.4,6,6.5,7.8,'settings');
+        hs+=hotspot('向成员补充要求',21.5,91.4,48.5,6.5,'message');
+        hs+=hotspot('查看当前成果',72.5,16,25.8,7.2,'delivery');
+        if(state.scene==='group'){
+          hs+=hotspot('展开 Grok 向 Perplexity 的材料交接',23,46.7,47,7.5,'handoff');
+          hs+=hotspot('查看候选选题与来源',73.5,24.5,24.7,27.6,'sources');
+          hs+=hotspot('预览完成后的内容包',73.5,56,24.7,20,'delivery');
+          hs+=hotspot('编辑项目写作规则',94,80.8,4,3.5,'knowledge');
+        }else{
+          hs+=hotspot('编辑这份示例原稿',72.4,29.8,26.4,33.6,'editor');
+          hs+=hotspot('查看出处',79,24.2,6.6,4.2,'sources');
+          hs+=hotspot('修改记录',86,24.2,8,4.2,'history');
+          [['直接使用',73.0,'direct'],['小改后使用',79.3,'minor'],['重写后使用',86.0,'major'],['弃用',92.5,'discard']].forEach(([label,x,arg])=>{
+            const button=hotspot(label,x,80.2,6.1,4.4,'feedback',arg);
+            hs+=state.feedback===arg?button.replace('class="hotspot"','class="hotspot selected"'):button;
+          });
+          hs+=hotspot('批准加入项目知识',86.9,93.7,7,4.1,'approve-rule');
+          hs+=hotspot('暂不采纳规则建议',94.5,93.7,3.8,4.1,'defer-rule');
+        }
+      }
+      $('hotspots').innerHTML=hs;
+      const st=stats();
+      $('dynamic-layer').innerHTML=state.scene==='delivery'?'<div class="metric-layer" aria-live="polite">采纳 '+st.adopted+'/'+st.evaluated+'（'+st.rate+'%） · 待评 '+st.pending+'</div>'+(state.approved?'<div class="approved-layer">已批准 · 本项目生效</div>':''):'';
+    }
+    function modal(title,body,actions=''){
+      $('modal-content').innerHTML='<div class="modal-head"><h2>'+esc(title)+'</h2><button class="close" data-act="close" aria-label="关闭">×</button></div><div class="modal-body">'+body+(actions?'<div class="actions">'+actions+'</div>':'')+'</div>';
+      if(!$('modal').open)$('modal').showModal();
+    }
+    function button(text,act,primary=false){return '<button class="button'+(primary?' primary':'')+'" data-act="'+act+'">'+text+'</button>';}
+    function setup(){
+      const c=state.connected?'<span class="pill">示例连接已就绪</span>':'<button class="button" data-act="connect-example">演示连接 Perplexity</button>';
+      modal('用配方组建项目群','<p class="notice">这是原型演示。连接、授权和试跑只切换示例状态，不会访问任何账号。</p>'+
+        '<label class="field">关注主题<input id="topic" value="'+esc(state.topic)+'"></label>'+
+        '<div class="row"><div><strong>热点发现 · Grok</strong><span class="sub">示例成员已就绪</span></div><span class="pill">可用</span></div>'+
+        '<div class="row"><div><strong>资料查证</strong><span class="sub">可由已有且具备能力的成员兼任</span></div><select id="checker"><option'+(state.checker==='Perplexity'?' selected':'')+'>Perplexity</option><option'+(state.checker==='Dot'?' selected':'')+'>Dot</option></select></div>'+
+        '<div class="row"><strong>Perplexity 连接状态</strong>'+c+'</div>'+
+        '<div class="row"><strong>写作与编辑</strong><select id="writer"><option'+(state.writer==='Dot'?' selected':'')+'>Dot</option><option'+(state.writer==='Muse'?' selected':'')+'>Muse</option></select></div>'+
+        '<label class="inline"><input type="checkbox" id="auto"'+(state.schedule?' checked':'')+'> 首次试跑后开启每天 08:00（北京时间）</label>'+
+        '<p class="muted">默认不自动发布。不需要买齐四家订阅，实际分工以已验证能力为准。</p>',
+        button('先看看','close')+button('创建项目群并试跑','start',true));
+    }
+    function captureSetup(){if($('topic'))state.topic=$('topic').value;if($('checker'))state.checker=$('checker').value;if($('writer'))state.writer=$('writer').value;if($('auto'))state.schedule=$('auto').checked;persist();}
+    function members(){
+      const st=stats();
+      modal('成员与本项目分工','<p class="notice">全部为演示数据；本页不代表任何真实平台已经接通。</p>'+
+        '<div class="row"><div><strong>Grok · 热点发现</strong><span class="sub">本轮素材 5 份 · 素材采用与成稿采纳分开统计</span></div><span class="pill">材料已交接</span></div>'+
+        '<div class="row"><div><strong>'+esc(state.checker)+' · 资料查证</strong><span class="sub">来源、疑点与核验结果</span></div><span class="pill">'+(state.scene==='delivery'?'已交付':'查证中')+'</span></div>'+
+        '<div class="row"><div><strong>'+esc(state.writer)+' · 写作与编辑</strong><span class="sub">成稿采纳 '+st.adopted+'/'+st.evaluated+' · 待反馈 '+st.pending+'</span></div><span class="pill">'+(state.scene==='delivery'?'等你审核':'等待资料')+'</span></div>'+
+        '<p class="muted">职责属于本项目分工；原 Agent 的账号、工具和记忆仍留在原产品。同类成员可添加多个。</p>',
+        button('调整成员','setup')+button('完成','close',true));
+    }
+    function knowledge(){
+      modal('项目知识','<p class="notice">资料、归档与规则分开。只有经批准的规则才影响之后的工作。</p>'+
+        '<label class="field">本项目已生效规则<textarea id="project-notes" rows="4">'+esc(state.notes)+'</textarea></label>'+
+        (state.approved?'<div class="rule"><strong>已批准的补充规则</strong><br>开头先讲实操场景，少用发布新闻的口吻。<br><span class="muted">来源：本次改稿 · 范围：每日 X 内容包</span></div>':'<div class="rule"><strong>待批准建议</strong><br>开头先讲实操场景，少用发布新闻的口吻。<br><span class="muted">未经批准，不会成为工作规则。</span></div>'),
+        (state.approved?button('撤回补充规则','revoke-rule'):button('查看并批准建议','approve-rule'))+button('保存示例规则','save-notes',true));
+    }
+    function saveEditor(){
+      const editor=$('draft-editor');if(!editor)return;
+      if(editor.value!==state.draft){state.draft=editor.value;state.revision+=1;persist();}
+      if($('edit-stamp'))$('edit-stamp').textContent='版本 '+state.revision+' · 示例已保存到此浏览器';
+    }
+    function editor(){
+      modal('编辑示例原稿','<p class="notice">这份稿件可真实编辑并保存在此浏览器；不会调用 Agent 或同步正式项目。</p>'+
+        '<div class="muted" id="edit-stamp">版本 '+state.revision+' · 示例工作稿</div><textarea id="draft-editor" class="editor">'+esc(state.draft)+'</textarea>'+
+        '<label class="field" style="margin-top:16px">交回 '+esc(state.writer)+' 的补充要求<input id="rewrite-note" placeholder="例如：第二条换成实操角度，保留其他部分"></label>',
+        button('导出示例稿','export')+button('保存','save-editor')+button('演示交回修改','handback',true));
+      $('draft-editor').addEventListener('input',()=>{clearTimeout(saveTimer);saveTimer=setTimeout(saveEditor,350);});
+    }
+    function approveRule(){
+      if(state.approved){knowledge();return;}
+      modal('批准一条项目规则','<p class="notice">只影响之后的示例任务，不会修改任何真实 Agent 或全局知识。</p>'+
+        '<div class="rule">开头先讲实操场景，少用发布新闻的口吻。</div>'+
+        '<p>依据：把“发布新闻式开头”改成“实操场景式开头”。</p><p>生效范围：<strong>每日 X 内容包</strong>。可在项目知识里撤回。</p>',
+        button('暂不','close')+button('批准加入本项目','confirm-rule',true));
+    }
+    function message(){
+      modal('在群里补充要求','<p class="notice">示例补充关联当前运行和稿件，不会启动真实任务。</p>'+
+        '<label class="field">发给<select id="message-member"><option>'+esc(state.writer)+'</option><option>Grok</option><option>Perplexity</option></select></label>'+
+        '<label class="field">补充要求<textarea id="message-text" rows="4" placeholder="例如：@Dot 把第二条开头换成实操场景，其余保持"></textarea></label>',
+        button('取消','close')+button('演示提交补充','send-message',true));
+    }
+    function closeModal(){saveEditor();$('modal').close();}
+    function action(act,arg){
+      if(act==='close'){closeModal();return;}
+      if(['recipe','group','delivery'].includes(act)){closeModal();setScene(act);return;}
+      if(act==='setup'){setup();return;}if(act==='members'){members();return;}if(act==='knowledge'){knowledge();return;}if(act==='editor'){editor();return;}
+      if(act==='connect-example'){captureSetup();state.connected=true;persist();setup();toast('示例授权已完成；没有访问真实 Perplexity。');return;}
+      if(act==='start'){captureSetup();if(state.checker==='Perplexity'&&!state.connected){toast('先演示连接 Perplexity，或选择 Dot 兼任查证。');return;}closeModal();setScene('group');toast('示例项目群已建立，正在展示成员交接。');return;}
+      if(act==='feedback'){state.feedback=arg;persist();render();const st=stats();toast('已记录这份原稿的示例反馈：采纳 '+st.adopted+'/'+st.evaluated+'，待反馈 '+st.pending+'。重复选择不会重复计数。');return;}
+      if(act==='approve-rule'){approveRule();return;}if(act==='confirm-rule'){state.approved=true;persist();closeModal();render();toast('规则已加入本项目；之后的示例任务可使用，支持撤回。');return;}
+      if(act==='defer-rule'){toast('建议暂未采纳，不会生效。');return;}if(act==='revoke-rule'){state.approved=false;persist();knowledge();render();toast('已撤回示例规则。');return;}
+      if(act==='save-notes'){state.notes=$('project-notes').value;persist();closeModal();toast('项目规则已保存在此浏览器的原型数据中。');return;}
+      if(act==='save-editor'){saveEditor();toast('示例工作稿已保存。');return;}
+      if(act==='handback'){saveEditor();const note=$('rewrite-note').value.trim();if(!note){toast('先填写要修改的内容。');return;}state.lastInstruction=note;persist();closeModal();setScene('delivery');toast('已演示交回 '+state.writer+'，关联版本 '+state.revision+'；未调用真实 Agent。');return;}
+      if(act==='export'){saveEditor();const u=URL.createObjectURL(new Blob([state.draft],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='Agent-Hub-示例工作稿.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);toast('已导出示例稿；导出不计为采纳或发布。');return;}
+      if(act==='message'){message();return;}if(act==='send-message'){const t=$('message-text').value.trim();if(!t){toast('请输入补充要求。');return;}state.lastInstruction=t;persist();closeModal();setScene('delivery');toast('已演示补充处理；正式产品将使用原任务与成果版本执行。');return;}
+      if(act==='run'){modal('本次运行 · 示例','<ol class="steps"><li>Grok：发现 5 个候选并交接材料。</li><li>Perplexity：查证来源和疑点。</li><li>'+esc(state.writer)+'：写 3 条稿件并附出处。</li><li>你：编辑、审核、反馈；默认不发布。</li></ol>',button('演示查看交付','delivery',true));return;}
+      if(act==='handoff'){modal('Grok → Perplexity','<p class="notice">这是可追溯交接的示例，不是实际研究结果。</p><div class="row"><strong>交付材料</strong><span>5 个候选 · 12 条来源</span></div><p>接收方读取本次材料与项目规则，核对原文，保留来源和存疑点。确认领取以后，运行阶段才推进。</p>',button('查看素材与来源','sources')+button('完成','close',true));return;}
+      if(act==='sources'){modal('来源与素材 · 示例','<p class="notice">AI 图里的媒体名称与文章仅为排版占位，未作为真实资讯核验。</p><div class="row"><strong>来源 1</strong><span>原始仓库 / 官方说明</span></div><div class="row"><strong>来源 2</strong><span>原作者的实践记录</span></div><p>正式产品需展示实际链接、发布时间/更新时间、发现时间及支撑的事实；素材不足时明确说明。</p>',button('完成','close',true));return;}
+      if(act==='history'){modal('修改记录 · 示例','<ol class="steps"><li>版本 1：Agent 原始交付。</li><li>版本 2：用户要求第 2 条改为实操角度。</li><li>版本 3：成员回交，其他内容保留。</li><li>当前工作稿版本 '+state.revision+'：浏览器内的示例编辑。</li></ol>',button('编辑当前稿','editor',true));return;}
+      if(act==='pause'){modal('暂停本项目 · 演示','<p>暂停后不再开启新步骤。进行中的任务需按平台实际能力确认停止，不能把工作台暂停当成远端已停止。</p><p class="notice">这里只演示状态，不影响任何正在运行的程序。</p>',button('取消','close')+button('确认演示暂停','confirm-pause',true));return;}
+      if(act==='confirm-pause'){state.paused=true;persist();closeModal();toast('示例流程已暂停；没有停止真实账号任务。');return;}
+      if(act==='rerun'){modal('再运行一轮 · 演示','<p>正式产品会新建一次运行，保留本轮全部成果与反馈；指定一条稿件重写不需要整轮再跑。</p>',button('取消','close')+button('演示新一轮','new-run',true));return;}
+      if(act==='new-run'){state.paused=false;persist();closeModal();setScene('group');toast('正在展示新一轮示例；上一轮稿件与反馈保留。');return;}
+      if(act==='settings'){modal('项目设置 · 示例','<label class="field">关注主题<input id="settings-topic" value="'+esc(state.topic)+'"></label><div class="row"><strong>节奏</strong><span>每天 08:00 · 北京时间</span></div><label class="inline"><input id="settings-auto" type="checkbox"'+(state.schedule?' checked':'')+'> 开启示例自动运行</label><p>配方：每日 X 内容包 · 版本 1。自动发布关闭。成员或步骤调整应说明影响范围与生效时间。</p>',button('调整成员','setup')+button('保存示例设置','save-settings',true));return;}
+      if(act==='save-settings'){state.topic=$('settings-topic').value;state.schedule=$('settings-auto').checked;persist();closeModal();toast('示例设置已保存；未创建真实定时任务。');return;}
+      if(act==='goals'){modal('目标 · 后续能力','<p>项目群之后可以关联目标和关键结果。首版先验证配方、协作、成果和采纳，不要求用户开工前设置 OKR。</p><p class="notice">此页是范围说明，不代表完整目标管理已实现。</p>',button('回到当前工作','close',true));}
+    }
+    document.addEventListener('click',e=>{const scene=e.target.closest('[data-scene]');if(scene){closeModal();setScene(scene.dataset.scene);return;}const b=e.target.closest('[data-act]');if(b)action(b.dataset.act,b.dataset.arg);});
+    $('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal();});
+    $('modal').addEventListener('cancel',()=>saveEditor());
+    $('toggle-hotspots').addEventListener('click',()=>{const on=$('stage').classList.toggle('show-hotspots');$('toggle-hotspots').textContent=on?'隐藏可点区域':'显示可点区域';});
+    $('reset-demo').addEventListener('click',()=>{clearTimeout(saveTimer);state=defaults();persist();if($('modal').open)$('modal').close();render();toast('原型已重置；真实项目与账号未变。');});
+    render();
+  </script>
+</body>
+</html>
