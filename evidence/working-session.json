@@ -1,0 +1,74 @@
+{
+  "at": "2026-11-03T10:49:26.516Z",
+  "scope": "Real Codex on the existing local daemon plus isolated real Hub Worker/D1. Existing GUI attachment is NOT proven by this test.",
+  "realNativeAgent": true,
+  "realGUI": false,
+  "isolatedHub": true,
+  "productionConfigurationChanged": false,
+  "project": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+  "checks": [
+    "Existing native session changed the local project, passed its test and kept pre-existing user work",
+    "External codex queue woke the SAME live session; it remembered prior conversation context and itself claimed/replied to the actual isolated Hub",
+    "Original client continued the same thread and original repository after collaboration; branch, pre-existing uncommitted work and project tests preserved"
+  ],
+  "priorSetupFailures": [
+    {
+      "at": "2026-11-03T10:38:59.468Z",
+      "message": "/admin/action: {\"error\":\"not_found\",\"message\":\"平台不存在\"}"
+    },
+    {
+      "at": "2026-11-03T10:40:59.761Z",
+      "message": "原生接口等待超时：initialize"
+    }
+  ],
+  "nativeTransport": "WebSocket over original daemon Unix socket",
+  "threadId": "01a1a107-3650-7981-9972-81377d4cad51",
+  "model": "gpt-6-astra",
+  "provider": "openai",
+  "originalWork": {
+    "turnId": "01a1a107-3c38-7242-ad1b-d84c38bee26b",
+    "text": "Changed `scale.mjs` to multiply by 3 instead of 2. `npm test` passed.\n\nVerified `notes.txt` is unchanged and the branch remains `proof-existing-work`. The identifier stays conversation-only; no Hub tools were used."
+  },
+  "initialDiff": "diff --git a/scale.mjs b/scale.mjs\nindex a95cfab..75701d8 100644\n--- a/scale.mjs\n+++ b/scale.mjs\n@@ -1 +1 @@\n-export const scale = value => value * 2;\n+export const scale = value => value * 3;\n",
+  "queue": {
+    "exitSucceeded": true,
+    "stdout": "Queued message 01a1a107-8815-7193-85f6-1fa16ab00967 for thread 01a1a107-3650-7981-9972-81377d4cad51.\n"
+  },
+  "collaborationTurn": {
+    "turnId": "01a1a107-8818-72f2-810e-8bdb9e166a82",
+    "text": "Claimed the specified channel’s ready work and replied using its `turnId`. The message reported the ×3 fix, passing `npm test`, preserved notes and branch, and `context_32018029-181`.\n\nNo project files were modified this turn."
+  },
+  "hub": {
+    "channelId": "channel_4e2b54f54344480d9d61a656fc4cde03",
+    "messageId": "chat_8551ae6c9e4c4c20b9e7e1369fc4f112",
+    "replyId": "chat_95967b5159074ff081f145f06b116c1f",
+    "reply": "原工作会话中，我将 scale.mjs 的 `value * 2` 改为 `value * 3`，使 scale(4) 返回测试要求的 12。随后实际运行了 `npm test`，输出 `project tests passed`，测试通过。修改前后 notes.txt 的 SHA-256 一致，原 Git 分支 `proof-existing-work` 保持不变。本次仅进行 Hub 沟通，没有修改项目文件。原会话记住的识别词：context_32018029-181。",
+    "tools": [
+      "list_work",
+      "claim_work",
+      "post_message"
+    ]
+  },
+  "continuedWork": {
+    "turnId": "01a1a107-d77c-74b2-b060-9268fd95776a",
+    "text": "Added `assert.equal(scale(0),0);` to `test.mjs`. `npm test` passed.\n\nVerified `scale.mjs`, `notes.txt`, and the Git branch are unchanged. No Hub tools were used."
+  },
+  "sameThread": true,
+  "sameCwd": true,
+  "nativeCwd": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+  "branch": "proof-existing-work",
+  "recoveredAssertion": {
+    "at": "2026-11-03T11:02:04.842Z",
+    "originalError": "Working directory changed",
+    "reason": "macOS /var and /private/var resolve to the same directory; changed assertion to compare realpath",
+    "readOnly": true,
+    "nativeTurnsRepeated": false
+  },
+  "finishedAt": "2026-11-03T11:02:04.843Z",
+  "setupBoundary": {
+    "threadCreatedBy": "Controlled protocol client on existing native daemon",
+    "hubDynamicToolsRegisteredAtThreadCreation": true,
+    "guiCreatedOrAttached": false,
+    "retroactiveToolInstallationProven": false
+  }
+}
