@@ -63,6 +63,7 @@ import {
   upload,
 } from "./api.mjs";
 import { COLLAB_MODES } from "../../shared/modes.mjs";
+const LocalCodingConnect = React.lazy(()=>import('../conversation/LocalCodingConnect.jsx'));
 import { PairingFacts, ResultFilters, RuleScope, RuleNotice, RunHistory } from "./Support.jsx";
 function Face({ member }) {
   return (
@@ -2060,6 +2061,7 @@ export function ConnectWizard(props) {
     [busy, setBusy] = useState(false), [error, setError] = useState(""),
     [url, setUrl] = useState(""), [token, setToken] = useState("");
   const submission = useRef(null);
+  if(['codex','gemini-cli','antigravity'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取本机接入…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
   if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
   const complete = connection?.status === "verified";
   const grok = member.platformId === "grok-bot";

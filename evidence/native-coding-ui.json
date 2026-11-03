@@ -1,0 +1,44 @@
+{
+  "at": "2026-11-03T09:38:13.872Z",
+  "fixtureOnly": true,
+  "realCommercialAgentTested": false,
+  "checks": [
+    "Codex 从界面新增后一键连接并自动自检，没有技术参数表单",
+    "默认完整授权，原生工具自动执行并回原单聊，没有逐次确认按钮",
+    "权限管理收在可选入口，选择确认模式后才出现本次操作确认，原单聊和原会话保留",
+    "Gemini 安装与认证由连接流程接住，只显示官方登录按钮",
+    "官方登录完成后继续自动配置和真实协议验证，不另填 MCP 或回调参数"
+  ],
+  "events": [
+    {
+      "event": "initialize",
+      "engine": "codex"
+    },
+    {
+      "event": "new",
+      "engine": "codex"
+    },
+    {
+      "event": "new",
+      "engine": "codex"
+    },
+    {
+      "event": "initialize",
+      "engine": "codex"
+    },
+    {
+      "event": "resume",
+      "engine": "codex",
+      "id": "fixture-codex-3f7a310f-b5f0-448c-9fb8-f6b10ca5f133"
+    },
+    {
+      "event": "initialize",
+      "engine": "antigravity"
+    },
+    {
+      "event": "new",
+      "engine": "antigravity"
+    }
+  ],
+  "errors": []
+}

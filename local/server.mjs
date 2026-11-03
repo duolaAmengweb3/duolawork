@@ -15,15 +15,17 @@ import {DocumentStore,attachDocument} from './documents.mjs';
 import {grokState} from './grok.mjs';
 import {proxyCollaboration} from './collaboration-proxy.mjs';
 import {openProviderApp} from './provider-app.mjs';
+import {CodingManager} from './coding-manager.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
-export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=false,config:givenConfig}={}){
+export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=false,config:givenConfig,nativeRuntime,nativeAgentFactory}={}){
  const config=givenConfig||await readConfig(),vault=await openVault(vaultKey,{resolveKey:resolveVaultKey,defer:!!resolveVaultKey}),cloud=cloudClient(config);
  const browsers=new BrowserManager({limit:()=>runner.snapshot?.settings.maxBrowserConcurrency||1,proxy:()=>config.browserProxyUrl||''});
  const logins=new LoginMonitor({file:path.join(dataDir,'login-status.json')});
  const connections=new AgentConnections({cloud,browsers,logins,file:path.join(dataDir,'agent-connections.json')});
  const documents=new DocumentStore(path.join(dataDir,'documents'));
+ const coding=new CodingManager({config,dataDir,maintenance,runtime:nativeRuntime,agentFactory:nativeAgentFactory});await coding.load();
  const availability=state=>{const ready=automaticAvailability(state,{supports:(a,m)=>connections.supports(a,m),credentials:vault.data.members,locked:vault.locked});for(const m of state.members)if(browsers.isManual(m.accountId))ready[m.id]={canDispatch:false,reason:'正在纯手动登录，任务派发已暂停'};return ready;};
  const runner=new Runner({cloud,vault,browsers,connections,config,notify,maintenance});let origin,browserNetworkCheck=null,networkChecking=false,keepBrowsersOnShutdown=false,clientView={kind:'browser',ready:false,buildId:null};
  const server=http.createServer(async(req,res)=>{try{const host=req.headers.host||'';if(origin?host!==new URL(origin).host:!host.startsWith('127.0.0.1:'))return json(res,{message:'仅限本机访问'},403);const url=new URL(req.url,origin||'http://127.0.0.1');
@@ -31,6 +33,13 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if((req.headers.origin&&req.headers.origin!==origin)||['cross-site','same-site'].includes(req.headers['sec-fetch-site']))return json(res,{message:'跨站请求已拒绝'},403);
  if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json')&&!(url.pathname==='/api/v2/files'&&req.headers['content-type']==='application/octet-stream'))return json(res,{message:'需要 JSON 请求'},415);
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
+ if(url.pathname==='/api/local/coding/status'&&req.method==='GET')return json(res,coding.status());
+ if(url.pathname==='/api/local/coding/discover'&&req.method==='GET')return json(res,await coding.runtime.discover());
+ if(url.pathname==='/api/local/coding/connect'&&req.method==='POST')return json(res,await coding.connect(await body(req)));
+ if(url.pathname==='/api/local/coding/pause'&&req.method==='POST')return json(res,await coding.pause(await body(req)));
+ if(url.pathname==='/api/local/coding/resume'&&req.method==='POST')return json(res,await coding.resume(await body(req)));
+ if(url.pathname==='/api/local/coding/approve'&&req.method==='POST')return json(res,coding.decide(await body(req)));
+ if(url.pathname==='/api/local/coding/permissions'&&req.method==='POST')return json(res,await coding.permissions(await body(req)));
  if(url.pathname==='/api/local/open-provider'&&req.method==='POST')return json(res,await openProviderApp((await body(req)).platformId));
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
  if(url.pathname==='/api/local/status')return json(res,{...runner.status,network:networkDiagnostics(),build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
@@ -102,13 +111,13 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   const state=await cloud.state();
   const active=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
   if(active.active)return json(res,{message:'Agent 仍在回应，等待本轮结束后再更新；群消息与登录资料保留'},409);
-  if(runner.jobs.size||connections.jobs.size||browsers.starting.size||state.tasks.some(t=>t.steps.some(s=>s.status==='running')))return json(res,{message:'任务、接入验证或登录窗口正在启动，暂不接管更新'},409);
+  if(coding.busy||runner.jobs.size||connections.jobs.size||browsers.starting.size||state.tasks.some(t=>t.steps.some(s=>s.status==='running')))return json(res,{message:'任务、接入验证或登录窗口正在启动，暂不接管更新'},409);
   await logins.snapshot(state.accounts,browsers);
-  await runner.stop({keepBrowsers:true});keepBrowsersOnShutdown=true;
+  await coding.stop();await runner.stop({keepBrowsers:true});keepBrowsersOnShutdown=true;
   return json(res,{prepared:true,browsers:browsers.list()});
  }
  if(url.pathname==='/api/local/cancel-update'&&req.method==='POST'){
-  keepBrowsersOnShutdown=false;if(runner.stopped){runner.stopped=false;runner.start();}return json(res,{resumed:true});
+  keepBrowsersOnShutdown=false;if(runner.stopped){runner.stopped=false;runner.start();}await coding.start();return json(res,{resumed:true});
  }
  if(url.pathname==='/api/local/restore-sessions'&&req.method==='POST'){
   if(!runner.maintenance)return json(res,{message:'仅在更新验收期间恢复已确认会话'},409);
@@ -121,7 +130,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   return json(res,{loginStatuses:results});
  }
  if(url.pathname==='/api/local/finish-update'&&req.method==='POST'){
-  runner.maintenance=false;await runner.tick();return json(res,{resumed:true});
+  runner.maintenance=false;await coding.start();await runner.tick();return json(res,{resumed:true});
  }
  if(url.pathname==='/api/browser-network/check'&&req.method==='POST'){
   const p=await body(req);if(networkChecking)return json(res,{message:'出口检查正在进行，请稍候'},409);
@@ -130,7 +139,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  }
  if(url.pathname==='/api/action'&&req.method==='POST'){const a=await body(req);const allowed=['platform.create','account.create','account.update','account.remove','member.create','member.update','member.disconnect','profile.update','task.create','task.control','step.retry','step.approve','routine.create','routine.toggle','settings.update','note.write'];if(!allowed.includes(a.type))return json(res,{message:'此操作不可由界面调用'},403);if(a.type==='member.update'&&(a.payload?.tokenHash||a.payload?.status))return json(res,{message:'不能手动伪造验证状态'},403);if(a.type==='account.update'&&a.payload?.status==='connected')return json(res,{message:'账号连接需要真实验证'},403);
  if(['task.create','routine.create'].includes(a.type)){const state=await cloud.state(),ready=availability(state);for(const step of(a.type==='task.create'?a.payload?.steps:a.payload?.template?.steps)||[])availableMember(state,step.memberId,ready);}
- const data=await cloud.action(a);return json(res,data);}
+ const data=await cloud.action(a);if(a.type==='member.disconnect')await coding.disconnect(a.memberId);return json(res,data);}
  if(url.pathname.startsWith('/api/artifacts/')&&req.method==='GET')return json(res,await cloud.artifact(url.pathname.split('/').at(-1)));
  if(url.pathname.startsWith('/api/documents/')&&['GET','POST'].includes(req.method)){
   const state=await cloud.state(),id=url.pathname.split('/').at(-1),artifact=state.artifacts.find(a=>a.id===id);if(!artifact)throw new Error('成果不存在');const original=(await cloud.artifact(id)).body;
@@ -160,7 +169,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'}[path.extname(target)]||'application/octet-stream';
  res.writeHead(200,{'Content-Type':mime,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; frame-ancestors 'none'",'Cache-Control':'no-cache'});res.end(data);
  }catch(e){if(res.headersSent||res.destroyed||req.aborted){res.destroy();return;}json(res,{message:e.message||'操作失败',...(e.code?{error:e.code}:{}),...(e.uncertain?{uncertain:true}:{})},e.status||400);}});
- await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();
- return{url:origin,server,runner,browsers,setClientView(value){clientView={...clientView,...value};},async close(){await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();if(!maintenance)await coding.start();
+ return{url:origin,server,runner,browsers,coding,setClientView(value){clientView={...clientView,...value};},async close(){await coding.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){const instance=await start();console.log('Agent Hub 本地工作台：'+instance.url);for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>instance.close().finally(()=>process.exit(0)));}

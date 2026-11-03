@@ -135,12 +135,14 @@ export default function App() {
     [older, setOlder] = useState([]),
     [moreCursor, setMoreCursor] = useState(null),
     [lastSync, setLastSync] = useState(null);
+  const [codingStatus,setCodingStatus]=useState({members:[],approvals:[]});
   const currentRef = useRef(current),
     scroll = useRef(null),
     nearBottom = useRef(true),
     pendingSend = useRef(null),
     lastMessage = useRef("");
   currentRef.current = current;
+  useEffect(()=>{let alive=true;const tick=()=>api('/local/coding/status').then(x=>{if(alive&&Array.isArray(x.members))setCodingStatus(x);}).catch(()=>{});tick();const timer=setInterval(tick,4000);return()=>{alive=false;clearInterval(timer);};},[]);
   const name = (id) =>
     id === 'system' ? '会议记录' : id === "owner"
       ? "我"
@@ -371,6 +373,7 @@ export default function App() {
         </div>
       </aside>
       <main className="comm-main">
+        {codingStatus.members.filter(m=>workspace.members.some(x=>x.id===m.memberId)&&(['needs_review','waiting_login'].includes(m.status)||codingStatus.approvals.some(a=>a.memberId===m.memberId))).map(m=><div className="comm-sync-status" role="status" key={m.memberId}>{name(m.memberId)}：{codingStatus.approvals.some(a=>a.memberId===m.memberId)?'有操作等待你确认':m.message}<Button size="sm" variant="outline" onClick={()=>{const member=workspace.members.find(x=>x.id===m.memberId);if(member)setModal({type:'connect',member});}}>查看</Button></div>)}
         {syncError && (
           <div className="comm-sync-status" role="status" aria-live="polite">
             {syncError} 正在恢复同步，连接恢复后此提示会自动消失。
@@ -393,6 +396,7 @@ export default function App() {
         {page === "members" ? (
           <Members
             workspace={workspace}
+            coding={codingStatus}
             refresh={refreshWorkspace}
             perform={perform}
             setModal={setModal}
@@ -1523,7 +1527,7 @@ function ImportProjects({ channels, perform, onSelect }) {
     </div>
   );
 }
-function Members({ workspace, perform, refresh, setModal, onChat }) {
+function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
   const [adding, setAdding] = useState(false),
     [title, setTitle] = useState(""),
     [platform, setPlatform] = useState("grok-bot"),
@@ -1595,7 +1599,7 @@ function Members({ workspace, perform, refresh, setModal, onChat }) {
               value={platform}
               onChange={(e) => setPlatform(e.target.value)}
             >
-              {platforms.map((p) => (
+              {platforms.filter(p=>p.id!=='gemini-cli').map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}{p.status === "acceptance_target" ? " · 待联测" : ""}
                 </option>
@@ -1608,16 +1612,17 @@ function Members({ workspace, perform, refresh, setModal, onChat }) {
       <div className="member-grid">
         {workspace.members.map((m) => {
           const c = workspace.connections.find((c) => c.id === m.id);
+          const native=['codex','gemini-cli','antigravity'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&['idle','working'].includes(local.status)));
           return (
             <article key={m.id}>
               <Face name={m.name} id={m.id} />
               <h2>{m.name}</h2>
               <small>{m.platformId}</small>
               <p>
-                <i className={c?.status === "verified" ? "connected" : ""} />
-                {c?.status === "verified" ? "自动通道已验证" : "自动接入待配置"}
+                <i className={ready ? "connected" : ""} />
+                {ready ? "已接入，可以聊天" : native&&local ? local.message : "等待连接"}
               </p>
-              {c?.status === "verified" && (
+              {ready && (
                 <small>
                   {c.transport === "grok-webhook"
                     ? "Grok 自动接收通道"
@@ -1629,7 +1634,7 @@ function Members({ workspace, perform, refresh, setModal, onChat }) {
                 </small>
               )}
               <Button
-                disabled={c?.status !== "verified"}
+                disabled={!ready}
                 aria-label={"聊天 " + m.name}
                 onClick={()=>onChat(m).catch(()=>{})}
               >

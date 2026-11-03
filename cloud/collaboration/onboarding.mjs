@@ -6,7 +6,7 @@ import { command } from "./engine.mjs";
 
 export const AGENT_TARGETS = [
   ["codex", "Codex", "coding"], ["claude-code", "Claude Code", "coding"],
-  ["gemini-cli", "Gemini CLI", "coding"], ["cursor-cli", "Cursor CLI", "coding"],
+  ["gemini-cli", "Gemini CLI（旧入口）", "coding"], ["antigravity", "Gemini · Antigravity", "coding"], ["cursor-cli", "Cursor CLI", "coding"],
   ["opencode", "OpenCode", "coding"], ["copilot-cli", "GitHub Copilot CLI", "coding"],
   ["kimi-code", "Kimi Code CLI", "coding"], ["qwen-code", "Qwen Code", "coding"],
   ["codebuddy-code", "CodeBuddy Code", "coding"], ["qoder-cli", "Qoder CLI", "coding"],
@@ -27,6 +27,7 @@ export async function issueAgentSkill(repo, identity, memberId, origin) {
   const member = identity.members.find(m => m.id === memberId);
   return {
     expiresAt: pair.expiresAt,
+    pairingCode: pair.code,
     skill: `把你自己接入我的 Agent Hub，成员备注「${member.name || memberId}」。配对码：${pair.code}（15分钟内一次使用）。先读取 ${origin}/v2/connect/manifest ，然后按其中的协议自动完成配对、配置你自己的消息接收方式、回填配置并运行真实往返自检。由你执行配置，不让我逐项填写 MCP、Webhook、密钥或命令。你仍是原来的 Agent，保留自己的模型、订阅、工具与记忆，不换成模型API。短时配对码可用于这次接入；长期令牌、刷新凭证和平台密钥只放你的私有凭证存储，不回显在聊天或日志。正常聊天与相互@是基础，文档、事项、会议等按需调用，不预设分工。不能完成的步骤通过状态接口报告具体原因；配对或创建文件不等于接入成功，必须实际收到 Hub 验证、由你自己调用工具回传后才算完成。不要退出原账号、改全局模型设置、修改其他成员或清除会话。`,
   };
 }
