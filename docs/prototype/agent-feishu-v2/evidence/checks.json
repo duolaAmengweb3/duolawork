@@ -1,0 +1,54 @@
+{
+  "checkedAt": "2026-10-29T09:31:26.715Z",
+  "buildSha256": "013ee6337b174890db084128b7528b7c5186ae4e2920ed08cbdc13cbe5cc438c",
+  "scope": "Isolated Chrome UI preview only. No production accounts, native agents, scheduling or backend acceptance.",
+  "checks": [
+    "Initial workspace is explicitly a preview, no agent requests",
+    "Review preserves readable height at desktop size",
+    "Working draft and request survive refresh; original remains unchanged",
+    "Per-artifact instructions stay separate on document switches",
+    "Revision request stores full draft, version, instruction and recipient",
+    "Candidate never overwrites later human edits; replacement needs acknowledgement",
+    "History can restore human edits without losing the replaced version",
+    "Export does not count as adoption; explicit feedback binds current version",
+    "Project entry returns to chat, never silently reopens review",
+    "IME composing shortcut does not send; normal shortcut sends once",
+    "Pending decisions navigate to the affected paragraph; choose and undo remain in the artifact",
+    "Marginal rule suggestion is explicit, scoped and reversible without a management form",
+    "Active rule revision is proposed separately, trial revocation restores old rule",
+    "Two same-platform members remain independently identified",
+    "Three-step goal wizard: solo, no upfront roles or permission form",
+    "Three-step goal wizard: parallel, no upfront roles or permission form",
+    "Three-step goal wizard: review, no upfront roles or permission form",
+    "Manual demonstration progresses to a reviewable artifact; pause blocks progression",
+    "Workspace export includes current projects and members",
+    "Review and modal fit 1280px without horizontal document overflow",
+    "Review and modal fit 900px without horizontal document overflow",
+    "Storage failure is visible and blocks handoff without clearing unsaved input",
+    "No JS runtime errors or external/agent network requests"
+  ],
+  "metrics": [
+    {
+      "width": 1440,
+      "documentWidth": 1440,
+      "reading": 722,
+      "workspace": 871,
+      "paper": 828
+    },
+    {
+      "width": 1280,
+      "documentWidth": 1280,
+      "reading": 622,
+      "workspace": 771
+    },
+    {
+      "width": 900,
+      "documentWidth": 900,
+      "reading": 622,
+      "workspace": 771
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "failure": null
+}
