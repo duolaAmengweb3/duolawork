@@ -10,13 +10,14 @@
     "desktop": "electron .",
     "build": "node scripts/build-stamp.mjs && vite build",
     "test": "node --test tests/*.test.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run hub:types && tsc --noEmit",
     "hub:dev": "wrangler dev --config cloud/wrangler.jsonc",
     "hub:types": "wrangler types --config cloud/wrangler.jsonc cloud/env.d.ts",
     "hub:deploy": "python3 scripts/cloud.py deploy",
     "package:mac": "npm run verify:session && node scripts/package-mac.mjs",
     "verify:session": "npm test && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
-    "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs"
+    "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs",
+    "verify:collaboration": "node --test tests/collaboration*.test.mjs && node tests/collaboration-http.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
