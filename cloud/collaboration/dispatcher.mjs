@@ -5,6 +5,8 @@ import { deliverEvents } from "./events.mjs";
 import { command } from "./engine.mjs";
 import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
+import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
+const sameDeliveryScope=(a,b)=>(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
 
 export async function dispatchOne(
   repo,
@@ -37,6 +39,7 @@ export async function dispatchOne(
         (x) => x.id === member?.accountId && x.status !== "disabled",
       );
       const c = await tx.get("connection", row.memberId);
+      if (turn && !await meetingTurnAllowed(tx, turn)) { tx.put('outbox',{...row,status:'canceled',reason:'会议已结束或阶段变化'}); return null; }
       if (
         step.status !== "ready" ||
         step.generation !== row.generation ||
@@ -73,7 +76,7 @@ export async function dispatchOne(
         // too. Preserve the turn, without launching another platform run.
         const outstanding=(await Promise.all(["accepted","sending"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat();
         for(const notice of outstanding){
-          if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion)continue;
+          if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
           const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
           if(notifiedTurn?.status!=="ready")continue;
           tx.put("outbox",{...row,status:"coalesced",coalescedInto:notice.id});
@@ -84,12 +87,13 @@ export async function dispatchOne(
         const userInput=turn.wakeSource==="user"||(turn.wakeSource===undefined&&(await tx.get("channel_message",turn.messageId)).authorId==="owner");
         const cursorId=`${channel.id}:${row.memberId}`,cursor=await tx.get("channel_cursor",cursorId,false);
         const earliest=Date.parse(cursor?.lastNotifiedAt||"1970-01-01")+channel.wakeIntervalSeconds*1000;
-        if(!userInput&&earliest>Date.parse(now)){tx.put("outbox",{...row,dueAt:new Date(earliest).toISOString()});return null;}
+        if(!turn.meetingId&&!userInput&&earliest>Date.parse(now)){tx.put("outbox",{...row,dueAt:new Date(earliest).toISOString()});return null;}
         tx.put("channel_cursor",{...cursor,id:cursorId,scopeId:channel.id,parentId:row.memberId,lastNotifiedAt:now});
         // One platform wake can read all queued messages for this group. Keep
         // every turn ready until the native Agent actually claims them.
-        for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation)tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
+        for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation&&sameDeliveryScope(pending,row))tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
       }
+      if(turn&&!await chargeMeetingRetry(tx,turn,row.attempts)){tx.put('outbox',{...row,status:'canceled',reason:'达到本场自动重试预算'});return null;}
       row.status = "sending";
       row.dispatchId = lock;
       row.sendingAt = now;

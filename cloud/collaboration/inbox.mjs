@@ -1,14 +1,18 @@
 import { digest, fail, id, required } from "./repository.mjs";
 import { claimConversation, readChannel } from "./conversation.mjs";
+import { meetingTurnContext } from './meetings.mjs';
 export const MAX_MESSAGE_WAIT_SECONDS = 45;
 
 export async function withConversationContext(repo, identity, actor, claim) {
   if (!claim.turnId) return claim;
   const context = await readChannel(repo, identity, actor, { channelId: claim.channelId });
+  const turn = await repo.get('channel_turn', claim.turnId);
+  const meeting = await meetingTurnContext(repo, identity, actor, turn);
   return {
     ...claim,
     input: {
       ...claim.input,
+      ...(meeting ? { meeting, meetingInstruction: meeting.instruction, meetingToolFallback: meeting.toolFallback } : {}),
       channel: context.channel,
       members: context.members,
       messages: context.messages,

@@ -1,8 +1,9 @@
 import { fail, id, required } from "./repository.mjs";
+import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
 
 // Communication is independent of the legacy run/step orchestration. A turn is
 // only an acknowledged inbox delivery, never a task, document or prescribed role.
-export const CHANNEL_TOOLS = [
+const BASIC_CHANNEL_TOOLS = [
   [
     "read_channel",
     "读取自己所在群的消息、成员、负责人和共享工具。before 为消息序号，向前分页。",
@@ -132,6 +133,7 @@ export const CHANNEL_TOOLS = [
   },
 }));
 
+export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS];
 const activeMember = (identity, memberId) =>
   identity.members.find(
     (m) =>
@@ -204,8 +206,7 @@ async function channelMessage(tx, channel, actor, body, extra = {}) {
     type: "message",
     ...extra,
   });
-  channel.lastMessage = body.slice(0, 160);
-  channel.lastMessageAt = tx.now;
+  if(!extra.hidden){channel.lastMessage = body.slice(0, 160);channel.lastMessageAt = tx.now;}
   tx.put("channel", channel);
   return message;
 }
@@ -228,6 +229,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     hops: message.hops || 0,
     status: deferred ? "limited" : available ? "ready" : "unavailable",
     createdAt: tx.now,
+    ...(message.meetingId ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
     reason: deferred
       ? "达到本群连续唤醒上限，消息已保留，可继续讨论"
       : available
@@ -246,7 +248,7 @@ async function outbox(tx, channel, turn, c) {
     Math.max(
       Date.parse(tx.now),
       Date.parse(cursor?.lastWakeAt || tx.now) +
-        (turn.wakeSource !== "user" && cursor?.lastWakeAt
+        (!turn.meetingId && turn.wakeSource !== "user" && cursor?.lastWakeAt
           ? channel.wakeIntervalSeconds * 1000
           : 0),
     ),
@@ -259,6 +261,7 @@ async function outbox(tx, channel, turn, c) {
     memberId: turn.memberId,
     generation: 1,
     conversation: true,
+    ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion,meetingPurpose:turn.meetingPurpose } : {}),
     configVersion: c.configVersion,
     transport: c.transport,
     status: c.transport === "muse-poll" ? "awaiting_poll" : "pending",
@@ -340,10 +343,11 @@ export async function claimConversation(
           status: "ready",
           ...(args.channelId ? { scope: args.channelId } : {}),
           limit: 500,
-        })).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+        })).sort((a, b) => Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
         for (const candidate of pending) {
           const group = await tx.get("channel", candidate.scopeId, false);
           if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
+          if (!await meetingTurnAllowed(tx, candidate)) { tx.put('channel_turn', { ...candidate, status: 'removed', reason: '会议阶段已经变化或结束' }); continue; }
           turn = candidate;
           channel = group;
           break;
@@ -358,6 +362,7 @@ export async function claimConversation(
         fail("forbidden", "通知不属于此成员", 403);
       if (turn.status !== "ready")
         fail("turn_unavailable", "通知已处理或尚不可领取", 409);
+      if (!await meetingTurnAllowed(tx, turn)) fail('meeting_changed', '会议阶段已变化或结束，原消息保留', 409);
       const member = activeMember(identity, actor.memberId),
         c = await tx.get("connection", actor.memberId);
       if (
@@ -371,11 +376,11 @@ export async function claimConversation(
       if (resource?.status === "busy")
         fail("resource_busy", "原 Agent 正在处理另一条通知，稍后再读", 409);
       tx.guardLegacyIdle(member.accountId);
-      const pending = await tx.list("channel_turn", {
+      const pending = (await tx.list("channel_turn", {
         scope: channel.id,
         parent: actor.memberId,
         status: "ready",
-      });
+      })).filter(t => (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
       const lease = id("lease");
       for (const other of pending)
         if (other.id !== turn.id)
@@ -394,6 +399,7 @@ export async function claimConversation(
         lease,
         resourceKey: c.resourceKey,
         claimedAt: tx.now,
+        ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
         expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),
         mergedMessageIds: pending.map((t) => t.messageId),
       });
@@ -422,6 +428,7 @@ export async function claimConversation(
         channelId: channel.id,
         input: {
           kind: "conversation",
+          ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,
           coordinatorId: channel.coordinatorId,
           members: channel.memberIds.map((memberId) => ({
@@ -445,7 +452,7 @@ export async function readChannel(repo, identity, actor, args) {
     fail("invalid_cursor", "消息分页序号无效");
   const messages = await repo.db
     .prepare(
-      "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind='channel_message' AND scope_id=? AND CAST(json_extract(body,'$.number') AS INTEGER)<? ORDER BY CAST(json_extract(body,'$.number') AS INTEGER) DESC LIMIT 51",
+      "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind='channel_message' AND scope_id=? AND COALESCE(json_extract(body,'$.hidden'),0)=0 AND CAST(json_extract(body,'$.number') AS INTEGER)<? ORDER BY CAST(json_extract(body,'$.number') AS INTEGER) DESC LIMIT 51",
     )
     .bind(repo.workspaceId, channel.id, before)
     .all();
@@ -461,7 +468,7 @@ export async function readChannel(repo, identity, actor, args) {
         "channel_suggestion",
         "channel_turn",
       ].map((kind) =>
-        repo.list(kind, { scope: channel.id, order: "recent", limit: 100 }),
+        repo.list(kind, { scope: channel.id, order: "recent", limit: kind==='channel_meeting'?101:100 }),
       ),
     );
   return {
@@ -478,7 +485,8 @@ export async function readChannel(repo, identity, actor, args) {
     knowledge: actor.owner
       ? knowledge
       : knowledge.filter((k) => k.status === "approved"),
-    meetings,
+    meetings: meetings.slice(0,100).map(m => publicMeeting(m, actor)).filter(Boolean),
+    meetingsCursor:actor.owner&&meetings.length>100?btoa(JSON.stringify({updatedAt:meetings[99].updatedAt,id:meetings[99].id})):null,
     tasks,
     suggestions,
     notifications: actor.owner
@@ -594,6 +602,7 @@ export async function conversationCommand(
       }
       const channel = await tx.get("channel", channelId);
       scoped(channel, actor);
+      if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);
       if (type === "channel.update") {
         owner(actor);
         if (cmd.name !== undefined)
@@ -647,6 +656,8 @@ export async function conversationCommand(
         if (channel.status !== "active")
           fail("channel_paused", "这个群已暂停或归档，恢复后可继续", 409);
         const body = messageText(cmd.body);
+        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body }, channel, meetingHelpers);
+        if (meeting?.handled) return meeting.result;
         const mentions = listIds(
           cmd.mentions === undefined
             ? textMentions(body, channel, identity)
@@ -689,6 +700,7 @@ export async function conversationCommand(
             409,
           );
         const message = await channelMessage(tx, channel, actor, body, {
+          ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion } : {}),
           mentions,
           mentionsFromText: cmd.mentions === undefined && mentions.length > 0,
           replyTo: parent?.id || null,
@@ -1044,6 +1056,7 @@ const toolCommands = {
 };
 export async function conversationTool(repo, identity, actor, name, args) {
   if (name === "read_channel") return readChannel(repo, identity, actor, args);
+  if (name === 'meeting' && args.action === 'read') return meetingDetail(repo, identity, actor, args);
   if (name === "read_doc") {
     const doc = await repo.get("channel_doc", args.documentId);
     await channelAccess(repo, doc.scopeId, actor);
@@ -1067,6 +1080,7 @@ export async function conversationMaintenance(
   identity,
   now = new Date().toISOString(),
 ) {
+  await meetingMaintenance(repo, identity, meetingHelpers, now);
   for (const turn of await repo.list("channel_turn", {
     status: "active",
     limit: 100,
@@ -1091,3 +1105,5 @@ export async function conversationMaintenance(
         now,
       );
 }
+
+export const meetingHelpers = { channelMessage, enqueue, finishTurn };

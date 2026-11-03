@@ -51,6 +51,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
+import MeetingPanel, { MeetingCard } from './MeetingPanel.jsx';
 const ConnectWizard = lazy(() =>
   import("../v1/App.jsx").then((m) => ({ default: m.ConnectWizard })),
 );
@@ -120,6 +121,9 @@ export default function App() {
     [modal, setModal] = useState(null),
     [error, setError] = useState(""),
     [syncError, setSyncError] = useState(""),
+    [meetingPanel, setMeetingPanel] = useState(saved.current.meetingPanel || null),
+    [meetingScopes,setMeetingScopes] = useState(saved.current.meetingScopes||{}),
+    [olderMeetings,setOlderMeetings]=useState([]),[meetingCursor,setMeetingCursor]=useState(undefined),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [drafts, setDrafts] = useState(saved.current.drafts || {}),
@@ -138,7 +142,7 @@ export default function App() {
     lastMessage = useRef("");
   currentRef.current = current;
   const name = (id) =>
-    id === "owner"
+    id === 'system' ? '会议记录' : id === "owner"
       ? "我"
       : workspace.members.find((m) => m.id === id)?.name || workspace.formerMembers?.find(m=>m.id===id)?.name || "已移出成员";
   const refreshWorkspace = useCallback(async () => {
@@ -161,6 +165,7 @@ export default function App() {
       setSnapshot(data);
       setLastSync(new Date().toISOString());
       setMoreCursor((old) => (old === undefined ? data.before : old));
+      setMeetingCursor(old=>old===undefined?data.meetingsCursor:old);
     }
   }, []);
   useEffect(() => {
@@ -181,6 +186,7 @@ export default function App() {
   useEffect(() => {
     setSnapshot(null);
     setOlder([]);
+    setOlderMeetings([]);setMeetingCursor(undefined);
     setMoreCursor(undefined);
     setReply(null);
     setMentions([]);
@@ -193,9 +199,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current, drafts, page: page === "members" ? "members" : "chat" }),
+      JSON.stringify({ channelId: current, drafts, meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
     );
-  }, [current, drafts, page]);
+  }, [current, drafts, page, meetingPanel,meetingScopes]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
@@ -237,6 +243,8 @@ export default function App() {
     setCurrent(dm.id); setPage("chat"); setModal(null);
   };
   const channel = snapshot?.channel,
+    activeMeetings=(snapshot?.meetings||[]).filter(m=>['running','closing'].includes(m.status)),
+    scopedMeeting=Object.hasOwn(meetingScopes,current)?activeMeetings.find(m=>m.id===meetingScopes[current]):(activeMeetings.length===1?activeMeetings[0]:activeMeetings.find(m=>m.id===meetingPanel?.id)),
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
     ),
@@ -252,6 +260,7 @@ export default function App() {
       body: draft,
       mentions,
       replyTo: reply?.id,
+      ...(scopedMeeting?{meetingId:scopedMeeting.id}:{}),
     };
     const key = JSON.stringify(input);
     if (pendingSend.current?.key !== key)
@@ -428,6 +437,7 @@ export default function App() {
                 </div>
               </div>
               <div>
+                {!channel.direct&&<Button className="meeting-open-button" variant="ghost" onClick={()=>setMeetingPanel({id:snapshot.meetings.find(m=>m.status==='preparing')?.id||null,channelId:current})}><Video size={15}/>开会</Button>}
                 {!channel.direct && <><button
                   className="member-stack"
                   aria-label="管理群成员"
@@ -557,7 +567,7 @@ export default function App() {
                             ))}
                           </div>
                         )}
-                        {["document", "delivery"].includes(m.type) ? (
+                        {['meeting_start','meeting_end'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type==='meeting_end'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
                           <button
                             className="shared-document-card"
                             onClick={() => setDocumentId(m.documentId)}
@@ -666,6 +676,7 @@ export default function App() {
                   </div>
                 )}
                 <form className="chat-composer" onSubmit={send}>
+                  {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
                     <div className="composing-reply">
                       回复 {name(reply.authorId)}：{reply.body.slice(0, 60)}
@@ -803,7 +814,7 @@ export default function App() {
                   <span>原生 Agent 异步回应</span>
                 </footer>
               </section>
-              {side && (
+              {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})}/> : side && (
                 <aside className="collaboration-space">
                   <div className="space-title">
                     <strong>协作空间</strong>
@@ -1014,19 +1025,20 @@ export default function App() {
                       <>
                         <div className="section-heading">
                           <h3>讨论记录</h3>
-                          <button onClick={() => setModal({ type: "meeting" })}>
+                          <button aria-label="筹备新会议" onClick={() => setMeetingPanel({id:null,channelId:current})}>
                             <Plus size={16} />
                           </button>
                         </div>
-                        {snapshot.meetings.map((mt) => (
+                        {[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).map((mt) => (
                           <div className="meeting-record" key={mt.id}>
                             <Video size={18} />
-                            <strong>{mt.title}</strong>
+                            <button className="meeting-card-open" onClick={()=>setMeetingPanel({id:mt.id,channelId:current})}><strong>{mt.title}</strong></button>
                             <small>
-                              {mt.status === "open" ? "讨论中" : "已记录结论"}
+                              {{preparing:'筹备中',running:'讨论中',closing:'整理结果',ended:'已结束',open:'历史讨论',closed:'已记录结论'}[mt.status]||mt.status}
                             </small>
                             {mt.summary && <p>{mt.summary}</p>}
-                            {mt.status === "open" && (
+                            {mt.version!==undefined&&<Button size="sm" variant="ghost" onClick={()=>setMeetingPanel({id:mt.id,channelId:current})}>{mt.status==='preparing'?'继续与负责人沟通':'查看会议'}</Button>}
+                            {mt.status === "open" && mt.version===undefined && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1048,6 +1060,7 @@ export default function App() {
                             text="需要集中讨论时，开一场会。"
                           />
                         )}
+                        {meetingCursor&&<Button variant="ghost" onClick={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}>查看更早会议</Button>}
                       </>
                     ) : (
                       <>
