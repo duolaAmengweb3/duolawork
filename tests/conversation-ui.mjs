@@ -65,6 +65,9 @@ try {
       stepId: work.stepId,
     });
   await p.getByRole("button", { name: "群设置", exact: true }).click();
+  for (const label of ['群状态', '消息与唤醒设置', '连续 @ 跳数上限']) {
+    assert.equal(await p.getByRole('dialog').getByText(label, { exact: true }).count(), 0);
+  }
   await p.getByRole("checkbox", { name: "选择 Dot", exact: true }).uncheck();
   await p.getByRole("button", { name: "保存群设置", exact: true }).click();
   await p
@@ -160,6 +163,22 @@ try {
   const directed = await h.request("/v2/channel?id=" + c.id);
   assert.deepEqual(directed.messages.at(-1).mentions, [dot.id]);
   checks.push("键入 @ 自动选择成员，定向通知真实群内 ID");
+  for (const status of ["paused", "archived"]) {
+    await h.request('/v2/commands', { type: 'channel.update', requestId: crypto.randomUUID(), channelId: c.id, status });
+    await p.reload();
+    const composer = p.getByRole('textbox', { name: '群消息', exact: true });
+    await composer.waitFor();
+    assert.equal(await composer.isEnabled(), true);
+    assert.equal(await p.getByText('群聊已暂停，可在群设置中恢复', { exact: true }).count(), 0);
+    await composer.fill('直接继续聊天：' + status);
+    await p.getByRole('button', { name: '发送消息', exact: true }).click();
+    await p.getByRole('main').getByText('直接继续聊天：' + status, { exact: true }).waitFor();
+    const continued = await h.request('/v2/channel?id=' + c.id);
+    assert.equal(continued.channel.status, 'active');
+    assert.equal(continued.messages.filter(m => m.body === '直接继续聊天：' + status).length, 1);
+    assert.ok(continued.messages.some(m => m.body === '都在线吗？'));
+  }
+  checks.push('旧暂停或归档记录打开即可继续发消息，无解锁步骤，历史保留，服务端恢复正常回应；群设置不要求管理状态或唤醒参数');
   await p
     .getByRole("textbox", { name: "群消息", exact: true })
     .fill("未发送的草稿");

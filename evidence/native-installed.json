@@ -63,5 +63,33 @@
       "seconds": 60.528
     }
   },
-  "finishedAt": "2026-11-03T09:53:31.526Z"
+  "finishedAt": "2026-11-03T09:53:31.526Z",
+  "chatExperienceFix": {
+    "at": "2026-11-03T10:14:00.734Z",
+    "build": "2331faabcd16d36b",
+    "workerVersion": "e472151f-c6e5-40f1-88ab-06cd3d7dadc4",
+    "displayedGroupRestored": "channel_6ade8e6e6db3438d9c82914b999d2543",
+    "oldChatComposerObservedEnabled": true,
+    "unitTestsPassed": 203,
+    "isolatedUIFlowsPassed": 12,
+    "actualUserDirectChat": {
+      "channelId": "channel_d4eba0c36c8b46938c5db48de728b93c",
+      "userMessageId": "chat_4b0c5d244bad49daa64e1623abfe1b4a",
+      "replyMessageId": "chat_2a4dc57d3fbe48af925281f671df23d6",
+      "nativeMemberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "active"
+    },
+    "pendingApprovals": 0,
+    "nativePermissionModes": [
+      {
+        "engine": "codex",
+        "permissionMode": "full"
+      },
+      {
+        "engine": "antigravity",
+        "permissionMode": "full"
+      }
+    ],
+    "note": "旧状态直接发消息的完整行为由隔离端到端界面测试覆盖；安装版观察到旧聊天输入框启用，以及用户自行发起的 Codex 单聊真实回复。没有要求用户暂停操作，没有代发这条单聊。"
+  }
 }

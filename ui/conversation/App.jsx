@@ -61,7 +61,7 @@ const statusText = {
   done: "已回应",
   silent: "已读，暂无补充",
   merged: "已合并阅读",
-  limited: "达到唤醒限额",
+  limited: "本轮连续回应已停止",
   unavailable: "自动接入未就绪",
   stalled: "尚未收到回应",
   removed: "已移出群",
@@ -240,7 +240,8 @@ export default function App() {
       () => {},
     );
   const openDirect = async (member) => {
-    let dm = channels.find(c => c.direct && c.status !== "archived" && c.memberIds.length === 1 && c.memberIds[0] === member.id);
+    const directChannels = channels.filter(c => c.direct && c.memberIds.length === 1 && c.memberIds[0] === member.id);
+    let dm = directChannels.find(c => c.status !== "archived") || directChannels[0];
     if (!dm) dm = await perform(() => command("channel.create", { name: member.name, memberIds: [member.id], coordinatorId: null, direct: true }));
     setCurrent(dm.id); setPage("chat"); setModal(null);
   };
@@ -349,7 +350,6 @@ export default function App() {
                   {c.name}
                   <small>{c.lastMessage || "开始一段对话"}</small>
                 </span>
-                {c.status !== "active" && <Clock size={12} />}
               </button>
             ))}
           {!channels.length && (
@@ -710,12 +710,7 @@ export default function App() {
                   )}
                   <textarea
                     aria-label="群消息"
-                    placeholder={
-                      channel.status === "active"
-                        ? `发消息给 ${channel.name}…`
-                        : "群聊已暂停，可在群设置中恢复"
-                    }
-                    disabled={channel.status !== "active"}
+                    placeholder={`发消息给 ${channel.name}…`}
                     value={draft}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -804,7 +799,7 @@ export default function App() {
                       aria-label="发送消息"
                       type="submit"
                       disabled={
-                        busy || !draft.trim() || channel.status !== "active"
+                        busy || !draft.trim()
                       }
                     >
                       <ArrowUp size={19} />
@@ -1079,7 +1074,7 @@ export default function App() {
                             <strong>{name(t.memberId)}</strong>
                             <span>{statusText[t.status] || t.status}</span>
                             <small>
-                              {t.reason ||
+                              {(t.status === "limited" ? "消息已保留，直接发下一句即可继续交流。" : t.reason) ||
                                 t.progress ||
                                 (t.status === "ready" &&
                                 snapshot.notifications?.find(
@@ -1094,7 +1089,7 @@ export default function App() {
                           </div>
                         ))}
                         {snapshot.activity.some((t) =>
-                          ["limited", "stalled", "unavailable"].includes(
+                          ["stalled", "unavailable"].includes(
                             t.status,
                           ),
                         ) && (
@@ -1103,7 +1098,7 @@ export default function App() {
                             disabled={busy}
                             onClick={() => act("channel.continue")}
                           >
-                            保留上下文，继续回应
+                            重试未回应的成员
                           </Button>
                         )}
                       </>
@@ -1315,10 +1310,7 @@ function Question({ question: q, busy, onAnswer }) {
 function GroupForm({ channel, workspace, busy, onSave }) {
   const [name, setName] = useState(channel?.name || ""),
     [ids, setIds] = useState(channel?.memberIds || []),
-    [lead, setLead] = useState(channel?.coordinatorId || ""),
-    [hops, setHops] = useState(channel?.maxHops || 8),
-    [interval, setIntervalValue] = useState(channel?.wakeIntervalSeconds ?? 60),
-    [status, setStatus] = useState(channel?.status || "active");
+    [lead, setLead] = useState(channel?.coordinatorId || "");
   return (
     <form
       className="comm-form"
@@ -1328,13 +1320,6 @@ function GroupForm({ channel, workspace, busy, onSave }) {
           name,
           memberIds: ids,
           coordinatorId: lead || null,
-          ...(channel
-            ? {
-                maxHops: Number(hops),
-                wakeIntervalSeconds: Number(interval),
-                status,
-              }
-            : {}),
         });
       }}
     >
@@ -1395,40 +1380,6 @@ function GroupForm({ channel, workspace, busy, onSave }) {
         </select>
         <small>负责协调，不限制其他成员发言；用户随时可以更换。</small>
       </label>
-      {channel && (
-        <details>
-          <summary>消息与唤醒设置</summary>
-          <label>
-            群状态
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="active">进行中</option>
-              <option value="paused">暂停回应</option>
-              <option value="archived">已归档</option>
-            </select>
-          </label>
-          <label>
-            连续 @ 跳数上限
-            <Input
-              type="number"
-              min="1"
-              max="100"
-              value={hops}
-              onChange={(e) => setHops(e.target.value)}
-            />
-          </label>
-          <label>
-            Agent 自动连续唤醒间隔（秒，用户消息不等待）
-            <Input
-              type="number"
-              min="0"
-              max="3600"
-              value={interval}
-              onChange={(e) => setIntervalValue(e.target.value)}
-            />
-          </label>
-          <small>达到上限保留消息，可手动继续，不当作讨论结束。</small>
-        </details>
-      )}
       <Button type="submit" disabled={busy || !name.trim()}>
         {channel ? "保存群设置" : "创建并开始沟通"}
       </Button>

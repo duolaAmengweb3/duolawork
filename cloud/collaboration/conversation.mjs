@@ -565,7 +565,8 @@ export async function conversationCommand(
         if (cmd.direct && memberIds.length !== 1)
           fail("invalid_direct", "私聊只能选择一位 Agent");
         if (cmd.direct) {
-          const priorDM = (await tx.list("channel")).find(c => c.direct && c.status !== "archived" && c.memberIds.length === 1 && c.memberIds[0] === memberIds[0]);
+          const directChannels = (await tx.list("channel")).filter(c => c.direct && c.memberIds.length === 1 && c.memberIds[0] === memberIds[0]);
+          const priorDM = directChannels.find(c => c.status !== "archived") || directChannels[0];
           if (priorDM) return priorDM;
         }
         const coordinatorId = cmd.coordinatorId ?? null;
@@ -653,9 +654,15 @@ export async function conversationCommand(
         return channel;
       }
       if (type === "channel.post") {
-        if (channel.status !== "active")
-          fail("channel_paused", "这个群已暂停或归档，恢复后可继续", 409);
         const body = messageText(cmd.body);
+        // Legacy housekeeping states must never require the human to unlock chat.
+        // An Agent cannot reactivate a stopped channel on its own.
+        if (channel.status !== "active") {
+          if (!actor.owner)
+            fail("channel_paused", "此会话暂不接收 Agent 回复", 409);
+          channel.status = "active";
+          tx.put("channel", channel);
+        }
         const meeting = await meetingPost(tx, identity, actor, { ...cmd, body }, channel, meetingHelpers);
         if (meeting?.handled) return meeting.result;
         const mentions = listIds(

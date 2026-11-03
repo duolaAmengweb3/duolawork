@@ -67,6 +67,37 @@ test("ordinary chat creates no runs, tasks or documents; only actual group membe
     ["grok", "check"],
   );
 });
+test("human messages continue the same legacy paused or archived chat without an unlock step", async (t) => {
+  const f = await setup(t);
+  const original = await f.send("channel.post", { channelId: f.c.id, body: "原有聊天" });
+  for (const status of ["paused", "archived"]) {
+    await f.send("channel.update", { channelId: f.c.id, status });
+    await assert.rejects(
+      () => f.send("channel.post", { channelId: f.c.id, body: "Agent 不得自行恢复" }, agent("check")),
+      e => e.code === "channel_paused",
+    );
+    assert.equal((await f.repo.get("channel", f.c.id)).status, status);
+    await f.send("channel.post", { channelId: f.c.id, body: "继续说话：" + status });
+    const view = await readChannel(f.repo, f.identity, user, { channelId: f.c.id });
+    assert.equal(view.channel.status, "active");
+    assert.equal(view.messages[0].id, original.id);
+    assert.equal(view.messages.at(-1).body, "继续说话：" + status);
+    assert.ok((await conversationWork(f.repo, f.identity, "check")).some(w => w.channelId === f.c.id));
+  }
+  assert.equal((await f.repo.list("channel")).length, 1);
+});
+test("opening a prior direct chat preserves its history even with a legacy archived state", async (t) => {
+  const f = await setup(t);
+  const dm = await f.send("channel.create", { name: "Grok", direct: true, memberIds: ["grok"] });
+  const before = await f.send("channel.post", { channelId: dm.id, body: "之前的单聊" });
+  await f.send("channel.update", { channelId: dm.id, status: "archived" });
+  const reopened = await f.send("channel.create", { name: "Grok", direct: true, memberIds: ["grok"] });
+  assert.equal(reopened.id, dm.id);
+  await f.send("channel.post", { channelId: reopened.id, body: "继续原来的单聊" });
+  const view = await readChannel(f.repo, f.identity, user, { channelId: dm.id });
+  assert.equal(view.messages[0].id, before.id);
+  assert.equal(view.messages.length, 2);
+});
 test("coordinator is user-selected and replaceable without changing members or communication", async (t) => {
   const f = await setup(t);
   await f.send("channel.post", { channelId: f.c.id, body: "原消息" });
@@ -366,6 +397,11 @@ test("wake budget defers instead of discarding and explicit resume retains origi
     (await f.repo.get("channel_message", limited.messageId)).id,
     p.id,
   );
+  const next = await f.send("channel.post", { channelId: f.c.id, body: "我继续问一句", mentions: ["grok"] });
+  const nextTurn = (await f.repo.list("channel_turn", { status: "ready" })).find(turn => turn.messageId === next.id);
+  assert.ok(nextTurn, "普通新消息直接产生可处理通知，无需点击继续或调整跳数");
+  assert.equal(nextTurn.hops, 0);
+  assert.equal((await f.repo.get("channel_turn", limited.id)).status, "limited", "不会重新执行此前被拦下的连续通知");
   await f.send("channel.continue", { channelId: f.c.id });
   assert.equal((await f.repo.get("channel_turn", limited.id)).status, "ready");
 });
