@@ -5,9 +5,11 @@ export const MAX_MESSAGE_WAIT_SECONDS = 45;
 
 export async function withConversationContext(repo, identity, actor, claim) {
   if (!claim.turnId) return claim;
-  const context = await readChannel(repo, identity, actor, { channelId: claim.channelId });
   const turn = await repo.get('channel_turn', claim.turnId);
-  const meeting = await meetingTurnContext(repo, identity, actor, turn);
+  const [context,meeting]=await Promise.all([
+    readChannel(repo, identity, actor, { channelId: claim.channelId }),
+    meetingTurnContext(repo, identity, actor, turn),
+  ]);
   return {
     ...claim,
     input: {
@@ -21,7 +23,7 @@ export async function withConversationContext(repo, identity, actor, claim) {
       knowledge: context.knowledge,
       decisions: context.decisions,
       tasks: context.tasks,
-      meetings: context.meetings,
+      meetings: context.meetings.map(({id,title,status,coordinatorId,startedAt,endedAt,version})=>({id,title,status,coordinatorId,startedAt,endedAt,version})),
       instruction: claim.input.instruction.replace(
         "先调用 read_channel(channelId) 查看真实上下文。",
         "本结果已包含最新群消息与共享空间，无需重复 read_channel；需要更早消息时再分页。",

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture} from './collaboration-helper.mjs';
 import {conversationCommand,claimConversation} from '../cloud/collaboration/conversation.mjs';
-import {dispatchOne,maintenance} from '../cloud/collaboration/dispatcher.mjs';
+import {dispatchOne,maintenance,dispatchPending} from '../cloud/collaboration/dispatcher.mjs';
 import {seal} from '../cloud/collaboration/security.mjs';
 
 const secret='isolated-latency-fixture',start=Date.parse('2026-11-02T12:00:00Z'),at=seconds=>new Date(start+seconds*1000).toISOString();
@@ -77,4 +77,17 @@ test('忙碌成员的待办不耗尽本轮投递名额，其他用户消息仍�
  const result=await maintenance(f.repo,f.identity,{ADMIN_KEY:secret},async()=>{calls++;return new Response('{}',{status:202});},at(8));
  assert.equal(calls,1,'skipped busy rows cannot prevent another ready member from receiving its notification');
  assert.equal(result.notifications,1);
+});
+test('独立原生接收器有界并发，慢平台不阻挡另外两位，且重复维护不重复唤醒',async t=>{
+ const f=await setup(t);
+ await f.send('channel.update',{channelId:f.channel.id,memberIds:['grok','check','write']});
+ await f.repo.transact('parallel-seed',{},async tx=>{
+  const c=await tx.get('connection','write');tx.put('connection',{...c,transport:'grok-webhook',credentials:await seal({url:'https://grok.com/webhook/automation/write',token:'whsec_'+Buffer.alloc(32,21).toString('base64')},secret)});
+ });
+ await f.send('channel.post',{channelId:f.channel.id,body:'请三位独立看一下',mentions:['grok','check','write']});
+ let count=0,release;const gate=new Promise(r=>release=r);
+ const fetcher=async()=>{count++;if(count===3)release();await gate;return new Response('{}',{status:202});};
+ const result=await Promise.race([dispatchPending(f.repo,f.identity,{ADMIN_KEY:secret},fetcher,at(7)),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('独立接收器仍在串行等待')),1000);timer.unref();})]);
+ assert.equal(count,3);assert.equal(result.notifications,3);assert.deepEqual(result.errors,[]);
+ await dispatchPending(f.repo,f.identity,{ADMIN_KEY:secret},fetcher,at(8));assert.equal(count,3);
 });

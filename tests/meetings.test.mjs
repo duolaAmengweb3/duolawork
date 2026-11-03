@@ -59,6 +59,31 @@ test('多轮筹备只有负责人收到，真实安排产生后再开始，原�
  assert.equal((await f.repo.get('channel',f.channel.id)).coordinatorId,'grok');
  assert.equal((await f.repo.get('connection','grok')).status,'verified');
 });
+test('已认证领取补足冗余版本参数，完整正文与同群资料引用不被压缩或误拒',async t=>{
+ const f=await setup(t);await f.plan();const m=await f.meet('start');await f.claim('grok');
+ const doc=await f.send('channel.doc.create',{channelId:f.channel.id,title:'原始材料',body:'第一条实际发现：新消息触发对应成员，而非每次用户打开页面。'},actor('grok'));
+ const body='## 这次讨论的结论\n可以参考的是让新消息自动到达负责处理的成员。\n\n例如资料更新后直接通知研究成员，而不是让用户反复提醒。这是建议，还没有验证提升。';
+ const result=await f.meet('finish',{summary:body,answers:[{agendaId:m.agenda[0].id,body,status:'supported',evidenceIds:[doc.versionId]}]},actor('grok'));
+ assert.equal(result.summary,body);assert.equal(result.status,'ended');assert.equal((await f.repo.get('meeting_result',m.id)).sourceVersion,1);
+});
+test('用户会后要求解释时仅唤醒负责人，原文留版本，不重开会议或把迟到稿当修订',async t=>{
+ const f=await setup(t);await f.plan();let m=await f.meet('start');
+ m=await f.meet('finish',{sourceVersion:1,summary:'原有缩略结果',answers:m.agenda.map(a=>({agendaId:a.id,body:'尚待说明'}))},actor('grok'));
+ await assert.rejects(f.meet('revise_result',{ownerMessageId:'fake',summary:'擅自覆盖'},actor('grok')),e=>e.code==='revision_not_requested');
+ await assert.rejects(f.meet('request_revision',{},actor('check')),e=>e.code==='forbidden');
+ const revised=await f.meet('request_revision',{body:'请解释具体发现和理由，不要只列术语。'});
+ const claim=await f.claim('grok');assert.equal(claim.input.meetingId,m.id);
+ const context=await withConversationContext(f.repo,f.identity,actor('grok'),claim);assert.match(context.input.meeting.instruction,/界面不会替你改写/);
+ assert.equal(context.input.meeting.meeting.summary,'原有缩略结果');
+ assert(context.input.meeting.records.filter(r=>r.kind==='meeting_result').every(r=>r.summary===undefined),'接单上下文不重复传输结果正文');
+ assert(context.input.meetings.every(r=>r.summary===undefined),'其他会议仅提供可读取目录，不塞入全部历史结果');
+ assert((await meetingDetail(f.repo,f.identity,owner,{meetingId:m.id})).records.some(r=>r.kind==='meeting_result'&&r.summary==='原有缩略结果'),'按需读取保留原文');
+ const result=await f.meet('revise_result',{ownerMessageId:revised.revisionRequestId,summary:'完整的解释正文：让新资料主动到达相关成员，减少用户反复提醒。',answers:m.agenda.map(a=>({agendaId:a.id,body:'事件触发相关成员；效果仍待实际使用验证',status:'partial'}))},actor('grok'));
+ assert.equal(result.status,'ended');assert.equal(result.endedAt,m.endedAt);assert.equal(result.wakeCount,m.wakeCount);assert.equal(result.revisionStatus,'completed');
+ assert((await f.repo.list('meeting_result',{parent:m.id})).some(r=>r.status==='superseded'&&r.summary==='原有缩略结果'));
+ await f.meet('finish',{sourceVersion:1,summary:'迟到的旧稿',answers:m.agenda.map(a=>({agendaId:a.id,body:'旧回应'}))},actor('grok'));
+ assert.match((await f.repo.get('meeting_result',m.id)).summary,/完整的解释正文/);
+});
 for(const mode of Object.keys(MEETING_MODES))test(`${mode}：独立提交、公开互核和逐项总结完整闭环`,async t=>{
  const f=await setup(t,mode);await f.plan();let m=await f.meet('start');
  for(let round=0;round<MEETING_MODES[mode].stages.length;round++){

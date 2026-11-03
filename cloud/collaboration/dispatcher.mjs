@@ -260,6 +260,28 @@ export async function dispatchOne(
   );
 }
 
+// Independent native receivers need not wait behind a slow platform request.
+// Keep bounded concurrency and one wake per resource in this maintenance pass;
+// dispatchOne still owns all identity, deadline, coalescing and lease checks.
+export async function dispatchPending(repo,identity,env,fetcher=fetch,now=new Date().toISOString()){
+  const beganAt=Date.now(),seen=new Set(),result={notifications:0,errors:[]};
+  const rows=(await Promise.all(['pending','retry','waiting_subscription'].map(status=>repo.list('outbox',{status,limit:60})))).flat().filter(r=>r.dueAt<=now).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  const candidates=await Promise.all(rows.map(async row=>({row,connection:await repo.get('connection',row.memberId,false)})));
+  const queue=candidates.filter(({row,connection})=>{
+    const key=connection?.resourceKey||row.memberId;
+    if(seen.has(key))return false;seen.add(key);return true;
+  });
+  for(let i=0;i<queue.length&&result.notifications<12&&Date.now()-beganAt<18000;i+=4){
+    const batch=queue.slice(i,i+Math.min(4,12-result.notifications));
+    const outcomes=await Promise.allSettled(batch.map(({row})=>dispatchOne(repo,identity,row.id,env,fetcher,now)));
+    outcomes.forEach((outcome,index)=>{
+      if(outcome.status==='fulfilled'){if(!outcome.value.skipped)result.notifications++;}
+      else result.errors.push({kind:'notification',id:batch[index].row.id,code:outcome.reason?.code||'failure'});
+    });
+  }
+  return result;
+}
+
 export async function maintenance(
   repo,
   identity,
@@ -268,6 +290,9 @@ export async function maintenance(
   now = new Date().toISOString(),
 ) {
   await conversationMaintenance(repo,identity,now);
+  const beganAt = Date.now();
+  // Deliver current conversation work before schedule scans and recovery work.
+  const summary = { ...(await dispatchPending(repo,identity,env,fetcher,now)), schedules:0,recovered:0 };
   // A deliberately paused/unavailable member is a known condition, not an
   // unexplained fifteen-minute timeout. Preserve any running lease untouched.
   for (const pending of await repo.list("step", {status:"ready",limit:500})) {
@@ -282,8 +307,6 @@ export async function maintenance(
       return {};
     },now);
   }
-  const beganAt = Date.now();
-  const summary = { notifications: 0, schedules: 0, recovered: 0, errors: [] };
   for (const row of await repo.list("outbox", {
     status: "sending",
     limit: 100,
@@ -412,17 +435,6 @@ export async function maintenance(
             id: signal.id,
             code: e.code || "failure",
           });
-      }
-    }
-  for (const status of ["pending", "retry", "waiting_subscription"])
-    for (const row of await repo.list("outbox", { status, limit: 20 })) {
-      if (
-        row.dueAt <= now &&
-        summary.notifications < 2 &&
-        Date.now() - beganAt < 18000
-      ) {
-        const result=await dispatchOne(repo, identity, row.id, env, fetcher, now);
-        if(!result.skipped)summary.notifications++;
       }
     }
   for (const status of ["working", "checkpoint", "waiting_user"])

@@ -10,7 +10,7 @@ export const MEETING_MODES = {
 const string = { type: 'string' };
 export const MEETING_TOOLS = [{
   name: 'meeting',
-  description: '真实会议工具。prepare筹备；say与负责人沟通；plan由负责人提出可修改的目标和交付；start按用户已确认安排开会；read读取本场；opinion提交本阶段独立意见；review登记具体核验；agenda调整议题；advance推进；finish由负责人交付逐项结论；stop停止。不要用普通群消息泄漏未公开意见。',
+  description: '真实会议工具。prepare筹备；say与负责人沟通；plan由负责人提出可修改的目标和交付；start按用户已确认安排开会；read读取本场；opinion提交本阶段独立意见；review登记具体核验；agenda调整议题；advance推进；finish由负责人写给用户可直接阅读的完整结果，answers写具体发现而非完成状态；stop停止。不要用普通群消息泄漏未公开意见。',
   inputSchema: { type: 'object', additionalProperties: false,
     properties: {
       requestId: string, channelId: string, meetingId: string, action: string,
@@ -54,7 +54,11 @@ const ownerStop = body => /^(停止本场会议|结束这场会议|停止会议|
 async function release(tx, actor, cmd, helpers, channel) {
   let turn = cmd.turnId ? await tx.get('channel_turn', cmd.turnId, false) : null;
   if (!turn && actor.memberId) turn = (await tx.list('channel_turn', { scope: channel.id, parent: actor.memberId, status: 'active' })).find(t => t.meetingId === cmd.meetingId);
-  if (turn && turn.meetingId === cmd.meetingId) await helpers.finishTurn(tx, actor, turn.id, 'done');
+  if (turn && turn.meetingId === cmd.meetingId) {
+    await helpers.finishTurn(tx, actor, turn.id, 'done');
+    return {tool:'claim_work',stepId:'inbox:after:'+turn.id,afterTurnId:turn.id,channelId:channel.id,maxWaitSeconds:45,
+      instruction:'本次已经交付。结束原生运行前，可立即用新requestId调用claim_work(stepId=此处inbox:after编号)，在同一次原生运行接住下一阶段或用户追问，最多等45秒；empty/busy即结束，不循环空跑、不重新领取旧通知。'};
+  }
 }
 async function wake(tx, identity, channel, m, targets, body, helpers, { preparation = false, closing = false } = {}) {
   if (!preparation && (due(m, tx.now) || m.status === 'ended')) return [];
@@ -176,6 +180,15 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
   }
   if (due(m, tx.now)) { await end(tx, channel, m, helpers, 'deadline'); if (!['stop', 'finish', 'opinion', 'review'].includes(action)) return m; }
   if (action === 'say') return preparationPost(tx, identity, actor, cmd, channel, m, helpers);
+  if(action==='request_revision'){
+    if(!actor.owner)fail('forbidden','只有用户可要求会后重新解释结果',403);
+    if(m.status!=='ended')fail('meeting_active','会议尚未结束，请直接在群里补充要求');
+    if(m.revisionStatus==='requested'&&m.revisionExpiresAt>tx.now)return m;
+    const source=await helpers.channelMessage(tx,channel,actor,cmd.body||'这份结果我看不懂，请由负责人结合原始要求和讨论重新解释清楚。写出具体结论、理由和实际例子，不用术语列表或双方一致代替结果。',{meetingId:m.id,type:'message',hops:0});
+    m.revisionRequestId=source.id;m.revisionStatus='requested';m.revisionExpiresAt=new Date(Date.parse(tx.now)+600000).toISOString();stamp(tx,m);
+    const signal=await helpers.channelMessage(tx,channel,actor,'用户要求你重新解释已结束会议的交付。请保留会议原状态，读取原始需求、完整讨论和现有结果，通过meeting(action="revise_result",ownerMessageId=本次用户消息ID,summary,answers,sourceVersion,requestId)发布通俗、完整的修订正文；不重开会议、不召集其他成员。',{hidden:true,type:'meeting_signal',meetingId:m.id,meetingRound:m.round,meetingVersion:m.version,meetingStage:'ended',meetingPurpose:'result_revision',ownerMessageId:source.id,hops:0});
+    await helpers.enqueue(tx,identity,channel,signal,m.coordinatorId);return m;
+  }
   if (action === 'plan') {
     host(m, actor); if (m.status !== 'preparing') fail('meeting_started', '正式会议已经开始，请调整议题而不是重建筹备');
     if (!MEETING_MODES[cmd.mode]) fail('invalid_mode', '请选择可执行的组织方法');
@@ -288,9 +301,9 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if (old) tx.put('meeting_opinion_history', { ...old, id: id('opinion_history'), parentId: m.id });
     tx.put('meeting_opinion', { id: key, scopeId: channel.id, parentId: m.id, authorId: actor.memberId, body, round: m.round,
       sourceVersion: m.version, sources: cleanSources(cmd.sources), changeReason: cmd.changeReason || null, status: 'submitted', createdAt: tx.now });
-    await release(tx, actor, cmd, helpers, channel);
+    const continuation=await release(tx, actor, cmd, helpers, channel);
     await advance(tx, identity, channel, m, helpers);
-    return { submitted: true, meetingId: m.id, round: m.round, status: m.status };
+    return { submitted: true, meetingId: m.id, round: m.round, status: m.status,continuation };
   }
   if (action === 'review') {
     if (!actor.memberId) fail('member_required', '请由实际核验成员记录');
@@ -301,12 +314,22 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     return { recorded: true, reviewId: row.id, note: '保存记录不等于系统已经独立证明事实正确' };
   }
   if (action === 'advance') { host(m, actor); return advance(tx, identity, channel, m, helpers); }
-  if (action === 'finish' || action === 'close') {
+  if (action === 'finish' || action === 'close'||action==='revise_result') {
+    const revising=action==='revise_result';
+    if(revising&&(m.status!=='ended'||m.revisionStatus!=='requested'||cmd.ownerMessageId!==m.revisionRequestId||m.revisionExpiresAt<=tx.now))fail('revision_not_requested','需先由用户明确请求修订，原结果和会议状态保留',409);
     if(!actor.owner&&actor.memberId!==m.coordinatorId&&(m.formerCoordinators||[]).includes(actor.memberId)){
       const row=tx.put('meeting_result',{id:id('former_result'),scopeId:channel.id,parentId:m.id,summary:required(cmd.summary,'原负责人迟到总结',24000),answers:cmd.answers||[],authorId:actor.memberId,sourceVersion:cmd.sourceVersion??-1,status:'late',createdAt:tx.now});
       await release(tx,actor,cmd,helpers,channel);return {late:true,resultId:row.id,currentResultUnchanged:true};
     }
     host(m, actor);
+    // Authenticated live claims already bind the agenda version. Reuse that
+    // binding when an older native client omits redundant wire parameters;
+    // never infer freshness merely from the current meeting or an expired turn.
+    if(!actor.owner&&(action==='finish'||revising)&&(cmd.sourceVersion===undefined||cmd.round===undefined)){
+      const claimed=(await tx.list('channel_turn',{scope:channel.id,parent:actor.memberId,status:'active'})).find(t=>t.meetingId===m.id&&t.expiresAt>tx.now);
+      if(claimed)cmd={...cmd,sourceVersion:cmd.sourceVersion??claimed.meetingVersion,round:cmd.round??claimed.meetingRound};
+      else if(cmd.sourceVersion===undefined)fail('version_required',`请保留完整总结和议题答案，补 sourceVersion=${m.version} 后重新提交；未结束本场，也不需要重写或压缩正文`,409);
+    }
     const summary = required(cmd.summary, '基于实际讨论的总结', 24000);
     if(action==='finish'&&m.status!=='ended'&&(cmd.sourceVersion!==m.version||(cmd.round!==undefined&&cmd.round!==m.round))){
       const late=tx.put('meeting_result',{id:id('late_result'),scopeId:channel.id,parentId:m.id,summary,answers:cmd.answers||[],sourceVersion:cmd.sourceVersion??-1,round:cmd.round??-1,status:'late',createdAt:tx.now});
@@ -317,15 +340,28 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if(!Array.isArray(submittedAnswers)||submittedAnswers.length>20||submittedAnswers.some(a=>!a||typeof a!=='object'))fail('invalid_answers','议题回应列表无效');
     const answers=submittedAnswers.map(a=>({...a,status:answerStatus(a.status)}));
     const currentAgenda = m.agenda.filter(a => a.status !== 'canceled');
-    if (action === 'finish' && currentAgenda.some(a => !answers.some(x => x.agendaId === a.id && typeof x.body === 'string' && x.body.trim()))) fail('answers_required', '请逐项回应议题，未解决也要说明缺口');
+    if ((action === 'finish'||revising) && currentAgenda.some(a => !answers.some(x => x.agendaId === a.id && typeof x.body === 'string' && x.body.trim()))) fail('answers_required', '请逐项回应议题，未解决也要说明缺口');
     for (const answer of answers) {
       if (!m.agenda.some(a => a.id === answer.agendaId)) fail('invalid_agenda', '回答不属于本场议题'); required(answer.body, '议题回应', 12000);
       if(answer.status==='supported'&&!answer.evidenceIds?.length)fail('evidence_required','明确支持的结论需要关联本场真实意见或核验记录');
-      for(const key of answer.evidenceIds||[]){const source=await tx.get('meeting_review',key,false)||await tx.get('meeting_opinion',key,false);if(!source||source.parentId!==m.id)fail('invalid_evidence','引用记录不属于本场会议');}
+      for(const key of answer.evidenceIds||[]){
+        const source=await tx.get('meeting_review',key,false)||await tx.get('meeting_opinion',key,false)||await tx.get('channel_doc',key,false)||await tx.get('channel_doc_version',key,false)||await tx.get('meeting_preparation',key,false);
+        const meetingSource=source&&['meeting_review','meeting_opinion','meeting_preparation'].includes(source.kind);
+        if(!source||source.scopeId!==channel.id||(meetingSource&&source.parentId!==m.id))fail('invalid_evidence','引用记录不属于本场会议或本群共享资料；请保留答案正文，仅修正引用编号');
+      }
     }
     const allOpinions=await tx.list('meeting_opinion',{parent:m.id}), allReviews=await tx.list('meeting_review',{parent:m.id});
     const quality={actualParticipants:list(allOpinions.map(o=>o.authorId)),initialSubmissions:list(allOpinions.filter(o=>o.round===0&&o.sourceVersion===m.version).map(o=>o.authorId)),reviewCount:allReviews.filter(r=>r.sourceVersion===m.version).length,unresolved:answers.filter(a=>!['supported','confirmed'].includes(a.status)).map(a=>a.agendaId),note:'登记核验记录不等于系统已经独立证明事实；保留原文和证据供回看'};
     const latest = await tx.get('meeting_result', m.id, false);
+    if(revising){
+      if(cmd.sourceVersion!==m.version)fail('version_conflict','请按原会议当前版本解释，保留完整正文后修正来源版本',409);
+      if(latest)tx.put('meeting_result',{...latest,id:id('prior_result'),status:'superseded',supersededAt:tx.now});
+      tx.put('meeting_result',{id:m.id,scopeId:channel.id,parentId:m.id,summary,answers,quality,authorId:actor.memberId||'owner',sourceVersion:m.version,status:'provided',createdAt:tx.now,revisionOf:latest?.id||null});
+      m.summary=summary;m.answers=answers;m.quality=quality;m.revisionStatus='completed';m.summaryRevisedAt=tx.now;stamp(tx,m);
+      const continuation=await release(tx,actor,cmd,helpers,channel);
+      await event(tx,channel,m,'负责人已按你的要求重新解释结果，原版和讨论记录均已保留。',helpers,'meeting_result_update');
+      return {...m,continuation};
+    }
     const result = tx.put('meeting_result', { id: m.status === 'ended' ? id('late_result') : m.id, scopeId: channel.id, parentId: m.id,
       summary, answers, quality,authorId:actor.memberId||'owner',sourceVersion: cmd.sourceVersion ?? m.version, status: m.status === 'ended' ? 'late' : 'provided', createdAt: tx.now });
     await release(tx, actor, cmd, helpers, channel);
@@ -426,14 +462,18 @@ export async function meetingTurnContext(repo, identity, actor, turn) {
   if (!turn?.meetingId) return null;
   const detail = await meetingDetail(repo, identity, actor, { meetingId: turn.meetingId });
   const m = detail.meeting;
-  return { ...detail, currentRound: m.round, sourceVersion: m.version,
-    ...(turn.meetingPurpose==='user_update'?{userUpdate:true,userUpdateMessageId:turn.ownerMessageId}:{}),
-    instruction:turn.meetingPurpose==='user_update'
+  return { ...detail,
+    records:detail.records.map(r=>r.kind==='meeting_result'?{id:r.id,kind:r.kind,status:r.status,sourceVersion:r.sourceVersion,createdAt:r.createdAt,note:r.status==='provided'?'当前正文已在meeting.summary和answers中；无需重复读取':'历史原文可用meeting(action="read")读取，未删除或改写'}:r),
+    currentRound: m.round, sourceVersion: m.version,
+    ...(['user_update','result_revision'].includes(turn.meetingPurpose)?{userUpdate:true,userUpdateMessageId:turn.ownerMessageId}:{}),
+    instruction:turn.meetingPurpose==='result_revision'
+      ? '用户看不懂原结果，请由你重新写清楚，不重开会议。summary首段直接回答用户原问题，再用小标题、自然段或列表展开具体发现、理由和例子。不先回顾任务或反复声明已修订/不重开/不开发，不用元叙述挤占首屏。不要只列术语，不用双方一致/已完成来代替答案；按最新用户要求讲清楚。界面不会替你改写内容。answers保留各议题的具体发现和依据。用meeting(action="revise_result",meetingId,channelId,ownerMessageId=本上下文userUpdateMessageId,sourceVersion,summary,answers,requestId)发布，原结果自动保留。'
+      :turn.meetingPurpose==='user_update'
       ? '用户在会议中有新补充或决定。优先阅读群消息里对应owner原文；必要时调用meeting(action="agenda",expectedVersion,agenda,goal,deliverable)更新议题，再post_message回应。不要把这条用户补充当作待独立提交的普通意见；本工具上下文含userUpdateMessageId。结束总结必须处理最新要求。'
       : m.status === 'preparing'
-      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,mode,body,agenda:[{title}],requestId)保存安排，再回复用户。用户确认后才start。'
+      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用户没有要求时，不自行加400字等篇幅限制或固定交付模板；以把问题讲清楚为准。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,mode,body,agenda:[{title}],requestId)保存安排，界面会展示安排卡，聊天只简短说明新发现或待确认的问题，不重复抄一遍卡片。用户确认后才start。'
       : m.status === 'closing'
-        ? '负责人请对照本场议题提交meeting(action="finish",meetingId,channelId,round=本场currentRound,sourceVersion,ownerMessageId=最新已处理用户补充ID（如有）,summary,answers:[{agendaId,body,status,evidenceIds,dissent}],requestId)。status使用supported/partial/unresolved/disputed；supported须关联本场真实记录。逐项回答，未知说明缺口；引用公开意见及核验记录，不伪造共识。必要补查用meeting(action="investigate",body=具体缺口,memberIds=本场核验者)请求，仍受剩余时间与调用预算约束。'
+        ? '负责人请对照用户最初的问题和本场交付约定，亲自写一份用户可以直接读懂的完整正文。summary是主要交付，先回答问题，再用自然段、小标题或列表解释具体发现和理由；只在相关时写建议、待决或未知，不套固定模板，不堆API/代码名和缩略词，必要术语用日常语言解释。answers逐项填写实际内容，不用“双方一致、已覆盖、无分歧、已合并”等状态句代替答案，不让用户翻过程才能知道结论。不自行压缩成关键词提纲。提交meeting(action="finish",meetingId,channelId,round=本场currentRound,sourceVersion,ownerMessageId=最新已处理用户补充ID（如有）,summary,answers:[{agendaId,body,status,evidenceIds,dissent}],requestId)。status使用supported/partial/unresolved/disputed；supported须关联本场真实意见、核验或本群资料。若接口要求修正参数，只修参数并保留完整正文。未知说明缺口，不伪造共识。必要补查用meeting(action="investigate",body=具体缺口,memberIds=本场核验者)请求，仍受剩余时间与调用预算约束。'
         : '按当前阶段执行。共同输入是records中authorId="owner"的用户原始资料及本场目标，负责人筹备推导不提前公开；不要因读不到价格等事实就猜测。资料更多时用meeting(action="read",cursor=nextCursor)分页。先独立提交意见；后续阶段核验关键依据并用meeting(action="review",claim,method,finding,sources,requestId)登记真实检查，再调用meeting(action="opinion",meetingId,channelId,round,sourceVersion,body,sources,changeReason,requestId)。未公开初稿不写到群或文档。每轮直接回应，不空转。',
     toolFallback: '若原平台缓存了旧工具目录，可刷新目录，或使用自己原有配对凭证向同一Hub的POST /v2/tools/meeting发送相同JSON；不得请求管理凭证、改变模型或订阅。优先使用结构化工具参数；若通过脚本发送JSON，务必避免shell展开金额中的美元符号或其他原文，提交后读取确认。普通post_message/旧submit_work可回传筹备消息和阶段意见，但正式计划、核验与结束须真实调用会议工具。',
   };
@@ -457,6 +497,7 @@ export async function meetingMaintenance(repo, identity, helpers, now = new Date
 export async function meetingTurnAllowed(tx, turn) {
   if (!turn?.meetingId) return true;
   const m = await tx.get('channel_meeting', turn.meetingId, false);
+  if(turn.meetingPurpose==='result_revision')return !!m&&m.status==='ended'&&m.revisionStatus==='requested'&&m.revisionRequestId===turn.ownerMessageId&&m.revisionExpiresAt>tx.now&&m.coordinatorId===turn.memberId;
   if (!m || m.status === 'ended' || due(m, tx.now)) return false;
   return m.status === 'preparing' || (turn.meetingVersion === m.version && turn.meetingRound === m.round && (m.status === 'closing' ? turn.meetingStage === 'closing' : turn.meetingStage === 'running'));
 }
@@ -464,6 +505,7 @@ export async function meetingTurnAllowed(tx, turn) {
 export async function chargeMeetingRetry(tx, turn, attempts) {
   if (!turn?.meetingId || !attempts) return true;
   const m=await tx.get('channel_meeting',turn.meetingId);
+  if(turn.meetingPurpose==='result_revision')return attempts<3&&m.revisionStatus==='requested'&&m.revisionExpiresAt>tx.now;
   if(m.status==='preparing')return attempts<3;
   if(m.wakeCount>=m.maxWakeups-(m.status==='closing'?0:1))return false;
   m.wakeCount++;stamp(tx,m);return true;
