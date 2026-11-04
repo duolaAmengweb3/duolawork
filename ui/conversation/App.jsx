@@ -1561,7 +1561,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
       <div className="member-grid">
         {workspace.members.map((m) => {
           const c = workspace.connections.find((c) => c.id === m.id);
-          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&['idle','working'].includes(local.status)));
+          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&(!local.hostKind||local.verified)&&['idle','working'].includes(local.status)));
           return (
             <article key={m.id}>
               <Face name={m.name} id={m.id} />

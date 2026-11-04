@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-03T09:38:13.872Z",
+  "at": "2026-11-04T05:54:39.004Z",
   "fixtureOnly": true,
   "realCommercialAgentTested": false,
   "checks": [
@@ -29,7 +29,7 @@
     {
       "event": "resume",
       "engine": "codex",
-      "id": "fixture-codex-3f7a310f-b5f0-448c-9fb8-f6b10ca5f133"
+      "id": "fixture-codex-d150060b-0775-4154-9ada-1703a76c616c"
     },
     {
       "event": "initialize",
