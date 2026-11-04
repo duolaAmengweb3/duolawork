@@ -1,0 +1,111 @@
+{
+  "at": "2026-11-04T07:15:32.492Z",
+  "platform": "antigravity",
+  "realOfficialDesktop": true,
+  "isolatedHub": true,
+  "claudeTouched": false,
+  "checks": [
+    "Original desktop source connects without choosing or creating a work session",
+    "Two explicit chat bindings share the user-selected original native test conversation and reply to their own Hub chat",
+    "Exact per-chat bindings survive receiver reload; all existing provider sessions and other Hub bindings retained"
+  ],
+  "receipts": [
+    {
+      "channelId": "channel_e8c55b10a0bf4099b4986559a8d46379",
+      "messageId": "chat_6daac02058ac4255928a1acae630631d",
+      "body": "桌面甲已收到"
+    },
+    {
+      "channelId": "channel_5e98b9ccda10456c8a061fd728ebb8ba",
+      "messageId": "chat_705ef157797149aa9a4fc1081d8f6057",
+      "body": "桌面乙已收到"
+    }
+  ],
+  "bindings": {
+    "channel_e8c55b10a0bf4099b4986559a8d46379": {
+      "sessionId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+      "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+      "title": "Local Collaboration Feasibility Test",
+      "mode": "existing"
+    },
+    "channel_5e98b9ccda10456c8a061fd728ebb8ba": {
+      "sessionId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+      "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+      "title": "Local Collaboration Feasibility Test",
+      "mode": "existing"
+    }
+  },
+  "bridge": [
+    {
+      "sessionId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+      "memberId": "member_f8c608cf617447049c9957f8acd5e3a5",
+      "channelIds": [
+        "channel_e8c55b10a0bf4099b4986559a8d46379",
+        "channel_5e98b9ccda10456c8a061fd728ebb8ba"
+      ],
+      "verification": true,
+      "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+      "toolCalls": [
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:15:45.360Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:15:45.370Z"
+        },
+        {
+          "name": "submit_work",
+          "at": "2026-11-04T07:16:03.641Z"
+        },
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:16:08.275Z"
+        },
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:16:33.515Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:16:33.530Z"
+        },
+        {
+          "name": "post_message",
+          "at": "2026-11-04T07:16:54.819Z"
+        },
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:16:59.645Z"
+        },
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:17:43.959Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:17:43.972Z"
+        },
+        {
+          "name": "post_message",
+          "at": "2026-11-04T07:17:51.457Z"
+        }
+      ],
+      "dispatchedStepIds": [
+        "step_67d44c8faad445fdb29fa833372a0b0f",
+        "turn_chat_2ba453625ba24d96bb4aae3b32a8ede8_member_51f9da9a09f74f76b13b52baf3680e6a",
+        "turn_chat_f516a2fba4d34c6985ad79b233517244_member_51f9da9a09f74f76b13b52baf3680e6a",
+        "step_4dc8f65134c847d393bccd7562f413d9",
+        "turn_chat_4ab73b0b46e64a2fbd67331b0e1b197e_member_2ea2ba3996204f78af96c4782cf59c9f",
+        "turn_chat_44683d3f5f9a4ed6a5debcd2f7076455_member_2ea2ba3996204f78af96c4782cf59c9f",
+        "step_2d62f5462da4464ca54a6bbe5f0e9f89",
+        "turn_chat_9a9d89d432f04b5d8b1217c3464d5566_member_f8c608cf617447049c9957f8acd5e3a5",
+        "turn_chat_e32669695e2b49fd8591984f2f95a1b3_member_f8c608cf617447049c9957f8acd5e3a5"
+      ],
+      "lastError": null,
+      "waitingForNative": false
+    }
+  ],
+  "finishedAt": "2026-11-04T07:17:51.583Z",
+  "temporaryBindingsRemoved": true
+}

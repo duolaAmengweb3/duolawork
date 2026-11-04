@@ -9,7 +9,7 @@ import {parseDocument,isSeq,isMap} from 'yaml';
 import {privateJson} from './storage.mjs';
 const exec=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_ID='duola-agent-hub-desktop';
-const runtimeFiles=['dsh-connector.mjs','coding-client.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
+const runtimeFiles=['dsh-connector.mjs','coding-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
 const read=file=>fs.readFile(file,'utf8').then(JSON.parse);
 
 // Patch only Hub's own plugin node. YAML tags and comments remain data, never evaluated here.
@@ -89,11 +89,11 @@ export class DshDesktopHost {
  }
  async startOnce({launch}){
   let d=await this.discover();if(!d.installed)throw Error('请先安装并登录官方 DeepSeek Harness 桌面版');if(!d.supported)throw Error('这个桌面版本尚未通过接入兼容验证，未更换或降级软件');
-  if(!d.running){if(!launch)throw Error('官方桌面版已关闭，打开后会继续原会话');await this.open();for(let i=0;i<60;i++){d=await this.discover();if(d.running)break;await new Promise(r=>setTimeout(r,300));}if(!d.running)throw Error('请完成官方桌面版启动；没有另开本地 Web 版');}
+  if(!d.running){if(!launch)throw Error('官方桌面版已关闭，打开后会继续原会话');await this.deploy(d.profile);await this.open();for(let i=0;i<60;i++){d=await this.discover();if(d.running)break;await new Promise(r=>setTimeout(r,300));}if(!d.running)throw Error('请完成官方桌面版启动；没有另开本地 Web 版');}
   this.progress='正在连接已登录的官方桌面版';
   try{
    await this.deploy(d.profile);
-   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready)return health;}catch{}await new Promise(r=>setTimeout(r,300));}
+   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready&&health.protocolVersion>=6)return health;if(state.pid===d.pid&&health.ready&&health.protocolVersion<6)throw Object.assign(Error('Hub 插件需要重新加载：请在 DeepSeek 当前工作结束后正常退出并重开一次，原登录、项目和会话保留，然后重新连接'),{reloadRequired:true});}catch(e){if(e.reloadRequired)throw e;}await new Promise(r=>setTimeout(r,300));}
    throw Error('桌面版尚未加载 Hub 插件，原登录和会话保留；请在原生插件页查看具体原因');
   }finally{this.progress=null;}
  }

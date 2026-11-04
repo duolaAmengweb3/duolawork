@@ -1,0 +1,281 @@
+{
+  "at": "2026-11-04T08:02:33.227Z",
+  "packaged": true,
+  "realNativeCodex": true,
+  "isolatedHub": true,
+  "desktopRestarts": 1,
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "4820d4d31e59c901"
+  },
+  "build": {
+    "id": "4820d4d31e59c901",
+    "version": "0.1.0",
+    "builtAt": "2026-11-04T07:47:18.741Z"
+  },
+  "members": [
+    {
+      "id": "member_24c280328c2c4a0eba3f411c97ad502d",
+      "ownerId": "owner",
+      "accountId": "account_f5f439ef99b14946a2809064c29202fb",
+      "platformId": "codex",
+      "name": "Codex · 网站",
+      "roleId": "research",
+      "mode": "connector",
+      "kind": "role-context",
+      "nativeAgentId": "",
+      "instructions": "",
+      "status": "unverified",
+      "createdAt": "2026-11-04T07:55:20.715Z",
+      "lastSeenAt": null,
+      "evidence": null,
+      "paused": false
+    },
+    {
+      "id": "member_94bb9c42859046699b857fe782e0e549",
+      "ownerId": "owner",
+      "accountId": "account_f5f439ef99b14946a2809064c29202fb",
+      "platformId": "codex",
+      "name": "Codex · App",
+      "roleId": "research",
+      "mode": "connector",
+      "kind": "role-context",
+      "nativeAgentId": "",
+      "instructions": "",
+      "status": "unverified",
+      "createdAt": "2026-11-04T07:55:20.755Z",
+      "lastSeenAt": null,
+      "evidence": null,
+      "paused": false
+    }
+  ],
+  "connections": [
+    {
+      "id": "member_24c280328c2c4a0eba3f411c97ad502d",
+      "platform": "codex",
+      "transport": "muse-poll",
+      "status": "verified",
+      "capabilities": [
+        "research",
+        "writing"
+      ],
+      "resourceKey": "native-member:member_24c280328c2c4a0eba3f411c97ad502d",
+      "revision": 8,
+      "toolSeenAt": "2026-11-04T07:55:38.168Z",
+      "verifiedAt": "2026-11-04T07:55:43.190Z",
+      "deliveryEvidence": {
+        "runId": "run_a711b0ed866b475f9de05661c5d488ae",
+        "attemptId": "attempt_15c4dd9e87fd4b4a9f80378dc658edf6",
+        "documentIds": [
+          "document_5b4eddfd04b544aa9dc0ed688d2daf2e"
+        ]
+      },
+      "pollSeconds": 15,
+      "needsAuthorization": false,
+      "setup": {
+        "stage": "verified",
+        "message": "原 Agent 已完成真实往返验证。",
+        "at": "2026-11-04T07:55:43.190Z"
+      },
+      "authSeenAt": "2026-11-04T07:57:31.331Z",
+      "authorizedAt": "2026-11-04T07:55:20.758Z",
+      "subscriptionActive": false,
+      "lastDeliveryAt": null,
+      "probe": {
+        "id": "run_a711b0ed866b475f9de05661c5d488ae",
+        "status": "completed",
+        "message": null
+      }
+    },
+    {
+      "id": "member_94bb9c42859046699b857fe782e0e549",
+      "platform": "codex",
+      "transport": "muse-poll",
+      "status": "configured",
+      "capabilities": [
+        "research",
+        "writing"
+      ],
+      "resourceKey": "native-member:member_94bb9c42859046699b857fe782e0e549",
+      "revision": 3,
+      "toolSeenAt": null,
+      "verifiedAt": null,
+      "deliveryEvidence": null,
+      "pollSeconds": 15,
+      "needsAuthorization": false,
+      "setup": {
+        "stage": "configuring",
+        "message": "接收方式已配置，等待原 Agent 真实回应验证。",
+        "at": "2026-11-04T07:55:20.830Z"
+      },
+      "authorizedAt": "2026-11-04T07:55:20.811Z",
+      "subscriptionActive": false,
+      "lastDeliveryAt": null,
+      "probe": null
+    }
+  ],
+  "coding": {
+    "members": [
+      {
+        "memberId": "member_24c280328c2c4a0eba3f411c97ad502d",
+        "engine": "codex",
+        "status": "idle",
+        "message": "已接入，正在后台接收消息",
+        "cwd": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-fD4qQc/local/coding/member_24c280328c2c4a0eba3f411c97ad502d/workspace",
+        "sessionCount": 1,
+        "lastRunAt": "2026-11-04T07:57:30.409Z",
+        "lastCompletedAt": "2026-11-04T07:57:57.703Z",
+        "lastReceiptAt": "2026-11-04T07:57:57.703Z",
+        "enabled": true,
+        "permissionMode": "full",
+        "sourceReady": true,
+        "manualAssignments": true,
+        "assignments": [
+          {
+            "channelId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+            "sessionId": "01a1a58e-329c-7363-beae-b87702ef7630",
+            "workspace": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-fD4qQc/local/coding/member_24c280328c2c4a0eba3f411c97ad502d/chats/channel_79e8ad6c8d784f39a94d55290eb385ae",
+            "title": "多个 Codex 协作",
+            "mode": "new"
+          }
+        ]
+      },
+      {
+        "memberId": "member_94bb9c42859046699b857fe782e0e549",
+        "engine": "codex",
+        "status": "idle",
+        "message": "运行端已连接，请在聊天中选择或新建工作会话",
+        "cwd": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-fD4qQc/local/coding/member_94bb9c42859046699b857fe782e0e549/workspace",
+        "sessionCount": 0,
+        "enabled": true,
+        "permissionMode": "full",
+        "sourceReady": true,
+        "manualAssignments": true,
+        "assignments": []
+      }
+    ],
+    "approvals": [],
+    "running": true
+  },
+  "channels": [
+    {
+      "channel": {
+        "id": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+        "name": "多个 Codex 协作",
+        "memberIds": [
+          "member_24c280328c2c4a0eba3f411c97ad502d",
+          "member_94bb9c42859046699b857fe782e0e549"
+        ],
+        "coordinatorId": null,
+        "status": "active",
+        "maxHops": 8,
+        "wakeIntervalSeconds": 60,
+        "messageSequence": 2,
+        "createdAt": "2026-11-04T07:55:22.086Z",
+        "legacyProjectId": null,
+        "direct": false,
+        "kind": "channel",
+        "revision": 3,
+        "updatedAt": "2026-11-04T07:57:52.740Z",
+        "lastMessage": "重开后正常",
+        "lastMessageAt": "2026-11-04T07:57:52.740Z"
+      },
+      "members": [
+        {
+          "id": "member_24c280328c2c4a0eba3f411c97ad502d",
+          "name": "Codex · 网站",
+          "isCoordinator": false
+        },
+        {
+          "id": "member_94bb9c42859046699b857fe782e0e549",
+          "name": "Codex · App",
+          "isCoordinator": false
+        }
+      ],
+      "messages": [
+        {
+          "id": "chat_8f0134f68e6342c984f573eef527d2cf",
+          "scopeId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "parentId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "number": 1,
+          "body": "这是安装版重开验收。请只在这个 Hub 群回答“重开后正常”，不查改文件、不创建任务、不@其他成员。",
+          "authorId": "owner",
+          "createdAt": "2026-11-04T07:57:26.192Z",
+          "type": "message",
+          "mentions": [
+            "member_24c280328c2c4a0eba3f411c97ad502d"
+          ],
+          "mentionsFromText": false,
+          "replyTo": null,
+          "rootId": null,
+          "hops": 0,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T07:57:26.192Z"
+        },
+        {
+          "id": "chat_cddf4877e85e4b4aaca417d2fa4e7489",
+          "scopeId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "parentId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "number": 2,
+          "body": "重开后正常",
+          "authorId": "member_24c280328c2c4a0eba3f411c97ad502d",
+          "createdAt": "2026-11-04T07:57:52.740Z",
+          "type": "message",
+          "mentions": [],
+          "mentionsFromText": false,
+          "replyTo": "chat_8f0134f68e6342c984f573eef527d2cf",
+          "rootId": "chat_8f0134f68e6342c984f573eef527d2cf",
+          "hops": 1,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T07:57:52.740Z"
+        }
+      ],
+      "before": null,
+      "documents": [],
+      "decisions": [],
+      "knowledge": [],
+      "meetings": [],
+      "meetingsCursor": null,
+      "tasks": [],
+      "suggestions": [],
+      "notifications": [
+        {
+          "id": "notice_turn_chat_8f0134f68e6342c984f573eef527d2cf_member_24c280328c2c4a0eba3f411c97ad502d",
+          "stepId": "turn_chat_8f0134f68e6342c984f573eef527d2cf_member_24c280328c2c4a0eba3f411c97ad502d",
+          "memberId": "member_24c280328c2c4a0eba3f411c97ad502d",
+          "status": "claimed",
+          "createdAt": "2026-11-04T07:57:26.192Z",
+          "dueAt": "2026-11-04T07:57:26.192Z",
+          "attempts": 0
+        }
+      ],
+      "activity": [
+        {
+          "id": "turn_chat_8f0134f68e6342c984f573eef527d2cf_member_24c280328c2c4a0eba3f411c97ad502d",
+          "scopeId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "parentId": "member_24c280328c2c4a0eba3f411c97ad502d",
+          "memberId": "member_24c280328c2c4a0eba3f411c97ad502d",
+          "messageId": "chat_8f0134f68e6342c984f573eef527d2cf",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_8f0134f68e6342c984f573eef527d2cf",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-04T07:57:26.192Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-04T07:57:52.740Z",
+          "claimedAt": "2026-11-04T07:57:48.537Z",
+          "expiresAt": "2026-11-04T08:27:48.537Z",
+          "mergedMessageIds": [
+            "chat_8f0134f68e6342c984f573eef527d2cf"
+          ],
+          "completedAt": "2026-11-04T07:57:52.740Z"
+        }
+      ]
+    }
+  ]
+}

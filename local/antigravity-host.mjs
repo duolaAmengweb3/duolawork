@@ -8,7 +8,7 @@ import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {privateJson} from './storage.mjs';
 const execute=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const SIDECAR='duola-agent-hub';
-const assets=['antigravity-sidecar.mjs','antigravity-tools.mjs','coding-client.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
+const assets=['antigravity-sidecar.mjs','antigravity-tools.mjs','coding-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
 export function sidecarConfig(raw){const d=raw===null?{}:JSON.parse(raw);if(d.sidecars?.[SIDECAR]&&d.sidecars[SIDECAR].enabled!==true)throw Error('Hub 原生连接已在 Antigravity 中停用，请由用户重新启用');return{...d,sidecars:{...d.sidecars,[SIDECAR]:{...(d.sidecars?.[SIDECAR]||{}),enabled:true}}};}
 export class AntigravityDesktopHost {
  constructor(dataDir,{home=os.homedir(),exec=execute,source=here}={}){Object.assign(this,{dataDir,home,exec,source});this.kind='antigravity-desktop';this.root=process.env.AGENT_HUB_TEST_MODE==='1'&&process.env.AGENT_HUB_TEST_ANTIGRAVITY_BRIDGE_ROOT||path.join(dataDir,'native-bridges/antigravity-desktop');this.stateFile=path.join(this.root,'connector.json');}

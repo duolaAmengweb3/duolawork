@@ -49,3 +49,14 @@ test('the combined native claim command still performs the real member list and 
 test('native agentapi uses the inherited official binary and keeps native secrets out of arguments',async()=>{
  let call;const n=new AntigravityNative({env:{ANTIGRAVITY_AGENTAPI_EXE:'/official/language_server',ANTIGRAVITY_CSRF_TOKEN:'secret-native-value'},exec:async(...args)=>call=args});await n.send(id,'test');assert.deepEqual(call[1],['agentapi','send-message',id,'test']);assert.ok(!JSON.stringify(call.slice(0,2)).includes('secret-native-value'));
 });
+
+test('one desktop source routes two chat contexts without claiming another context or losing bindings on restart',async t=>{
+ const f=await fixture(t),second='ed7e7e51-e0cf-492e-8413-f9e64828540e';let work=[{stepId:'b',channelId:'channel_b',status:'ready'}];
+ f.native.summaries=async()=>Object.fromEntries([id,second].map(key=>[key,{summary:key,workspaces:[{workspaceFolderAbsoluteUri:'file://'+f.dir}],status:'CASCADE_RUN_STATUS_IDLE'}]));
+ f.client.tool=async name=>name==='list_work'?{work}:{ok:true};f.setWork(true);
+ await f.sidecar.bind({sessionId:id,workspace:f.dir,grantFile:f.grantFile,channelIds:['channel_a'],verification:true});await f.sidecar.bind({sessionId:second,workspace:f.dir,grantFile:f.grantFile,channelIds:['channel_b'],verification:false});
+ await f.sidecar.poll();assert.equal(f.sends.length,1);assert.equal(f.sends[0].session,second);
+ const state=JSON.parse(await fs.readFile(f.stateFile));const wrong=await fetch(state.controlUrl+'/tool',{method:'POST',headers:{Authorization:'Bearer '+state.controlToken,'Content-Type':'application/json'},body:JSON.stringify({sessionId:id,operation:'claim_step',name:'b'})});assert.equal(wrong.status,400);
+ work=[{stepId:'a',channelId:'channel_a',status:'ready'}];await f.sidecar.poll();assert.equal(f.sends[1].session,id);
+ await f.sidecar.stop();const next=await new AntigravitySidecar({stateFile:f.stateFile,native:f.native,clientFactory:()=>f.client,pollMs:3600000}).start();t.after(()=>next.stop());assert.deepEqual(next.bindings.get(second).channelIds,['channel_b']);
+});

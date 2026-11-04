@@ -18,6 +18,7 @@ import {openProviderApp} from './provider-app.mjs';
 import {CodingManager} from './coding-manager.mjs';
 import {DshManager} from './dsh-manager.mjs';
 import {AntigravityDesktopHost} from './antigravity-host.mjs';
+import {ChatSessions} from './chat-sessions.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
@@ -31,6 +32,8 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const dsh=new DshManager({config,dataDir,maintenance,host:dshHost});await dsh.load();
  const ag=new DshManager({config,dataDir,maintenance,host:antigravityHost||new AntigravityDesktopHost(dataDir),platformId:"antigravity",engine:"antigravity",fileName:"antigravity-desktop-members.json",requireFreshReceipt:true});await ag.load();
  for(const r of Object.values(ag.records).filter(r=>r.enabled)){const prior=coding.records[r.memberId];if(prior?.enabled){prior.enabled=false;prior.status="paused";prior.message="当前由桌面原会话接收，原后台会话保留";await coding.save();}}
+ await dsh.migrateExisting().catch(()=>{});await ag.migrateExisting().catch(()=>{});
+ const chatSessions=new ChatSessions({coding,dsh,ag});
  const availability=state=>{const ready=automaticAvailability(state,{supports:(a,m)=>connections.supports(a,m),credentials:vault.data.members,locked:vault.locked});for(const m of state.members)if(browsers.isManual(m.accountId))ready[m.id]={canDispatch:false,reason:'正在纯手动登录，任务派发已暂停'};return ready;};
  const runner=new Runner({cloud,vault,browsers,connections,config,notify,maintenance});let origin,browserNetworkCheck=null,networkChecking=false,keepBrowsersOnShutdown=false,clientView={kind:'browser',ready:false,buildId:null};
  const server=http.createServer(async(req,res)=>{try{const host=req.headers.host||'';if(origin?host!==new URL(origin).host:!host.startsWith('127.0.0.1:'))return json(res,{message:'仅限本机访问'},403);const url=new URL(req.url,origin||'http://127.0.0.1');
@@ -39,10 +42,14 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json')&&!(url.pathname==='/api/v2/files'&&req.headers['content-type']==='application/octet-stream'))return json(res,{message:'需要 JSON 请求'},415);
  if(url.pathname==='/api/v2/catalog'&&req.method==='GET'){
   const c=await requestJson(config.endpoint+'/v2/catalog',{token:config.adminKey});
-  for(const p of c.platforms)if(p.id==='antigravity')p.status='local_available';
+  for(const p of c.platforms)if(['antigravity','codex'].includes(p.id))p.status='local_available';
   if(!c.platforms.some(p=>p.id==='deepseek-harness'))c.platforms.push({id:'deepseek-harness',name:'DeepSeek Harness',kind:'coding',status:'local_available',registered:false});
   return json(res,c);
  }
+ if(url.pathname==='/api/local/sources/status'&&req.method==='GET')return json(res,await chatSessions.status(url.searchParams.get('memberId')));
+ if(url.pathname==='/api/local/sources/connect'&&req.method==='POST')return json(res,await chatSessions.connect(await body(req)));
+ if(url.pathname==='/api/local/chat-sessions'&&req.method==='GET')return json(res,await chatSessions.options(Object.fromEntries(url.searchParams)));
+ if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST')return json(res,await chatSessions.assign(await body(req)));
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
  if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status();return json(res,{...s,members:[...s.members.filter(m=>!ag.records[m.memberId]?.enabled),...dsh.status(),...ag.status().filter(m=>m.enabled)]});}
  if(url.pathname==='/api/local/dsh/status'&&req.method==='GET')return json(res,{...(await dsh.hostFor(url.searchParams.get('memberId')).status()),preparing:!!dsh.preparing,prepareError:dsh.prepareError,members:dsh.status()});
@@ -60,7 +67,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   const input=await body(req),prior=coding.records[input.memberId];if(prior){if(prior.engine!=='antigravity')throw Error('成员平台不一致');if(prior.enabled)await coding.pause({memberId:input.memberId});}
   return json(res,await ag.connect({...input,mode:'existing'}));
  }
- if(url.pathname==='/api/local/antigravity/resume'&&req.method==='POST')return json(res,await ag.resume(await body(req)));
+ if(url.pathname==='/api/local/antigravity/resume'&&req.method==='POST'){const input=await body(req);if(coding.records[input.memberId]?.enabled)await coding.pause(input);return json(res,await ag.resume(input));}
  if(url.pathname==='/api/local/antigravity/use-managed'&&req.method==='POST'){
   const {memberId}=await body(req);if(ag.records[memberId]?.status==='working')throw Error('原会话还在处理，请等本轮结束再切换');await ag.disconnect(memberId);return json(res,coding.records[memberId]?await coding.resume({memberId}):await coding.connect({memberId,engine:'antigravity'}));
  }

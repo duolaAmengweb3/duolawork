@@ -98,16 +98,16 @@ export class NativeAgent{
   }
   return this.auth;
  }
- async session({id,tools=[],mcpServers=[]}){
+ async session({id,tools=[],mcpServers=[],cwd=this.cwd}){
   if(id&&this.sessions.has(id))return this.sessions.get(id);
   let data,session;
   if(this.engine==='codex'){
    const permission=this.permissionMode==='full'?{approvalPolicy:'never',sandbox:'danger-full-access'}:this.permissionMode==='ask'?{approvalPolicy:'on-request',sandbox:'workspace-write'}:{};
-   data=await this.rpc.call(id?'thread/resume':'thread/start',id?{threadId:id,excludeTurns:true,...permission}:{cwd:this.cwd,dynamicTools:tools.map(t=>({name:'hub_'+t.name,description:t.description,inputSchema:t.inputSchema})),serviceName:'agent-hub',...permission});
+   data=await this.rpc.call(id?'thread/resume':'thread/start',id?{threadId:id,excludeTurns:true,...permission}:{cwd,dynamicTools:tools.map(t=>({name:'hub_'+t.name,description:t.description,inputSchema:t.inputSchema})),serviceName:'agent-hub',...permission});
    session={id:data.thread.id,model:data.model||null,modelProvider:data.modelProvider||data.thread.modelProvider||null};
   }else{
    const appended=this.capabilities.agentCapabilities?._meta?.antigravity?.systemPrompt?.append===true?{_meta:{antigravity:{systemPrompt:{append:'Hub 已授权协作工具的完整参数定义如下；可直接使用对应 MCP 工具，无需先运行终端命令扫描工具目录：'+JSON.stringify(tools)}}}}:{};
-   data=await this.rpc.call(id?'session/resume':'session/new',{...(id?{sessionId:id}:{}),cwd:this.cwd,mcpServers,...appended},120000);
+   data=await this.rpc.call(id?'session/resume':'session/new',{...(id?{sessionId:id}:{}),cwd,mcpServers,...appended},120000);
    session={id:id||data.sessionId,model:data.models?.currentModelId||null,modelProvider:'native-gemini'};
    if(['full','ask'].includes(this.permissionMode))await this.rpc.call('session/set_mode',{sessionId:session.id,modeId:this.permissionMode==='full'?'yolo':'default'});
   }

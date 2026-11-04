@@ -100,3 +100,16 @@ test('native Host health stays not ready until persisted bindings and scoped too
 test('archived native sessions are not offered as active work and are never silently reopened by binding',async()=>{
  const f=await fixture();try{f.connector.ctx.workspaceRegistry={archivedSessionIds:[f.agent.id]};assert.equal((await f.connector.sessions()).items.length,0);await assert.rejects(f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile}),/does not exist/);assert.equal(f.prompts.length,0);}finally{await f.cleanup();}
 });
+
+test('two native contexts for one Hub member are routed by chat; completion releases the next context and scopes survive restart',async()=>{
+ const f=await fixture();try{
+  const second={...f.agent,id:'second-native-context'};
+  f.options.ctx.sessionController.list=async()=>({items:[{sessionId:f.agent.id,cwd:f.project},{sessionId:second.id,cwd:f.project}]});
+  f.options.ctx.sessionController.resolveAgent=async id=>({agent:id===second.id?second:f.agent});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['channel_a'],verification:true});
+  await f.connector.bind({sessionId:second.id,workspace:f.project,grantFile:f.grantFile,channelIds:['channel_b'],verification:false});
+  f.setWork([{stepId:'b',channelId:'channel_b',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts[0].sessionId,second.id);
+  f.setWork([{stepId:'a',channelId:'channel_a',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts[1].sessionId,f.agent.id);
+  await f.restart();assert.deepEqual(f.connector.bindings.get(second.id).channelIds,['channel_b']);await f.connector.poll();assert.equal(f.prompts.length,2);
+ }finally{await f.cleanup();}
+});

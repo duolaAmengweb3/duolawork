@@ -6,6 +6,7 @@ import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {CodingMemberClient} from './coding-client.mjs';
 import {privateJson} from './storage.mjs';
 import {safeError} from './native-agent.mjs';
+import {acceptsWork} from './session-routing.mjs';
 
 export const name='agent-hub-existing-session';
 export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry'];
@@ -31,7 +32,7 @@ export class DshConnector {
  }
  async save(){
   const records=new Map((this.state.bindings||[]).filter(b=>!this.removed.has(b.sessionId)).map(b=>[b.sessionId,b]));
-  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,dispatched:[...b.dispatched]});
+  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched]});
   this.state={...this.state,bindings:[...records.values()]};await privateJson(this.stateFile,this.state);
  }
  async sessionInfo(id){
@@ -45,11 +46,11 @@ export class DshConnector {
   const pending=this.bindingJobs.get(input.sessionId);if(pending){await pending;return this.bindOnce(input);}
   const job=this.bindOnce(input);this.bindingJobs.set(input.sessionId,job);try{return await job;}finally{this.bindingJobs.delete(input.sessionId);}
  }
- async bindOnce({sessionId,workspace,grantFile,dispatched=[]}){
+ async bindOnce({sessionId,workspace,grantFile,dispatched=[],channelIds,verification}){
   if(this.bindings.has(sessionId)){
    const b=this.bindings.get(sessionId),c=await this.clientFactory(grantFile).credentials();
    if(b.memberId!==c.memberId||await fs.realpath(workspace)!==b.workspace)throw Error('Original session is already bound to another Hub member');
-   return this.publicBinding(b);
+   b.channelIds=channelIds;b.verification=verification;await this.save();return this.publicBinding(b);
   }
   await this.sessionInfo(sessionId);
   const found=await this.ctx.sessionController.resolveAgent(sessionId);
@@ -59,8 +60,8 @@ export class DshConnector {
   if(actual!==await fs.realpath(workspace))throw Error('Original session workspace does not match the selected project');
   if((await fs.stat(grantFile)).mode&0o077)throw Error('Hub member grant must be private (0600)');
   const client=this.clientFactory(grantFile),credential=await client.credentials();
-  for(const b of this.bindings.values())if(b.memberId===credential.memberId)throw Error('Hub member is already bound to another native session');
-  const b={sessionId,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),disposers:[],toolCalls:[],abort:new AbortController()};
+
+  const b={sessionId,channelIds,verification,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),disposers:[],toolCalls:[],abort:new AbortController()};
   const definitions=await client.tools();
   try{
    b.definitions=definitions;this.removed.delete(sessionId);this.bindings.set(sessionId,b);this.attachAgent(agent);
@@ -76,14 +77,15 @@ export class DshConnector {
      output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
      execute:async(args,exec)=>{
       if(this.closed||this.bindings.get(b.sessionId)!==b||exec.agent.id!==b.sessionId)throw Error('Hub tool is not authorized for this native session');
-      const result=await b.client.tool(tool.name,args);
+      if(tool.name==='claim_work'){const {work}=await b.client.tool('list_work');if(!work.some(w=>w.stepId===args.stepId&&acceptsWork(b,w)))throw Error('工作属于其他聊天的会话，未领取');}
+      const result=await b.client.tool(tool.name,args);if(tool.name==='list_work')result.work=result.work.filter(w=>acceptsWork(b,w));
       b.toolCalls.push({name:tool.name,at:new Date().toISOString()});b.toolCalls=b.toolCalls.slice(-100);
       return result;
      },
     }));
   }
  }
- publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,lastError:b.lastError};}
+ publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...b.dispatched],lastError:b.lastError};}
  async poll(){
   if(this.closed||this.busy)return;this.busy=true;
   try{
@@ -92,7 +94,8 @@ export class DshConnector {
     if(!signal.hasWork){b.lastError=null;continue;}
     const {work}=await b.client.tool('list_work');
     if(this.closed||this.bindings.get(b.sessionId)!==b)continue;
-    const next=work.find(w=>w.status==='ready'&&!b.dispatched.has(w.stepId));
+    if([...this.bindings.values()].some(other=>other.memberId===b.memberId&&work.some(w=>other.dispatched.has(w.stepId))))continue;
+    const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(w.stepId));
     if(!next)continue;
     await this.sessionInfo(b.sessionId);
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
@@ -113,7 +116,7 @@ export class DshConnector {
    const expected=Buffer.from('Bearer '+this.state.controlToken),got=Buffer.from(req.headers.authorization||'');
    if(req.headers.origin||got.length!==expected.length||!timingSafeEqual(got,expected))return send(401,{error:'Local connector authorization required'});
    const route=new URL(req.url,'http://127.0.0.1').pathname;
-   if(req.method==='GET'&&route==='/health')return send(200,{ready:this.ready,protocolVersion:5,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
+   if(req.method==='GET'&&route==='/health')return send(200,{ready:this.ready,protocolVersion:6,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
    if(req.method==='GET'&&route==='/sessions')return send(200,await this.sessions());
    if(req.method!=='POST')return send(404,{error:'Unknown connector route'});
    let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return send(413,{error:'Request too large'});}

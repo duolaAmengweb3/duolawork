@@ -1,0 +1,124 @@
+{
+  "at": "2026-11-04T07:36:49.873Z",
+  "platform": "deepseek-harness",
+  "realOfficialDesktop": true,
+  "isolatedHub": true,
+  "claudeTouched": false,
+  "checks": [
+    "Original desktop source connects without choosing or creating a work session",
+    "Two Hub chats use different newly-created official DSH sessions and route real native replies to the correct chat",
+    "Exact per-chat bindings survive receiver reload; all existing provider sessions and other Hub bindings retained"
+  ],
+  "receipts": [
+    {
+      "channelId": "channel_26e2210f81934bdba4348c590accc0ba",
+      "messageId": "chat_4255580fe9a045e4b8ce6977d11749bf",
+      "body": "桌面甲已收到"
+    },
+    {
+      "channelId": "channel_15f9c042c71f4aac926b1242c9751811",
+      "messageId": "chat_c8ab2fe974c0417b873c3b8bc9f5973b",
+      "body": "桌面乙已收到"
+    }
+  ],
+  "priorAttempts": [
+    {
+      "at": "2026-11-04T07:15:31.417Z",
+      "failure": "Native desktop was still running Hub bridge protocol 5. The desktop was reopened while idle; original login and session IDs survived, protocol 6 became ready."
+    },
+    {
+      "at": "2026-11-04T07:28:54.434Z",
+      "failure": "real desktop verification timed out",
+      "checks": [
+        "Original desktop source connects without choosing or creating a work session"
+      ]
+    }
+  ],
+  "bindings": {
+    "channel_26e2210f81934bdba4348c590accc0ba": {
+      "sessionId": "session-8ff1751a-8550-412a-9762-f1c4be1caec6",
+      "workspace": "/Users/duola/.local/share/agent-hub/session-proof/dsh-20261104/member_ec76b1ac2e9b474a96da9be6cd9cff34/0",
+      "title": "新会话",
+      "mode": "new"
+    },
+    "channel_15f9c042c71f4aac926b1242c9751811": {
+      "sessionId": "session-640301ca-96bf-4a89-ba14-874a0f73cd91",
+      "workspace": "/Users/duola/.local/share/agent-hub/session-proof/dsh-20261104/member_ec76b1ac2e9b474a96da9be6cd9cff34/1",
+      "title": "新会话",
+      "mode": "new"
+    }
+  },
+  "bridge": [
+    {
+      "sessionId": "session-8ff1751a-8550-412a-9762-f1c4be1caec6",
+      "workspace": "/Users/duola/.local/share/agent-hub/session-proof/dsh-20261104/member_ec76b1ac2e9b474a96da9be6cd9cff34/0",
+      "memberId": "member_ec76b1ac2e9b474a96da9be6cd9cff34",
+      "channelIds": [
+        "channel_26e2210f81934bdba4348c590accc0ba"
+      ],
+      "verification": true,
+      "toolCalls": [
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:36:54.506Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:36:56.319Z"
+        },
+        {
+          "name": "submit_work",
+          "at": "2026-11-04T07:36:58.216Z"
+        },
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:37:02.591Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:37:04.302Z"
+        },
+        {
+          "name": "post_message",
+          "at": "2026-11-04T07:37:06.506Z"
+        }
+      ],
+      "dispatchedCount": 2,
+      "dispatchedStepIds": [
+        "step_68ae571df1d14fe29fe31cf413a58b25",
+        "turn_chat_3d0d4b8fb23746cb837fafc92d0ccd38_member_ec76b1ac2e9b474a96da9be6cd9cff34"
+      ],
+      "lastError": null
+    },
+    {
+      "sessionId": "session-640301ca-96bf-4a89-ba14-874a0f73cd91",
+      "workspace": "/Users/duola/.local/share/agent-hub/session-proof/dsh-20261104/member_ec76b1ac2e9b474a96da9be6cd9cff34/1",
+      "memberId": "member_ec76b1ac2e9b474a96da9be6cd9cff34",
+      "channelIds": [
+        "channel_15f9c042c71f4aac926b1242c9751811"
+      ],
+      "verification": false,
+      "toolCalls": [
+        {
+          "name": "list_work",
+          "at": "2026-11-04T07:37:09.689Z"
+        },
+        {
+          "name": "claim_work",
+          "at": "2026-11-04T07:37:11.320Z"
+        },
+        {
+          "name": "post_message",
+          "at": "2026-11-04T07:37:13.356Z"
+        }
+      ],
+      "dispatchedCount": 1,
+      "dispatchedStepIds": [
+        "turn_chat_d3be086c8bc14741aff7fb39bf3da0e5_member_ec76b1ac2e9b474a96da9be6cd9cff34"
+      ],
+      "lastError": null
+    }
+  ],
+  "finishedAt": "2026-11-04T07:37:13.698Z",
+  "temporaryBindingsRemoved": true
+}

@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-04T07:57:53.704Z",
+  "packaged": true,
+  "buildId": "4820d4d31e59c901",
+  "exactSessionBindingsPreserved": true,
+  "bindings": [
+    {
+      "memberId": "member_24c280328c2c4a0eba3f411c97ad502d",
+      "assignments": [
+        {
+          "channelId": "channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "sessionId": "01a1a58e-329c-7363-beae-b87702ef7630",
+          "workspace": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-fD4qQc/local/coding/member_24c280328c2c4a0eba3f411c97ad502d/chats/channel_79e8ad6c8d784f39a94d55290eb385ae",
+          "title": "多个 Codex 协作",
+          "mode": "new"
+        }
+      ]
+    },
+    {
+      "memberId": "member_94bb9c42859046699b857fe782e0e549",
+      "assignments": []
+    }
+  ],
+  "reply": {
+    "id": "chat_cddf4877e85e4b4aaca417d2fa4e7489",
+    "body": "重开后正常"
+  },
+  "providerLoginChanged": false,
+  "originalUserWorkChanged": false
+}

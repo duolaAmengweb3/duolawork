@@ -8,6 +8,7 @@ import {timingSafeEqual,createHash} from 'node:crypto';
 import {privateJson} from './storage.mjs';
 import {CodingMemberClient} from './coding-client.mjs';
 import {safeError} from './native-agent.mjs';
+import {acceptsWork} from './session-routing.mjs';
 const execute=promisify(execFile);
 const UUID=/^[a-f0-9-]{36}$/i;
 
@@ -59,23 +60,23 @@ export class AntigravitySidecar {
  }
  async sessions(){return{items:Object.entries(await this.native.summaries()).map(([id,s])=>nativeSession(id,s))};}
  async bind(input){const job=this.bindingWrites.catch(()=>{}).then(()=>this.bindOnce(input));this.bindingWrites=job.catch(()=>{});return job;}
- async bindOnce({sessionId,workspace,grantFile}){
+ async bindOnce({sessionId,workspace,grantFile,channelIds,verification}){
   const s=(await this.sessions()).items.find(s=>s.id===sessionId);if(!s)throw Error('原桌面会话不存在，未新建替代会话');
   if(!s.workspace||await fs.realpath(s.workspace)!==await fs.realpath(workspace))throw Error('原会话项目与所选项目不一致');
   if((await fs.stat(grantFile)).mode&0o077)throw Error('Hub grant must be private');
   const client=this.clientFactory(grantFile),c=await client.credentials();
-  for(const b of this.bindings.values())if((b.sessionId===sessionId&&b.memberId!==c.memberId)||(b.memberId===c.memberId&&b.sessionId!==sessionId))throw Error('该会话或成员已有另一项连接');
-  const prior=this.bindings.get(sessionId);if(prior)return this.publicBinding(prior);
-  const b={sessionId,workspace:s.workspace,grantFile,memberId:c.memberId,client,toolCalls:[]};this.bindings.set(sessionId,b);await this.saveBindings();return this.publicBinding(b);
+  for(const b of this.bindings.values())if((b.sessionId===sessionId&&b.memberId!==c.memberId))throw Error('该会话或成员已有另一项连接');
+  const prior=this.bindings.get(sessionId);if(prior){prior.channelIds=channelIds;prior.verification=verification;await this.saveBindings();return this.publicBinding(prior);}
+  const b={sessionId,channelIds,verification,workspace:s.workspace,grantFile,memberId:c.memberId,client,toolCalls:[]};this.bindings.set(sessionId,b);await this.saveBindings();return this.publicBinding(b);
  }
- publicBinding(b){return{sessionId:b.sessionId,memberId:b.memberId,workspace:b.workspace,toolCalls:b.toolCalls,lastError:b.lastError,waitingForNative:b.waitingForNative||false};}
- async saveBindings(){this.state.bindings=[...this.bindings.values()].map(({sessionId,workspace,grantFile,memberId})=>({sessionId,workspace,grantFile,memberId}));await this.save();}
+ publicBinding(b){return{sessionId:b.sessionId,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,workspace:b.workspace,toolCalls:b.toolCalls,dispatchedStepIds:Object.values(this.state.deliveries).filter(d=>d.sessionId===b.sessionId).map(d=>d.stepId),lastError:b.lastError,waitingForNative:b.waitingForNative||false};}
+ async saveBindings(){this.state.bindings=[...this.bindings.values()].map(({sessionId,workspace,grantFile,memberId,channelIds,verification})=>({sessionId,workspace,grantFile,memberId,channelIds,verification}));await this.save();}
  async unbind(sessionId){this.bindings.delete(sessionId);await this.saveBindings();return{disconnected:true,nativeSessionRetained:true};}
  async poll(){
   if(this.closed||this.polling||!this.ready)return;this.polling=true;
   try{for(const b of this.bindings.values())try{
    if(!(await b.client.api('/v2/signal',{timeout:15000})).hasWork){b.lastError=null;continue;}
-   const {work}=await b.client.tool('list_work');const next=work.find(w=>w.status==='ready');if(!next)continue;
+   const {work}=await b.client.tool('list_work');if(work.some(w=>this.state.deliveries[b.memberId+':'+w.stepId]))continue;const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w));if(!next)continue;
    const key=b.memberId+':'+next.stepId,previous=this.state.deliveries[key];
    if(previous){if(previous.status==='uncertain')b.lastError='上次发送结果尚未确认，未重复执行；请查看原会话';continue;}
    const s=(await this.sessions()).items.find(s=>s.id===b.sessionId);if(!s)throw Error('原桌面会话暂不可用，未新建替代会话');
@@ -108,13 +109,14 @@ export class AntigravitySidecar {
     if(input.operation==='claim_step'){
      const {work}=await binding.client.tool('list_work');binding.toolCalls.push({name:'list_work',at:new Date().toISOString()});
      if(this.bindings.get(input.sessionId)!==binding)throw Error('此原会话的 Hub 连接已解除');
-     if(!work.some(w=>w.stepId===input.name&&w.status==='ready'))throw Error('指定工作已领取、已结束或不属于此成员，未领取其他消息');
+     if(!work.some(w=>w.stepId===input.name&&w.status==='ready'&&acceptsWork(binding,w)))throw Error('指定工作已领取、已结束或不属于此成员，未领取其他消息');
      const requestId=createHash('sha256').update(binding.memberId+':claim:'+input.name).digest('hex');
      const result=await binding.client.tool('claim_work',{requestId,stepId:input.name});binding.toolCalls.push({name:'claim_work',at:new Date().toISOString()});binding.toolCalls=binding.toolCalls.slice(-100);return send(200,result);
     }
     const tools=await binding.client.tools();if(this.bindings.get(input.sessionId)!==binding)throw Error('此原会话的 Hub 连接已解除');if(input.operation==='list_tools')return send(200,{tools});
     if(input.operation!=='call'||!tools.some(t=>t.name===input.name))throw Error('Unknown Hub tool');
-    const result=await binding.client.tool(input.name,input.args||{});binding.toolCalls.push({name:input.name,at:new Date().toISOString()});binding.toolCalls=binding.toolCalls.slice(-100);return send(200,result);
+    if(input.name==='claim_work'){const {work}=await binding.client.tool('list_work');if(!work.some(w=>w.stepId===input.args?.stepId&&acceptsWork(binding,w)))throw Error('工作属于其他聊天的会话，未领取');}
+    const result=await binding.client.tool(input.name,input.args||{});if(input.name==='list_work')result.work=result.work.filter(w=>acceptsWork(binding,w));binding.toolCalls.push({name:input.name,at:new Date().toISOString()});binding.toolCalls=binding.toolCalls.slice(-100);return send(200,result);
    }
    return send(404,{error:'Unknown route'});
   }catch(e){send(400,{error:safeError(e)});}

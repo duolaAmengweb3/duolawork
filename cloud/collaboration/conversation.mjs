@@ -217,6 +217,10 @@ async function enqueue(tx, identity, channel, message, memberId) {
   const turnId = `turn_${message.id}_${memberId}`;
   const deferred = message.hops > channel.maxHops;
   const available = !m.paused && connection?.status === "verified";
+  // Native source setup and per-chat context selection are separate. Preserve
+  // the first message while that context proves its round trip; only a verified
+  // member can see/claim it, and no webhook is sent during verification.
+  const nativePending = !m.paused && connection?.status === 'configured' && connection.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness'].includes(m.platformId);
   const turn = tx.put("channel_turn", {
     id: turnId,
     scopeId: channel.id,
@@ -227,7 +231,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     number: message.number,
     rootId: message.rootId || message.id,
     hops: message.hops || 0,
-    status: deferred ? "limited" : available ? "ready" : "unavailable",
+    status: deferred ? "limited" : available || nativePending ? "ready" : "unavailable",
     createdAt: tx.now,
     ...(message.meetingId ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
     reason: deferred
@@ -285,6 +289,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
 }
 
 export async function conversationWork(repo, identity, memberId) {
+  const connection=await repo.get("connection", memberId, false);if(connection?.status!=="verified")return [];
   const turns = (
     await Promise.all(
       ["ready", "active"].map((status) =>

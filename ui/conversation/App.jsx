@@ -51,6 +51,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
+import ChatSessionPicker from './ChatSessionPicker.jsx';
 import MeetingPanel, { MeetingCard } from './MeetingPanel.jsx';
 const ConnectWizard = lazy(() =>
   import("../v1/App.jsx").then((m) => ({ default: m.ConnectWizard })),
@@ -258,6 +259,9 @@ export default function App() {
   async function send(e) {
     e?.preventDefault();
     if (!draft.trim() || busy || !channel) return;
+    const targetMembers=groupMembers.filter(m=>!mentions.length||mentions.includes(m.id));
+    const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);return r?.enabled&&(r.manualAssignments||r.assignments?.length===0&&!r.sessionId&&r.sourceReady)&&!r.assignments?.some(b=>b.channelId===current);});
+    if(missing){setModal({type:'session',member:missing});return;}
     const input = {
       channelId: current,
       body: draft,
@@ -677,6 +681,7 @@ export default function App() {
                     )}
                   </div>
                 )}
+                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^channel_/.test(b.title)?b.title:(!local?.assignments?.length&&local?.sessionId?local.title:b?'本聊天工作会话':'选择工作会话')}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
                   {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
@@ -1129,6 +1134,7 @@ export default function App() {
               meeting: "开始讨论",
               "close-meeting": "记录会议结论",
               connect: "连接 " + modal.member?.name,
+              session: modal.member?.name + " · 工作会话",
               disconnect: "解除 " + modal.member?.name + " 的连接？",
               import: "继续以前的项目",
               history: "历史工作区",
@@ -1182,7 +1188,7 @@ export default function App() {
                 } catch {}
               }}
             />
-          ) : modal.type === "connect" ? (
+          ) : modal.type === "session" ? <ChatSessionPicker member={modal.member} channel={channel} onConnect={()=>setModal({type:'connect',member:modal.member})} onSaved={async()=>{setCodingStatus(await api('/local/coding/status'));await refreshWorkspace();setModal(null);}}/> : modal.type === "connect" ? (
             <Suspense fallback="正在打开接入设置…">
               <ConnectWizard
                 member={modal.member}
@@ -1480,7 +1486,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
   const [adding, setAdding] = useState(false),
     [title, setTitle] = useState(""),
     [platform, setPlatform] = useState("grok-bot"),
-    [platforms, setPlatforms] = useState([]);
+    [platforms, setPlatforms] = useState([]),[sourceAccount,setSourceAccount]=useState('');
   useEffect(() => {
     api("/v2/catalog").then((c) => setPlatforms(c.platforms));
   }, []);
@@ -1513,7 +1519,8 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
                 const current = await api("/state");
                 if (!current.platforms?.some(p => p.id === platform)) throw error;
               }
-              const { result: a } = await perform(() =>
+              const reused=workspace.accounts.find(a=>a.id===sourceAccount&&a.platformId===platform&&a.status!=='disabled');
+              const { result: a } = reused?{result:reused}:await perform(() =>
                 api("/action", {
                   type: "account.create",
                   payload: { platformId: platform, label: title },
@@ -1546,7 +1553,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
             <select
               aria-label="成员平台"
               value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
+              onChange={(e) => {setPlatform(e.target.value);setSourceAccount('');}}
             >
               {platforms.filter(p=>p.id!=='gemini-cli').map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1555,13 +1562,14 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               ))}
             </select>
           </label>
+          {['codex','antigravity','deepseek-harness'].includes(platform)&&<label>使用哪个账号连接<select aria-label="复用账号连接" value={sourceAccount} onChange={e=>setSourceAccount(e.target.value)}><option value="">本机原生登录</option>{workspace.accounts.filter(a=>a.platformId===platform&&a.status!=='disabled').map(a=><option key={a.id} value={a.id}>复用：{a.label||workspace.members.find(m=>m.accountId===a.id)?.name||a.platformId} 的连接</option>)}</select><span className="text-xs text-muted-foreground">可共用登录，各工作成员有独立名称与会话。</span></label>}
           <Button>保存成员</Button>
         </form>
       )}
       <div className="member-grid">
         {workspace.members.map((m) => {
           const c = workspace.connections.find((c) => c.id === m.id);
-          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&(!local.hostKind||local.verified)&&['idle','working'].includes(local.status)));
+          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=native?local?.enabled&&['idle','working'].includes(local.status):c?.status==='verified';
           return (
             <article key={m.id}>
               <Face name={m.name} id={m.id} />
@@ -1569,9 +1577,9 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               <small>{m.platformId}</small>
               <p>
                 <i className={ready ? "connected" : ""} />
-                {ready ? "已接入，可以聊天" : native&&local ? local.message : "等待连接"}
+                {ready ? (native?"运行端已连接 · 会话在聊天中选择":"已接入，可以聊天") : native&&local ? local.message : "等待连接"}
               </p>
-              {ready && (
+              {ready && !native && (
                 <small>
                   {c.transport === "grok-webhook"
                     ? "Grok 自动接收通道"

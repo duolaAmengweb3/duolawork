@@ -28,7 +28,7 @@ await fs.writeFile(
   }),
 );
 // Only desktop runtime dependencies; no Cloudflare credentials, source tests, or build caches.
-for (const name of ["playwright-core", "undici", "yaml"])
+for (const name of ["playwright-core", "undici", "yaml", "ws"])
   await fs.cp(
     path.join(root, "node_modules", name),
     path.join(appDir, "node_modules", name),

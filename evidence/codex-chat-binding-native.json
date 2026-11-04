@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-04T07:08:43.569Z",
+  "isolatedHub": true,
+  "realOriginalDaemon": true,
+  "existingUserConversationsTouched": false,
+  "newDedicatedNativeTestConversation": true,
+  "claudeTouched": false,
+  "checks": [
+    "Session picker finds the real already-running original daemon context; assignment keeps its exact ID and project",
+    "Official codex queue wakes that exact native session without --resume; the original session itself claims and replies using pre-Hub conversation-only memory",
+    "Original native project preserved; no GUI/provider/login settings changed"
+  ],
+  "nativeThreadId": "01a1a563-84a1-7ac2-95ba-d38a4ee6160b",
+  "receipt": {
+    "id": "chat_88a489ac0416481bbc13e3b0b127d7c1",
+    "body": "识别词：original_8d55b73d。已检查原项目目录，notes.txt 存在。未修改文件、未读取其他会话，未 @ 任何人。"
+  },
+  "finishedAt": "2026-11-04T07:09:48.396Z"
+}

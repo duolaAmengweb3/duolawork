@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-04T07:54:52.966562+00:00",
+  "buildId": "decbedc69f2b353c",
+  "isolatedPackagedUI": true,
+  "observedViaCUA": [
+    "Add Codex from member page; connect source creates no work session",
+    "Choose/create working context inside direct chat",
+    "Add second Codex with same account using UI; both source connections reuse login",
+    "Create group with both Codex identities; new group shows separate session choices and does not inherit DM binding"
+  ],
+  "polishFindings": [
+    "Public account projection has no label; now derives readable connection label from member name",
+    "Default session title exposed channel id; now uses chat name"
+  ],
+  "harnessRestartFailure": "The verifier closed its own isolated app before invoking a control that required a live backend. The harness exited; this attempt is not counted as packaged restart proof. Production app and data were not affected."
+}
