@@ -41,13 +41,13 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  }
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
  if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status();return json(res,{...s,members:[...s.members,...dsh.status()]});}
- if(url.pathname==='/api/local/dsh/status'&&req.method==='GET')return json(res,{...(await dsh.host.status()),preparing:!!dsh.preparing,prepareError:dsh.prepareError,members:dsh.status()});
- if(url.pathname==='/api/local/dsh/configure'&&req.method==='POST')return json(res,await dsh.host.configure(await body(req)));
- if(url.pathname==='/api/local/dsh/prepare'&&req.method==='POST')return json(res,await dsh.prepare());
- if(url.pathname==='/api/local/dsh/sessions'&&req.method==='GET')return json(res,await dsh.host.sessions());
+ if(url.pathname==='/api/local/dsh/status'&&req.method==='GET')return json(res,{...(await dsh.hostFor(url.searchParams.get('memberId')).status()),preparing:!!dsh.preparing,prepareError:dsh.prepareError,members:dsh.status()});
+ if(url.pathname==='/api/local/dsh/configure'&&req.method==='POST'){const input=await body(req);return json(res,await dsh.hostFor(input.memberId).configure(input));}
+ if(url.pathname==='/api/local/dsh/prepare'&&req.method==='POST')return json(res,await dsh.prepare(await body(req)));
+ if(url.pathname==='/api/local/dsh/sessions'&&req.method==='GET')return json(res,await dsh.hostFor(url.searchParams.get('memberId')).sessions());
  if(url.pathname==='/api/local/dsh/connect'&&req.method==='POST')return json(res,await dsh.connect(await body(req)));
  if(url.pathname==='/api/local/dsh/resume'&&req.method==='POST')return json(res,await dsh.resume(await body(req)));
- if(url.pathname==='/api/local/dsh/open'&&req.method==='POST')return json(res,await dsh.host.open());
+ if(url.pathname==='/api/local/dsh/open'&&req.method==='POST')return json(res,await dsh.hostFor((await body(req)).memberId).open());
  if(url.pathname==='/api/local/coding/discover'&&req.method==='GET')return json(res,await coding.runtime.discover());
  if(url.pathname==='/api/local/coding/connect'&&req.method==='POST')return json(res,await coding.connect(await body(req)));
  if(url.pathname==='/api/local/coding/pause'&&req.method==='POST')return json(res,await coding.pause(await body(req)));

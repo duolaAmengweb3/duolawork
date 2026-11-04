@@ -31,7 +31,7 @@ app.whenReady().then(async()=>{
  };
  uiSession.setPermissionCheckHandler((contents,permission,origin,details)=>allowCopy(contents,permission,origin,details));
  uiSession.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowCopy(contents,permission,details.requestingUrl,details)));
- win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1',title:'Agent Hub · 你的 AI 团队',backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+ win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1'||process.env.AGENT_HUB_TEST_VISIBLE==='1',title:'Agent Hub · 你的 AI 团队',backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return{action:'deny'};});
  win.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==runtime.url){event.preventDefault();if(/^https:\/\//.test(url))shell.openExternal(url);}});
  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Agent Hub',submenu:[{role:'about'},{type:'separator'},{role:'hide'},{role:'quit'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'视图',submenu:[{role:'reload'},{role:'togglefullscreen'},{role:'resetzoom'},{role:'zoomin'},{role:'zoomout'}]},{role:'windowMenu'}]));

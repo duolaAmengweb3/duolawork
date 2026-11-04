@@ -188,3 +188,8 @@ Hermes 支持自定义 OpenAI 兼容端点，配置本地网关的 `base_url`、
 - [Apidog：Hermes 与 OpenClaw](https://apidog.com/blog/hermes-agent-vs-openclaw/)
 - [IT 之家：AutoGLM 2.0](https://www.ithome.com/0/876/731.htm)
 - [Eesel：Perplexity Comet 价格](https://www.eesel.ai/blog/perplexity-comet-pricing)
+
+
+### 2026-11-04 官方 DSH 桌面版补齐
+
+新增成员默认连接已安装并登录的官方 DeepSeek Harness 桌面 App（macOS `0.2.1-rc.5`）：选择原会话，沿用原模型、登录、项目与工具；无需 API Key 或另起 Web 版。官方 GUI 原会话、本地实际工具、Hub 单聊、双成员 @、两个应用重开恢复已联测；历史 B.ai / Web 成员不迁移。安装状态及证据见 [接入验收记录](../Agent接入/03-实现状态与验收记录.md#官方桌面版接入补齐)。
