@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {DropdownMenu,DropdownMenuTrigger,DropdownMenuContent,DropdownMenuItem,DropdownMenuSeparator} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -260,7 +261,7 @@ export default function App() {
     e?.preventDefault();
     if (!draft.trim() || busy || !channel) return;
     const targetMembers=groupMembers.filter(m=>!mentions.length||mentions.includes(m.id));
-    const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);return r?.enabled&&(r.manualAssignments||r.assignments?.length===0&&!r.sessionId&&r.sourceReady)&&!r.assignments?.some(b=>b.channelId===current);});
+    const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);if(m.platformId==='claude-code')return !r?.assignments?.some(b=>b.channelId===current);return r?.enabled&&(r.manualAssignments||r.assignments?.length===0&&!r.sessionId&&r.sourceReady)&&!r.assignments?.some(b=>b.channelId===current);});
     if(missing){setModal({type:'session',member:missing});return;}
     const input = {
       channelId: current,
@@ -681,7 +682,7 @@ export default function App() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^channel_/.test(b.title)?b.title:(!local?.assignments?.length&&local?.sessionId?local.title:b?'本聊天工作会话':'选择工作会话')}</Button>;})}</div>
+                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^channel_/.test(b.title)?b.title:(!local?.assignments?.length&&local?.sessionId?local.title:b?'本聊天工作会话':'选择工作会话')}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
                   {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
@@ -1486,28 +1487,30 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
   const [adding, setAdding] = useState(false),
     [title, setTitle] = useState(""),
     [platform, setPlatform] = useState("grok-bot"),
-    [platforms, setPlatforms] = useState([]),[sourceAccount,setSourceAccount]=useState('');
+    [platforms, setPlatforms] = useState([]),[sourceAccount,setSourceAccount]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[editing,setEditing]=useState(null),[formError,setFormError]=useState(''),[saving,setSaving]=useState(false);
   useEffect(() => {
-    api("/v2/catalog").then((c) => setPlatforms(c.platforms));
+    api("/v2/catalog").then((c) => setPlatforms(c.platforms)).catch(e=>setFormError(e.message));
   }, []);
+  const platformName=id=>platforms.find(p=>p.id===id)?.name||({'grok-bot':'Grok Bot',dots:'Dot','chatgpt-agent':'Dot',codex:'Codex',antigravity:'Gemini · Antigravity','claude-code':'Claude Code','deepseek-harness':'DeepSeek Harness'}[id]||id);
+  const rows=workspace.members.map(m=>{const connection=workspace.connections.find(c=>c.id===m.id),native=['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=native?local?.enabled&&['idle','working'].includes(local.status):connection?.status==='verified',verified=ready&&connection?.status==='verified';return{m,native,local,ready,verified,status:local?.status==='working'?'正在工作':verified?'可沟通':ready?'等待首次回复':native&&local?.enabled?'未在线':'未连接'};});
+  const visible=rows.filter(({m})=>(filter==='all'||m.platformId===filter)&&(!query.trim()||(m.name+' '+platformName(m.platformId)).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())));
   return (
     <div className="members-page">
       <header>
         <div>
-          <small>YOUR AGENTS</small>
-          <h1>成员与连接</h1>
-          <p>每位 Agent 保留自己的账号、模型与工具。</p>
+          <h1>成员与连接 <span className="members-count">{rows.length}</span></h1>
+          <p>让你正在使用的 Agent 加入协作，继续用各自的模型和工具。</p>
         </div>
-        <Button onClick={() => setAdding(!adding)}>
+        <Button onClick={() => {setFormError('');setAdding(true);}}>
           <Plus size={16} />
           添加成员
         </Button>
       </header>
-      {adding && (
+      <Dialog open={adding} onOpenChange={value=>{if(!saving)setAdding(value);}}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>添加成员</DialogTitle><DialogDescription>选一个平台，给这位 Agent 起个容易辨认的名字。</DialogDescription></DialogHeader>
         <form
           className="comm-form member-add"
           onSubmit={async (e) => {
-            e.preventDefault();
+            e.preventDefault();if(saving)return;setSaving(true);setFormError('');
             try {
               const target = platforms.find(p => p.id === platform);
               if (!target?.registered) try {
@@ -1536,7 +1539,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               setTitle("");
               await refresh();
               setModal({ type: "connect", member: newMember });
-            } catch {}
+            } catch(e) {setFormError(e.message);}finally{setSaving(false);}
           }}
         >
           <label>
@@ -1545,6 +1548,8 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               aria-label="成员备注名称"
               value={title}
               required
+              maxLength={80}
+              placeholder="例如：Claude · 网站开发"
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
@@ -1563,54 +1568,28 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
             </select>
           </label>
           {['codex','antigravity','deepseek-harness'].includes(platform)&&<label>使用哪个账号连接<select aria-label="复用账号连接" value={sourceAccount} onChange={e=>setSourceAccount(e.target.value)}><option value="">本机原生登录</option>{workspace.accounts.filter(a=>a.platformId===platform&&a.status!=='disabled').map(a=><option key={a.id} value={a.id}>复用：{a.label||workspace.members.find(m=>m.accountId===a.id)?.name||a.platformId} 的连接</option>)}</select><span className="text-xs text-muted-foreground">可共用登录，各工作成员有独立名称与会话。</span></label>}
-          <Button>保存成员</Button>
+          {formError&&<p role="alert" className="text-sm text-destructive">{formError}</p>}
+          <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={()=>setAdding(false)}>取消</Button><Button disabled={saving||!title.trim()}>{saving?'正在添加…':'添加并连接'}</Button></div>
         </form>
-      )}
-      <div className="member-grid">
-        {workspace.members.map((m) => {
-          const c = workspace.connections.find((c) => c.id === m.id);
-          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=native?local?.enabled&&['idle','working'].includes(local.status):c?.status==='verified';
-          return (
-            <article key={m.id}>
-              <Face name={m.name} id={m.id} />
-              <h2>{m.name}</h2>
-              <small>{m.platformId}</small>
-              <p>
-                <i className={ready ? "connected" : ""} />
-                {ready ? (native?"运行端已连接 · 会话在聊天中选择":"已接入，可以聊天") : native&&local ? local.message : "等待连接"}
-              </p>
-              {ready && !native && (
-                <small>
-                  {c.transport === "grok-webhook"
-                    ? "Grok 自动接收通道"
-                    : c.transport === "dots-events"
-                      ? "Work 事件会话通道"
-                      : "原生连接通道"}
-                  <br />
-                  已完成真实往返验证
-                </small>
-              )}
-              <Button
-                disabled={!ready}
-                aria-label={"聊天 " + m.name}
-                onClick={()=>onChat(m).catch(()=>{})}
-              >
-                <MessageSquare size={15}/>聊天
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setModal({ type: "connect", member: m })}
-              >
-                查看接入
-              </Button>
-              <Button variant="ghost" className="text-red-600" aria-label={"解除连接 " + m.name} onClick={()=>setModal({type:'disconnect',member:m})}>解除连接</Button>
-            </article>
-          );
-        })}
+      </DialogContent></Dialog>
+      <div className="members-toolbar">
+        <div className="members-search"><Search size={16}/><Input aria-label="搜索成员" placeholder="搜索成员或平台…" value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button type="button" aria-label="清空成员搜索" onClick={()=>setQuery('')}><X size={14}/></button>}</div>
+        <select aria-label="筛选成员平台" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">全部平台</option>{[...new Set(rows.map(r=>r.m.platformId))].map(id=><option key={id} value={id}>{platformName(id)}</option>)}</select>
+        <span className="members-summary"><i/>{rows.filter(r=>r.verified).length} 位可沟通</span>
       </div>
-      <p className="space-hint">
-        网站登录、工具授权和真实自动回应分别验证；打开登录窗口不代表已接通。
-      </p>
+      <div className="members-table-wrap"><table className="members-table" aria-label="成员列表"><thead><tr><th>成员</th><th>平台</th><th>状态</th><th><span className="sr-only">操作</span></th></tr></thead><tbody>
+        {visible.map(({m,native,local,ready,verified,status})=><tr key={m.id}>
+          <td><div className="member-identity"><Face name={m.name} id={m.id}/><div><button className="member-name" onClick={()=>setModal({type:'connect',member:m})}>{m.name}</button><span className="member-caption">{native?(m.platformId==='claude-code'?'VPS 上的工作会话':'本机工作会话'):'独立 Agent'}{local?.assignments?.length?' · '+local.assignments.length+' 个聊天':''}</span></div></div></td>
+          <td className="member-platform">{platformName(m.platformId)}</td>
+          <td><span className={'member-status '+(verified?'is-ready':ready?'is-pending':'is-offline')} title={local?.message||status}><i/>{status}</span></td>
+          <td><div className="member-actions"><Button size="sm" variant="outline" disabled={!ready} aria-label={'聊天 '+m.name} onClick={()=>onChat(m).catch(e=>setFormError(e.message))}><MessageSquare size={14}/>聊天</Button><Button size="sm" variant="ghost" aria-label={'连接设置 '+m.name} onClick={()=>setModal({type:'connect',member:m})}>{ready?'连接设置':'去连接'}</Button><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={'更多操作 '+m.name}><MoreHorizontal size={17}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>{setFormError('');setEditing({member:m,name:m.name});}}>修改备注</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem variant="destructive" onSelect={()=>setModal({type:'disconnect',member:m})}>解除连接</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></td>
+        </tr>)}
+      </tbody></table>
+      {!visible.length&&<div className="members-empty"><Users size={28}/><h2>{rows.length?'没有找到匹配的成员':'把你的第一位 Agent 加进来'}</h2><p>{rows.length?'换一个名字，或者查看全部平台。':'添加后就可以单聊，也可以邀请它加入群聊。'}</p><Button variant="outline" onClick={()=>rows.length?(setQuery(''),setFilter('all')):setAdding(true)}>{rows.length?'清除筛选':'添加成员'}</Button></div>}
+      </div>
+      <div className="members-footer"><span>{query||filter!=='all'?`显示 ${visible.length} / ${rows.length} 位成员`:`共 ${rows.length} 位成员`}</span><span>账号与原生工作环境由各 Agent 保留</span></div>
+      {formError&&!adding&&!editing&&<p role="alert" className="text-sm text-destructive">{formError}</p>}
+      <Dialog open={!!editing} onOpenChange={value=>{if(!value&&!saving)setEditing(null);}}><DialogContent className="sm:max-w-[420px]"><DialogHeader><DialogTitle>修改备注</DialogTitle><DialogDescription>改名后，原来的连接和聊天记录会保留。</DialogDescription></DialogHeader><form className="space-y-5" onSubmit={async e=>{e.preventDefault();if(saving)return;setSaving(true);setFormError('');try{await perform(()=>api('/action',{type:'member.update',memberId:editing.member.id,payload:{name:editing.name.trim()}}));await refresh();setEditing(null);}catch(e){setFormError(e.message);}finally{setSaving(false);}}}><Input aria-label="新的成员备注" maxLength={80} required value={editing?.name||''} onChange={e=>setEditing({...editing,name:e.target.value})}/>{formError&&<p role="alert" className="text-sm text-destructive">{formError}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={()=>setEditing(null)}>取消</Button><Button disabled={saving||!editing?.name.trim()}>{saving?'保存中…':'保存'}</Button></div></form></DialogContent></Dialog>
     </div>
   );
 }

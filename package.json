@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "node local/server.mjs",
     "desktop": "electron .",
-    "build": "node scripts/build-stamp.mjs && vite build",
+    "build": "npm run build:claude && node scripts/build-stamp.mjs && vite build",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "npm run hub:types && tsc --noEmit",
     "hub:dev": "wrangler dev --config cloud/wrangler.jsonc",
@@ -19,7 +19,8 @@
     "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs",
     "verify:collaboration": "node --test tests/collaboration*.test.mjs && node tests/collaboration-http.mjs",
     "verify:v1": "node --test tests/collaboration*.test.mjs && node tests/collaboration-v1-http.mjs && node tests/v1-oauth-browser.mjs && node tests/v1-ui.mjs && node tests/v1-desktop.mjs",
-    "verify:conversation": "node --test tests/conversation.test.mjs && node tests/conversation-ui.mjs && node tests/conversation-desktop.mjs"
+    "verify:conversation": "node --test tests/conversation.test.mjs && node tests/conversation-ui.mjs && node tests/conversation-desktop.mjs",
+    "build:claude": "node scripts/package-claude.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

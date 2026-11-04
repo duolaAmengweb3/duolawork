@@ -83,7 +83,7 @@ export async function configureConnection(repo, identity, input, secret) {
       tx.guardLegacyIdle(member.accountId);
       const old = await tx.get("connection", member.id, false);
       if (old?.status === "disconnected") fail("member_disconnected", "该成员已解除连接，请重新添加成员后接入", 403);
-      const nativeMember = platform.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness'].includes(member.platformId);
+      const nativeMember = platform.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(member.platformId);
       const resourceKey = nativeMember ? 'native-member:' + member.id : member.accountId;
       const oldResource = old?.resourceKey && old.resourceKey !== resourceKey ? await tx.get('resource', old.resourceKey, false) : null;
       if(oldResource?.status === 'busy') fail('resource_busy', '当前工作还未结束，原接收方式保留', 409);

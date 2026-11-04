@@ -1,3 +1,5 @@
+import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
+import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
 import { oauthFetch, startPairing } from "./pairing.mjs";
 import { fileStore } from "./file-store.mjs";
 import { Repository, fail, digest, required, id } from "./repository.mjs";
@@ -517,6 +519,10 @@ async function mcp(repo, identity, actor, request, env) {
 export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
+  if(url.pathname==='/v2/connectors/claude/download'&&request.method==='GET'){
+    if(url.searchParams.has('version')&&url.searchParams.get('version')!==claudeSHA)return json({message:'连接器已更新，请重新生成安装步骤'},409);
+    return new Response(Uint8Array.from(atob(claudeDownload),c=>c.charCodeAt(0)),{encodeBody:'manual',headers:{'Content-Type':'application/javascript','Content-Encoding':'gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':claudeSHA}});
+  }
   if (url.pathname === "/v2/openapi.json") return json(openapi(url.origin));
   const onboarding = await publicOnboarding(request, repo, identity, env, url.origin);
   if (onboarding) return onboarding;
@@ -560,6 +566,23 @@ export async function v2Fetch(request, env, ctx, identity) {
         ),
       ),
     );
+  if(url.pathname==='/v2/connect/claude'&&request.method==='POST'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    const {memberId}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.platformId==='claude-code');if(!m)fail('invalid_member','请选择 Claude Code 成员');
+    const pair=await issueAgentSkill(repo,identity,memberId,url.origin),alias='claude-'+memberId.slice(-8),entry='"$HOME/.local/share/agent-hub-claude/connector.cjs"';
+    return json({pairingCode:pair.pairingCode,expiresAt:pair.expiresAt,sha256:claudeSHA,
+      install:'mkdir -p "$HOME/.local/share/agent-hub-claude" && curl --fail --location --compressed "'+url.origin+'/v2/connectors/claude/download?version='+claudeSHA+'" -o '+entry,
+      pair:'node '+entry+' pair '+url.origin+' '+alias,start:'node '+entry+' start '+alias+' --resume'});
+  }
+  if(url.pathname==='/v2/self/native-sessions')return json(await remoteSessions(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
+  if(url.pathname==='/v2/native-sessions'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    if(request.method==='POST')return json(await assignRemoteSession(repo,identity,actor,await readJSON(request)));
+    const memberId=url.searchParams.get('memberId');
+    if(memberId)return json(await remoteSessions(repo,identity,actor,{memberId}));
+    const members=[];for(const m of identity.members.filter(m=>m.platformId==='claude-code'&&m.status!=='disabled')){const c=await repo.get('connection',m.id,false);if(c?.status!=='disconnected')members.push((await remoteSessions(repo,identity,actor,{memberId:m.id})).record);}
+    return json({members});
+  }
   if (url.pathname === "/v2/self/connection" && request.method === "POST") {
     const result = await selfConnection(repo, identity, actor, await readJSON(request), env.ADMIN_KEY);
     return json(result);

@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-04T09:09:36.049Z",
+  "cloudVersion": "8d3ae955-ef28-4879-8175-c78dc31aa993",
+  "downloadSHA256": "85696528908fae46c4568cfe232ce2bbc7123b7604fe9d08149df18b8050af53",
+  "downloadVerified": true,
+  "syntax": true,
+  "protocolTestsPassed": 2,
+  "totalTestsPassed": 242,
+  "actualClaudeInvoked": false,
+  "userVpsAccessed": false,
+  "visualAcceptance": {
+    "passed": false,
+    "reason": "CUA native pipe and browser host unavailable"
+  },
+  "realClaudeRoundTrip": "awaiting user-operated installation",
+  "membersUI": {
+    "layout": "compact table",
+    "features": [
+      "search",
+      "platform filter",
+      "connection status",
+      "chat",
+      "connection settings",
+      "rename",
+      "disconnect"
+    ],
+    "visualAcceptance": "blocked by unavailable CUA host"
+  },
+  "installedBuild": "c184a397200acfd9",
+  "desktopAndBackendMatch": true,
+  "workspacePreserved": true
+}

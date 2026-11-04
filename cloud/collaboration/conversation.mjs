@@ -220,7 +220,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
   // Native source setup and per-chat context selection are separate. Preserve
   // the first message while that context proves its round trip; only a verified
   // member can see/claim it, and no webhook is sent during verification.
-  const nativePending = !m.paused && connection?.status === 'configured' && connection.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness'].includes(m.platformId);
+  const nativePending = !m.paused && connection?.status === 'configured' && connection.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId);
   const turn = tx.put("channel_turn", {
     id: turnId,
     scopeId: channel.id,

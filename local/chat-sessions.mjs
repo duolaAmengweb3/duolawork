@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {SESSION_CAPABILITIES,publicAssignments} from './session-routing.mjs';
 
 export class ChatSessions {
@@ -10,6 +11,7 @@ export class ChatSessions {
   manager(m) { return m.platformId==='codex'||m.platformId==='gemini-cli'?this.coding:m.platformId==='antigravity'?(this.ag.records[m.id]?.enabled||!this.coding.records[m.id]?.enabled?this.ag:this.coding):m.platformId==='deepseek-harness'?this.dsh:null; }
   async status(memberId) {
     const m=await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
+    if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:SESSION_CAPABILITIES['claude-code']};}
     const capabilities={...(SESSION_CAPABILITIES[m.platformId]||{kind:'fixed'})};if(manager===this.coding)Object.assign(capabilities,{kind:'sessions',existing:true,create:true,label:m.platformId==='codex'?'Codex 工作会话':'Gemini 后台会话'});
     return {capabilities,record:manager===this.coding?manager.status().members.find(r=>r.memberId===memberId):manager?.status().find(r=>r.memberId===memberId),assignments:publicAssignments(r||{})};
   }
@@ -25,6 +27,7 @@ export class ChatSessions {
   async options({memberId,channelId}) {
     const m=await this.member(memberId),manager=this.manager(m),status=await this.status(memberId);
     if(channelId)await this.channel(memberId,channelId);
+    if(m.platformId==='claude-code')return{...status,items:status.items.filter(s=>s.online),binding:status.bindings[channelId]||null};
     if(!manager)return {...status,items:[]};
     const r=manager.records[memberId];if(!r?.enabled)return {...status,items:[]};
     const listed=manager===this.coding?await manager.sessionOptions(memberId):await manager.hostFor(memberId).sessions();
@@ -43,7 +46,7 @@ export class ChatSessions {
     try{return await job;}finally{this.jobs.delete(key);}
   }
   async assignOnce(input) {
-    const m=await this.member(input.memberId),manager=this.manager(m);if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
+    const m=await this.member(input.memberId),manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{method:'POST',body:{...input,requestId:randomUUID()}});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
     const channels=await this.channel(input.memberId,input.channelId);
     if(input.mode==='new'&&manager!==this.coding&&SESSION_CAPABILITIES[m.platformId]?.create!==true)throw Error(SESSION_CAPABILITIES[m.platformId]?.createHint||'此平台尚未支持在 Hub 新建会话');
     const title=channels.find(c=>c.id===input.channelId).name;

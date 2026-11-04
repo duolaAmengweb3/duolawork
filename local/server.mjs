@@ -34,6 +34,9 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  for(const r of Object.values(ag.records).filter(r=>r.enabled)){const prior=coding.records[r.memberId];if(prior?.enabled){prior.enabled=false;prior.status="paused";prior.message="当前由桌面原会话接收，原后台会话保留";await coding.save();}}
  await dsh.migrateExisting().catch(()=>{});await ag.migrateExisting().catch(()=>{});
  const chatSessions=new ChatSessions({coding,dsh,ag});
+ let remoteMembers=[],remoteStatusAt=0,remoteRefresh;
+ const refreshRemote=()=>{if(!remoteRefresh&&Date.now()-remoteStatusAt>10000){remoteStatusAt=Date.now();remoteRefresh=requestJson(config.endpoint+'/v2/native-sessions',{token:config.adminKey,timeout:4000}).then(r=>{remoteMembers=r.members;}).catch(()=>{}).finally(()=>{remoteRefresh=null;});}return remoteMembers;};
+
  const availability=state=>{const ready=automaticAvailability(state,{supports:(a,m)=>connections.supports(a,m),credentials:vault.data.members,locked:vault.locked});for(const m of state.members)if(browsers.isManual(m.accountId))ready[m.id]={canDispatch:false,reason:'正在纯手动登录，任务派发已暂停'};return ready;};
  const runner=new Runner({cloud,vault,browsers,connections,config,notify,maintenance});let origin,browserNetworkCheck=null,networkChecking=false,keepBrowsersOnShutdown=false,clientView={kind:'browser',ready:false,buildId:null};
  const server=http.createServer(async(req,res)=>{try{const host=req.headers.host||'';if(origin?host!==new URL(origin).host:!host.startsWith('127.0.0.1:'))return json(res,{message:'仅限本机访问'},403);const url=new URL(req.url,origin||'http://127.0.0.1');
@@ -42,16 +45,16 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json')&&!(url.pathname==='/api/v2/files'&&req.headers['content-type']==='application/octet-stream'))return json(res,{message:'需要 JSON 请求'},415);
  if(url.pathname==='/api/v2/catalog'&&req.method==='GET'){
   const c=await requestJson(config.endpoint+'/v2/catalog',{token:config.adminKey});
-  for(const p of c.platforms)if(['antigravity','codex'].includes(p.id))p.status='local_available';
+  for(const p of c.platforms)if(['antigravity','codex','claude-code'].includes(p.id))p.status='local_available';
   if(!c.platforms.some(p=>p.id==='deepseek-harness'))c.platforms.push({id:'deepseek-harness',name:'DeepSeek Harness',kind:'coding',status:'local_available',registered:false});
   return json(res,c);
  }
- if(url.pathname==='/api/local/sources/status'&&req.method==='GET')return json(res,await chatSessions.status(url.searchParams.get('memberId')));
+ if(url.pathname==='/api/local/sources/status'&&req.method==='GET'){const value=await chatSessions.status(url.searchParams.get('memberId'));if(value.capabilities?.label==='Claude VPS 工作会话'){remoteMembers=[...remoteMembers.filter(r=>r.memberId!==value.record.memberId),value.record];}return json(res,value);}
  if(url.pathname==='/api/local/sources/connect'&&req.method==='POST')return json(res,await chatSessions.connect(await body(req)));
  if(url.pathname==='/api/local/chat-sessions'&&req.method==='GET')return json(res,await chatSessions.options(Object.fromEntries(url.searchParams)));
- if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST')return json(res,await chatSessions.assign(await body(req)));
+ if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST'){const input=await body(req),result=await chatSessions.assign(input);remoteMembers=remoteMembers.map(r=>r.memberId===input.memberId?{...r,assignments:[...r.assignments.filter(b=>b.channelId!==input.channelId),{channelId:input.channelId,...result.binding}]}:r);return json(res,result);}
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
- if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status();return json(res,{...s,members:[...s.members.filter(m=>!ag.records[m.memberId]?.enabled),...dsh.status(),...ag.status().filter(m=>m.enabled)]});}
+ if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status(),remote=refreshRemote();return json(res,{...s,members:[...remote,...s.members.filter(m=>!ag.records[m.memberId]?.enabled),...dsh.status(),...ag.status().filter(m=>m.enabled)]});}
  if(url.pathname==='/api/local/dsh/status'&&req.method==='GET')return json(res,{...(await dsh.hostFor(url.searchParams.get('memberId')).status()),preparing:!!dsh.preparing,prepareError:dsh.prepareError,members:dsh.status()});
  if(url.pathname==='/api/local/dsh/configure'&&req.method==='POST'){const input=await body(req);return json(res,await dsh.hostFor(input.memberId).configure(input));}
  if(url.pathname==='/api/local/dsh/prepare'&&req.method==='POST')return json(res,await dsh.prepare(await body(req)));

@@ -21,6 +21,7 @@ export function publicAssignments(record) {
 }
 
 export const SESSION_CAPABILITIES = {
+  'claude-code':{kind:'sessions',existing:true,create:false,multiple:true,label:'Claude VPS 工作会话',createHint:'在 VPS 的项目目录使用连接器启动或恢复 Claude，再点刷新会话。'},
   codex: {kind:'sessions', existing:true, create:true, multiple:true, label:'Codex 工作会话'},
   antigravity: {kind:'sessions', existing:true, create:false, multiple:true, label:'Antigravity 桌面会话', createHint:'请先在官方桌面新建会话，再回到这里选择。'},
   'deepseek-harness': {kind:'sessions', existing:true, create:true, multiple:true, label:'DeepSeek Harness 工作会话'},
