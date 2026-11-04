@@ -1,3 +1,4 @@
+import {SHARED_TOOLS, SHARED_TOOL_ENVELOPE, sharedToolEnvelope, sharedTool, sharedCommand, listSharedFiles, fileDetails, fileBytes, uploadStatus, readHandoff} from './shared-space.mjs';
 import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
 import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
 import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
@@ -57,6 +58,7 @@ function decodeCursor(raw) {
     fail("invalid_cursor", "分页游标无效");
   }
 }
+const quietSharedTools = new Set(['shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff']);
 const string = { type: "string" };
 const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   type: "object",
@@ -66,6 +68,7 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 });
 export const TOOLS = [
   ...CHANNEL_TOOLS,
+  ...SHARED_TOOLS,
   {
     name: "report_setup_status",
     description: "上报你自己的接入进度或平台卡点，显示在 Hub；不能自行标记验证通过。",
@@ -310,6 +313,9 @@ export async function callTool(repo, identity, actor, name, args, env, options =
       "原生工具必须使用成员身份，不能用管理凭证冒充",
       403,
     );
+  if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
+  if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE))
+    return sharedToolEnvelope(repo,identity,actor,args,env);
   if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
   if (name === "setup_connection") return selfConnection(repo, identity, actor, args, env.ADMIN_KEY);
   if (name === "report_setup_status") return reportSetup(repo, actor, args);
@@ -338,6 +344,10 @@ export async function callTool(repo, identity, actor, name, args, env, options =
     return repo.transact(args.requestId,{...args,actor},async tx=>{const current=await tx.get("channel_turn",turn.id);if(current.status!=="active")fail("invalid_lease","通知已结束",409);return tx.put("channel_turn",{...current,progress:required(args.message,"进度",2000),expiresAt:new Date(Date.now()+30*60000).toISOString()});});
   }
   if (name === "read_file") {
+    // Existing native sessions may retain their original catalog. Preserve the
+    // read-only contract and the same group authorization for shared resources.
+    const shared=String(args.fileId||'').match(/^(shared_file_[a-z0-9]+)(?::v([1-9][0-9]*))?$/);
+    if(shared)return fileBytes(repo,actor,{resourceId:shared[1],...(shared[2]?{version:Number(shared[2])}:{}),offset:args.offset},env);
     const file = await repo.get("file", args.fileId),
       offset = args.offset || 0;
     if (!Number.isInteger(offset) || offset < 0 || offset >= file.size)
@@ -398,7 +408,7 @@ function openapi(origin) {
     ),
   };
 }
-async function mcp(repo, identity, actor, request, env) {
+async function mcp(repo, identity, actor, request, env, kick = () => {}) {
   if (!actor.memberId) fail("member_required", "插件使用成员授权", 403);
   if (request.method === "GET" || request.method === "DELETE")
     return new Response(null, { status: 405, headers: { Allow: "POST" } });
@@ -451,7 +461,7 @@ async function mcp(repo, identity, actor, request, env) {
         tools: TOOLS.map((t) => ({
           ...t,
           annotations: {
-            readOnlyHint: ["list_work", "read_document", "read_channel", "read_doc", "read_file"].includes(t.name),
+            readOnlyHint: ["list_work", "read_document", "read_channel", "read_doc", "read_file", "shared_files", "read_shared_file", "read_handoff", "file_upload_status"].includes(t.name),
             destructiveHint: false,
             idempotentHint: true,
             openWorldHint: false,
@@ -469,6 +479,7 @@ async function mcp(repo, identity, actor, request, env) {
           env,
           { signal: request.signal },
         );
+        if(!quietSharedTools.has(rpc.params?.name))kick();
         result = {
           content: [{ type: "text", text: JSON.stringify(value) }],
           structuredContent: value,
@@ -487,7 +498,7 @@ async function mcp(repo, identity, actor, request, env) {
           ],
         };
       }
-    } else if (rpc.method.startsWith("events/"))
+    } else if (rpc.method.startsWith("events/")) {
       result = await eventMethod(
         repo,
         actor.memberId,
@@ -495,7 +506,8 @@ async function mcp(repo, identity, actor, request, env) {
         rpc.params || {},
         env.ADMIN_KEY,
       );
-    else
+      kick();
+    } else
       return json({
         jsonrpc: "2.0",
         id: rpc.id,
@@ -598,8 +610,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
   if (url.pathname === "/v2/self/status" && request.method === "POST") return json(await reportSetup(repo, actor, await readJSON(request)));
   if (url.pathname === "/v2/mcp") {
-    const result = await mcp(repo, identity, actor, request, env);
-    if (request.method === "POST") kick();
+    const result = await mcp(repo, identity, actor, request, env, kick);
     return result;
   }
   if (url.pathname === "/v2/signal" && request.method === "GET") {
@@ -622,8 +633,19 @@ export async function v2Fetch(request, env, ctx, identity) {
       env,
       { signal: request.signal },
     );
-    kick();
+    if(!quietSharedTools.has(url.pathname.slice(10)))kick();
     return json(result);
+  }
+  if (url.pathname === '/v2/shared' && request.method === 'POST') {
+    const input=await readJSON(request),result=await sharedCommand(repo,identity,actor,input,env);if(['finish','handoff','respond','delete','restore'].includes(input.action))kick();return json(result);
+  }
+  if (url.pathname === '/v2/shared' && request.method === 'GET') {
+    const args=Object.fromEntries(url.searchParams);if(args.version)args.version=Number(args.version);
+    if(args.uploadId)return json(await uploadStatus(repo,actor,args));
+    if(args.handoffId)return json(await readHandoff(repo,actor,args));
+    if(args.resourceId&&args.download==='1'){const response=await fileBytes(repo,actor,args,env,{download:true});if(response instanceof Response)return response;return json({error:'download_failed',message:'下载未完成'},500);}
+    if(args.resourceId)return json(await fileDetails(repo,actor,args));
+    return json(await listSharedFiles(repo,actor,args));
   }
   if (url.pathname === "/v2/files" && request.method === "POST") {
     let metadata;

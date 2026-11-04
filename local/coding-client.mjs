@@ -1,3 +1,4 @@
+import {LOCAL_FILE_TOOLS,localFileTool} from './shared-file-client.mjs';
 import fs from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {privateJson} from './storage.mjs';
@@ -25,6 +26,6 @@ export class CodingMemberClient{
   try{return await this.request(d.endpoint+route,{method,body,token:d.access_token,timeout});}
   catch(e){if(e.status!==401&&e.statusCode!==401)throw e;d=await this.refresh(d);return this.request(d.endpoint+route,{method,body,token:d.access_token,timeout});}
  }
- async tools(){const response=await this.api('/v2/mcp',{method:'POST',body:{jsonrpc:'2.0',id:randomUUID(),method:'tools/list',params:{}}});if(response.error)throw new Error(response.error.message);return response.result.tools;}
- async tool(name,args={}){return this.api('/v2/tools/'+encodeURIComponent(name),{method:'POST',body:args});}
+ async tools(){const response=await this.api('/v2/mcp',{method:'POST',body:{jsonrpc:'2.0',id:randomUUID(),method:'tools/list',params:{}}});if(response.error)throw new Error(response.error.message);return [...response.result.tools,...LOCAL_FILE_TOOLS];}
+ async tool(name,args={}){if(LOCAL_FILE_TOOLS.some(t=>t.name===name))return localFileTool(this,name,args);return this.api('/v2/tools/'+encodeURIComponent(name),{method:'POST',body:args});}
 }

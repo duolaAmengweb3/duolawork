@@ -46,12 +46,27 @@ try {
   await command('channel.doc.edit', { channelId: channel.id, documentId: doc.id, expectedVersion: 1, body: 'Version two', reason: 'test' });
   await command('channel.doc.edit', { channelId: channel.id, documentId: doc.id, expectedVersion: 1, body: 'Wrong overwrite', reason: 'conflict' }, 409);
   await Promise.all(Array.from({ length: 20 }, (_, i) => command('channel.post', { channelId: channel.id, body: 'Persisted message ' + i })));
-  await client.close(); client = null;
+  const bytes=Buffer.from('Persistent shared file, independently verified.'), sha=(await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+  const upload=await call('/v2/shared',{action:'begin',requestId:crypto.randomUUID(),channelId:channel.id,name:'持久资料.txt',size:bytes.length,sha256:sha,mime:'text/plain'});
+  await call('/v2/shared',{action:'chunk',uploadId:upload.id,index:0,base64:bytes.toString('base64')});
+  // Stop between chunks and publish: pending upload must survive a real process restart.
+  await client.close(); client = null; await stop(); await start();
+  const file=await call('/v2/shared',{action:'finish',uploadId:upload.id});
   await stop(); await start();
+  const downloaded=await fetch(base+'/v2/shared?resourceId='+file.id+'&download=1',{headers:{Authorization:'Bearer '+key}});
+  assert.equal(downloaded.status,200);assert.equal(await downloaded.text(),bytes.toString());
+  assert.equal((await fetch(base+'/v2/shared?resourceId='+file.id+'&download=1')).status,401);
+  const run=await import('node:child_process');
+  run.execFileSync('python3',['release/server/backup.py'],{env:{...process.env,HUB_SERVER_CONFIG:configPath}});
+  const backupDir=path.join(directory,'backups'),manifests=(await fs.readdir(backupDir)).filter(n=>n.endsWith('.manifest.json'));
+  const manifest=JSON.parse(await fs.readFile(path.join(backupDir,manifests[0]),'utf8'));
+  for(const [name,expected] of Object.entries(manifest.objects))assert.equal((await import('node:crypto')).createHash('sha256').update(await fs.readFile(path.join(backupDir,'objects',name))).digest('hex'),expected.sha256);
+  assert(Object.keys(manifest.objects).length>=2);
+
   const view = await call('/v2/channel?id=' + channel.id);
   const savedDoc = await call('/v2/channel-doc?id=' + doc.id);
   assert(JSON.stringify(savedDoc).includes('Version two'));
   assert(JSON.stringify(view).includes('Persisted message 19'));
   assert(!JSON.stringify(view).includes('Wrong overwrite'));
-  console.log('PASS: authorization, original-origin discovery, MCP, concurrent writes, conflict rejection, and process-restart persistence');
+  console.log('PASS: authorization, original-origin discovery, MCP, concurrent writes, conflict rejection, and process-restart persistence, resumable shared files, object backup');
 } finally { if (client) await client.close(); await stop(); await fs.rm(directory, { recursive: true, force: true }); }

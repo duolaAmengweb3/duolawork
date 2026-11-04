@@ -1,3 +1,4 @@
+import {SharedFiles,UploadFiles,FileCard,FileDialog,HandoffCard,HandoffDialog} from './SharedSpace.jsx';
 import React, {
   useCallback,
   useEffect,
@@ -123,6 +124,7 @@ export default function App() {
     [mentions, setMentions] = useState([]),
     [showMentions, setShowMentions] = useState(false),
     [documentId, setDocumentId] = useState(null),
+    [sharedFileId,setSharedFileId]=useState(null),[handoffId,setHandoffId]=useState(null),
     [query, setQuery] = useState(""),
     [older, setOlder] = useState([]),
     [moreCursor, setMoreCursor] = useState(null),
@@ -298,7 +300,7 @@ export default function App() {
             <Layers size={20} />
           </span>
           <strong>
-            Agent Hub<small>一起沟通，一起完成</small>
+            DuolaWork<small>一起沟通，一起完成</small>
           </strong>
         </div>
         <div className="comm-search">
@@ -367,7 +369,7 @@ export default function App() {
           </div>
         </div>
       </aside>
-      <main className="comm-main">
+      <main onDragOver={e=>{if(e.dataTransfer.types.includes("Files"))e.preventDefault();}} onDrop={e=>{if(e.dataTransfer.files.length&&current){e.preventDefault();window.dispatchEvent(new CustomEvent("duolawork-files",{detail:{channelId:current,files:[...e.dataTransfer.files]}}));}}} className="comm-main">
         {codingStatus.members.filter(m=>workspace.members.some(x=>x.id===m.memberId)&&(['needs_review','waiting_login'].includes(m.status)||codingStatus.approvals.some(a=>a.memberId===m.memberId))).map(m=><div className="comm-sync-status" role="status" key={m.memberId}>{name(m.memberId)}：{codingStatus.approvals.some(a=>a.memberId===m.memberId)?'有操作等待你确认':m.message}<Button size="sm" variant="outline" onClick={()=>{const member=workspace.members.find(x=>x.id===m.memberId);if(member)setModal({type:'connect',member});}}>查看</Button></div>)}
         {syncError && (
           <div className="comm-sync-status" role="status" aria-live="polite">
@@ -564,7 +566,7 @@ export default function App() {
                             ))}
                           </div>
                         )}
-                        {['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
+                        {m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
                           <button
                             className="shared-document-card"
                             onClick={() => setDocumentId(m.documentId)}
@@ -728,6 +730,7 @@ export default function App() {
                   />
                   <div className="composer-toolbar">
                     <div>
+                      <UploadFiles key={current} compact channelId={current} onDone={refresh}/>
                       <Button
                         type="button"
                         size="icon"
@@ -815,7 +818,7 @@ export default function App() {
                   </div>
                   <nav className="space-tabs">
                     {[
-                      ["documents", "文档", FileText],
+                      ["documents", "资料", FileText],
                       ["tasks", "事项", Columns3],
                       ["meetings", "会议", Video],
                       ["members", "成员", Users],
@@ -833,6 +836,7 @@ export default function App() {
                   <div className="space-content">
                     {tab === "documents" ? (
                       <>
+                        <SharedFiles key={current} channelId={current} files={snapshot.files||[]} onOpen={setSharedFileId} onDone={refresh}/>
                         <div className="section-heading">
                           <h3>
                             共享文档 <span>{snapshot.documents.length}</span>
@@ -1236,6 +1240,8 @@ export default function App() {
           )}
         </Modal>
       )}
+      {sharedFileId&&<FileDialog id={sharedFileId} name={name} onClose={()=>setSharedFileId(null)} onChanged={refresh}/>}
+      {handoffId&&<HandoffDialog id={handoffId} name={name} onClose={()=>setHandoffId(null)} onFile={id=>{setHandoffId(null);setSharedFileId(id);}} onDoc={id=>{setHandoffId(null);setDocumentId(id);}}/>}
       {documentId && (
         <SharedDocument
           id={documentId}

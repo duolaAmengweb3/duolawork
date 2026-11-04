@@ -7,6 +7,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import worker from './worker.mjs';
 import { openDatabase } from './sqlite.mjs';
+import { diskObjects } from './object-store.mjs';
+import { cleanUploads } from './object-maintenance.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.HUB_SERVER_CONFIG;
@@ -19,6 +21,8 @@ const DB = openDatabase(config.database, path.join(directory, 'migrations'));
 const limits = new Map();
 const env = {
   DB, ADMIN_KEY: config.adminKey, WORKSPACE_ID: config.workspaceId, FILE_STORAGE: 'd1',
+  SHARED_FILE_STORAGE: 'disk', SHARED_FILES: diskObjects(config.objectDirectory || path.join(path.dirname(config.database),'objects')),
+  SHARED_FILE_LIMIT: config.fileLimit || 128*1024*1024, SHARED_SPACE_QUOTA: config.spaceQuota || 2*1024*1024*1024,
   OAUTH_RATE_LIMIT: { async limit({ key }) {
     const now = Date.now(); let row = limits.get(key);
     if (!row || row.until < now) { row = { count: 0, until: now + 60000 }; limits.set(key, row); }
@@ -27,7 +31,7 @@ const env = {
     return { success: ++row.count <= 45 };
   } },
 };
-let active = 0, scheduled = false, closing = false;
+let active = 0, scheduled = false, closing = false, lastObjectCleanup = 0;
 const pending = new Set();
 const ctx = { waitUntil(promise) { const p = Promise.resolve(promise).catch(() => console.error('background_operation_failed')).finally(() => pending.delete(p)); pending.add(p); } };
 const equal = (a, b) => !!a && !!b && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -77,7 +81,7 @@ server.listen(config.port || 8787, '127.0.0.1', () => console.log('Agent Hub ser
 async function maintenance() {
   if (scheduled || closing || !config.enableScheduled) return;
   scheduled = true;
-  try { await worker.scheduled({}, env, ctx); } catch { console.error('maintenance_failed'); } finally { scheduled = false; }
+  try { await worker.scheduled({}, env, ctx); if(Date.now()-lastObjectCleanup>3600000){await cleanUploads(DB,config.workspaceId,env.SHARED_FILES);lastObjectCleanup=Date.now();} } catch { console.error('maintenance_failed'); } finally { scheduled = false; }
 }
 const timer = setInterval(maintenance, 60000);
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {

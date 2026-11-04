@@ -103,7 +103,7 @@ export async function startPairing(repo, identity, memberId, origin, purpose = "
     expiresAt: result.expiresAt,
     mcpUrl: origin + "/v2/mcp",
     instructions:
-      "请添加我的私有 Agent Hub MCP 连接：" +
+      "请添加我的私有 DuolaWork MCP 连接：" +
       origin +
       "/v2/mcp，并在打开的官方授权流程中让我本人完成配对。配对码不发到聊天。" +
       (member.platformId === "grok-bot"
@@ -240,7 +240,7 @@ export async function oauthFetch(request, repo, identity, origin, env = {}) {
         "code_challenge_method",
       ];
       return new Response(
-        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>连接 Agent Hub</title><style>body{font:16px system-ui;background:#f5f6f8;color:#18243a;margin:0;display:grid;min-height:100vh;place-items:center}main{background:white;padding:40px;border:1px solid #e3e6ec;border-radius:16px;max-width:420px}input,button{font:inherit;padding:12px;box-sizing:border-box;width:100%;margin-top:16px}button{background:#245bdb;color:white;border:0;border-radius:8px}small{color:#65738a;line-height:1.7}</style><main><h2>连接你的 ${esc(client.name)}</h2><p>输入 Agent Hub 成员页显示的一次性配对码。</p><small>仅允许这个成员领取自己的任务、读取获授权的项目材料并交付成果。不授予工作区管理、支付或发布权限。</small><form method="post">${fields.map((k) => `<input type="hidden" name="${k}" value="${esc(p.get(k))}">`).join("")}<input name="pair_code" required autocomplete="off" placeholder="12 位配对码" maxlength="12"><button>授权这个成员</button></form></main></html>`,
+        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>连接 DuolaWork</title><style>body{font:16px system-ui;background:#f5f6f8;color:#18243a;margin:0;display:grid;min-height:100vh;place-items:center}main{background:white;padding:40px;border:1px solid #e3e6ec;border-radius:16px;max-width:420px}input,button{font:inherit;padding:12px;box-sizing:border-box;width:100%;margin-top:16px}button{background:#245bdb;color:white;border:0;border-radius:8px}small{color:#65738a;line-height:1.7}</style><main><h2>连接你的 ${esc(client.name)}</h2><p>输入 DuolaWork 成员页显示的一次性配对码。</p><small>仅允许这个成员领取自己的任务、读取获授权的项目材料并交付成果。不授予工作区管理、支付或发布权限。</small><form method="post">${fields.map((k) => `<input type="hidden" name="${k}" value="${esc(p.get(k))}">`).join("")}<input name="pair_code" required autocomplete="off" placeholder="12 位配对码" maxlength="12"><button>授权这个成员</button></form></main></html>`,
         {
           headers: {
             "Content-Type": "text/html;charset=utf-8",

@@ -37,7 +37,7 @@ for (const name of ["playwright-core", "undici", "yaml", "ws"])
 const plist = path.join(out, "Contents/Info.plist");
 execFileSync("/usr/libexec/PlistBuddy", [
   "-c",
-  "Set :CFBundleDisplayName Agent Hub",
+  "Set :CFBundleDisplayName DuolaWork",
   plist,
 ]);
 execFileSync("/usr/libexec/PlistBuddy", [

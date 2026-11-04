@@ -992,7 +992,7 @@ export default function App() {
               </div>
               <PairingFacts all members={members}/>
               <p className="scope-note">
-                Agent Hub 只能约束经过 Hub
+                DuolaWork 只能约束经过 Hub
                 的操作；成员在自己平台上的工具和权限不受影响。现有浏览器资料不因升级、改名或连接配置而重建。
               </p>
             </div>
@@ -2071,7 +2071,7 @@ export function ConnectWizard(props) {
   const pending = !complete && ["running", "ready"].includes(connection?.probe?.status);
   const failed = !complete && connection?.probe?.status === "needs_review";
   const ownerNeeded = grok && paired && !complete && !pending;
-  const routineName = connection?.setup?.ownerAction?.routineName || `Agent Hub 成员 ${member.name} 接收器`;
+  const routineName = connection?.setup?.ownerAction?.routineName || `DuolaWork 成员 ${member.name} 接收器`;
   const stage = complete ? "已接入，可以开始聊天" : pending ? "正在等待原 Agent 回复" : failed ? "验证未通过，请核对后重试" : ownerNeeded ? "还差一次 Grok 确认" : paired ? "Agent 正在准备接入" : "先把接入说明发给 Agent";
   async function perform(fn) {
     setBusy(true); setError("");
@@ -2211,7 +2211,7 @@ function AdvancedConnectWizard({ member, connection, refresh, notify, onError })
       ) : step === 1 ? (
         <>
           <p className="leading-7">
-            添加 Agent Hub 的私有 MCP，原 Agent 仍使用自己的模型与工具。
+            添加 DuolaWork 的私有 MCP，原 Agent 仍使用自己的模型与工具。
           </p>
           <Button
             variant="outline"
@@ -2268,7 +2268,7 @@ function AdvancedConnectWizard({ member, connection, refresh, notify, onError })
             variant="outline"
             onClick={() => {
               navigator.clipboard.writeText(
-                "请创建只由 webhook 触发的自动化或 Routine：收到通知后调用 Agent Hub 的 list_work、claim_work；kind=conversation 时 read_channel 读群，用 post_message 回复和 @ 群内成员，没有新内容 stay_silent。文档、会议、事项按需使用，不预设分工和发言顺序。负责人由用户指定且可更换，不是唯一发言入口。旧项目工作按领取上下文执行；通知只是门铃，不把通知送达当作完成。",
+                "请创建只由 webhook 触发的自动化或 Routine：收到通知后调用 DuolaWork 的 list_work、claim_work；kind=conversation 时 read_channel 读群，用 post_message 回复和 @ 群内成员，没有新内容 stay_silent。文档、会议、事项按需使用，不预设分工和发言顺序。负责人由用户指定且可更换，不是唯一发言入口。旧项目工作按领取上下文执行；通知只是门铃，不把通知送达当作完成。",
               );
               notify("已复制 Routine 说明");
             }}

@@ -486,6 +486,8 @@ export async function readChannel(repo, identity, actor, args) {
     messages: rows.slice(0, 50).reverse(),
     before: rows.length > 50 ? rows[49].number : null,
     documents,
+    files: (await repo.list("shared_file", {scope:channel.id,limit:100,order:"recent"})).filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
+    handoffs: await repo.list("shared_handoff", {scope:channel.id,limit:100,order:"recent"}),
     decisions,
     knowledge: actor.owner
       ? knowledge
@@ -823,6 +825,10 @@ export async function conversationCommand(
           authorId: actor.memberId || "owner",
           createdAt: tx.now,
         });
+        const readers=[...await tx.list('shared_read',{parent:doc.id}),...await tx.list('shared_watch',{parent:doc.id})];
+        const targets=readers.map(r=>r.memberId).filter(mid=>mid!==actor.memberId&&channel.memberIds.includes(mid));
+        const update=await channelMessage(tx,channel,actor,`更新文档：${doc.title} · v${doc.version}`,{type:'document',documentId:doc.id,resourceVersion:doc.version,hops:0});
+        for(const mid of new Set(targets))await enqueue(tx,identity,channel,update,mid);
         return doc;
       }
       if (type === "channel.doc.suggest")
@@ -1072,6 +1078,7 @@ export async function conversationTool(repo, identity, actor, name, args) {
   if (name === "read_doc") {
     const doc = await repo.get("channel_doc", args.documentId);
     await channelAccess(repo, doc.scopeId, actor);
+    if(actor.memberId) await repo.transact(id('doc-read'),{documentId:doc.id,actor},tx=>tx.put('shared_read',{id:doc.id+':'+actor.memberId,parentId:doc.id,scopeId:doc.scopeId,memberId:actor.memberId,version:doc.version,createdAt:tx.now}));
     return {
       ...doc,
       versions: await repo.list("channel_doc_version", {
