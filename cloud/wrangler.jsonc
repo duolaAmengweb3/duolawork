@@ -22,7 +22,9 @@
   ],
   "vars": {
     "WORKSPACE_ID": "owner",
-    "FILE_STORAGE": "d1"
+    "FILE_STORAGE": "d1",
+    "HUB_RELAY_ORIGIN": "https://hub.manyaitool.com",
+    "HUB_MAINTENANCE": "0"
   },
   "secrets": {
     "required": [

@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-04T14:12:12.717Z",
+  "kind": "isolated protocol checks, not native model concurrency",
+  "publicTLS": true,
+  "write": {
+    "count": 20,
+    "p50": 1515,
+    "p95": 5174,
+    "max": 5174
+  },
+  "read": {
+    "count": 50,
+    "p50": 1590,
+    "p95": 3093,
+    "max": 3465
+  },
+  "persisted": 20
+}

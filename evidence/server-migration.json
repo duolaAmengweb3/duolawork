@@ -1,0 +1,39 @@
+{
+  "exportedAt": "2026-11-04T14:20:38.951Z",
+  "active": 0,
+  "counts": {
+    "hub_artifacts": 13,
+    "hub_events": 117,
+    "hub_v2_clock": 653,
+    "hub_v2_file_chunks": 0,
+    "hub_v2_receipts": 1053,
+    "hub_v2_records": 1216,
+    "hub_workspace": 1
+  },
+  "accounts": 10,
+  "members": 10,
+  "integrity": "ok",
+  "verifiedAt": "2026-11-04T14:24:25.225Z",
+  "directHTTPS": true,
+  "legacyGateway": true,
+  "memberIdsMatch": true,
+  "installedClientCanRead": true,
+  "nativeProbe": {
+    "channelId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "submittedAt": "2026-11-04T14:27:03.273Z",
+    "messageId": "chat_fa47245fb6ab47959cafd98ce36c89cc",
+    "status": "native-reply-received",
+    "replyId": "chat_78e155c566bd4492b42ffe65c3c9af09",
+    "verifiedAt": "2026-11-04T14:28:29.185Z"
+  },
+  "backupRestoreVerified": true,
+  "autoStartEnabled": true,
+  "dailyLocalBackupEnabled": true,
+  "testCount": 260,
+  "typecheckPassed": true,
+  "nativeProviderVerified": "Codex only; other original environments unchanged",
+  "cloudGatewayVersion": "670b8a27-fa8a-4007-9006-1f5a1730f49e",
+  "vps": "172.245.101.101",
+  "publicOrigin": "https://hub.manyaitool.com"
+}
