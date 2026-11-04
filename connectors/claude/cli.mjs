@@ -9,6 +9,7 @@ import {privateJson} from '../../local/storage.mjs';
 import {requestJson} from '../../local/transport.mjs';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {serve} from './channel.mjs';
+import {refreshSessionInfo} from './session-info.mjs';
 
 const base=process.env.AGENT_HUB_CLAUDE_DIR||path.join(os.homedir(),'.config','agent-hub-claude');
 const executable=path.resolve(process.argv[1]||'connector.cjs');
@@ -65,7 +66,7 @@ export async function prepareLaunch({alias,cwd=process.cwd(),cli=executable}){
 }
 export async function hook(runFile,input){
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(input.session_id||''))throw Error('未收到原生会话编号');
-  const state=await read(runFile);await privateJson(runFile,{...state,sessionId:input.session_id,workspace:input.cwd||state.workspace,title:input.session_title||path.basename(input.cwd||state.workspace)+' · '+input.session_id.slice(0,8)});
+  const state=await read(runFile);await privateJson(runFile,await refreshSessionInfo({...state,sessionId:input.session_id,workspace:input.cwd||state.workspace,title:input.session_title||'未命名对话'}));
 }
 export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;

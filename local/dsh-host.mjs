@@ -79,7 +79,7 @@ export class DshHost {
   for(let i=0;i<100;i++){try{const h=await this.call('/health');if(h.ready&&h.protocolVersion>=5)return h;}catch{}await new Promise(r=>setTimeout(r,300));}
   throw Error('DSH 启动未完成；会话和私有日志已保留，请重试');
  }
- async sessions(){const result=await this.call('/sessions');return{items:result.items.map(s=>({id:s.sessionId,title:s.projections?.values?.title||s.title||s.name||'未命名会话',workspace:s.cwd||'',running:!!s.running}))};}
+ async sessions(){const result=await this.call('/sessions');return{projects:result.projects||[],items:result.items.map(s=>({id:s.sessionId,title:s.projections?.values?.title||s.title||s.name||'未命名会话',workspace:s.cwd||'',projectId:s.projectId,projectName:s.projectName,updatedAt:s.updatedAt,source:'harness',running:!!s.running}))};}
  async create(workspace){return this.call('/sessions/create',{workspace});}
  async entry(){
   await this.start();const log=await fs.readFile(this.location.logFile,'utf8'),entry=log.match(/dsh web:\s+(https?:\/\/\S+)/)?.[1];

@@ -23,6 +23,7 @@
     "build:claude": "node scripts/package-claude.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
     "@tailwindcss/vite": "^4.3.3",

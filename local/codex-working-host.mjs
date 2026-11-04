@@ -24,7 +24,7 @@ export class CodexWorkingHost {
   async sessions() {
     return this.read(async rpc=>{const loaded=await rpc.call('thread/loaded/list',{}),items=[];
       for(const id of loaded.data||[]){const {thread:t}=await rpc.call('thread/read',{threadId:id,includeTurns:false});if(!t.cwd||t.archived||t.canAcceptDirectInput===false||!['cli','vscode','appServer'].includes(t.source))continue;
-        items.push({id:t.id,title:t.name||'Codex 原工作会话',workspace:t.cwd,running:t.status?.type==='active',source:t.source,mode:'native-existing'});
+        items.push({id:t.id,title:t.name||t.preview?.split('\n')[0]?.slice(0,100)||'Codex 原工作会话',preview:t.preview?.slice(0,140)||'',workspace:t.cwd,projectId:t.projectId,updatedAt:t.updatedAt,running:t.status?.type==='active',source:t.source,mode:'native-existing'});
       }return{items};});
   }
   async queue({sessionId,workspace,prompt}) {

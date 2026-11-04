@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-04T10:40:17.541Z",
+  "scope": "isolated UI and protocol fixtures, not native agent acceptance",
+  "checks": [
+    "Codex 按项目选择准确对话",
+    "Gemini 按项目选择准确对话",
+    "DeepSeek 按项目选择准确对话",
+    "Claude 按项目选择准确对话",
+    "错误友好呈现，原选择和项目保留",
+    "原项目内新建、提交期间禁用，避免重复创建"
+  ],
+  "errors": []
+}

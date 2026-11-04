@@ -97,7 +97,7 @@ export class DshDesktopHost {
    throw Error('桌面版尚未加载 Hub 插件，原登录和会话保留；请在原生插件页查看具体原因');
   }finally{this.progress=null;}
  }
- async sessions(){const r=await this.call('/sessions');return{items:r.items.map(s=>({id:s.sessionId,title:s.projections?.values?.title||s.title||s.name||'新会话',workspace:s.cwd||'',running:!!s.running}))};}
+ async sessions(){const r=await this.call('/sessions');return{projects:r.projects||[],existingHint:Array.isArray(r.projects)?'':'DeepSeek 下次正常重开后会同步项目名称，目前按项目文件夹显示。',items:r.items.map(s=>({id:s.sessionId,title:s.projections?.values?.title||s.title||s.name||'新会话',workspace:s.cwd||'',projectId:s.projectId,projectName:s.projectName,updatedAt:s.updatedAt,source:'desktop',running:!!s.running}))};}
  create(workspace){return this.call('/sessions/create',{workspace});}
  async open(){const d=await this.discover();if(!d.installed)throw Error('请先安装官方 DeepSeek Harness 桌面版');await this.execute('/usr/bin/open',['-a',d.app]);return{opened:true};}
  async configure(){throw Error('官方桌面接入沿用原登录与模型，请在官方软件内管理模型配置');}

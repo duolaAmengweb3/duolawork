@@ -1,22 +1,67 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
+import {ArrowLeft,Check,ChevronRight,Folder,Loader2,MessageSquare,Search} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {api} from '../v1/api.mjs';
+import {sessionErrorMessage} from '../../local/session-presentation.mjs';
 
 export default function ChatSessionPicker({member,channel,onSaved,onConnect}) {
-  const [data,setData]=useState(null),[selected,setSelected]=useState(''),[mode,setMode]=useState('existing'),[workspace,setWorkspace]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const load=async()=>{const value=await api('/local/chat-sessions?'+new URLSearchParams({memberId:member.id,channelId:channel.id}));setData(value);setSelected(value.binding?.sessionId||'');setMode(value.binding?'existing':value.items.length?'existing':value.capabilities.create?'new':'existing');};
-  useEffect(()=>{let active=true;api('/local/chat-sessions?'+new URLSearchParams({memberId:member.id,channelId:channel.id})).then(value=>{if(!active)return;setData(value);setSelected(value.binding?.sessionId||'');setMode(value.binding||value.items.length?'existing':value.capabilities.create?'new':'existing');}).catch(e=>active&&setError(e.message));return()=>{active=false;};},[member.id,channel.id]);
-  const save=async()=>{setBusy(true);setError('');try{await api('/local/chat-sessions',{memberId:member.id,channelId:channel.id,mode,sessionId:selected,...(workspace.trim()?{workspace:workspace.trim()}:{})});await onSaved();}catch(e){setError(e.message);}finally{setBusy(false);}};
-  if(!data)return <div className="space-y-3"><p role="status">{error||'正在读取工作会话…'}</p>{error&&<div className="flex gap-2"><Button onClick={()=>load().catch(e=>setError(e.message))}>重新读取</Button><Button variant="outline" onClick={onConnect}>查看连接</Button></div>}</div>;
+  const [data,setData]=useState(null),[selected,setSelected]=useState(''),[mode,setMode]=useState('existing'),[workspace,setWorkspace]=useState(''),[query,setQuery]=useState(''),[project,setProject]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
+  const revision=useRef(0),saving=useRef(false);
+  const load=async(initial=false)=>{
+    const request=++revision.current;setLoading(true);setError('');
+    try{
+      const value=await api('/local/chat-sessions?'+new URLSearchParams({memberId:member.id,channelId:channel.id}));
+      if(request!==revision.current)return;
+      setData(value);setSelected(previous=>value.items.some(s=>s.id===previous)?previous:value.binding?.sessionId||'');
+      if(initial){setMode('existing');setProject(value.items.find(s=>s.id===value.binding?.sessionId)?.projectKey||'');}else setProject(previous=>value.projects?.some(p=>p.key===previous)?previous:'');
+    }catch(e){if(request===revision.current)setError(sessionErrorMessage(e));}
+    finally{if(request===revision.current)setLoading(false);}
+  };
+  useEffect(()=>{load(true);return()=>{revision.current++;};},[member.id,channel.id]);
+  const save=async()=>{
+    if(saving.current)return;saving.current=true;setBusy(true);setError('');
+    try{await api('/local/chat-sessions',{memberId:member.id,channelId:channel.id,mode,sessionId:selected,...(workspace.trim()?{workspace:workspace.trim()}:{})},undefined,{timeoutMs:180000});await onSaved();}
+    catch(e){setError(sessionErrorMessage(e));}
+    finally{saving.current=false;setBusy(false);}
+  };
+  if(!data)return <div className="space-y-3"><p role="status">{error||'正在读取可继续的对话…'}</p>{error&&<div className="flex gap-2"><Button onClick={()=>load(true)} disabled={loading}>重新读取</Button><Button variant="outline" onClick={onConnect}>查看连接</Button></div>}</div>;
   if(!data.record?.enabled)return <div className="space-y-3"><p className="text-sm">请先连接 {member.name} 的账号。</p><Button onClick={onConnect}>去连接</Button></div>;
-  return <section className="space-y-4" aria-label="聊天的工作会话">
-    <p className="text-sm leading-7 text-muted-foreground">为“{channel.name}”选择 {member.name} 处理哪个项目、继续哪段工作会话。更换只影响这个聊天，原生会话和历史会保留。</p>
-    {data.binding&&<div className="rounded-lg border bg-muted/30 p-3 text-sm"><strong>当前：{data.binding.title||'原工作会话'}</strong><p className="mt-1 text-xs break-all text-muted-foreground">{data.binding.workspace}</p></div>}
-    <div className="flex gap-2"><Button variant={mode==='existing'?'default':'outline'} onClick={()=>setMode('existing')}>选择已有会话</Button>{data.capabilities.create&&<Button variant={mode==='new'?'default':'outline'} onClick={()=>setMode('new')}>新建工作会话</Button>}</div>
-    {mode==='existing'?<><div className="max-h-72 overflow-auto space-y-2" role="radiogroup" aria-label="可用工作会话">{data.items.map(s=><button type="button" key={s.id} role="radio" aria-checked={selected===s.id} onClick={()=>setSelected(s.id)} className={'w-full rounded-lg border p-3 text-left '+(selected===s.id?'bg-primary/5 border-primary':'hover:bg-muted')}><strong className="text-sm">{s.title}</strong><span className="block mt-1 text-xs break-all text-muted-foreground">{s.workspace||'尚未关联项目'}{s.running?' · 正在工作，消息排队':''}</span><span className="block mt-1 text-[11px] text-muted-foreground">{s.id.slice(0,14)}</span></button>)}</div>{!data.items.length&&<p className="text-sm text-muted-foreground">暂无可选会话。{data.capabilities.create?'可以新建工作会话。':data.capabilities.createHint}</p>}</>:<label className="grid gap-2 text-sm">项目目录（可选）<Input aria-label="工作会话项目目录" value={workspace} onChange={e=>setWorkspace(e.target.value)} placeholder="例如 /Users/you/Projects/my-app"/><span className="text-xs leading-6 text-muted-foreground">留空会为这个聊天创建独立工作目录。只创建会话，不会自动修改项目文件。</span></label>}
-    {data.existingHint&&mode==='existing'&&<p className="text-xs leading-6 text-muted-foreground">{data.existingHint}</p>}
-    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-    <div className="flex gap-2"><Button disabled={busy||mode==='existing'&&!selected} onClick={save}>{busy?'正在保存…':'用于这个聊天'}</Button><Button variant="ghost" disabled={busy} onClick={()=>load().catch(e=>setError(e.message))}>刷新会话</Button></div>
+  const projects=data.projects||[],activeProject=projects.find(p=>p.key===project);
+  const visible=(activeProject?.items||[]).filter(s=>`${s.title} ${s.preview||''} ${s.linkedChats?.map(c=>c.name).join(' ')||''}`.toLowerCase().includes(query.toLowerCase()));
+  const visibleProjects=projects.filter(p=>`${p.name} ${p.workspace} ${p.items.map(s=>s.title).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
+  const choice=data.items.find(s=>s.id===selected),knownProjects=projects.filter(p=>p.workspace&&p.nameSource!=='hub');
+  const enterProject=p=>{setProject(p.key);setQuery('');setSelected(p.items.some(s=>s.id===data.binding?.sessionId)?data.binding.sessionId:'');setWorkspace(p.workspace||'');setMode('existing');setError('');};
+  const back=()=>{setProject('');setSelected('');setQuery('');setMode('existing');setError('');};
+  return <section className="session-picker" aria-label="聊天的工作会话" aria-busy={busy}>
+    <p className="session-intro">先选项目，再选择让 {member.name} 在「{channel.name}」里继续哪段对话。</p>
+    {activeProject&&<div className="session-breadcrumb"><Button variant="ghost" disabled={busy} onClick={back}><ArrowLeft size={15}/>所有项目</Button><span><Folder size={16}/><strong>{activeProject.name}</strong></span></div>}
+    {activeProject&&<div className="session-tabs" role="group" aria-label="选择对话方式"><Button variant={mode==='existing'?'secondary':'ghost'} disabled={busy} onClick={()=>{setMode('existing');setError('');}}>继续已有对话</Button>{data.capabilities.create&&<Button variant={mode==='new'?'secondary':'ghost'} disabled={busy} onClick={()=>{setMode('new');setWorkspace(activeProject.workspace||'');setError('');}}>在此项目新建对话</Button>}</div>}
+    {mode==='existing'?<>
+      <label className="session-search"><Search size={16} aria-hidden="true"/><Input aria-label={activeProject?'搜索项目内对话':'搜索项目'} placeholder={activeProject?'搜索项目内对话':'搜索项目'} value={query} disabled={busy} onChange={e=>setQuery(e.target.value)}/></label>
+      {!activeProject?<div className="session-options" aria-label="可用项目">
+        {visibleProjects.map(p=><button type="button" key={p.key} className="session-option session-project" disabled={busy} onClick={()=>enterProject(p)}>
+          <span className="session-option-icon"><Folder size={20}/></span><span className="session-option-content"><strong>{p.name}</strong><span className="session-meta">{p.items.length} 段对话{p.nameSource==='folder'?' · 按项目文件夹显示':p.nameSource==='hub'?' · Hub 中创建':''}</span>{p.workspace&&<span className="session-project-location" title={p.workspace}>{p.workspace}</span>}</span><ChevronRight size={17}/>
+        </button>)}
+        {!visibleProjects.length&&<p className="session-empty">{query?'没有找到匹配的项目。':'暂时没有可读取的项目。'}</p>}
+      </div>:<div className="session-options" role="radiogroup" aria-label="可用工作会话">
+        {visible.map(s=><button type="button" key={s.id} role="radio" aria-checked={selected===s.id} disabled={busy} onClick={()=>{setSelected(s.id);setError('');}} className={'session-option '+(selected===s.id?'is-selected':'')}>
+          <span className="session-option-icon"><MessageSquare size={17} aria-hidden="true"/></span>
+          <span className="session-option-content"><strong>{s.title}</strong>{s.preview&&<span className="session-preview">{s.preview}</span>}<span className="session-meta">{s.sourceLabel||'已有对话'}{s.updatedAt&&<time dateTime={s.updatedAt}> · {new Date(s.updatedAt).toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'})}</time>}</span>{s.linkedChats?.length>0&&<span className="session-linked">用于 {s.linkedChats.map(c=>'「'+c.name+'」').join('、')}</span>}{s.running&&<span className="session-running">正在处理消息，新消息会排队</span>}</span>
+          {selected===s.id&&<Check size={17} className="session-check" aria-hidden="true"/>}
+        </button>)}
+        {!visible.length&&<p className="session-empty">{query?'没有找到匹配的对话。':'这个项目暂时没有可继续的对话。'}{!query&&!data.capabilities.create&&data.capabilities.createHint}</p>}
+      </div>}
+      {choice&&<details className="session-details"><summary>查看所选对话的项目位置</summary><p>{choice.managedWorkspace?'这是 Hub 为该对话保留的独立工作区。':choice.workspace||'未指定项目'}</p></details>}
+    </>:<div className="session-new">
+      <div className="session-new-heading"><MessageSquare size={20}/><div><strong>{channel.name}</strong><p>使用 {member.name} 的账号开始，不带入其他对话内容。</p></div></div>
+      <label className="session-project-label">项目<select aria-label="新对话项目" value={knownProjects.some(p=>p.workspace===workspace)?workspace:workspace?'custom':''} disabled={busy} onChange={e=>setWorkspace(e.target.value==='custom'?' ':e.target.value)}><option value="">Hub 独立工作区</option>{knownProjects.map(p=><option key={p.key} value={p.workspace}>{p.name} — {p.workspace}</option>)}<option value="custom">其他项目文件夹…</option></select></label>
+      {workspace&&!knownProjects.some(p=>p.workspace===workspace)&&<Input aria-label="工作会话项目目录" value={workspace.trimStart()} onChange={e=>setWorkspace(e.target.value||' ')} placeholder="粘贴项目文件夹路径" disabled={busy}/>}
+      <p className="session-hint">已有项目和对话都会保留。创建时不会修改项目文件。</p>
+    </div>}
+    {data.existingHint&&<p className="session-hint">{data.existingHint}</p>}
+    {error&&<p role="alert" className="session-error">{error}</p>}
+    <div className="session-picker-footer">{(activeProject||mode==='new')&&<Button disabled={busy||loading||mode==='existing'&&!selected} onClick={save}>{busy&&<Loader2 size={15} className="animate-spin"/>}{busy?(mode==='new'?'正在创建对话…':'正在连接这段对话…'):mode==='new'?'创建并使用':'继续这段对话'}</Button>}{!activeProject&&data.capabilities.create&&<Button variant="outline" disabled={busy} onClick={()=>{setMode(mode==='new'?'existing':'new');setWorkspace('');setError('');}}>{mode==='new'?'返回项目列表':'新建对话…'}</Button>}<Button variant="ghost" disabled={busy||loading} onClick={()=>load()}>{loading?'正在刷新…':'刷新列表'}</Button></div>
+    {busy&&<p role="status" className="session-hint">正在和 {member.name} 建立连接，请稍等，无需重复点击。</p>}
   </section>;
 }

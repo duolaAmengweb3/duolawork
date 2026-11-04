@@ -672,7 +672,7 @@ export default function App() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^channel_/.test(b.title)?b.title:(!local?.assignments?.length&&local?.sessionId?local.title:b?'本聊天工作会话':'选择工作会话')}</Button>;})}</div>
+                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^(?:channel_|原工作会话|新会话|独立工作会话)/.test(b.title)?b.title:b?'更换项目与对话':'选择项目与对话'}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
                   {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
@@ -1125,7 +1125,7 @@ export default function App() {
               meeting: "开始讨论",
               "close-meeting": "记录会议结论",
               connect: <span className="connection-title"><Face platformId={modal.member?.platformId} name={modal.member?.name}/><span>连接 {modal.member?.name}</span></span>,
-              session: modal.member?.name + " · 工作会话",
+              session: "选择 " + modal.member?.name + " 的对话",
               disconnect: "解除 " + modal.member?.name + " 的连接？",
               import: "继续以前的项目",
               history: "历史工作区",
@@ -1136,7 +1136,9 @@ export default function App() {
               ? "成员、负责人都由用户决定；更换不会删除聊天或登录资料。"
               : modal.type === "create"
                 ? "选好成员就可以开始，不必先想好流程。"
-                : "保留原生 Agent 能力与真实协作记录。"
+                : modal.type === "session"
+                  ? "决定它在这个聊天里接着做哪件事。"
+                  : "保留原生 Agent 能力与真实协作记录。"
           }
           onClose={() => setModal(null)}
         >

@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {SESSION_CAPABILITIES,publicAssignments} from './session-routing.mjs';
+import {presentSessions,sessionProjects,sessionErrorMessage} from './session-presentation.mjs';
 
 export class ChatSessions {
   constructor({coding,dsh,ag}) { Object.assign(this,{coding,dsh,ag});this.jobs=new Map();this.locks=new Map(); }
@@ -33,12 +34,14 @@ export class ChatSessions {
   }
   async options({memberId,channelId}) {
     const m=await this.member(memberId),manager=this.manager(m),status=await this.status(memberId);
-    if(channelId)await this.channel(memberId,channelId);
-    if(m.platformId==='claude-code')return{...status,items:status.items.filter(s=>s.online),binding:status.bindings[channelId]||null};
+    const channels=channelId?await this.channel(memberId,channelId):[];
+    if(m.platformId==='claude-code'){const items=presentSessions(status.items.filter(s=>s.online),{bindings:status.bindings,channels,platform:'Claude'});const binding=status.bindings[channelId];return{...status,items,projects:sessionProjects(items),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};}
     if(!manager)return {...status,items:[]};
     const r=manager.records[memberId];if(!r?.enabled)return {...status,items:[]};
     const listed=manager===this.coding?await manager.sessionOptions(memberId):await manager.hostFor(memberId).sessions();
-    return {...status,...listed,binding:r.chatBindings?.[channelId]||(!r.chatBindings&&r.sessionId?{sessionId:r.sessionId,title:r.title,workspace:r.cwd,migrated:true}:null)};
+    const items=presentSessions(listed.items,{bindings:r.chatBindings,channels,dataDir:manager.dataDir,platform:m.platformId==='codex'?'Codex':m.platformId==='deepseek-harness'?'DeepSeek':'Gemini'}),binding=r.chatBindings?.[channelId]||(!r.chatBindings&&r.sessionId?{sessionId:r.sessionId,title:r.title,workspace:r.cwd,migrated:true}:null);
+    const legacyGemini=manager===this.coding&&m.platformId!=='codex';
+    return {...status,...listed,existingHint:listed.existingHint?sessionErrorMessage(listed.existingHint):legacyGemini?'此账号当前连接的是 Gemini 后台助手，下面是它的对话，不包含 Antigravity 桌面里的项目和对话。':'',items,projects:sessionProjects(items,listed.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};
   }
   async channel(memberId,channelId) {
     if(typeof channelId!=='string'||!/^channel_[a-zA-Z0-9_-]+$/.test(channelId))throw Error('请选择工作区里的聊天');

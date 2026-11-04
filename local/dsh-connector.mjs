@@ -41,7 +41,12 @@ export class DshConnector {
   if(!item)throw Error('Original DSH session does not exist; no replacement created');
   return item;
  }
- async sessions(){const listed=await this.ctx.sessionController.list({},new AbortController().signal),archived=new Set(this.ctx.workspaceRegistry?.archivedSessionIds||[]);return{...listed,items:listed.items.filter(s=>!archived.has(s.sessionId))};}
+ async sessions(){
+  const listed=await this.ctx.sessionController.list({},new AbortController().signal),registry=this.ctx.workspaceRegistry,archived=new Set(registry?.archivedSessionIds||[]);
+  const projects=(registry?.list?.()||[]).map(p=>({id:p.id,name:p.title,workspace:p.path,sessionIds:[...p.sessionIds]}));
+  const bySession=new Map(projects.flatMap(p=>p.sessionIds.map(id=>[id,p])));
+  return{...listed,projects,items:listed.items.filter(s=>!archived.has(s.sessionId)).map(s=>{const p=bySession.get(s.sessionId);return{...s,...(p?{projectId:p.id,projectName:p.name}:{})};})};
+ }
  async bind(input){
   const pending=this.bindingJobs.get(input.sessionId);if(pending){await pending;return this.bindOnce(input);}
   const job=this.bindOnce(input);this.bindingJobs.set(input.sessionId,job);try{return await job;}finally{this.bindingJobs.delete(input.sessionId);}

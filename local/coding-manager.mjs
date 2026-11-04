@@ -18,7 +18,7 @@ export function rememberAccount(record,auth){
 }
 export class CodingManager{
  constructor({config,dataDir,maintenance=false,request=requestJson,agentFactory,runtime,interval=5000}){
-  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
+  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.sessionOperations=new Map();this.nativeUsedAt=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
  }
  async load(){try{this.records=JSON.parse(await fs.readFile(this.file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('本机接入记录无法读取，原文件保留');}
   for(const r of Object.values(this.records)){
@@ -28,11 +28,12 @@ export class CodingManager{
    if(r.engine==='antigravity'&&r.protocol!=='acp'){
     r.legacyReceiver={protocol:'cli-headless',sessions:r.sessions,inFlight:r.inFlight};r.sessions={};r.protocol='acp';r.inFlight=null;r.status='disconnected';r.message='官方接入已准备好，点击连接完成首次登录';r.enabled=false;
    }else if(r.inFlight){r.status='needs_review';r.message='上次执行中断，原会话保留；请检查并继续未完成的工作';}
+   else if(r.sourceReady&&r.enabled&&r.status==='connecting'){r.status='idle';r.message='账号连接已保留，等待新消息';}
    else if(['installing','connecting','waiting_login'].includes(r.status)){r.status='disconnected';r.message='上次连接未完成，点击连接继续；原登录资料保留';}
   }
  }
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
- get busy(){return Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
+ get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
  status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
  async owner(route,body){return this.request(this.config.endpoint+route,{token:this.config.adminKey,...(body===undefined?{}:{method:'POST',body})});}
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
@@ -61,7 +62,8 @@ export class CodingManager{
  }
  client(r){return new CodingMemberClient(r.grantFile,{request:this.request});}
  async prepareNative(r,client){
-  let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
+  this.nativeUsedAt.set(r.memberId,Date.now());
+  let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed&&!agent.rpc?.closing){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
   const spec=await this.runtime.ensure(r.engine,p=>{Object.assign(r,p,{status:p.phase==='installing'?'installing':'connecting'});});
   let node=await findExecutable('node');if(!node&&process.versions.electron)node=process.execPath;
   if(!node)throw new Error('本机缺少 Node.js 运行环境');
@@ -89,13 +91,14 @@ export class CodingManager{
  }
  async tick(){
   if(this.stopped)return;
-  for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&this.agents.has(r.memberId)&&r.lastCompletedAt&&Date.now()-Date.parse(r.lastCompletedAt)>120000){const agent=this.agents.get(r.memberId);this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
-  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!this.jobs.has(r.memberId)).map(async r=>{const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}}));
+  for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)&&this.agents.has(r.memberId)&&Date.now()-(this.nativeUsedAt.get(r.memberId)||Date.parse(r.lastCompletedAt)||Date.now())>120000){const agent=this.agents.get(r.memberId);if(agent.busy||agent.rpc?.pending?.size)continue;this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}}));
  }
  async check(r,{recover=false}={}){
   try{
-   const client=this.client(r),signal=await client.api('/v2/signal',{timeout:15000});if(!r.enabled||this.stopped||(!signal.hasWork&&!recover))return;
+   const client=this.client(r),signal=await client.api('/v2/signal',{timeout:15000});if(!r.enabled||this.stopped||this.sessionOperations.has(r.memberId)||(!signal.hasWork&&!recover))return;
    const {work}=await client.tool('list_work'),first=recover?work.find(w=>w.stepId===r.inFlight?.stepId):work.find(w=>w.status==='ready'&&(!r.manualAssignments||(w.channelId?r.chatBindings?.[w.channelId]:r.verificationSessionId)));
+   if(this.sessionOperations.has(r.memberId))return;
    if(!first){r.inFlight=null;r.status='idle';r.message='已检查原回执，继续接收消息';await this.save();return;}
    const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key};r.lastRunAt=r.inFlight.at;r.status='working';r.message='原生 Agent 正在处理消息';await this.save();
    if(binding?.mode==='native-existing'){await this.runExisting(r,first,binding,client);return;}
@@ -106,26 +109,42 @@ export class CodingManager{
    const status=await client.api('/v2/self/status');r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message=status.complete?'已接入，正在后台接收消息':'本轮已回传，连接验证仍待完成';await this.save();
   }catch(e){r.message=safeError(e);if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';await this.save();}
  }
- async assign({memberId,channelId,sessionId,mode='new',workspace,title}){
-  const r=this.records[memberId];if(!r?.enabled||!r.sourceReady&&r.status!=='idle')throw Error('请先完成运行端连接');if(r.inFlight||this.jobs.has(memberId))throw Error('该成员正在工作，请完成后再更换会话');
+ async assign(input){
+  const {memberId}=input,prior=this.sessionOperations.get(memberId)||Promise.resolve();
+  // Reserve synchronously: empty polling and idle cleanup cannot race a UI choice.
+  const operation=prior.catch(()=>{}).then(async()=>{
+   const r=this.records[memberId];if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
+   await this.jobs.get(memberId);
+   if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
+   try{return await this.assignSession(input);}
+   finally{this.nativeUsedAt.set(memberId,Date.now());if(r?.enabled&&r.sourceReady&&!r.inFlight){r.status='idle';r.message='账号已连接，继续接收消息';await this.save();}}
+  });
+  this.sessionOperations.set(memberId,operation);
+  try{return await operation;}finally{if(this.sessionOperations.get(memberId)===operation)this.sessionOperations.delete(memberId);}
+ }
+ async assignSession({memberId,channelId,sessionId,mode='new',workspace,title}){
+  const r=this.records[memberId];if(!r?.enabled||!r.sourceReady&&r.status!=='idle')throw Error('请先连接这个 Agent 的账号');
   if(!['existing','new'].includes(mode))throw Error('无效的会话选项');
   r.chatBindings??=Object.fromEntries(Object.entries(r.sessions||{}).filter(([id])=>id!=='verification').map(([id,s])=>[id,{sessionId:s,workspace:r.cwd,title:'原工作会话',mode:'existing',migrated:true}]));
-  const client=this.client(r),agent=await this.prepareNative(r,client),tools=await client.tools();let selected;
+  const client=this.client(r);let selected;
   if(mode==='existing'){
    selected=Object.values(r.chatBindings).find(b=>b.sessionId===sessionId);
    if(!selected&&r.engine==='codex'){const native=(await this.workingHost.sessions()).items.find(s=>s.id===sessionId);if(native){for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&Object.values(other.chatBindings||{}).some(b=>b.sessionId===sessionId))throw Error('此原生会话已有另一位工作成员');selected={sessionId:native.id,title:native.title,workspace:native.workspace,mode:'native-existing'};}}
    if(!selected)throw Error('请选择这位成员已有的工作会话；不会读取其他成员的上下文');
   }else{
    if(r.creationPending)throw Error('上次会话创建结果待确认，请先查看已有会话，未重复创建');
+   const agent=await this.prepareNative(r,client),tools=await client.tools();
    const cwd=workspace?await fs.realpath(workspace):path.join(this.dataDir,'coding',memberId,'chats',channelId);await fs.mkdir(cwd,{recursive:true,mode:0o700});
-   r.creationPending=true;await this.save();const session=await agent.session({cwd,tools,mcpServers:r.mcpServers||[]});r.creationPending=false;selected={sessionId:session.id,workspace:cwd,title:title||'独立工作会话',mode:'new'};
+   r.creationPending=true;await this.save();let session;
+   try{session=await agent.session({cwd,tools,mcpServers:r.mcpServers||[]});}catch(error){if(typeof error.code==='number'){r.creationPending=false;await this.save();}throw error;}
+   r.creationPending=false;selected={sessionId:session.id,workspace:cwd,title:title||'新对话',mode:'new',createdAt:new Date().toISOString()};
   }
   r.manualAssignments=true;r.sourceReady=true;r.chatBindings[channelId]={...selected};r.sessions[channelId]=selected.sessionId;r.verificationSessionId??=selected.sessionId;await this.save();
   const status=await client.api('/v2/self/status');if(!status.complete&&!r.proofRunId){const proof=await client.api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;await this.save();}
   return r.chatBindings[channelId];
  }
  async sessionOptions(memberId){const r=this.records[memberId];let native=[],existingHint='';if(r?.engine==='codex')try{native=(await this.workingHost.sessions()).items;}catch(e){existingHint=safeError(e);}
-  const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
+  const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace,mode:b.mode,createdAt:b.createdAt}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
  async runExisting(r,first,binding,client){
   const key=first.channelId||Object.entries(r.chatBindings).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];if(!key)throw Error('请选择负责连接验证的工作会话');
   r.nativeDeliveries??={};const delivery=r.nativeDeliveries[first.stepId];
@@ -186,9 +205,9 @@ export class CodingManager{
   else result={decision:allow?'accept':'decline'};
   clearTimeout(item.timer);this.approvals.delete(id);item.resolve(result);return{accepted:true};
  }
- async pause({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(r.inFlight||this.jobs.has(memberId))throw new Error('成员还在处理请求，请等本轮结束');r.enabled=false;r.status='paused';r.message='后台接收已暂停，登录与会话保留';await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
- async disconnect(memberId){const r=this.records[memberId];if(!r)return;r.enabled=false;r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';delete r.authorizationUrl;for(const [id,a] of this.approvals)if(a.memberId===memberId){clearTimeout(a.timer);a.reject(new Error('Hub 连接已解除'));this.approvals.delete(id);}await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.jobs.get(memberId);r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';await this.save();}
- async permissions({memberId,mode}){const r=this.records[memberId];if(!r||!['full','ask'].includes(mode))throw new Error('权限选项不正确');if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');await this.jobs.get(memberId);if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');r.permissionMode=mode;await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
+ async pause({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整');if(r.inFlight||this.jobs.has(memberId))throw new Error('成员还在处理请求，请等本轮结束');r.enabled=false;r.status='paused';r.message='后台接收已暂停，登录与会话保留';await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
+ async disconnect(memberId){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再解除连接');const r=this.records[memberId];if(!r)return;r.enabled=false;r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';delete r.authorizationUrl;for(const [id,a] of this.approvals)if(a.memberId===memberId){clearTimeout(a.timer);a.reject(new Error('Hub 连接已解除'));this.approvals.delete(id);}await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.jobs.get(memberId);r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';await this.save();}
+ async permissions({memberId,mode}){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整权限');const r=this.records[memberId];if(!r||!['full','ask'].includes(mode))throw new Error('权限选项不正确');if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');await this.jobs.get(memberId);if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');r.permissionMode=mode;await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
  async resume({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.jobs.has(memberId))return this.status();r.enabled=true;if(r.inFlight){this.launch(r,()=>this.check(r,{recover:true}));}else if(['disconnected','needs_review'].includes(r.status)){return this.connect({memberId,engine:r.engine});}else{r.status='idle';r.message='继续接收消息';await this.save();}return this.status();}
  async stop(){this.stopped=true;clearInterval(this.timer);this.timer=null;for(const a of this.approvals.values()){clearTimeout(a.timer);a.reject(new Error('本机执行端停止，未批准操作'));}this.approvals.clear();await Promise.allSettled([...this.agents.values()].map(a=>a.stop()));this.agents.clear();await Promise.allSettled([...this.jobs.values()]);await this.save();}
 }

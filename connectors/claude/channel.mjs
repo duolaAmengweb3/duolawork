@@ -6,6 +6,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {privateJson} from '../../local/storage.mjs';
+import {refreshSessionInfo} from './session-info.mjs';
 
 // The MCP subprocess has only Hub credentials. Native files/shell remain the
 // parent Claude's tools in its own environment, never RPC methods on the Mac.
@@ -47,7 +48,7 @@ export async function serve({grantFile,runFile,stateDir}){
   let bridge,session,closed=false,polling=false,lastHeartbeat=0,checkId;
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:(await client.tools()).filter(t=>!['setup_connection','check_connection','report_setup_status','receive_messages'].includes(t.name))}));
   server.setRequestHandler(CallToolRequestSchema,async req=>{try{if(!bridge)throw Error('正在等待原生会话登记');const value=await bridge.tool(req.params.name,req.params.arguments||{});return{content:[{type:'text',text:JSON.stringify(value)}]};}catch(e){return{isError:true,content:[{type:'text',text:e.status===401||e.status===403?'Hub 授权已失效，请查看成员连接':e.message}]};}});
-  const heartbeat=()=>client.api('/v2/self/native-sessions',{method:'POST',body:session});
+  const heartbeat=async()=>{session=await refreshSessionInfo(session);return client.api('/v2/self/native-sessions',{method:'POST',body:session});};
   async function tick(){if(polling||closed)return;polling=true;try{
     const next=JSON.parse(await fs.readFile(runFile,'utf8'));
     if(!next.sessionId)return;

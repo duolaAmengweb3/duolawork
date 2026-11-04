@@ -1,14 +1,14 @@
 import { isNetworkError } from "../../local/network.mjs";
 
 export function createApi({ fetchImpl = (...args) => fetch(...args), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
-  return async function api(path, body, method) {
+  return async function api(path, body, method, {timeoutMs = 35000} = {}) {
     method = (method || (body === undefined ? "GET" : "POST")).toUpperCase();
     const read = method === "GET" || method === "HEAD";
     for (let attempt = 0; attempt < (read ? 2 : 1); attempt++) {
       try {
         const r = await fetchImpl("/api" + path, {
           method,
-          signal: AbortSignal.timeout(35000),
+          signal: AbortSignal.timeout(timeoutMs),
           headers: { "Content-Type": "application/json" },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         });
