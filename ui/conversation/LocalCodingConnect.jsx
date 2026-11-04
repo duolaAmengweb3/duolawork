@@ -2,8 +2,13 @@ import React,{useEffect,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Alert,AlertDescription} from '@/components/ui/alert';
 import {api} from '../v1/api.mjs';
+import DshConnect from './DshConnect.jsx';
 const labels={installing:'正在准备连接组件',connecting:'正在连接',waiting_login:'还差一次官方登录',working:'正在处理',idle:'后台接收已开启',paused:'后台接收已暂停',needs_review:'需要继续检查',disconnected:'准备连接'};
 export default function LocalCodingConnect({member,connection,refresh,onStartChat}){
+ if(member.platformId==='deepseek-harness')return <DshConnect {...{member,connection,refresh,onStartChat}}/>;
+ return <ManagedCodingConnect {...{member,connection,refresh,onStartChat}}/>;
+}
+function ManagedCodingConnect({member,connection,refresh,onStartChat}){
  const engine=member.platformId==='codex'?'codex':'antigravity',brand=engine==='codex'?'Codex':'Gemini';
  const [status,setStatus]=useState(null),[discovery,setDiscovery]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[answers,setAnswers]=useState({});
  const load=async()=>{setStatus(await api('/local/coding/status'));await refresh();};

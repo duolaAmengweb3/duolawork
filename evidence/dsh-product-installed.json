@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-04T01:51:23.258Z",
+  "buildId": "5d2048de7184ed17",
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "5d2048de7184ed17"
+  },
+  "realNativeHost": true,
+  "realModel": true,
+  "productionHubChanged": false,
+  "claudeTouched": false,
+  "packagedOnly": true,
+  "desktopRestarted": true,
+  "originalSession": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+  "checks": [
+    "Normal installed member UI selected the existing native work session and completed actual self verification",
+    "Before restart the native Agent remembered a new conversation-only marker",
+    "Desktop client fully exited and relaunched; native session ID and private grant bytes were identical",
+    "After reopening, native Agent replied with product_context_blue_1104 and the original dsh_context_4f14fbc3, absent from the wake prompt",
+    "Normal member UI disconnected it; native Agent and chat history retained"
+  ],
+  "restart": {
+    "at": "2026-11-04T01:44:49.814Z",
+    "buildId": "5d2048de7184ed17",
+    "sameNativeSessions": true,
+    "privateMemberGrantsByteIdentical": true,
+    "repliedWithBothPriorContextMarkers": true
+  },
+  "screenshot": "screenshots/dsh-installed-restart.png",
+  "temporaryNativeBindingsRemoved": true,
+  "testInfrastructure": {
+    "signalCleanupFailure": "workerd exited on SIGHUP before the asynchronous evidence handler; UI and explicit filesystem/API checks were preserved, and cleanup was completed separately",
+    "fix": "Acceptance helper now uses authenticated loopback HTTP finish, not process-exit signals",
+    "fixVerified": "Authenticated HTTP cleanup returned 200 and completed without model calls"
+  },
+  "finalActivationBuild": "b5ec8a386834bb0b",
+  "nativeArchivedSessionsExcluded": true
+}

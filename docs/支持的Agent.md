@@ -2,7 +2,7 @@
 
 > **11月3日维护入口已统一：** 后续接入研发从 [Agent接入/README.md](../Agent接入/README.md) 开始，工程路线、开源依据、Grok 已有实现和真实验收均在同一文件夹维护，不再重开相互冲突的方案。Codex 官方 App Server 与 Gemini 官方 Antigravity ACP 1.4.5 已在安装版通过真实回群、原生文件读写和完整重开续接，默认完整授权、可选权限管理；原 IDE 会话与全局设置独立。具体场景及速度见[验收记录](../Agent接入/03-实现状态与验收记录.md)。下文其他品牌仍是逐家适配目标，不因本次结果一并变成已支持。
 
-> **同日原工作会话补验：** Codex VSCode 官方扩展、Antigravity 桌面 App 的原 GUI 会话，以及 DeepSeek Harness 官方 npm `0.2.1-rc.5` Web Host 的原生会话，均已实际完成“先本地工作 → 后加入 Hub 回群 → 继续原项目”。DSH 使用用户提供的 B.ai `deepseek-v4.1-flash`，另通过整个 Host 重启后原会话上下文恢复；官方本地运行端已安装。DSH 会话由 Host API 创建，不混称 GUI 创建；三条路线的新成员页绑定均未正式发布。Claude 按要求只调研、不运行。具体证据与边界见 [04](../Agent接入/04-已有工作会话加入协作-可行性验证.md)。
+> **11月4日原工作会话更新：** Codex VSCode 官方扩展、Antigravity 桌面 App 的原 GUI 会话已有可行性证据，新绑定入口尚未发布。**DeepSeek Harness 已有正式成员页入口并安装**，支持选择原工作会话或新建独立助手；B.ai 配置自动复用，实际自检、单聊、本地读写与相互 @ 通过，Host 重启保留准确原会话。DSH 最初测试会话由 Host API 创建，不混称最初由 GUI 创建；也不覆盖任意未安装插件的自建 Host。Claude 仍不动。证据见 [04](../Agent接入/04-已有工作会话加入协作-可行性验证.md)。
 
 ## 2026-11-02 当前范围：Personal Agent 与 Coding Agent 混编
 

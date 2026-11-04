@@ -503,9 +503,7 @@ export default function App() {
                       </span>
                       <h2>{channel.name}</h2>
                       <p>
-                        这是你们的群聊。直接提问、讨论或 @ 某位成员。
-                        <br />
-                        负责人可以协调，所有人都能自由发言。
+                        {channel.direct?'直接提问、讨论，或让这位 Agent 帮你处理事情。':<>这是你们的群聊。直接提问、讨论或 @ 某位成员。<br/>负责人可以协调，所有人都能自由发言。</>}
                       </p>
                     </div>
                   )}
@@ -1563,7 +1561,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
       <div className="member-grid">
         {workspace.members.map((m) => {
           const c = workspace.connections.find((c) => c.id === m.id);
-          const native=['codex','gemini-cli','antigravity'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&['idle','working'].includes(local.status)));
+          const native=['codex','gemini-cli','antigravity','deepseek-harness'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=c?.status==='verified'&&(!native||(local?.enabled&&['idle','working'].includes(local.status)));
           return (
             <article key={m.id}>
               <Face name={m.name} id={m.id} />

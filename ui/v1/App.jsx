@@ -2061,7 +2061,7 @@ export function ConnectWizard(props) {
     [busy, setBusy] = useState(false), [error, setError] = useState(""),
     [url, setUrl] = useState(""), [token, setToken] = useState("");
   const submission = useRef(null);
-  if(['codex','gemini-cli','antigravity'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取本机接入…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
+  if(['codex','gemini-cli','antigravity','deepseek-harness'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取本机接入…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
   if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
   const complete = connection?.status === "verified";
   const grok = member.platformId === "grok-bot";

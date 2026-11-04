@@ -13,7 +13,7 @@ async function fixture(){
  const registered=[],prompts=[],calls=[];let work=[];
  const agent={id:'native-owned-session',session:{},ctx:{tools:{register(def){const r={def,disposed:false};registered.push(r);return()=>{r.disposed=true;};}}}};
  const ctx={sessionController:{list:async()=>({items:[{sessionId:agent.id,cwd:project}]}),resolveAgent:async()=>({agent}),prompt:async request=>{prompts.push(request);return{accepted:true};}},workingDirectory:{get:()=>project}};
- const client={credentials:async()=>({memberId:'member-owned'}),tools:async()=>[{name:'post_message',description:'Reply',inputSchema:{type:'object',properties:{body:{type:'string'}}}}],tool:async(name,args)=>{calls.push({name,args});return name==='list_work'?{work}:{ok:true};}};
+ const client={credentials:async()=>({memberId:'member-owned'}),api:async()=>({hasWork:work.some(w=>w.status==='ready')}),tools:async()=>[{name:'post_message',description:'Reply',inputSchema:{type:'object',properties:{body:{type:'string'}}}}],tool:async(name,args)=>{calls.push({name,args});return name==='list_work'?{work}:{ok:true};}};
  const options={ctx,stateFile:file,pollMs:100000,clientFactory:()=>client};
  let connector=await new DshConnector(options).start();
  return{dir,project,file,grantFile,token,registered,prompts,calls,agent,options,get connector(){return connector;},setWork:v=>{work=v;},restart:async()=>{await connector.stop();connector=await new DshConnector(options).start();return connector;},cleanup:async()=>{await connector.stop();await fs.rm(dir,{recursive:true,force:true});}};
@@ -65,9 +65,10 @@ test('empty polling does not run a model; duplicate ready work and restart retai
 test('unbinding while a lightweight check is in flight cannot wake the original Agent afterward',async()=>{
  const f=await fixture();try{
   await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});
+  f.setWork([{status:'ready',stepId:'late-message',channelId:'same-channel'}]);
   const b=f.connector.bindings.get(f.agent.id);let finish;
   b.client.tool=()=>new Promise(resolve=>{finish=resolve;});
-  const pending=f.connector.poll();await f.connector.unbind(f.agent.id);
+  const pending=f.connector.poll();while(!finish)await new Promise(r=>setImmediate(r));await f.connector.unbind(f.agent.id);
   finish({work:[{status:'ready',stepId:'late-message',channelId:'same-channel'}]});await pending;
   assert.equal(f.prompts.length,0);
  }finally{await f.cleanup();}
@@ -81,4 +82,21 @@ test('native Agent recreation attaches tools to the same persisted session rathe
   assert.equal(f.registered[0].disposed,true);assert.equal(f.registered.length,2);
   assert.equal(f.connector.bindings.get(f.agent.id).agent,replacement);assert.equal(f.prompts[0].sessionId,f.agent.id);
  }finally{await f.cleanup();}
+});
+
+test('parallel restore and connect cannot register Hub tools twice for the same original session',async()=>{
+ const f=await fixture();try{await Promise.all([f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile}),f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile})]);assert.equal(f.registered.length,1);assert.equal(f.connector.bindings.size,1);}finally{await f.cleanup();}
+});
+
+test('native Host health stays not ready until persisted bindings and scoped tools have finished restoring',async()=>{
+ const f=await fixture();let restarted;try{
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});const client=f.connector.bindings.get(f.agent.id).client;await f.connector.stop();let release;client.tools=()=>new Promise(r=>release=r);
+  restarted=new DshConnector(f.options);const boot=restarted.start();while(!release)await new Promise(r=>setImmediate(r));
+  const response=await fetch(restarted.state.controlUrl+'/health',{headers:{Authorization:'Bearer '+f.token}});assert.equal((await response.json()).ready,false);
+  release([{name:'post_message',inputSchema:{type:'object'}}]);await boot;assert.equal(restarted.ready,true);assert.equal(restarted.bindings.size,1);
+ }finally{await restarted?.stop();await f.cleanup();}
+});
+
+test('archived native sessions are not offered as active work and are never silently reopened by binding',async()=>{
+ const f=await fixture();try{f.connector.ctx.workspaceRegistry={archivedSessionIds:[f.agent.id]};assert.equal((await f.connector.sessions()).items.length,0);await assert.rejects(f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile}),/does not exist/);assert.equal(f.prompts.length,0);}finally{await f.cleanup();}
 });
