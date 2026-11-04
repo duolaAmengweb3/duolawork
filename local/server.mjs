@@ -49,7 +49,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   if(!c.platforms.some(p=>p.id==='deepseek-harness'))c.platforms.push({id:'deepseek-harness',name:'DeepSeek Harness',kind:'coding',status:'local_available',registered:false});
   return json(res,c);
  }
- if(url.pathname==='/api/local/sources/status'&&req.method==='GET'){const value=await chatSessions.status(url.searchParams.get('memberId'));if(value.capabilities?.label==='Claude VPS 工作会话'){remoteMembers=[...remoteMembers.filter(r=>r.memberId!==value.record.memberId),value.record];}return json(res,value);}
+ if(url.pathname==='/api/local/sources/status'&&req.method==='GET'){const value=await chatSessions.status(url.searchParams.get('memberId'));if(value.capabilities?.remote===true){remoteMembers=[...remoteMembers.filter(r=>r.memberId!==value.record.memberId),value.record];}return json(res,value);}
  if(url.pathname==='/api/local/sources/connect'&&req.method==='POST')return json(res,await chatSessions.connect(await body(req)));
  if(url.pathname==='/api/local/chat-sessions'&&req.method==='GET')return json(res,await chatSessions.options(Object.fromEntries(url.searchParams)));
  if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST'){const input=await body(req),result=await chatSessions.assign(input);remoteMembers=remoteMembers.map(r=>r.memberId===input.memberId?{...r,assignments:[...r.assignments.filter(b=>b.channelId!==input.channelId),{channelId:input.channelId,...result.binding}]}:r);return json(res,result);}

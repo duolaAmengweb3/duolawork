@@ -15,7 +15,7 @@ const executable=path.resolve(process.argv[1]||'connector.cjs');
 const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
 async function read(file){return JSON.parse(await fs.readFile(file,'utf8'));}
 function location(alias){if(!/^[a-zA-Z0-9_-]{1,60}$/.test(alias||''))throw Error('成员别名只使用字母、数字、横线，例如 claude1');return path.join(base,alias);}
-export async function pair({endpoint,code,alias}){
+export async function pair({endpoint,code,alias,memberId}){
   const url=new URL(endpoint);if(url.protocol!=='https:'&&!(process.env.AGENT_HUB_CONNECTOR_TEST==='1'&&url.hostname==='127.0.0.1'))throw Error('Hub 地址必须是 HTTPS');
   if(url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('请使用 Hub 的完整根地址');
   const dir=location(alias),file=path.join(dir,'grant.json');
@@ -24,10 +24,34 @@ export async function pair({endpoint,code,alias}){
   let attempt;try{attempt=await read(attemptFile);}catch(e){if(e.code!=='ENOENT')throw e;}
   if(attempt?.fingerprint!==fingerprint){attempt={fingerprint,id:randomUUID()};await privateJson(attemptFile,attempt);}
   const grant=await requestJson(url.origin+'/v2/connect/redeem',{method:'POST',body:{code,attemptId:attempt.id}});
+  if(memberId&&grant.memberId!==memberId)throw Error('配对码属于其他成员，未覆盖连接');
   await privateJson(file,{...grant,expiresAt:Date.now()+grant.expires_in*1000});
   await new CodingMemberClient(file).api('/v2/self/connection',{method:'POST',body:{requestId:'claude-'+grant.memberId,transport:'pull',pollSeconds:15}});
   await fs.rm(attemptFile,{force:true});return grant.memberName;
 }
+export async function setup({endpoint,code,alias,memberId,sessionId}, {cli=executable}={}){
+  if(!/^member_[a-zA-Z0-9_-]+$/.test(memberId||''))throw Error('接入说明缺少有效的成员编号，请从 Hub 重新复制');
+  if(sessionId&&!/^[a-zA-Z0-9_-]{1,100}$/.test(sessionId))throw Error('原会话编号无效，请勿猜测');
+  if(Number(process.versions.node.split('.')[0])<22)throw Error('连接器需要 Node.js 22 或以上');
+  if(!['darwin','linux'].includes(process.platform))throw Error('此连接器当前支持 macOS 和 Linux');
+  const grantFile=path.join(location(alias),'grant.json');let grant;
+  try{grant=await read(grantFile);}catch(e){if(e.code!=='ENOENT')throw e;}
+  if(grant){
+    if(grant.memberId!==memberId||grant.endpoint!==new URL(endpoint).origin)throw Error('此连接位置属于其他账号，原资料保留，请使用正确的接入说明');
+  }else await pair({endpoint,code,alias,memberId});
+  const client=new CodingMemberClient(grantFile);
+  await client.api('/v2/self/connection',{method:'POST',body:{requestId:'claude-'+memberId,transport:'pull',pollSeconds:15}});
+  const [state,sessions]=await Promise.all([client.api('/v2/self/status'),client.api('/v2/self/native-sessions')]);
+  const online=sessions.items.some(s=>s.online);
+  if(state.complete&&online)return{stage:'ready',message:'已连接，原 Claude 已完成真实回复验证。'};
+  if(online)return{stage:'verifying',message:'原会话已在线，正在等待它完成 Hub 验证。'};
+  const resumeCommand=[process.execPath,cli,'start',alias,'--resume',...(sessionId?[sessionId]:[])].map(quote).join(' ');
+  const nextStep='安装和配对已完成。请在当前工作结束后正常退出 Claude，在同一项目目录执行下面这一条命令，恢复原会话并确认 Claude 的官方连接提示。无需重新登录。';
+  await privateJson(path.join(location(alias),'setup.json'),{memberId,preparedAt:new Date().toISOString(),resumeCommand,workspace:process.cwd()});
+  await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',message:'连接已准备好。回到 Claude，按它给出的命令恢复原会话并确认官方提示；Hub 会自动验证回复。'}});
+  return{stage:'waiting_owner',nextStep,resumeCommand,requiresNativeConfirmation:true};
+}
+async function stdinJson(){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>200000)throw Error('输入过大');}return JSON.parse(raw);}
 export async function prepareLaunch({alias,cwd=process.cwd(),cli=executable}){
   const dir=location(alias),grantFile=path.join(dir,'grant.json');await read(grantFile);
   const runDir=path.join(dir,'runs',randomUUID());await fs.mkdir(runDir,{recursive:true,mode:0o700});
@@ -45,9 +69,10 @@ export async function hook(runFile,input){
 }
 export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;
+  if(command==='setup'){console.log(JSON.stringify(await setup(await stdinJson()),null,2));return;}
   if(command==='pair'){
     const [endpoint,alias='claude1']=args;const rl=createInterface({input:process.stdin,output:process.stdout});let code;try{code=(await rl.question('粘贴 Hub 显示的一次性配对码：')).trim();}finally{rl.close();}
-    const name=await pair({endpoint,alias,code});console.log(`已配对 ${name}。在 VPS 的项目目录运行：node ${quote(executable)} start ${alias} --resume`);return;
+    const name=await pair({endpoint,alias,code});console.log(`已配对 ${name}。在原项目目录运行：node ${quote(executable)} start ${alias} --resume`);return;
   }
   if(command==='start'){
     const [alias='claude1',...nativeArgs]=args;

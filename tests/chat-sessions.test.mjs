@@ -26,6 +26,9 @@ test('one account supports concurrent Codex members; connect uses no model; chat
  const account=(await h.request('/admin/action',{type:'account.create',payload:{platformId:'codex',label:'shared original login'}})).result;
  const members=[];for(const name of ['Codex · 网站','Codex · App'])members.push((await h.request('/admin/action',{type:'member.create',payload:{accountId:account.id,name,mode:'connector'}})).result);
  for(const m of members){await sessions.connect({memberId:m.id});await manager.jobs.get(m.id);}
+ const secondAccount=await h.member('codex','another account, not another project');
+ await assert.rejects(()=>sessions.connect({memberId:secondAccount.id}),/已连接为/);
+ assert.equal(manager.records[secondAccount.id],undefined,'A new account must not silently reuse this computer\'s existing login');
  assert.equal(turns,0);assert.equal(created,0);assert.ok(members.every(m=>manager.records[m.id].sourceReady));
  const group=await h.command('channel.create',{name:'一起开发',memberIds:members.map(m=>m.id)}),other=await h.command('channel.create',{name:'另一项目',memberIds:[members[0].id]});
  const project=path.join(h.directory,'existing-project');await fs.mkdir(project);await fs.writeFile(path.join(project,'notes.txt'),'preserve');

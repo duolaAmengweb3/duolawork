@@ -53,6 +53,7 @@ import DOMPurify from "dompurify";
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
 import ChatSessionPicker from './ChatSessionPicker.jsx';
+import AgentAvatar from './AgentAvatar.jsx';
 import MeetingPanel, { MeetingCard } from './MeetingPanel.jsx';
 const ConnectWizard = lazy(() =>
   import("../v1/App.jsx").then((m) => ({ default: m.ConnectWizard })),
@@ -69,19 +70,8 @@ const statusText = {
   removed: "已移出群",
 };
 const markdown = (body) => DOMPurify.sanitize(marked.parse(body || ""));
-function Face({ name, id, small = false }) {
-  return (
-    <span
-      className={
-        "chat-face " +
-        (small ? "small " : "") +
-        (id === "owner" ? "mine" : id?.includes("dfaf") ? "dark" : "")
-      }
-    >
-      {name?.slice(0, 1) || "A"}
-    </span>
-  );
-}
+const Face=AgentAvatar;
+
 function Modal({ title, description, children, error, onClose }) {
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -453,7 +443,7 @@ export default function App() {
                   onClick={() => setModal({ type: "group" })}
                 >
                   {groupMembers.slice(0, 4).map((m) => (
-                    <Face key={m.id} id={m.id} name={m.name} small />
+                    <Face key={m.id} id={m.id} name={m.name} platformId={m.platformId} small />
                   ))}
                   <Plus size={15} />
                 </button>
@@ -521,7 +511,7 @@ export default function App() {
                       id={m.id}
                       key={m.id}
                     >
-                      <Face name={name(m.authorId)} id={m.authorId} />
+                      <Face name={name(m.authorId)} id={m.authorId} platformId={[...workspace.members,...(workspace.formerMembers||[])].find(x=>x.id===m.authorId)?.platformId} />
                       <div className="message-content">
                         <header>
                           <strong>{name(m.authorId)}</strong>
@@ -790,7 +780,7 @@ export default function App() {
                                     ?.focus();
                                 }}
                               >
-                                <Face small name={m.name} />
+                                <Face small name={m.name} platformId={m.platformId} />
                                 {m.name}
                               </button>
                             ))}
@@ -937,7 +927,7 @@ export default function App() {
                         </div>
                         {groupMembers.map((m) => (
                           <div className="space-member" key={m.id}>
-                            <Face name={m.name} id={m.id} />
+                            <Face name={m.name} id={m.id} platformId={m.platformId} />
                             <div>
                               <strong>
                                 {m.name}
@@ -1134,7 +1124,7 @@ export default function App() {
               task: "添加事项",
               meeting: "开始讨论",
               "close-meeting": "记录会议结论",
-              connect: "连接 " + modal.member?.name,
+              connect: <span className="connection-title"><Face platformId={modal.member?.platformId} name={modal.member?.name}/><span>连接 {modal.member?.name}</span></span>,
               session: modal.member?.name + " · 工作会话",
               disconnect: "解除 " + modal.member?.name + " 的连接？",
               import: "继续以前的项目",
@@ -1354,7 +1344,7 @@ function GroupForm({ channel, workspace, busy, onSave }) {
                 if (!e.target.checked && lead === m.id) setLead("");
               }}
             />
-            <Face small name={m.name} />
+            <Face small name={m.name} platformId={m.platformId} />
             <span>
               {m.name}
               <small>
@@ -1487,7 +1477,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
   const [adding, setAdding] = useState(false),
     [title, setTitle] = useState(""),
     [platform, setPlatform] = useState("grok-bot"),
-    [platforms, setPlatforms] = useState([]),[sourceAccount,setSourceAccount]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[editing,setEditing]=useState(null),[formError,setFormError]=useState(''),[saving,setSaving]=useState(false);
+    [platforms, setPlatforms] = useState([]),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[editing,setEditing]=useState(null),[formError,setFormError]=useState(''),[saving,setSaving]=useState(false);
   useEffect(() => {
     api("/v2/catalog").then((c) => setPlatforms(c.platforms)).catch(e=>setFormError(e.message));
   }, []);
@@ -1506,7 +1496,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
           添加成员
         </Button>
       </header>
-      <Dialog open={adding} onOpenChange={value=>{if(!saving)setAdding(value);}}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>添加成员</DialogTitle><DialogDescription>选一个平台，给这位 Agent 起个容易辨认的名字。</DialogDescription></DialogHeader>
+      <Dialog open={adding} onOpenChange={value=>{if(!saving)setAdding(value);}}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>添加成员</DialogTitle><DialogDescription>连接一个你正在使用的 Agent 账号，给它起个容易辨认的备注。</DialogDescription></DialogHeader>
         <form
           className="comm-form member-add"
           onSubmit={async (e) => {
@@ -1522,8 +1512,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
                 const current = await api("/state");
                 if (!current.platforms?.some(p => p.id === platform)) throw error;
               }
-              const reused=workspace.accounts.find(a=>a.id===sourceAccount&&a.platformId===platform&&a.status!=='disabled');
-              const { result: a } = reused?{result:reused}:await perform(() =>
+              const { result: a } = await perform(() =>
                 api("/action", {
                   type: "account.create",
                   payload: { platformId: platform, label: title },
@@ -1549,16 +1538,17 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               value={title}
               required
               maxLength={80}
-              placeholder="例如：Claude · 网站开发"
+              placeholder="例如：我的 Codex、团队 Claude"
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
           <label>
             平台
+            <span className="member-platform-preview"><Face platformId={platform}/><span>{platforms.find(p=>p.id===platform)?.name||platform}</span></span>
             <select
               aria-label="成员平台"
               value={platform}
-              onChange={(e) => {setPlatform(e.target.value);setSourceAccount('');}}
+              onChange={(e) => setPlatform(e.target.value)}
             >
               {platforms.filter(p=>p.id!=='gemini-cli').map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1567,7 +1557,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               ))}
             </select>
           </label>
-          {['codex','antigravity','deepseek-harness'].includes(platform)&&<label>使用哪个账号连接<select aria-label="复用账号连接" value={sourceAccount} onChange={e=>setSourceAccount(e.target.value)}><option value="">本机原生登录</option>{workspace.accounts.filter(a=>a.platformId===platform&&a.status!=='disabled').map(a=><option key={a.id} value={a.id}>复用：{a.label||workspace.members.find(m=>m.accountId===a.id)?.name||a.platformId} 的连接</option>)}</select><span className="text-xs text-muted-foreground">可共用登录，各工作成员有独立名称与会话。</span></label>}
+          <p className="text-sm leading-6 text-muted-foreground">添加的是你正在使用的账号。同一账号的不同项目，在聊天里选择工作会话即可，无需重复添加。</p>
           {formError&&<p role="alert" className="text-sm text-destructive">{formError}</p>}
           <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={()=>setAdding(false)}>取消</Button><Button disabled={saving||!title.trim()}>{saving?'正在添加…':'添加并连接'}</Button></div>
         </form>
@@ -1579,7 +1569,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
       </div>
       <div className="members-table-wrap"><table className="members-table" aria-label="成员列表"><thead><tr><th>成员</th><th>平台</th><th>状态</th><th><span className="sr-only">操作</span></th></tr></thead><tbody>
         {visible.map(({m,native,local,ready,verified,status})=><tr key={m.id}>
-          <td><div className="member-identity"><Face name={m.name} id={m.id}/><div><button className="member-name" onClick={()=>setModal({type:'connect',member:m})}>{m.name}</button><span className="member-caption">{native?(m.platformId==='claude-code'?'VPS 上的工作会话':'本机工作会话'):'独立 Agent'}{local?.assignments?.length?' · '+local.assignments.length+' 个聊天':''}</span></div></div></td>
+          <td><div className="member-identity"><Face name={m.name} id={m.id} platformId={m.platformId}/><div><button className="member-name" onClick={()=>setModal({type:'connect',member:m})}>{m.name}</button><span className="member-caption">{local?.accountLabel||(native?'账号连接':'独立 Agent')}{local?.assignments?.length?' · '+local.assignments.length+' 个聊天':''}</span></div></div></td>
           <td className="member-platform">{platformName(m.platformId)}</td>
           <td><span className={'member-status '+(verified?'is-ready':ready?'is-pending':'is-offline')} title={local?.message||status}><i/>{status}</span></td>
           <td><div className="member-actions"><Button size="sm" variant="outline" disabled={!ready} aria-label={'聊天 '+m.name} onClick={()=>onChat(m).catch(e=>setFormError(e.message))}><MessageSquare size={14}/>聊天</Button><Button size="sm" variant="ghost" aria-label={'连接设置 '+m.name} onClick={()=>setModal({type:'connect',member:m})}>{ready?'连接设置':'去连接'}</Button><DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={'更多操作 '+m.name}><MoreHorizontal size={17}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>{setFormError('');setEditing({member:m,name:m.name});}}>修改备注</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem variant="destructive" onSelect={()=>setModal({type:'disconnect',member:m})}>解除连接</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></td>

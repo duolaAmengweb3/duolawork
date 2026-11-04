@@ -1,4 +1,5 @@
 import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
+import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
 import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
 import { oauthFetch, startPairing } from "./pairing.mjs";
 import { fileStore } from "./file-store.mjs";
@@ -519,6 +520,7 @@ async function mcp(repo, identity, actor, request, env) {
 export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
+  if(url.pathname==='/v2/connectors/claude/guide'&&request.method==='GET')return json(claudeRecipe(url.origin,claudeSHA));
   if(url.pathname==='/v2/connectors/claude/download'&&request.method==='GET'){
     if(url.searchParams.has('version')&&url.searchParams.get('version')!==claudeSHA)return json({message:'连接器已更新，请重新生成安装步骤'},409);
     return new Response(Uint8Array.from(atob(claudeDownload),c=>c.charCodeAt(0)),{encodeBody:'manual',headers:{'Content-Type':'application/javascript','Content-Encoding':'gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':claudeSHA}});
@@ -569,9 +571,10 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/connect/claude'&&request.method==='POST'){
     if(!actor.owner)fail('forbidden','需要所有者身份',403);
     const {memberId}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.platformId==='claude-code');if(!m)fail('invalid_member','请选择 Claude Code 成员');
-    const pair=await issueAgentSkill(repo,identity,memberId,url.origin),alias='claude-'+memberId.slice(-8),entry='"$HOME/.local/share/agent-hub-claude/connector.cjs"';
-    return json({pairingCode:pair.pairingCode,expiresAt:pair.expiresAt,sha256:claudeSHA,
-      install:'mkdir -p "$HOME/.local/share/agent-hub-claude" && curl --fail --location --compressed "'+url.origin+'/v2/connectors/claude/download?version='+claudeSHA+'" -o '+entry,
+    const pair=await issueAgentSkill(repo,identity,memberId,url.origin),alias='claude-'+memberId.slice(7),entry='"$HOME/.local/share/agent-hub-claude/connector.cjs"';
+    return json({pairingCode:pair.pairingCode,expiresAt:pair.expiresAt,sha256:claudeSHA,alias,
+      skill:claudeSkill({origin:url.origin,member:m,alias,pairingCode:pair.pairingCode}),
+      install:claudeRecipe(url.origin,claudeSHA).install,
       pair:'node '+entry+' pair '+url.origin+' '+alias,start:'node '+entry+' start '+alias+' --resume'});
   }
   if(url.pathname==='/v2/self/native-sessions')return json(await remoteSessions(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));

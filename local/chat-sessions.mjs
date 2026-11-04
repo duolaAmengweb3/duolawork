@@ -17,6 +17,13 @@ export class ChatSessions {
   }
   async connect({memberId}) {
     const m=await this.member(memberId),manager=this.manager(m);if(!manager)throw Error('这个平台使用固定 Agent 接入');
+    // A second account must not silently attach to the same default login.
+    // Existing members and same-account legacy assignments remain intact.
+    if(!manager.records[memberId]?.enabled){
+      const w=await this.owner('/v2/workspace');
+      const existing=w.members.find(peer=>peer.id!==memberId&&peer.platformId===m.platformId&&peer.accountId!==m.accountId&&peer.status!=='disabled'&&manager.records[peer.id]?.enabled);
+      if(existing)throw Error(`这台电脑的 ${m.platformId==='codex'?'Codex':'Agent'} 已连接为「${existing.name}」。不同项目请在它的聊天里选择工作会话；另一个账号需要连接它自己的环境，不能直接复用这个登录。`);
+    }
     if(manager===this.coding)await manager.connect({memberId,engine:m.platformId==='codex'?'codex':'antigravity',sourceOnly:true});
     else {
       if(manager===this.ag&&this.coding.records[memberId]?.enabled)await this.coding.pause({memberId});

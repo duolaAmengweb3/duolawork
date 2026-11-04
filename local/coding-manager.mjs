@@ -11,6 +11,11 @@ import {CodexWorkingHost} from './codex-working-host.mjs';
 import {publicAssignments} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const nativeLabel=r=>r.engine==='codex'?'Codex':'Gemini';
+export function rememberAccount(record,auth){
+ if(record.engine!=='codex'||!auth)return;
+ if(record.accountLabel&&record.accountLabel!==auth.accountLabel)throw Error('这台电脑的 Codex 已切换账号或退出登录。原连接和工作会话保留，请连接正确的账号后继续。');
+ if(auth.accountLabel)record.accountLabel=auth.accountLabel;
+}
 export class CodingManager{
  constructor({config,dataDir,maintenance=false,request=requestJson,agentFactory,runtime,interval=5000}){
   Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
@@ -28,7 +33,7 @@ export class CodingManager{
  }
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
  get busy(){return Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
- status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
+ status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
  async owner(route,body){return this.request(this.config.endpoint+route,{token:this.config.adminKey,...(body===undefined?{}:{method:'POST',body})});}
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
  launch(r,fn){if(this.jobs.has(r.memberId))return;const job=Promise.resolve().then(fn).catch(async e=>{if(r.enabled){r.status='needs_review';r.message=safeError(e);}delete r.authorizationUrl;await this.save();}).finally(()=>this.jobs.delete(r.memberId));this.jobs.set(r.memberId,job);}
@@ -56,7 +61,7 @@ export class CodingManager{
  }
  client(r){return new CodingMemberClient(r.grantFile,{request:this.request});}
  async prepareNative(r,client){
-  let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed)return agent;
+  let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
   const spec=await this.runtime.ensure(r.engine,p=>{Object.assign(r,p,{status:p.phase==='installing'?'installing':'connecting'});});
   let node=await findExecutable('node');if(!node&&process.versions.electron)node=process.execPath;
   if(!node)throw new Error('本机缺少 Node.js 运行环境');
@@ -80,7 +85,7 @@ export class CodingManager{
    onAuthorization:url=>{if(!['https://accounts.google.com','https://auth.openai.com','https://auth0.openai.com'].includes(new URL(url).origin))return;r.status='waiting_login';r.authorizationUrl=url;r.message='请点击官方登录按钮完成这一次登录；后续自动复用';}
   };
   agent=this.agentFactory?this.agentFactory(options):new NativeAgent(options);this.agents.set(r.memberId,agent);
-  try{await agent.initialize();delete r.authorizationUrl;r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(r.memberId);throw e;}
+  try{rememberAccount(r,await agent.initialize());delete r.authorizationUrl;r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(r.memberId);throw e;}
  }
  async tick(){
   if(this.stopped)return;

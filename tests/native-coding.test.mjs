@@ -4,11 +4,17 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {EventEmitter} from 'node:events';
-import {NativeAgent,safeError} from '../local/native-agent.mjs';
+import {NativeAgent,safeError,codexAccountSummary} from '../local/native-agent.mjs';
 import {CodingMemberClient} from '../local/coding-client.mjs';
-import {CodingManager} from '../local/coding-manager.mjs';
+import {CodingManager,rememberAccount} from '../local/coding-manager.mjs';
 import {privateJson} from '../local/storage.mjs';
 async function temp(t){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-native-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return await fs.realpath(dir);}
+test('account identity uses official metadata and prevents silent login replacement without storing credentials',()=>{
+ const a=codexAccountSummary({type:'chatgpt',email:'original@example.test',access_token:'must-not-retain'}),r={engine:'codex'};
+ assert.deepEqual(a,{kind:'chatgpt',loggedIn:true,accountLabel:'original@example.test'});rememberAccount(r,a);
+ assert.throws(()=>rememberAccount(r,codexAccountSummary({type:'chatgpt',email:'another@example.test'})),/切换账号/);
+ assert.throws(()=>rememberAccount(r,codexAccountSummary(null)),/退出登录/);assert.equal(r.accountLabel,'original@example.test');
+});
 class Rpc extends EventEmitter{
  constructor(){super();this.calls=[];this.sent=[];}
  send(v){this.sent.push(v);}

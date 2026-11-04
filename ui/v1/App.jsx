@@ -2062,8 +2062,8 @@ export function ConnectWizard(props) {
     [busy, setBusy] = useState(false), [error, setError] = useState(""),
     [url, setUrl] = useState(""), [token, setToken] = useState("");
   const submission = useRef(null);
-  if(member.platformId==='claude-code')return <React.Suspense fallback={<p>正在读取远端连接…</p>}><RemoteClaudeConnect {...props}/></React.Suspense>;
-  if(['codex','gemini-cli','antigravity','deepseek-harness'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取本机接入…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
+  if(member.platformId==='claude-code')return <React.Suspense fallback={<p>正在读取账号连接…</p>}><RemoteClaudeConnect {...props}/></React.Suspense>;
+  if(['codex','gemini-cli','antigravity','deepseek-harness'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取账号连接…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
   if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
   const complete = connection?.status === "verified";
   const grok = member.platformId === "grok-bot";

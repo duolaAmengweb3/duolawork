@@ -1296,3 +1296,23 @@
   font-size: 10px;
   color: #99a3b2;
 }
+
+/* Consistent brand avatars at list, conversation and compact mention sizes. */
+.agent-avatar {width:38px;height:38px;min-width:38px;border-radius:12px;background:#fff;border:1px solid #e4e7ed;box-shadow:0 1px 2px #14203908;overflow:hidden;color:#64748b;}
+.agent-avatar img {display:block;width:23px;height:23px;object-fit:contain;flex-shrink:0;}
+.agent-avatar > svg {width:19px;height:19px;stroke-width:1.7;}
+.agent-avatar.brand-claude {background:#faf3ef;border-color:#ebdfd7;}
+.agent-avatar.brand-deepseek,.agent-avatar.brand-gemini {background:#fff;border-color:#dfe5f2;}
+.agent-avatar.brand-muse {background:#faf7fd;border-color:#e8e0ef;}
+.agent-avatar.small {width:26px;height:26px;min-width:26px;border-radius:8px;}
+.agent-avatar.small img {width:17px;height:17px;}
+.agent-avatar.small > svg {width:15px;height:15px;}
+.agent-avatar.mine {background:#eff2f8;border-color:#e2e7f1;color:#677993;}
+.member-identity .agent-avatar {width:40px;height:40px;min-width:40px;border-radius:12px;}
+.member-platform-preview,.connection-title {display:flex;align-items:center;gap:12px;}
+.member-platform-preview {padding:10px 12px;border:1px solid #e5e8ee;border-radius:12px;font-weight:500;}
+.connection-title .agent-avatar {width:36px;height:36px;min-width:36px;border-radius:11px;}
+/* App icons already include their own silhouette and background. */
+.agent-avatar:has(img[data-artwork="app-icon"]),.agent-avatar:has(img[data-artwork="mascot"]) {background:transparent;border:0;box-shadow:none;border-radius:0;overflow:visible;}
+.agent-avatar img[data-artwork="app-icon"] {width:100%;height:100%;}
+.agent-avatar img[data-artwork="mascot"] {width:94%;height:94%;}

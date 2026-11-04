@@ -7,6 +7,8 @@ import readline from 'node:readline';
 
 export const NATIVE_ENGINES={codex:{name:'Codex',command:'codex',args:['app-server']},antigravity:{name:'Gemini · Antigravity',command:'agy_acp_server.par',args:[]}};
 export const safeError=value=>String(value?.message||value||'原生进程连接失败').replace(/(?:Bearer\s+|sk-|ahv1_|ahr_)[A-Za-z0-9_+/=.-]+/g,'[凭证已隐藏]').replace(/https?:\/\/\S+/g,'[服务地址]').slice(0,1000);
+// Only documented account metadata, never login tokens or raw auth responses.
+export const codexAccountSummary=account=>({kind:account?.type||null,loggedIn:!!account,accountLabel:typeof account?.email==='string'&&account.email.length<=254?account.email:null});
 
 export async function findExecutable(name,{home=os.homedir(),env=process.env}={}){
  const folders=[...(env.PATH||'').split(path.delimiter),path.join(home,'.local/bin'),'/opt/homebrew/bin','/usr/local/bin'];
@@ -72,6 +74,7 @@ export class NativeAgent{
  constructor({engine,cwd,command,extraArgs=[],permissionMode='native',env=process.env,toolCall,onAuthorization=()=>{},onStopped=async()=>{},onApproval=async()=>{throw new Error('等待用户批准');},onProgress=()=>{},rpcFactory=options=>new NativeRpc(options)}){
   Object.assign(this,{engine,cwd,command,extraArgs,permissionMode,env,toolCall,onApproval,onProgress,onAuthorization,onStopped,rpcFactory});this.sessions=new Map();this.busy=false;
  }
+ async readAccount(){if(this.engine!=='codex')return this.auth;const value=await this.rpc.call('account/read',{refreshToken:false});return this.auth=codexAccountSummary(value.account);}
  async initialize(){
   const spec=NATIVE_ENGINES[this.engine];if(!spec)throw new Error('这个本机原生运行环境尚未适配');
   this.rpc=this.rpcFactory({command:this.command,args:[...spec.args,...this.extraArgs],cwd:this.cwd,env:this.env});
@@ -84,12 +87,12 @@ export class NativeAgent{
   if(this.engine==='codex'){
    this.rpc.send({jsonrpc:'2.0',method:'initialized',params:{}});
    let account=await this.rpc.call('account/read',{refreshToken:false});
-   this.auth={kind:account.account?.type||null,loggedIn:!!account.account};
+   this.auth=codexAccountSummary(account.account);
    if(!account.account&&account.requiresOpenaiAuth!==false){
     const login=await this.rpc.call('account/login/start',{type:'chatgpt'});
     this.onAuthorization(login.authUrl);
     await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.rpc.off('notification',handler);reject(new Error('本次官方登录已过期，请重新点击连接'));},5*60000);const handler=(method,p)=>{if(method==='account/login/completed'&&p.loginId===login.loginId){clearTimeout(timer);this.rpc.off('notification',handler);p.success?resolve():reject(new Error('官方登录未完成'));}};this.rpc.on('notification',handler);});
-    account=await this.rpc.call('account/read',{refreshToken:false});this.auth={kind:account.account?.type||null,loggedIn:!!account.account};
+    account=await this.rpc.call('account/read',{refreshToken:false});this.auth=codexAccountSummary(account.account);
    }
   }else {
    if(this.capabilities.agentInfo?.name!=='antigravity-acp')throw new Error('运行组件不是 Google 官方 Antigravity ACP，未继续登录');

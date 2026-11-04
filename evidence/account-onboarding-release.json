@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-04T10:05:44.172138+00:00",
+  "build": "69d2f6312987578d",
+  "cloud": "baae3c41-f980-4602-973d-a6d7c5792e5e",
+  "guideProtocol": "agent-hub-claude/2",
+  "liveDownloadHashVerified": true,
+  "sha256": "305ac6ce7246da450ecd342b0545a6dcd470c7deda3e69b9a767c975f8a94e18",
+  "tests": 243,
+  "protectedLocalDataUnchanged": true,
+  "workspaceDataUnchanged": true,
+  "claudeOrVpsOperated": false,
+  "visualAcceptance": {
+    "passed": false,
+    "reason": "Computer-use native pipe and browser access host unavailable; no final manual screen acceptance"
+  },
+  "nativeClaudeRoundTrip": "awaiting user-operated setup; protocol fixture only",
+  "remoteCodexGeminiDsh": "not implemented; current account adapters are local",
+  "avatarAssets": 17,
+  "nativeProductArtwork": [
+    "Codex",
+    "Grok Bot",
+    "ChatGPT Dot",
+    "Antigravity",
+    "DeepSeek Harness"
+  ]
+}
