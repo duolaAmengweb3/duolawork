@@ -36,16 +36,16 @@ Window: "Agent Hub · 你的 AI 团队", App: Agent Hub.
 								34 文本 汇报如下：
 								35 内容列表
 									36 container
-										37 AXListMarker 1. 
+										37 AXListMarker 1.
 										38 文本 验收识别词：native_amber_f60f51f0。
 									39 container
-										40 AXListMarker 2. 
+										40 AXListMarker 2.
 										41 文本 专用项目与分支：专用项目为 /Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e，Git 分支为 original-desktop-work。
 									42 container
-										43 AXListMarker 3. 
+										43 AXListMarker 3.
 										44 文本 追加断言与测试结果：在 test.mjs 中追加了 scale(-2) === -6 断言，实际执行 npm test 全部通过，输出 "native desktop project tests passed"，退出码为 0。
 									45 container
-										46 AXListMarker 4. 
+										46 AXListMarker 4.
 										47 文本 约束保持：保留 notes.txt 未修改，未提交代码，未访问其他项目或服务器，未创建文档/会议。
 								48 文本 我
 								49 container
@@ -60,13 +60,13 @@ Window: "Agent Hub · 你的 AI 团队", App: Agent Hub.
 								58 文本 汇报如下：
 								59 内容列表
 									60 container
-										61 AXListMarker 1. 
+										61 AXListMarker 1.
 										62 文本 验收识别词：native_amber_f60f51f0。
 									63 container
-										64 AXListMarker 2. 
+										64 AXListMarker 2.
 										65 文本 专用项目：/Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e。
 									66 container
-										67 AXListMarker 3. 
+										67 AXListMarker 3.
 										68 文本 原分支：original-desktop-work。
 							69 container
 								70 文本输入区 (settable) 群消息, Placeholder: 发消息给 Gemini Original Desktop…
