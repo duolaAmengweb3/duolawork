@@ -18,7 +18,7 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  const account=(await h.request('/admin/action',{type:'account.create',payload:{platformId:'claude-code',label:'fixture VPS'}})).result;
  const member=(await h.request('/admin/action',{type:'member.create',payload:{accountId:account.id,name:'Claude VPS',mode:'connector'}})).result;
  const setup=await h.request('/v2/connect/claude',{memberId:member.id});assert.match(setup.install,/--compressed/);assert.match(setup.install,/createHash/);assert.ok(setup.skill.includes(setup.pairingCode));
- const recipe=await (await fetch(h.base+'/v2/connectors/claude/guide')).json();assert.equal(recipe.protocol,'agent-hub-claude/2');assert.match(recipe.setup.command,/setup$/);
+ const recipe=await (await fetch(h.base+'/v2/connectors/claude/guide')).json();assert.equal(recipe.protocol,'agent-hub-claude/3');assert.match(recipe.setup.command,/setup-monitor$/);
  const download=await fetch(h.base+'/v2/connectors/claude/download?version='+setup.sha256);assert.equal(download.status,200);const bundle=Buffer.from(await download.arrayBuffer());assert.equal(createHash('sha256').update(bundle).digest('hex'),setup.sha256);
  const file=path.join(h.directory,'connector.cjs');await fs.writeFile(file,bundle);
  const oldNode=(await import('node:child_process')).spawnSync(process.execPath,['-e',`Object.defineProperty(process.versions,'node',{value:'22.11.0'});require(${JSON.stringify(file)})`],{encoding:'utf8'});assert.equal(oldNode.status,1);assert.match(oldNode.stderr,/22\.19/);assert.doesNotMatch(oldNode.stderr,/markAsUncloneable|TypeError/);

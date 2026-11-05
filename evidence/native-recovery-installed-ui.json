@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-05T11:05:16.430Z",
+  "buildId": "509767d31baf4dfd",
+  "originalNativeReplyId": "chat_cdc779fbde20402a82cb62fbff4a787b",
+  "checks": [
+    "actual installed Codex record reconciled to idle without user reconnect",
+    "actual Codex connection UI shows original environment connected",
+    "read-only browser fixture: pending reply keeps account and has no reconnect button",
+    "original ClaudeVPS is the only visible Claude and is truthfully pending setup"
+  ],
+  "errors": [],
+  "nativeWindowControl": "Headless inspection of installed service; actual Electron build separately verified by activation"
+}

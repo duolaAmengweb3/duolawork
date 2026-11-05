@@ -11,6 +11,7 @@ import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {serve} from './channel.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
 import {claudeResumeAction} from '../../shared/claude-onboarding.mjs';
+import {runMonitor,serveMonitor,writeMonitorPlugin,nativeIdentity} from './monitor.mjs';
 
 const base=process.env.AGENT_HUB_CLAUDE_DIR||path.join(os.homedir(),'.config','agent-hub-claude');
 const executable=path.resolve(process.argv[1]||'connector.cjs');
@@ -55,6 +56,29 @@ export async function setup({endpoint,code,alias,memberId,sessionId}, {cli=execu
   await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',action:'claude_resume',resume,message:'安装已完成，还差一次重新打开 Claude。恢复命令已放到 DuolaWork 的连接页，按页面步骤完成即可。'}});
   return{stage:'waiting_owner',nextStep,resumeCommand,requiresNativeConfirmation:true};
 }
+export async function setupMonitor({endpoint,code,alias,memberId}, {cli=executable,identity=nativeIdentity,configDir=process.env.CLAUDE_CONFIG_DIR||path.join(os.homedir(),'.claude')}={}){
+  if(!/^member_[a-zA-Z0-9_-]+$/.test(memberId||''))throw Error('请从 DuolaWork 重新复制接入说明');
+  const current=await identity();if(!current)throw Error('请把接入说明发到正在使用的 Claude Code 对话；未取得原会话信息，没有新开会话');
+  const dir=location(alias),grantFile=path.join(dir,'grant.json');let grant;
+  try{grant=await read(grantFile);}catch(e){if(e.code!=='ENOENT')throw e;}
+  if(grant){if(grant.memberId!==memberId||grant.endpoint!==new URL(endpoint).origin)throw Error('这个连接属于其他账号，原资料保留');}
+  else await pair({endpoint,code,alias,memberId});
+  const client=new CodingMemberClient(grantFile),name='duolawork-'+createHash('sha256').update(memberId).digest('hex').slice(0,12);
+  // A user plugin is the documented persistent installation scope. Repository
+  // plugins cannot start monitors. Never edit settings.json or the native login.
+  const pluginDir=path.join(configDir,'skills',name);
+  await writeMonitorPlugin({pluginDir,connectionDir:dir,cli,name});
+  const sessionsFile=path.join(dir,'monitor-sessions.json');let linked;
+  try{linked=await read(sessionsFile);}catch(e){if(e.code!=='ENOENT')throw e;linked={runtimeId:randomUUID(),sessionIds:[]};await privateJson(sessionsFile,linked);}
+  await privateJson(path.join(dir,'linked-sessions',current.sessionId+'.json'),{sessionId:current.sessionId});
+  await privateJson(path.join(dir,'setup.json'),{memberId,preparedAt:new Date().toISOString(),transport:'monitor',pluginDir,workspace:current.workspace,sessionId:current.sessionId});
+  await client.api('/v2/self/connection',{method:'POST',body:{requestId:'claude-'+memberId,transport:'pull',pollSeconds:15}});
+  const state=await client.api('/v2/self/status');
+  const sessions=await client.api('/v2/self/native-sessions');
+  if(state.complete&&sessions.items.some(s=>s.id===current.sessionId&&s.online))return{stage:'ready',message:'原会话已在线，并已完成真实回复验证。'};
+  await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',action:'claude_reload',message:'接收插件已准备好。在当前 Claude 输入 /reload-plugins，加载后会自动验证。以后照常打开 Claude 即可。'}});
+  return{stage:'waiting_owner',reloadCommand:'/reload-plugins',message:'准备好了。在这个 Claude 对话输入 /reload-plugins，之后会自动验证。无需退出或重新登录；以后照常打开 Claude。'};
+}
 async function stdinJson(){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>200000)throw Error('输入过大');}return JSON.parse(raw);}
 export async function prepareLaunch({alias,cwd=process.cwd(),cli=executable}){
   const dir=location(alias),grantFile=path.join(dir,'grant.json');await read(grantFile);
@@ -73,7 +97,20 @@ export async function hook(runFile,input){
 }
 export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;
+  if(command==='monitor'){await runMonitor(args[0]);return;}
+  if(command==='monitor-mcp'){await serveMonitor(args[0]);return;}
+  if(command==='prepare-monitor'){
+    const {connectionDir,pluginDir,sessionId}=await stdinJson();
+    const current=await nativeIdentity();
+    if(!current||sessionId&&current.sessionId!==sessionId)throw Error('请在要接入的原 Claude 对话里执行，不猜测会话');
+    const sessionsFile=path.join(connectionDir,'monitor-sessions.json');let linked;
+    try{linked=await read(sessionsFile);}catch(e){if(e.code!=='ENOENT')throw e;linked={runtimeId:randomUUID(),sessionIds:[]};}
+    if(!linked.sessionIds.includes(current.sessionId))linked.sessionIds.push(current.sessionId);
+    await privateJson(sessionsFile,linked);
+    console.log(JSON.stringify(await writeMonitorPlugin({connectionDir,pluginDir,cli:executable})));return;
+  }
   if(command==='setup'){console.log(JSON.stringify(await setup(await stdinJson()),null,2));return;}
+  if(command==='setup-monitor'){console.log(JSON.stringify(await setupMonitor(await stdinJson()),null,2));return;}
   if(command==='pair'){
     const [endpoint,alias='claude1']=args;const rl=createInterface({input:process.stdin,output:process.stdout});let code;try{code=(await rl.question('粘贴 Hub 显示的一次性配对码：')).trim();}finally{rl.close();}
     const name=await pair({endpoint,alias,code});console.log(`已配对 ${name}。在原项目目录运行：node ${quote(executable)} start ${alias} --resume`);return;

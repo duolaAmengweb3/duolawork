@@ -147,7 +147,9 @@ export async function reportSetup(repo, actor, input) {
   if (input.action) {
     const c = await repo.get("connection", actor.memberId);
     if (input.stage !== "waiting_owner") fail("invalid_action", "此接入确认不适用于该成员");
-    if(input.action==='claude_resume'&&c.platform==='claude-code'){
+    if(input.action==='claude_reload'&&c.platform==='claude-code'){
+      ownerAction={type:'claude_reload',command:'/reload-plugins'};
+    } else if(input.action==='claude_resume'&&c.platform==='claude-code'){
       try { ownerAction=claudeResumeAction(input.resume||{}); } catch { fail('invalid_action','原对话恢复信息无效'); }
     } else if(input.action==='grok_routine'&&c.platform==='grok-bot') {
       ownerAction = { type: "grok_routine", routineName: setupText(required(input.routineName, "接收器名称", 120)) };

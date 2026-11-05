@@ -63,3 +63,48 @@ test('catalog initialization after idle process cleanup does not stop normal mes
  assert.equal(record.status,'idle');
  let checked=0;manager.check=async()=>{checked++;};await manager.tick();assert.equal(checked,1);
 });
+
+async function originalDelivery(t){
+ const {manager,record,agents}=await fixture(t);
+ record.inFlight={key:'channel_original',stepId:'turn_original'};
+ record.chatBindings.channel_original={sessionId:'exact-original',workspace:record.cwd,mode:'native-existing'};
+ record.nativeDeliveries={turn_original:{sessionId:'exact-original',status:'sent'}};
+ record.status='working';await manager.save();await manager.load();
+ const restored=manager.records[record.memberId];
+ assert.equal(restored.status,'syncing');
+ manager.workingHost.queue=()=>{throw Error('must never resend original delivery');};
+ return{manager,record:restored,agents};
+}
+test('restart observes claimed original work without interrupting, replaying or reconnecting',async t=>{
+ const {manager,record,agents}=await originalDelivery(t);const calls=[];
+ manager.client=()=>({tool:async name=>{calls.push(name);return{work:[{stepId:'turn_original',status:'claimed'}]};}});
+ await manager.tick();assert.deepEqual(calls,['list_work']);assert.equal(agents.length,0);
+ assert.equal(record.status,'working');assert.equal(record.inFlight.stepId,'turn_original');
+ assert.equal(manager.status().members[0].pendingReply,true);
+ assert.equal(record.chatBindings.channel_original.sessionId,'exact-original');
+});
+test('original reply completed across restart automatically clears stale interruption and resumes reception',async t=>{
+ const {manager,record,agents}=await originalDelivery(t);let checks=0;
+ manager.client=()=>({tool:async()=>({work:[]}),api:async p=>{assert.equal(p,'/v2/self/status');return{complete:true};}});
+ manager.check=async()=>{checks++;};await manager.tick();
+ assert.equal(record.status,'idle');assert.equal(record.inFlight,null);assert.equal(agents.length,0);assert.equal(checks,0);
+ assert.equal(manager.status().members[0].pendingReply,false);
+ await manager.tick();assert.equal(checks,1);
+});
+test('lost polling response preserves original delivery and retries only the read',async t=>{
+ const {manager,record,agents}=await originalDelivery(t);
+ manager.client=()=>({tool:async()=>{throw Error('temporary network failure');}});
+ await manager.tick();assert.equal(record.status,'syncing');assert.equal(record.inFlight.stepId,'turn_original');assert.equal(agents.length,0);
+ manager.client=()=>({tool:async()=>({work:[{stepId:'turn_original',status:'claimed'}]})});
+ await manager.tick();assert.equal(record.status,'working');assert.equal(record.nativeDeliveries.turn_original.status,'sent');
+});
+test('uncertain queued delivery is never silently sent again or declared finished',async t=>{
+ const {manager,record,agents}=await originalDelivery(t);record.nativeDeliveries.turn_original.status='uncertain';
+ manager.client=()=>({tool:async()=>({work:[{stepId:'turn_original',status:'ready'}]})});
+ await manager.tick();assert.equal(record.status,'needs_review');assert.equal(record.inFlight.stepId,'turn_original');assert.equal(agents.length,0);
+});
+test('disappeared work cannot make an unverified connection ready',async t=>{
+ const {manager,record}=await originalDelivery(t);
+ manager.client=()=>({tool:async()=>({work:[]}),api:async()=>({complete:false})});
+ await manager.tick();assert.equal(record.status,'needs_review');assert.equal(record.inFlight,null);
+});

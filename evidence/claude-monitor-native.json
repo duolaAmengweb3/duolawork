@@ -1,0 +1,213 @@
+{
+  "at": "2026-11-05T10:43:45.658856+00:00",
+  "status": "native_acceptance_passed_published",
+  "native": {
+    "product": "Claude Code",
+    "version": "2.1.311",
+    "os": "Linux",
+    "sessionId": "20f129da-415d-4aa1-b840-bd4df7a9b73c",
+    "workspace": "/tmp/duolawork-claude-monitor-1105/project",
+    "mode": "ordinary claude launch, native /resume, user-scope official plugin; original subscription and permission mode unchanged"
+  },
+  "testMemberId": "member_e052632a304d404dbda63d4937ae65da",
+  "testChannelId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+  "passed": [
+    "ordinary native Monitor stdout automatically woke the same interactive session",
+    "temporary official plugin Monitor plus MCP completed Hub list/claim/submit check",
+    "native Write created the test file and post_message returned to the correct group",
+    "original conversation recalled grant.json from earlier context without reading that file",
+    "normal exit and same-session resume preserved history and tools",
+    "new monitor instance retried queued work without previous instance notification cooldown",
+    "user-scope plugin installed from native Bash; /reload-plugins activated Monitor and MCP without restarting the conversation",
+    "ordinary claude startup without Hub flags loaded plugin; native /resume continued exact conversation and replied",
+    "public v3 guide downloaded and SHA-256 verified; actual setup-monitor paired a new fixture member; native automatic claim/submit marked connection verified",
+    "installed application showed reload guidance and changed to connected after native receipt"
+  ],
+  "nativeVerifiedAt": "2026-11-05T09:30:36.568Z",
+  "firstFileReplyId": "chat_f89f24b295214c208b7bd50e3413017f",
+  "firstFileReplyAt": "2026-11-05T09:32:01.029Z",
+  "sameSessionResume": {
+    "id": "chat_5e15ed9a0b974a8cbeba1f3542d5f934",
+    "replyTo": "chat_576efb68c812423984a6ffb37bbbf833",
+    "createdAt": "2026-11-05T09:36:17.767Z",
+    "body": "已用原生 Read 读取 dw-native-proof.txt 并追加一行，当前完整内容：\nDW-NATIVE-FILE-f23f8e5e\n原会话恢复成功\n\n回忆出的禁止读取/打印的文件名：grant.json（未查看）。\n只操作了当前临时项目 /tmp/duolawork-claude-monitor-1105/project，未查看其他文件，未创建 Hub 文档或会议。"
+  },
+  "latestNativeRetry": {
+    "sentAt": "2026-11-05T09:44:24.479Z",
+    "result": {
+      "result": {
+        "id": "chat_605dc39111944f4cb2546b0a8176a574",
+        "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "number": 5,
+        "body": "重开恢复最后检查：仅回复“原会话重开后自动收到”。不读写文件，不建文档、会议或任务，不等待后续消息。",
+        "authorId": "owner",
+        "createdAt": "2026-11-05T09:44:24.535Z",
+        "type": "message",
+        "mentions": [],
+        "mentionsFromText": false,
+        "replyTo": null,
+        "rootId": null,
+        "hops": 0,
+        "kind": "channel_message",
+        "revision": 1,
+        "updatedAt": "2026-11-05T09:44:24.535Z"
+      }
+    },
+    "reply": {
+      "id": "chat_05ba7e3252634329881cb2973213bffb",
+      "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "number": 6,
+      "body": "原会话重开后自动收到",
+      "authorId": "member_e052632a304d404dbda63d4937ae65da",
+      "createdAt": "2026-11-05T09:44:44.492Z",
+      "type": "message",
+      "mentions": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_605dc39111944f4cb2546b0a8176a574",
+      "rootId": "chat_605dc39111944f4cb2546b0a8176a574",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-05T09:44:44.492Z"
+    }
+  },
+  "nativeTestBundleSha256": "60888dad603cf658ae8571cb02957eb90c22ebcd4134ccea4c1f2639f095d6bc",
+  "candidateBundleSha256": "60888dad603cf658ae8571cb02957eb90c22ebcd4134ccea4c1f2639f095d6bc",
+  "candidateOnly": [],
+  "checks": {
+    "targetedTests": 10,
+    "targetedPassed": 10,
+    "ui": "tests/claude-connect-ui.mjs passed; isolated browser/server, not installed product",
+    "viteBuild": "passed",
+    "fullUnitTests": 297,
+    "fullUnitPassed": 297,
+    "installedUI": "real first-install state, clipboard and native success read from installed service; actual Electron activation checked separately"
+  },
+  "notYetVerified": [
+    "macOS native Claude subscription path; tested Linux Claude Code 2.1.311",
+    "native permission modes other than the existing user setting"
+  ],
+  "cleanup": {
+    "testNativeSessionsClosedNormally": true,
+    "testConnectorProcessesRemaining": 0,
+    "testUserPluginsRemoved": true,
+    "testTemporaryDirectoriesRemoved": true,
+    "testMembersDisconnectedAndHidden": true,
+    "testAccountsRemoved": true,
+    "originalClaudeMemberRetained": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "originalMemberState": "existing old setup remains waiting for owner to send upgrade instruction in original conversation",
+    "userSettingsAndCredentialHashesUnchanged": true,
+    "originalUserSessionNotOperated": true
+  },
+  "sources": [
+    "https://code.claude.com/docs/en/plugins/components#monitors",
+    "https://code.claude.com/docs/en/plugins/loading#trust-check-and-component-limits-for-repository-plugins",
+    "https://code.claude.com/docs/en/plugins/create#make-a-plugin-load-in-every-session",
+    "https://github.com/iambashar/agent-intercom"
+  ],
+  "hotReload": {
+    "sentAt": "2026-11-05T10:24:20.278Z",
+    "result": {
+      "result": {
+        "id": "chat_86a545e01c8a4a8a81e0e22545317733",
+        "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "number": 7,
+        "body": "个人插件热加载验收：只回复“无需重开，原对话已收到”。不要读写文件，不新建任务、会议或文档。",
+        "authorId": "owner",
+        "createdAt": "2026-11-05T10:24:20.339Z",
+        "type": "message",
+        "mentions": [],
+        "mentionsFromText": false,
+        "replyTo": null,
+        "rootId": null,
+        "hops": 0,
+        "kind": "channel_message",
+        "revision": 1,
+        "updatedAt": "2026-11-05T10:24:20.339Z"
+      }
+    },
+    "reply": {
+      "id": "chat_9d6f18b4390f4c21be7e2ac98f6ef5ca",
+      "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "number": 8,
+      "body": "无需重开，原对话已收到",
+      "authorId": "member_e052632a304d404dbda63d4937ae65da",
+      "createdAt": "2026-11-05T10:24:40.416Z",
+      "type": "message",
+      "mentions": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_86a545e01c8a4a8a81e0e22545317733",
+      "rootId": "chat_86a545e01c8a4a8a81e0e22545317733",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-05T10:24:40.416Z"
+    }
+  },
+  "ordinaryStartup": {
+    "sentAt": "2026-11-05T10:29:19.670Z",
+    "result": {
+      "result": {
+        "id": "chat_edb0ffe5400143bdafb39c3a3f257b37",
+        "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+        "number": 9,
+        "body": "普通启动验收：这次没有 Hub 启动参数，没有再次安装或 reload。请只回复“正常打开，原对话继续接收”。不要读写文件，不建文档或会议。",
+        "authorId": "owner",
+        "createdAt": "2026-11-05T10:29:19.733Z",
+        "type": "message",
+        "mentions": [],
+        "mentionsFromText": false,
+        "replyTo": null,
+        "rootId": null,
+        "hops": 0,
+        "kind": "channel_message",
+        "revision": 1,
+        "updatedAt": "2026-11-05T10:29:19.733Z"
+      }
+    },
+    "reply": {
+      "id": "chat_147ceec1ab4c48ee97a223aad3414d75",
+      "scopeId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "parentId": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "number": 10,
+      "body": "正常打开，原对话继续接收",
+      "authorId": "member_e052632a304d404dbda63d4937ae65da",
+      "createdAt": "2026-11-05T10:29:41.876Z",
+      "type": "message",
+      "mentions": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_edb0ffe5400143bdafb39c3a3f257b37",
+      "rootId": "chat_edb0ffe5400143bdafb39c3a3f257b37",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-05T10:29:41.876Z"
+    }
+  },
+  "firstInstall": {
+    "memberId": "member_019dd682fed948be9b07e0c0eb11a0a6",
+    "alias": "claude-019dd682fed948be9b07e0c0eb11a0a6",
+    "nativeSessionId": "d55c6a29-71f8-4a34-a6a0-085130a81f8e",
+    "verifiedAt": "2026-11-05T10:36:27.322Z",
+    "deliveryEvidence": {
+      "runId": "run_f6ad683e005b4de8923e1acf609f391c",
+      "attemptId": "attempt_2d46e8513d614155a09a524ddbf49d35",
+      "documentIds": [
+        "document_d9af0bbbae03410ca748edf95f0ba640"
+      ]
+    },
+    "downloadSha256": "60888dad603cf658ae8571cb02957eb90c22ebcd4134ccea4c1f2639f095d6bc",
+    "installRoot": "/tmp/duolawork-claude-first-install",
+    "isolatedRootOverride": true,
+    "providerConfigurationChanged": false,
+    "nativeReloadRequiredOnce": true
+  },
+  "finalDesktopBuild": "509767d31baf4dfd",
+  "finalRegressionTests": 302,
+  "originalClaudeStillPending": true
+}

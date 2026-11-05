@@ -196,7 +196,9 @@ try {
       { encoding: "utf8" },
     ).trim();
     if (cmd !== exe) throw new Error("本机端口属于其他程序，未关闭任何进程。");
-    if (handoff.length) {
+    // Native agents can be busy even when no managed browser is open.
+    // Always ask the running client to check and drain its receivers first.
+    {
       const result = await post("/api/local/prepare-update");
       if (
         !result.prepared ||

@@ -1,13 +1,16 @@
 {
-  "at": "2026-11-05T08:02:30.348Z",
+  "at": "2026-11-05T10:42:09.487Z",
   "fixtureOnly": true,
   "realClaudeAccountUsed": false,
   "checks": [
-    "legacy paired state shows exact exit/resume instructions without issuing a new code",
+    "legacy paired state offers plugin upgrade and keeps old recovery in details",
+    "plugin setup asks only native reload with copy action and no relaunch command",
     "recovery help is copyable",
     "server-generated exact project resume command is copyable",
     "online state advances automatically but does not claim verified",
-    "compact viewport has no horizontal overflow"
+    "compact viewport has no horizontal overflow",
+    "pending plugin load is distinct from unconnected",
+    "verified native session going offline retains connected status"
   ],
   "errors": []
 }

@@ -1491,7 +1491,14 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
     api("/v2/catalog").then((c) => setPlatforms(c.platforms)).catch(e=>setFormError(e.message));
   }, []);
   const platformName=id=>platforms.find(p=>p.id===id)?.name||({'grok-bot':'Grok Bot',dots:'Dot','chatgpt-agent':'Dot',codex:'Codex',antigravity:'Gemini · Antigravity','claude-code':'Claude Code','deepseek-harness':'DeepSeek Harness'}[id]||id);
-  const rows=workspace.members.map(m=>{const connection=workspace.connections.find(c=>c.id===m.id),native=['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=native?local?.enabled&&['idle','working'].includes(local.status):connection?.status==='verified',verified=ready&&connection?.status==='verified';return{m,native,local,ready,verified,status:local?.status==='working'?'正在工作':verified?'可沟通':ready?'等待首次回复':native&&local?.enabled?'未在线':'未连接'};});
+  const rows=workspace.members.map(m=>{
+    const connection=workspace.connections.find(c=>c.id===m.id),native=['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId),local=coding?.members.find(r=>r.memberId===m.id),ready=native?local?.enabled&&['idle','working'].includes(local.status):connection?.status==='verified',verified=ready&&connection?.status==='verified';
+    const status=local?.status==='working'?'正在工作':verified?'可沟通':ready?'等待首次回复':
+      connection?.status==='verified'?(local?'已接入 · 离线':'正在检查连接'):
+      connection?.setup?.stage==='waiting_owner'?(connection.setup.ownerAction?.type==='claude_reload'?'待加载插件':'待完成接入'):
+      native&&local?.enabled?'未在线':connection?.status==='configured'?'接入中':'未连接';
+    return{m,native,local,ready,verified,status};
+  });
   const visible=rows.filter(({m})=>(filter==='all'||m.platformId===filter)&&(!query.trim()||(m.name+' '+platformName(m.platformId)).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())));
   return (
     <div className="members-page">

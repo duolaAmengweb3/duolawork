@@ -33,7 +33,11 @@ export class CodingManager{
    delete r.authorizationUrl;
    if(r.engine==='antigravity'&&r.protocol!=='acp'){
     r.legacyReceiver={protocol:'cli-headless',sessions:r.sessions,inFlight:r.inFlight};r.sessions={};r.protocol='acp';r.inFlight=null;r.status='disconnected';r.message='官方接入已准备好，点击连接完成首次登录';r.enabled=false;
-   }else if(r.inFlight){r.status='needs_review';r.message='上次执行中断，原会话保留；请检查并继续未完成的工作';}
+   }else if(r.inFlight){
+    const original=r.nativeDeliveries?.[r.inFlight.stepId];
+    r.status=original?'syncing':'needs_review';
+    r.message=original?'正在同步原会话的消息状态，已有工作继续':'上次执行中断，原会话保留；请检查并继续未完成的工作';
+   }
    else if(r.sourceReady&&r.enabled&&r.status==='connecting'){r.status='idle';r.message='账号连接已保留，等待新消息';}
    else if(['installing','connecting','waiting_login'].includes(r.status)){r.status='disconnected';r.message='上次连接未完成，点击连接继续；原登录资料保留';}
   }
@@ -41,7 +45,7 @@ export class CodingManager{
  workingHostFor(r){return r.engine==='antigravity-cli'?(this.antigravityCliHost??=new AntigravityCliHost(this.dataDir)):r.engine==='gemini-cli'?(this.geminiProjects??=new GeminiCliProjects()):r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
  get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
- status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
+ status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
  async owner(route,body){return this.request(this.config.endpoint+route,{token:this.config.adminKey,...(body===undefined?{}:{method:'POST',body})});}
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
  launch(r,fn){if(this.jobs.has(r.memberId))return;const job=Promise.resolve().then(fn).catch(async e=>{if(r.enabled){r.status='needs_review';r.message=safeError(e);}delete r.authorizationUrl;await this.save();}).finally(()=>this.jobs.delete(r.memberId));this.jobs.set(r.memberId,job);}
@@ -105,8 +109,34 @@ export class CodingManager{
  }
  async tick(){
   if(this.stopped)return;
+  // Hub may restart while the independently running native conversation keeps
+  // working. Reconcile its durable delivery without starting or replaying it.
+  const reconciled=new Set();
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.inFlight&&r.nativeDeliveries?.[r.inFlight.stepId]&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{
+   reconciled.add(r.memberId);const job=this.reconcileOriginal(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}
+  }));
+  if(this.stopped)return;
   for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)&&this.agents.has(r.memberId)&&Date.now()-(this.nativeUsedAt.get(r.memberId)||Date.parse(r.lastCompletedAt)||Date.now())>120000){const agent=this.agents.get(r.memberId);if(agent.busy||agent.rpc?.pending?.size)continue;this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
-  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}}));
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}}));
+ }
+ async reconcileOriginal(r){
+  const flight=r.inFlight;
+  try{
+   const client=this.client(r),{work}=await client.tool('list_work');
+   if(this.stopped||!r.enabled||r.inFlight!==flight)return;
+   const pending=work.find(w=>w.stepId===flight.stepId),delivery=r.nativeDeliveries[flight.stepId];
+   if(!pending){
+    const state=await client.api('/v2/self/status');
+    if(this.stopped||!r.enabled||r.inFlight!==flight)return;
+    r.inFlight=null;r.status=state.complete?'idle':'needs_review';
+    r.message=state.complete?'原消息已结束，继续接收消息':'原消息已结束，账号接入尚待完成';
+   }else if(pending.status==='claimed'||delivery.status==='sent'){
+    r.status='working';r.message=pending.status==='claimed'?'原会话正在处理消息':'消息已交给原会话，正在等待回复';
+   }else{
+    r.status='needs_review';r.message='上条消息的投递结果待确认，原会话保留，未重复发送';
+   }
+  }catch(e){r.status=[401,403].includes(e.status)?'needs_review':'syncing';r.message=safeError(e);}
+  await this.save();
  }
  async check(r,{recover=false}={}){
   try{

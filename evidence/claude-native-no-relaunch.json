@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-11-05T08:44:00Z",
+  "scope": "Owner-authorized native interactive verification on existing Claude VPS; no connector installation or settings changes",
+  "interaction": "Normal SSH TTY launch of official Claude; /status; /list-agents; natural-language test prompts; native one-message delivery confirmation; /exit",
+  "versions": {"original": "2.1.308", "test": "2.1.309"},
+  "testSessionId": "b65431fe-861d-4c3f-a22b-67b00f6d1674",
+  "cases": [
+    {
+      "id": "DW-NATIVE-1105-A",
+      "status": "passed",
+      "layer": "Native Claude-to-Claude messaging to an existing idle original session",
+      "sentAt": "2026-11-05T08:37:46.307Z",
+      "replyConfirmedAt": "2026-11-05T08:38:01.251Z",
+      "reply": "原会话已收到 DW-NATIVE-1105-A。",
+      "proof": "Reply arrived in sender transcript and SendMessage reply was visible in original tmux terminal",
+      "originalRestarted": false
+    },
+    {
+      "id": "DW-INBOX-1105-B",
+      "status": "failed_unattended_delivery",
+      "layer": "Short-lived detached Python child sends to its own test session inbox",
+      "spawnedAt": "2026-11-05T08:40:17.474Z",
+      "idleAt": "2026-11-05T08:40:19.557Z",
+      "nativeOutcome": "Held peer message from unidentified session; sender did not attest permission mode and receiver bypasses prompts",
+      "approval": "Operator selected Deliver this message to Claude for this single test message; no persistent rule changed",
+      "releasedAt": "2026-11-05T08:42:02.780Z",
+      "replyAt": "2026-11-05T08:42:07.083Z",
+      "reply": "普通连接器消息已收到 DW-INBOX-1105-B。",
+      "warning": "Assistant narrative called this automatic; terminal evidence shows manual approval, so unattended acceptance failed"
+    },
+    {
+      "id": "DW-INBOX-1105-C",
+      "status": "blocked_before_tool_execution",
+      "layer": "Proposed session-owned background child test",
+      "at": "2026-11-05T08:42:40.582Z",
+      "reason": "Claude native safety classifier stopped the response; no new tool execution recorded",
+      "followup": "Canceled model-switch prompt and stopped; no model switch, permission change, or bypass retry"
+    }
+  ],
+  "notTested": ["Plugin installation", "Automatic reconnect after ordinary launch", "Original-session restart and resume", "End-to-end DuolaWork dispatch and reply"],
+  "preservation": {
+    "originalProcessPid": 21853,
+    "originalProcessUnchanged": true,
+    "settingsFileHashUnchanged": true,
+    "credentialFileHashUnchanged": true,
+    "originalProjectFilesEdited": false,
+    "testProcessExited": true,
+    "nativeConversationAndRuntimeRecordsCreated": true
+  },
+  "productAcceptance": "not_passed",
+  "conclusion": "Native original-session wake and reply are proven. Unattended connector delivery and normal-launch reconnection are not proven. No product code deployed."
+}
