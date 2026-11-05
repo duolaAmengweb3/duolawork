@@ -43,19 +43,19 @@ test("ordinary chat creates no runs, tasks or documents; only actual group membe
   assert.equal((await f.repo.list("channel_doc")).length, 0);
   assert.deepEqual(
     (await f.repo.list("channel_turn")).map((t) => t.memberId).sort(),
-    ["check", "grok"],
+    ["grok"],
   );
-  const work = await conversationWork(f.repo, f.identity, "check");
-  const claim = await claimConversation(f.repo, f.identity, agent("check"), {
+  const work = await conversationWork(f.repo, f.identity, "grok");
+  const claim = await claimConversation(f.repo, f.identity, agent("grok"), {
     requestId: "claim",
     stepId: work[0].stepId,
   });
   const reply = await f.send(
     "channel.post",
     { channelId: f.c.id, body: "我在，可以直接沟通。", turnId: claim.turnId },
-    agent("check"),
+    agent("grok"),
   );
-  assert.equal(reply.authorId, "check");
+  assert.equal(reply.authorId, "grok");
   assert.equal(reply.replyTo, m.id);
   assert.equal((await f.repo.list("channel_doc")).length, 0);
   assert.equal((await f.repo.get("channel_turn", claim.turnId)).status, "done");
@@ -82,7 +82,7 @@ test("human messages continue the same legacy paused or archived chat without an
     assert.equal(view.channel.status, "active");
     assert.equal(view.messages[0].id, original.id);
     assert.equal(view.messages.at(-1).body, "继续说话：" + status);
-    assert.ok((await conversationWork(f.repo, f.identity, "check")).some(w => w.channelId === f.c.id));
+    assert.ok((await conversationWork(f.repo, f.identity, "grok")).some(w => w.channelId === f.c.id));
   }
   assert.equal((await f.repo.list("channel")).length, 1);
 });

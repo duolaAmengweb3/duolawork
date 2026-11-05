@@ -12,7 +12,7 @@ import {diskObjects} from '../server/object-store.mjs';
 import {CodingMemberClient} from '../local/coding-client.mjs';
 import {callTool} from '../cloud/collaboration/api.mjs';
 const owner={owner:true},agent={memberId:'grok'},peer={memberId:'check'},uid=()=>crypto.randomUUID();
-async function setup(t){const f=await fixture(t),dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-shared-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const channel=await chat(f.repo,f.identity,owner,{type:'channel.create',requestId:uid(),name:'共享资料',memberIds:['grok','check']});const env={SHARED_FILE_STORAGE:'disk',SHARED_FILES:diskObjects(path.join(dir,'objects'))};return {...f,dir,channel,env};}
+async function setup(t){const f=await fixture(t),dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-shared-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const channel=await chat(f.repo,f.identity,owner,{type:'channel.create',requestId:uid(),name:'共享资料',memberIds:['grok','check'],coordinatorId:'grok'});const env={SHARED_FILE_STORAGE:'disk',SHARED_FILES:diskObjects(path.join(dir,'objects'))};return {...f,dir,channel,env};}
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function begin(f,bytes,args={},actor=agent){return beginFile(f.repo,actor,{requestId:uid(),channelId:f.channel.id,name:'中文资料.md',mime:'text/markdown',size:bytes.length,sha256:sha(bytes),...args},f.env);}
 async function chunks(f,u,bytes,actor=agent){for(let index=0;index<u.chunks;index++)await writeChunk(f.repo,actor,{uploadId:u.id,index,base64:bytes.subarray(index*u.chunkSize,(index+1)*u.chunkSize).toString('base64')},f.env);}

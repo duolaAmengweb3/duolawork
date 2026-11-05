@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-05T11:03:34.166Z",
+  "at": "2026-11-05T11:48:37.174Z",
   "url": "http://127.0.0.1:8766",
-  "buildId": "509767d31baf4dfd",
-  "processId": 88882,
-  "desktopBuildId": "509767d31baf4dfd",
+  "buildId": "b6c5dc29fdaf81e3",
+  "processId": 2400,
+  "desktopBuildId": "b6c5dc29fdaf81e3",
   "backendAndDesktopMatch": true,
   "cloudOnline": true,
   "protectedLocalDataUnchanged": true,

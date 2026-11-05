@@ -73,6 +73,7 @@ async function originalDelivery(t){
  const restored=manager.records[record.memberId];
  assert.equal(restored.status,'syncing');
  manager.workingHost.queue=()=>{throw Error('must never resend original delivery');};
+ manager.workingHost.isQueued=async()=>false;
  return{manager,record:restored,agents};
 }
 test('restart observes claimed original work without interrupting, replaying or reconnecting',async t=>{
@@ -107,4 +108,15 @@ test('disappeared work cannot make an unverified connection ready',async t=>{
  const {manager,record}=await originalDelivery(t);
  manager.client=()=>({tool:async()=>({work:[]}),api:async()=>({complete:false})});
  await manager.tick();assert.equal(record.status,'needs_review');assert.equal(record.inFlight,null);
+});
+test('a native queue receipt distinguishes pending original work from a failed connection, without replay',async t=>{
+ const {manager,record,agents}=await originalDelivery(t);record.nativeDeliveries.turn_original.status='uncertain';
+ manager.client=()=>({tool:async()=>({work:[{stepId:'turn_original',status:'ready'}]})});
+ manager.workingHost.isQueued=async input=>{assert.deepEqual(input,{sessionId:'exact-original',workMarker:'turn_original'});return true;};
+ await manager.tick();
+ assert.equal(record.status,'syncing');assert.equal(record.nativeDeliveries.turn_original.status,'queued');
+ const state=manager.status().members[0];assert.equal(state.pendingStepId,'turn_original');assert.equal(state.deliveryState,'queued');
+ assert.equal(record.chatBindings.channel_original.sessionId,'exact-original');assert.equal(agents.length,0);
+ manager.client=()=>({tool:async()=>({work:[]}),api:async()=>({complete:true})});
+ await manager.tick();assert.equal(record.status,'idle');assert.equal(record.inFlight,null);
 });

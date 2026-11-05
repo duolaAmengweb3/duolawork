@@ -57,6 +57,16 @@ try {
     0,
   );
   checks.push("创建群聊、用户选择负责人、普通消息不创建任务");
+  assert.equal((await dot.call("list_work")).work.filter(w => w.channelId === c.id).length, 0);
+  assert.equal((await grok.call("list_work")).work.filter(w => w.channelId === c.id).length, 1);
+  await p.getByRole('button',{name:'提及全员',exact:true}).click();
+  await p.getByRole('textbox',{name:'群消息',exact:true}).fill('请全员补充');
+  await p.getByRole('button',{name:'发送消息',exact:true}).click();
+  await p.getByText('请全员补充',{exact:true}).waitFor();
+  const broadcast = await h.request('/v2/channel?id='+c.id);
+  assert.equal(broadcast.messages.at(-1).mentionAll, true);
+  assert.deepEqual(broadcast.messages.at(-1).recipientIds.sort(),[grok.id,dot.id].sort());
+  checks.push('普通消息只通知负责人，群内全员按钮明确广播，界面显示当前接收人');
   const work = (await dot.call("list_work")).work.find(
       (w) => w.channelId === c.id,
     ),
@@ -163,6 +173,37 @@ try {
   const directed = await h.request("/v2/channel?id=" + c.id);
   assert.deepEqual(directed.messages.at(-1).mentions, [dot.id]);
   checks.push("键入 @ 自动选择成员，定向通知真实群内 ID");
+  await p.getByRole('textbox',{name:'群消息',exact:true}).fill('@全');
+  await p.getByRole('button',{name:'选择全员',exact:true}).click();
+  await p.reload();
+  await p.getByRole('button',{name:'取消提及全员',exact:true}).click();
+  assert.equal(await p.getByRole('button',{name:'提及全员',exact:true}).getAttribute('aria-pressed'),'false');
+  await p.getByRole('textbox',{name:'群消息',exact:true}).fill('@Grok 只请你核对');
+  await p.getByRole('button',{name:'发送消息',exact:true}).click();
+  await p.getByText('@Grok 只请你核对',{exact:true}).waitFor();
+  assert.deepEqual((await h.request('/v2/channel?id='+c.id)).messages.at(-1).recipientIds,[grok.id]);
+  await h.command('channel.update',{channelId:c.id,coordinatorId:null});
+  await p.reload();
+  await p.getByRole('textbox',{name:'群消息',exact:true}).fill('暂未指定负责人');
+  await p.getByRole('button',{name:'发送消息',exact:true}).click();
+  await p.getByText('请选择群负责人，或 @ 一位成员、@全员后发送',{exact:true}).waitFor();
+  assert.equal((await h.request('/v2/channel?id='+c.id)).messages.some(m=>m.body==='暂未指定负责人'),false);
+  await p.getByRole('button',{name:'提及全员',exact:true}).click();
+  await p.getByRole('button',{name:'发送消息',exact:true}).click();
+  await p.getByText('暂未指定负责人',{exact:true}).waitFor();
+  assert.equal((await h.request('/v2/channel?id='+c.id)).messages.at(-1).mentionAll,true);
+  await h.command('channel.update',{channelId:c.id,coordinatorId:dot.id});
+  await p.reload();
+  await p.locator('.pending-member').filter({hasText:'Dot 已回复'}).click();
+  await p.getByRole('heading',{name:'消息处理记录',exact:true}).waitFor();
+  assert.ok(await p.locator('.activity-source').filter({hasText:'暂未指定负责人'}).count());
+  await p.getByRole('button',{name:'返回',exact:true}).click();
+  await p.getByRole('button',{name:'提及成员',exact:true}).click();
+  await fs.mkdir('evidence/screenshots',{recursive:true});
+  await p.screenshot({path:'evidence/screenshots/conversation-addressing.png'});
+  await p.getByRole('button',{name:'选择全员',exact:true}).click();
+  await p.getByRole('button',{name:'取消提及全员',exact:true}).click();
+  checks.push('键入 @全员、取消选择、直接键入成员名字；无负责人不误发，显式全员仍可发送；已回复与后来消息分开且能查看原文');
   for (const status of ["paused", "archived"]) {
     await h.request('/v2/commands', { type: 'channel.update', requestId: crypto.randomUUID(), channelId: c.id, status });
     await p.reload();

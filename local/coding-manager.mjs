@@ -45,7 +45,7 @@ export class CodingManager{
  workingHostFor(r){return r.engine==='antigravity-cli'?(this.antigravityCliHost??=new AntigravityCliHost(this.dataDir)):r.engine==='gemini-cli'?(this.geminiProjects??=new GeminiCliProjects()):r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
  get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
- status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
+ status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight,nativeDeliveries})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,pendingStepId:inFlight?.stepId||null,deliveryState:inFlight?nativeDeliveries?.[inFlight.stepId]?.status||null:null,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
  async owner(route,body){return this.request(this.config.endpoint+route,{token:this.config.adminKey,...(body===undefined?{}:{method:'POST',body})});}
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
  launch(r,fn){if(this.jobs.has(r.memberId))return;const job=Promise.resolve().then(fn).catch(async e=>{if(r.enabled){r.status='needs_review';r.message=safeError(e);}delete r.authorizationUrl;await this.save();}).finally(()=>this.jobs.delete(r.memberId));this.jobs.set(r.memberId,job);}
@@ -132,6 +132,8 @@ export class CodingManager{
     r.message=state.complete?'原消息已结束，继续接收消息':'原消息已结束，账号接入尚待完成';
    }else if(pending.status==='claimed'||delivery.status==='sent'){
     r.status='working';r.message=pending.status==='claimed'?'原会话正在处理消息':'消息已交给原会话，正在等待回复';
+   }else if(delivery.status==='queued'||r.engine==='codex'&&await this.workingHostFor(r).isQueued?.({sessionId:delivery.sessionId,workMarker:flight.stepId})){
+    delivery.status='queued';r.status='syncing';r.message='消息已排进原会话，等待当前工作完成；不需要重新连接';
    }else{
     r.status='needs_review';r.message='上条消息的投递结果待确认，原会话保留，未重复发送';
    }
@@ -167,7 +169,7 @@ export class CodingManager{
    const result=await agent.run({session,prompt});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
    const remaining=await client.tool('list_work');if(remaining.work.some(w=>w.stepId===first.stepId))throw new Error('原生运行结束，但 Hub 未收到该工作回复；原会话保留，请继续检查');
    const status=await client.api('/v2/self/status');r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message=status.complete?'已接入，正在后台接收消息':'本轮已回传，连接验证仍待完成';await this.save();
-  }catch(e){r.message=safeError(e);if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';await this.save();}
+  }catch(e){r.message=safeError(e);if(e.code==='native_queued')r.status='syncing';else if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';await this.save();}
  }
  async assign(input){
   const {memberId}=input,prior=this.sessionOperations.get(memberId)||Promise.resolve();
@@ -225,7 +227,7 @@ export class CodingManager{
   const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
   try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
-  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status='uncertain';await this.save();throw e;}}
+  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
   const deadline=Date.now()+20*60000;
   while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');if(!work.some(w=>w.stepId===first.stepId)){r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message='原工作会话已回复';await this.save();return;}}
   throw Error('尚未收到原工作会话回传，原工作和消息保留，未重复发送');

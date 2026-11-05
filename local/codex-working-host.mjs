@@ -51,6 +51,12 @@ export class CodexWorkingHost {
       return{items,projects};
     });
   }
+  async isQueued({sessionId,workMarker}) {
+    return this.read(async rpc => {
+      const queue = await rpc.call('thread/queue/list', {threadId:sessionId,limit:100});
+      return queue.data?.some(item => JSON.stringify(item).includes('claim_step '+workMarker)) || false;
+    });
+  }
   async queue({sessionId,workspace,prompt}) {
     const list=await this.sessions(),s=list.items.find(s=>s.id===sessionId);if(!s||path.resolve(s.workspace)!==path.resolve(workspace))throw Error('原 Codex 会话未开启或项目已变化，未创建替代会话');
     return this.read(async rpc=>{
@@ -65,7 +71,7 @@ export class CodexWorkingHost {
         if(thread.status?.type==='idle'&&queue.data[0]?.id===queuedSubmission.id){await rpc.call('thread/queue/start',{threadId:sessionId,queuedSubmissionId:queuedSubmission.id});return;}
         await new Promise(r=>setTimeout(r,1500));
       }
-      throw Error('原 Codex 工作尚未结束，消息仍在原队列中，未打断或重复发送');
+      throw Object.assign(Error('原 Codex 工作尚未结束，消息仍在原队列中，未打断或重复发送'), {code:'native_queued'});
     });
   }
 }

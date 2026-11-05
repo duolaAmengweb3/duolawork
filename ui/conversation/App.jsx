@@ -51,6 +51,8 @@ import { api, command, time } from "../v1/api.mjs";
 import { startPolling } from "../v1/polling.mjs";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { messageRecipients, hasAllMention, namedMentions } from '../../shared/chat-routing.mjs';
+import { pendingMemberActivity } from '../../shared/chat-activity.mjs';
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
 import ChatSessionPicker from './ChatSessionPicker.jsx';
@@ -121,7 +123,7 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [drafts, setDrafts] = useState(saved.current.drafts || {}),
     [reply, setReply] = useState(null),
-    [mentions, setMentions] = useState([]),
+    [addressing, setAddressing] = useState(saved.current.addressing || {}),
     [showMentions, setShowMentions] = useState(false),
     [documentId, setDocumentId] = useState(null),
     [sharedFileId,setSharedFileId]=useState(null),[handoffId,setHandoffId]=useState(null),
@@ -129,6 +131,10 @@ export default function App() {
     [older, setOlder] = useState([]),
     [moreCursor, setMoreCursor] = useState(null),
     [lastSync, setLastSync] = useState(null);
+  const mentions = addressing[current]?.mentions || [];
+  const mentionAll = addressing[current]?.mentionAll || false;
+  const setMentions = value => setAddressing(old => ({...old,[current]: {...old[current],mentions: typeof value === 'function' ? value(old[current]?.mentions || []) : value}}));
+  const setMentionAll = value => setAddressing(old => ({...old,[current]: {...old[current],mentionAll: value}}));
   const [codingStatus,setCodingStatus]=useState({members:[],approvals:[]});
   const currentRef = useRef(current),
     scroll = useRef(null),
@@ -185,7 +191,6 @@ export default function App() {
     setOlderMeetings([]);setMeetingCursor(undefined);
     setMoreCursor(undefined);
     setReply(null);
-    setMentions([]);
     setDocumentId(null);
     setShowMentions(false);
     lastMessage.current = "";
@@ -195,9 +200,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current, drafts, meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
+      JSON.stringify({ channelId: current, drafts, addressing, meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
     );
-  }, [current, drafts, page, meetingPanel,meetingScopes]);
+  }, [current, drafts, addressing, page, meetingPanel,meetingScopes]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
@@ -249,16 +254,36 @@ export default function App() {
       .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
+  const allSelected = mentionAll || hasAllMention(draft);
+  const addressedMembers = [...new Set([...mentions, ...namedMentions(draft, groupMembers)])];
+  const recipients = channel ? messageRecipients(channel, { owner: true, mentions: addressedMembers, mentionAll: allSelected }) : [];
+  const pendingActivity = pendingMemberActivity(snapshot?.activity, snapshot?.notifications, codingStatus.members);
+  const mentionQuery = (draft.match(/@([^\s@]*)$/)?.[1] || '').toLowerCase();
+  const recipientHint = scopedMeeting ? `发给会议负责人 ${name(scopedMeeting.coordinatorId)}`
+    : allSelected ? `通知全员 · ${groupMembers.length} 位成员`
+    : addressedMembers.length ? `发给 ${addressedMembers.map(name).join('、')}`
+    : channel?.memberIds.length === 1 ? `发给 ${name(channel.memberIds[0])}`
+    : channel?.coordinatorId ? `默认发给负责人 ${name(channel.coordinatorId)}` : '选择负责人，或 @ 成员';
+  function chooseMention(memberId) {
+    setMentionAll(memberId === 'all');
+    setMentions(old => memberId === 'all' ? [] : [...new Set([...old, memberId])]);
+    setDrafts(old => ({ ...old, [current]: (old[current] || '').replace(/@[^\s@]*$/, '') }));
+    setShowMentions(false);
+    document.querySelector('[aria-label="群消息"]')?.focus();
+  }
   async function send(e) {
     e?.preventDefault();
     if (!draft.trim() || busy || !channel) return;
-    const targetMembers=groupMembers.filter(m=>!mentions.length||mentions.includes(m.id));
+    if (!scopedMeeting && !recipients.length) { setError('请选择群负责人，或 @ 一位成员、@全员后发送'); return; }
+    const targetIds = scopedMeeting ? [scopedMeeting.coordinatorId] : recipients;
+    const targetMembers=groupMembers.filter(m=>targetIds.includes(m.id));
     const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);if(m.platformId==='claude-code')return !r?.assignments?.some(b=>b.channelId===current);return r?.enabled&&(r.manualAssignments||r.assignments?.length===0&&!r.sessionId&&r.sourceReady)&&!r.assignments?.some(b=>b.channelId===current);});
     if(missing){setModal({type:'session',member:missing});return;}
     const input = {
       channelId: current,
       body: draft,
-      mentions,
+      mentions: addressedMembers,
+      mentionAll: allSelected,
       replyTo: reply?.id,
       ...(scopedMeeting?{meetingId:scopedMeeting.id}:{}),
     };
@@ -276,6 +301,7 @@ export default function App() {
       setDrafts((d) => ({ ...d, [current]: "" }));
       setReply(null);
       setMentions([]);
+      setMentionAll(false);
       pendingSend.current = null;
       nearBottom.current = true;
     } catch {}
@@ -559,9 +585,9 @@ export default function App() {
                               ?.body.slice(0, 75) || "较早的消息"}
                           </button>
                         )}
-                        {m.mentions?.length > 0 && (
+                        {(m.mentionAll || m.mentions?.length > 0) && (
                           <div className="message-mentions">
-                            {m.mentions.map((id) => (
+                            {m.mentionAll ? <span><Users size={12}/> @全员</span> : m.mentions.map((id) => (
                               <span key={id}>@{name(id)}</span>
                             ))}
                           </div>
@@ -624,41 +650,11 @@ export default function App() {
                   ].includes(t.status),
                 ) && (
                   <div className="conversation-activity">
-                    {[
-                      ...new Set(
-                        snapshot.activity
-                          .filter((t) => ["ready", "active"].includes(t.status))
-                          .map((t) => t.memberId),
-                      ),
-                    ].map((mid) => (
-                      <span key={mid}>
-                        <i
-                          className={
-                            snapshot.activity.some(
-                              (t) =>
-                                t.memberId === mid && t.status === "active",
-                            )
-                              ? "working"
-                              : ""
-                          }
-                        />
-                        {name(mid)}{" "}
-                        {snapshot.activity.some(
-                          (t) => t.memberId === mid && t.status === "active",
-                        )
-                          ? "正在处理"
-                          : snapshot.notifications?.some(
-                                (n) =>
-                                  n.memberId === mid &&
-                                  n.status === "accepted" &&
-                                  snapshot.activity.some(
-                                    (t) =>
-                                      t.id === n.stepId && t.status === "ready",
-                                  ),
-                              )
-                            ? "等待平台唤醒"
-                            : "等待投递"}
-                      </span>
+                    {pendingActivity.map(item => (
+                      <button type="button" key={item.memberId} className="pending-member" onClick={() => { setTab('activity'); setSide(true); }} title="查看对应消息">
+                        <i className={item.working ? 'working' : ''}/>
+                        {name(item.memberId)} {item.label}
+                      </button>
                     ))}
                     {snapshot.activity.some((t) =>
                       ["limited", "stalled", "unavailable"].includes(t.status),
@@ -689,8 +685,13 @@ export default function App() {
                       </button>
                     </div>
                   )}
-                  {mentions.length > 0 && (
+                  <div className="composer-recipient" aria-live="polite">
+                    <MessageSquare size={13}/>
+                    {!scopedMeeting && !recipients.length ? <button type="button" onClick={() => setModal({type:'group'})}>{recipientHint}</button> : <span>{recipientHint}</span>}
+                  </div>
+                  {(mentionAll || mentions.length > 0) && (
                     <div className="composing-mentions">
+                      {mentionAll && <button type="button" aria-label="取消提及全员" onClick={() => setMentionAll(false)}><Users size={12}/> @全员 <X size={11}/></button>}
                       {mentions.map((mid) => (
                         <button
                           type="button"
@@ -706,7 +707,7 @@ export default function App() {
                   )}
                   <textarea
                     aria-label="群消息"
-                    placeholder={`发消息给 ${channel.name}…`}
+                    placeholder={scopedMeeting ? '补充会议想法…' : recipients.length ? `和${allSelected ? '全员' : recipients.map(name).join('、')}说点什么…` : '输入消息，用 @ 选择接收成员…'}
                     value={draft}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -718,6 +719,12 @@ export default function App() {
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Escape") setShowMentions(false);
+                      if (showMentions && ['ArrowDown','ArrowUp'].includes(e.key)) {
+                        e.preventDefault();
+                        const items = document.querySelectorAll('.mention-picker button');
+                        items[e.key === 'ArrowDown' ? 0 : items.length - 1]?.focus();
+                        return;
+                      }
                       if (
                         e.key === "Enter" &&
                         !e.shiftKey &&
@@ -736,10 +743,13 @@ export default function App() {
                         size="icon"
                         variant="ghost"
                         aria-label="提及成员"
+                        title="@ 成员"
+                        aria-expanded={showMentions}
                         onClick={() => setShowMentions(!showMentions)}
                       >
                         <AtSign size={17} />
                       </Button>
+                      {!channel.direct && <Button type="button" size="icon" variant="ghost" aria-label="提及全员" title="@全员" aria-pressed={allSelected} onClick={() => { if (allSelected) { setMentionAll(false); setDrafts(old => ({...old,[current]:(old[current]||'').replace(/(^|\s)@(?:全员|所有人)(?=$|[\s，。,:：?？!！;；])/gu,'$1')})); } else chooseMention('all'); }}><Users size={17}/></Button>}
                       <Button
                         type="button"
                         size="icon"
@@ -750,43 +760,19 @@ export default function App() {
                         <FileText size={17} />
                       </Button>
                       {showMentions && (
-                        <div className="mention-picker">
-                          {groupMembers
-                            .filter((m) =>
-                              m.name
-                                .toLowerCase()
-                                .includes(
-                                  (
-                                    draft.match(/@([^\s@]*)$/)?.[1] || ""
-                                  ).toLowerCase(),
-                                ),
-                            )
-                            .map((m) => (
-                              <button
-                                type="button"
-                                key={m.id}
-                                aria-label={"提及 " + m.name}
-                                onClick={() => {
-                                  setMentions((old) => [
-                                    ...new Set([...old, m.id]),
-                                  ]);
-                                  setDrafts((old) => ({
-                                    ...old,
-                                    [current]: (old[current] || "").replace(
-                                      /@[^\s@]*$/,
-                                      "",
-                                    ),
-                                  }));
-                                  setShowMentions(false);
-                                  document
-                                    .querySelector('[aria-label="群消息"]')
-                                    ?.focus();
-                                }}
-                              >
-                                <Face small name={m.name} platformId={m.platformId} />
-                                {m.name}
-                              </button>
-                            ))}
+                        <div className="mention-picker" aria-label="选择提及对象" onKeyDown={e => {
+                          const items = [...e.currentTarget.querySelectorAll('button')];
+                          const index = items.indexOf(document.activeElement);
+                          if (['ArrowDown','ArrowUp'].includes(e.key)) { e.preventDefault(); items[(index + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
+                          if (e.key === 'Escape') { setShowMentions(false); document.querySelector('[aria-label="群消息"]')?.focus(); }
+                        }}>
+                          {!channel.direct && (!mentionQuery || '全员'.includes(mentionQuery) || '所有人'.includes(mentionQuery)) && <button type="button" aria-label="选择全员" onClick={() => chooseMention('all')}><Users size={18}/><span>全员<small>通知群里所有成员</small></span></button>}
+                          {groupMembers.filter(m => m.name.toLowerCase().includes(mentionQuery)).map(m => (
+                            <button type="button" key={m.id} aria-label={'提及 ' + m.name} onClick={() => chooseMention(m.id)}>
+                              <Face small name={m.name} platformId={m.platformId}/>
+                              <span>{m.name}{channel.coordinatorId === m.id && <small>负责人</small>}</span>
+                            </button>
+                          ))}
                         </div>
                       )}
                       <small>Enter 发送 · Shift + Enter 换行</small>
@@ -1071,6 +1057,7 @@ export default function App() {
                           <div className="activity-entry" key={t.id}>
                             <strong>{name(t.memberId)}</strong>
                             <span>{statusText[t.status] || t.status}</span>
+                            {messages.find(m => m.id === t.messageId) && <p className="activity-source">{name(messages.find(m => m.id === t.messageId).authorId)}：{messages.find(m => m.id === t.messageId).body.slice(0, 180)}</p>}
                             <small>
                               {(t.status === "limited" ? "消息已保留，直接发下一句即可继续交流。" : t.reason) ||
                                 t.progress ||

@@ -1,4 +1,5 @@
 import { fail, id, required } from "./repository.mjs";
+import { messageRecipients, namedMentions, hasAllMention } from '../../shared/chat-routing.mjs';
 import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
 
 // Communication is independent of the legacy run/step orchestration. A turn is
@@ -12,12 +13,13 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "post_message",
-    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，只有明确需要对方行动时才 @。turnId 表示已处理的通知；普通回复不创建任务。",
+    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，需要全员回应时设 mentionAll=true；不提及他人就不会唤醒其他成员。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
     {
       requestId: "string",
       channelId: "string",
       body: "string",
       mentions: "array",
+      mentionAll: "boolean",
       replyTo: "string",
       turnId: "string",
     },
@@ -156,28 +158,9 @@ const messageText = (value) => required(value, "消息", 24000);
 // ordinary message addressing, with the same membership authorization. Never
 // resolve global names, ambiguous names, quoted examples or code as recipients.
 function textMentions(body, channel, identity) {
-  const plain = body
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/`[^`]*`/g, "")
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("> "))
-    .join("\n");
-  const names = new Map();
-  for (const mid of channel.memberIds) {
-    const name = activeMember(identity, mid)?.name;
-    if (name) names.set(name, [...(names.get(name) || []), mid]);
-  }
-  return [...names]
-    .filter(
-      ([name, ids]) =>
-        ids.length === 1 &&
-        new RegExp(
-          `(^|[\\s])@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[\\s，。,:：?？!！;；])`,
-          "u",
-        ).test(plain),
-    )
-    .map(([, ids]) => ids[0]);
+  return namedMentions(body, channel.memberIds.map(mid => activeMember(identity, mid)).filter(Boolean));
 }
+
 const listIds = (values, label = "成员") => {
   if (
     !Array.isArray(values) ||
@@ -680,6 +663,12 @@ export async function conversationCommand(
         );
         if (mentions.some((mid) => !channel.memberIds.includes(mid)))
           fail("invalid_mention", "只能 @ 本群成员");
+        if (cmd.mentionAll !== undefined && typeof cmd.mentionAll !== 'boolean')
+          fail('invalid_input', '@全员选项无效');
+        const mentionAll = cmd.mentionAll ?? (cmd.mentions === undefined && hasAllMention(body));
+        const targets = messageRecipients(channel, { ...actor, mentions, mentionAll });
+        if (actor.owner && channel.memberIds.length > 0 && !targets.length)
+          fail('recipient_required', '请选择群负责人，或 @ 一位成员、@全员后发送');
         let parent;
         if (cmd.replyTo) {
           parent = await tx.get("channel_message", cmd.replyTo);
@@ -716,16 +705,13 @@ export async function conversationCommand(
         const message = await channelMessage(tx, channel, actor, body, {
           ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion } : {}),
           mentions,
+          mentionAll,
+          recipientIds: targets,
           mentionsFromText: cmd.mentions === undefined && mentions.length > 0,
           replyTo: parent?.id || null,
           rootId: actor.owner ? null : parent?.rootId || parent?.id,
           hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
         });
-        const targets = actor.owner
-          ? mentions.length
-            ? mentions
-            : channel.memberIds
-          : mentions.filter((mid) => mid !== actor.memberId);
         for (const mid of targets)
           await enqueue(tx, identity, channel, message, mid);
         await finishTurn(tx, actor, cmd.turnId || turn?.id, "done");
