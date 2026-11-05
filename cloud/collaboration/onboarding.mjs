@@ -3,6 +3,7 @@ import { grant, startPairing } from "./pairing.mjs";
 import { readJSON, seal, unseal, publicConnection, platformURL } from "./security.mjs";
 import { configureConnection, setupInstructions } from "./connections.mjs";
 import { command } from "./engine.mjs";
+import { claudeResumeAction } from '../../shared/claude-onboarding.mjs';
 
 export const AGENT_TARGETS = [
   ["codex", "Codex", "coding"], ["claude-code", "Claude Code", "coding"],
@@ -145,8 +146,12 @@ export async function reportSetup(repo, actor, input) {
   let ownerAction;
   if (input.action) {
     const c = await repo.get("connection", actor.memberId);
-    if (input.action !== "grok_routine" || c.platform !== "grok-bot" || input.stage !== "waiting_owner") fail("invalid_action", "此接入确认不适用于该成员");
-    ownerAction = { type: "grok_routine", routineName: setupText(required(input.routineName, "接收器名称", 120)) };
+    if (input.stage !== "waiting_owner") fail("invalid_action", "此接入确认不适用于该成员");
+    if(input.action==='claude_resume'&&c.platform==='claude-code'){
+      try { ownerAction=claudeResumeAction(input.resume||{}); } catch { fail('invalid_action','原对话恢复信息无效'); }
+    } else if(input.action==='grok_routine'&&c.platform==='grok-bot') {
+      ownerAction = { type: "grok_routine", routineName: setupText(required(input.routineName, "接收器名称", 120)) };
+    } else fail("invalid_action", "此接入确认不适用于该成员");
   }
   const message = setupText(required(input.message, "进度说明", 500));
   return repo.transact(id("setup-status"), { memberId: actor.memberId, stage: input.stage, message, ownerAction }, async tx => {

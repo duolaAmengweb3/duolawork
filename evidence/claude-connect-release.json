@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-05T08:08:11.792Z",
+  "origin": "https://hub.manyaitool.com",
+  "sha256": "4fad836dfe7853289f8f771d3bf8b7b798b145c931aa30953bd7110c066188db",
+  "buildId": "a8cf7934b0dce9df",
+  "publicGuideCurrent": true,
+  "publicBundleMatches": true,
+  "regressionsPassed": 291,
+  "protectedDataUnchanged": true,
+  "realClaudeVpsUsed": false
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-05T08:02:30.348Z",
+  "fixtureOnly": true,
+  "realClaudeAccountUsed": false,
+  "checks": [
+    "legacy paired state shows exact exit/resume instructions without issuing a new code",
+    "recovery help is copyable",
+    "server-generated exact project resume command is copyable",
+    "online state advances automatically but does not claim verified",
+    "compact viewport has no horizontal overflow"
+  ],
+  "errors": []
+}

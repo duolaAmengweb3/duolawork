@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-05T07:42:29.509Z",
+  "at": "2026-11-05T08:03:55.633Z",
   "browser": "installed full Chrome; non-default profile; session restore enabled",
   "checks": [
     "returning to an account preserves its current URL and unfinished draft",

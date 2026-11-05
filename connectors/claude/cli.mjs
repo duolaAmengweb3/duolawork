@@ -10,6 +10,7 @@ import {requestJson} from '../../local/transport.mjs';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {serve} from './channel.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
+import {claudeResumeAction} from '../../shared/claude-onboarding.mjs';
 
 const base=process.env.AGENT_HUB_CLAUDE_DIR||path.join(os.homedir(),'.config','agent-hub-claude');
 const executable=path.resolve(process.argv[1]||'connector.cjs');
@@ -33,7 +34,8 @@ export async function pair({endpoint,code,alias,memberId}){
 export async function setup({endpoint,code,alias,memberId,sessionId}, {cli=executable}={}){
   if(!/^member_[a-zA-Z0-9_-]+$/.test(memberId||''))throw Error('接入说明缺少有效的成员编号，请从 Hub 重新复制');
   if(sessionId&&!/^[a-zA-Z0-9_-]{1,100}$/.test(sessionId))throw Error('原会话编号无效，请勿猜测');
-  if(Number(process.versions.node.split('.')[0])<22)throw Error('连接器需要 Node.js 22 或以上');
+  const [major,minor]=process.versions.node.split('.').map(Number);
+  if(major<22||major===22&&minor<19)throw Error('连接器需要 Node.js 22.19 或以上；请由安装步骤准备独立运行环境，不修改系统 Node');
   if(!['darwin','linux'].includes(process.platform))throw Error('此连接器当前支持 macOS 和 Linux');
   const grantFile=path.join(location(alias),'grant.json');let grant;
   try{grant=await read(grantFile);}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -46,10 +48,11 @@ export async function setup({endpoint,code,alias,memberId,sessionId}, {cli=execu
   const online=sessions.items.some(s=>s.online);
   if(state.complete&&online)return{stage:'ready',message:'已连接，原 Claude 已完成真实回复验证。'};
   if(online)return{stage:'verifying',message:'原会话已在线，正在等待它完成 Hub 验证。'};
-  const resumeCommand=[process.execPath,cli,'start',alias,'--resume',...(sessionId?[sessionId]:[])].map(quote).join(' ');
-  const nextStep='安装和配对已完成。请在当前工作结束后正常退出 Claude，在同一项目目录执行下面这一条命令，恢复原会话并确认 Claude 的官方连接提示。无需重新登录。';
+  const resume={nodePath:process.execPath,connectorPath:cli,alias,sessionId,workspace:process.cwd()};
+  const resumeCommand=claudeResumeAction(resume).command;
+  const nextStep='还差一次重新打开 Claude。当前工作结束后输入 /exit，再把恢复命令粘贴到退出后的终端并回车。出现 DuolaWork / Agent Hub 连接提示时确认。随后自动验证，不用再发配对码；Hub 显示“已连接，可以聊天”才算完成。';
   await privateJson(path.join(location(alias),'setup.json'),{memberId,preparedAt:new Date().toISOString(),resumeCommand,workspace:process.cwd()});
-  await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',message:'连接已准备好。回到 Claude，按它给出的命令恢复原会话并确认官方提示；Hub 会自动验证回复。'}});
+  await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',action:'claude_resume',resume,message:'安装已完成，还差一次重新打开 Claude。恢复命令已放到 DuolaWork 的连接页，按页面步骤完成即可。'}});
   return{stage:'waiting_owner',nextStep,resumeCommand,requiresNativeConfirmation:true};
 }
 async function stdinJson(){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>200000)throw Error('输入过大');}return JSON.parse(raw);}
@@ -86,6 +89,6 @@ export async function main(argv=process.argv.slice(2)){
   if(command==='hook'){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>200000)throw Error('会话登记过大');}await hook(args[0],JSON.parse(raw));return;}
   if(command==='serve'){await serve({grantFile:args[0],runFile:args[1],stateDir:args[2]});return;}
   if(command==='status'){const dir=location(args[0]||'claude1'),client=new CodingMemberClient(path.join(dir,'grant.json'));const s=await client.api('/v2/self/native-sessions');console.log(JSON.stringify({message:s.record.message,sessions:s.items.map(s=>({name:s.title,online:s.online}))},null,2));return;}
-  console.log('Agent Hub Claude 连接器\n需要 Node.js 22+ 和已登录的原生 Claude Code。\npair <Hub HTTPS地址> [别名]  配对\nstart [别名] --resume        用原生选择器恢复会话并接入\nstart [别名]                 新建原生会话并接入\nstatus [别名]                查看连接状态\n所有工作在执行这些命令的机器上进行。');
+  console.log('Agent Hub Claude 连接器\n需要 Node.js 22.19+ 和已登录的原生 Claude Code。\npair <Hub HTTPS地址> [别名]  配对\nstart [别名] --resume        用原生选择器恢复会话并接入\nstart [别名]                 新建原生会话并接入\nstatus [别名]                查看连接状态\n所有工作在执行这些命令的机器上进行。');
 }
 if(process.env.AGENT_HUB_CONNECTOR_IMPORT!=='1')main().catch(e=>{console.error('Agent Hub: '+e.message);process.exitCode=1;});

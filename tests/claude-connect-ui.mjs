@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {chromium} from 'playwright-core';
+import {startHarness} from './v1-harness.mjs';
+import {CLAUDE_RESUME_HELP,claudeResumeAction} from '../shared/claude-onboarding.mjs';
+const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');process.env.AGENT_HUB_TEST_MODE='1';
+const {start}=await import('../local/server.mjs');let local,browser;const errors=[];
+try{
+ await h.request('/admin/action',{type:'platform.create',payload:{id:'claude-code',name:'Claude Code'}});
+ const account=(await h.request('/admin/action',{type:'account.create',payload:{platformId:'claude-code',label:'我的服务器'}})).result;
+ const member=(await h.request('/admin/action',{type:'member.create',payload:{accountId:account.id,name:'Claude VPS',mode:'connector'}})).result;
+ const setup=await h.request('/v2/connect/claude',{memberId:member.id}),grant=await h.request('/v2/connect/redeem',{code:setup.pairingCode,attemptId:randomUUID()});
+ const post=body=>h.request('/v2/self/status',body,grant.access_token);
+ await h.request('/v2/self/connection',{requestId:randomUUID(),transport:'pull',pollSeconds:15},grant.access_token);
+ await post({stage:'waiting_owner',message:'legacy vague message'});
+ local=await start({port:0,config:{endpoint:h.base,adminKey:h.key,runnerId:'claude-guide-ui'},vaultKey:Buffer.alloc(32,24)});
+ browser=await chromium.launch({channel:'chrome',headless:true});const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['clipboard-read','clipboard-write']});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(local.url);
+ await page.getByRole('button',{name:/成员与连接/}).click();await page.getByRole('button',{name:'连接设置 Claude VPS',exact:true}).click();const dialog=page.getByRole('dialog');
+ await dialog.getByRole('heading',{name:'还差一次重新打开 Claude',exact:true}).waitFor();assert.equal(await dialog.getByRole('button',{name:'复制接入说明',exact:true}).count(),0,'do not ask paired users to pair again');
+ await dialog.getByText('重新打开后没有反应？',{exact:true}).click();await dialog.getByRole('button',{name:'复制这句话',exact:true}).click();assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),CLAUDE_RESUME_HELP);
+ const resume={nodePath:'/opt/private node/bin/node',connectorPath:'/home/owner/.local/share/agent-hub-claude/connector.cjs',workspace:'/srv/原项目',alias:'claude1',sessionId:'exact-original'};
+ await post({stage:'waiting_owner',action:'claude_resume',resume,message:'resume prepared'});
+ await dialog.getByRole('button',{name:'复制恢复命令',exact:true}).click({timeout:15000});assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),claudeResumeAction(resume).command);
+ await dialog.getByText('重新打开后没有反应？',{exact:true}).click();await page.screenshot({path:'evidence/screenshots/claude-resume-guidance.png'});
+ await h.request('/v2/self/native-sessions',{sessionId:'exact-original',instanceId:randomUUID(),runtimeId:'fixture',title:'原工作',workspace:'/srv/原项目'},grant.access_token);
+ await dialog.getByText('Claude 已打开，正在验证回复',{exact:true}).waitFor({timeout:15000});assert.equal(await dialog.getByText('已连接，可以聊天',{exact:true}).count(),0);
+ await page.setViewportSize({width:900,height:700});assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);assert.deepEqual(errors,[]);
+ await fs.writeFile('evidence/claude-connect-ui.json',JSON.stringify({at:new Date().toISOString(),fixtureOnly:true,realClaudeAccountUsed:false,checks:['legacy paired state shows exact exit/resume instructions without issuing a new code','recovery help is copyable','server-generated exact project resume command is copyable','online state advances automatically but does not claim verified','compact viewport has no horizontal overflow'],errors},null,2));console.log('Claude connection guide UI passed');
+}finally{await browser?.close();await local?.close();await h.stop();}

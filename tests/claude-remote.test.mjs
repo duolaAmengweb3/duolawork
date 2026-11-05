@@ -21,6 +21,7 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  const recipe=await (await fetch(h.base+'/v2/connectors/claude/guide')).json();assert.equal(recipe.protocol,'agent-hub-claude/2');assert.match(recipe.setup.command,/setup$/);
  const download=await fetch(h.base+'/v2/connectors/claude/download?version='+setup.sha256);assert.equal(download.status,200);const bundle=Buffer.from(await download.arrayBuffer());assert.equal(createHash('sha256').update(bundle).digest('hex'),setup.sha256);
  const file=path.join(h.directory,'connector.cjs');await fs.writeFile(file,bundle);
+ const oldNode=(await import('node:child_process')).spawnSync(process.execPath,['-e',`Object.defineProperty(process.versions,'node',{value:'22.11.0'});require(${JSON.stringify(file)})`],{encoding:'utf8'});assert.equal(oldNode.status,1);assert.match(oldNode.stderr,/22\.19/);assert.doesNotMatch(oldNode.stderr,/markAsUncloneable|TypeError/);
  const nativeHome=path.join(h.directory,'remote-data');const env={...process.env,AGENT_HUB_CONNECTOR_TEST:'1',AGENT_HUB_CLAUDE_DIR:nativeHome};
  const {spawn}=await import('node:child_process');
  const install=async(input)=>{const pair=spawn(process.execPath,[file,'setup'],{env,stdio:['pipe','pipe','pipe']});pair.stdin.end(JSON.stringify(input));let output='';pair.stdout.on('data',d=>output+=d);pair.stderr.on('data',d=>output+=d);return{code:await new Promise(r=>pair.on('exit',r)),output};};
@@ -28,7 +29,10 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  const before=await fs.readFile(path.join(nativeHome,'claude1/grant.json'));const retry=await install(input);assert.equal(retry.code,0,retry.output);assert.deepEqual(await fs.readFile(path.join(nativeHome,'claude1/grant.json')),before,'A repeated one-paste instruction preserves the account grant');
  const conflict=await install({...input,memberId:'member_another'});assert.equal(conflict.code,1);assert.deepEqual(await fs.readFile(path.join(nativeHome,'claude1/grant.json')),before);
  const grantFile=path.join(nativeHome,'claude1/grant.json'),client=new CodingMemberClient(grantFile),grant=await client.credentials();assert.equal((await fs.stat(grantFile)).mode&0o777,0o600);
- assert.equal((await client.api('/v2/self/status')).connection.setup.stage,'waiting_owner');
+ const progress=(await client.api('/v2/self/status')).connection.setup;
+ assert.equal(progress.stage,'waiting_owner');assert.equal(progress.ownerAction.type,'claude_resume');assert.equal(progress.ownerAction.command,prepared.resumeCommand);assert.equal(progress.ownerAction.exactSession,true);assert.match(prepared.nextStep,/\/exit/);
+ await assert.rejects(()=>client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',action:'claude_resume',message:'fixture',resume:{workspace:'/tmp',nodePath:'/bin/sh',connectorPath:'/tmp/connector.cjs',alias:'test'}}}),/恢复信息无效/);
+ assert.equal((await client.api('/v2/self/status')).connection.setup.ownerAction.command,prepared.resumeCommand,'invalid guidance never replaces the previous valid instruction');
  const one={sessionId:randomUUID(),instanceId:randomUUID(),runtimeId:'vps-fixture',title:'网站开发',workspace:'/srv/website'},two={...one,sessionId:randomUUID(),instanceId:randomUUID(),title:'App 开发',workspace:'/srv/app'};
  const register=s=>client.api('/v2/self/native-sessions',{method:'POST',body:s});await register(one);await register(two);
  assert.equal((await client.api('/v2/self/status')).complete,false,'Metadata does not verify native Claude');
