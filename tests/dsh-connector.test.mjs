@@ -37,6 +37,15 @@ test('binding requires the exact existing native session and canonical project b
  }finally{await f.cleanup();}
 });
 
+test('full tools apply only to a newly created Hub conversation, never to an existing original session',async()=>{
+ const f=await fixture();try{
+  const settings=[];f.options.ctx.permissionPresets={set:(session,preset)=>settings.push({session,preset})};
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});assert.equal(settings.length,0);
+  f.options.ctx.sessionController.create=async()=>({sessionId:'new-hub-session'});const created={id:'new-hub-session',session:{new:true}};f.options.ctx.sessionController.resolveAgent=async()=>({agent:created});
+  const response=await fetch(f.connector.state.controlUrl+'/sessions/create',{method:'POST',headers:{Authorization:'Bearer '+f.token,'Content-Type':'application/json'},body:JSON.stringify({workspace:f.project})});assert.equal(response.status,200);assert.deepEqual(settings,[{session:created.session,preset:'danger-full-access'}]);
+ }finally{await f.cleanup();}
+});
+
 test('native Hub tools refuse another Agent identity; disconnect removes tools and retains native work',async()=>{
  const f=await fixture();try{
   await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});

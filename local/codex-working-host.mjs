@@ -28,12 +28,12 @@ export class CodexWorkingHost {
     try {await rpc.call('initialize',{clientInfo:{name:'agent-hub-session-picker',version:'1.0.0'},capabilities:{experimentalApi:true}});rpc.send({jsonrpc:'2.0',method:'initialized',params:{}});return rpc;}catch(e){await rpc.stop();throw e;}
   }
   async read(fn) {const rpc=await this.open();try{return await fn(rpc);}finally{await rpc.stop();}}
-  async watch({sessionId,workMarker,onApproval}){
+  async watch({sessionId,workMarker,exactPrompt,onApproval}){
     const rpc=await this.open();
     rpc.onRequest=async(method,params)=>{
       if(params.threadId!==sessionId||!params.turnId)return;
       const {data:items}=await rpc.call('thread/items/list',{threadId:sessionId,turnId:params.turnId,limit:10,sortDirection:'asc'});
-      if(!items?.some(({item:i})=>i?.type==='userMessage'&&i.content?.some(c=>c.type==='text'&&c.text.includes('claim_step '+workMarker))))return;
+      if(!items?.some(({item:i})=>i?.type==='userMessage'&&i.content?.some(c=>c.type==='text'&&c.text.includes(exactPrompt||'claim_step '+workMarker))))return;
       return onApproval({engine:'codex',method,params,sessionId});
     };
     try{await rpc.call('thread/resume',{threadId:sessionId,excludeTurns:true});return()=>rpc.stop();}catch(e){await rpc.stop();throw e;}

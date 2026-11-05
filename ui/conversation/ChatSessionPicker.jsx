@@ -4,6 +4,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {api} from '../v1/api.mjs';
 import {sessionErrorMessage} from '../../local/session-presentation.mjs';
+import SessionLink from './SessionLink';
 
 export default function ChatSessionPicker({member,channel,onSaved,onConnect}) {
   const [data,setData]=useState(null),[selected,setSelected]=useState(''),[mode,setMode]=useState('existing'),[workspace,setWorkspace]=useState(''),[query,setQuery]=useState(''),[project,setProject]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
@@ -34,9 +35,11 @@ export default function ChatSessionPicker({member,channel,onSaved,onConnect}) {
   const enterProject=p=>{setProject(p.key);setQuery('');setSelected(p.items.some(s=>s.id===data.binding?.sessionId)?data.binding.sessionId:'');setWorkspace(p.workspace||'');setMode('existing');setError('');};
   const back=()=>{setProject('');setSelected('');setQuery('');setMode('existing');setError('');};
   const projectRow=p=><button type="button" key={p.key} className="session-option session-project" disabled={busy} onClick={()=>enterProject(p)}><span className="session-option-icon"><Folder size={20}/></span><span className="session-option-content"><strong>{p.name}</strong><span className="session-meta">{p.items.length} 段对话{p.nameSource==='folder'?' · 项目文件夹':p.nameSource==='hub'?' · Hub 中创建':''}</span>{p.workspace&&<span className="session-project-location" title={p.workspace}>{p.workspace}</span>}</span><ChevronRight size={17}/></button>;
+  if(mode==='pair')return <section className="session-picker session-link-mode"><div className="session-picker-body"><Button className="self-start" variant="ghost" onClick={()=>setMode('existing')}><ArrowLeft size={16}/>返回项目列表</Button><SessionLink member={member} channel={channel} onSaved={onSaved}/></div></section>;
   return <section className="session-picker" aria-label="聊天的工作会话" aria-busy={busy}>
     <div className="session-picker-body">
     <p className="session-intro">先选项目，再选择让 {member.name} 在「{channel.name}」里继续哪段对话。</p>
+    {data.capabilities.linkCurrent&&<Button variant="outline" disabled={busy} onClick={()=>setMode('pair')}>从 Agent 配对当前对话</Button>}
     {!activeProject&&data.binding&&<p className="session-current">当前使用：{data.binding.projectName||'已有项目'} · {data.binding.title||'已有对话'}</p>}
     {activeProject&&<div className="session-breadcrumb"><Button variant="ghost" disabled={busy} onClick={back}><ArrowLeft size={15}/>所有项目</Button><span><Folder size={16}/><strong>{activeProject.name}</strong></span></div>}
     {activeProject&&<div className="session-tabs" role="group" aria-label="选择对话方式"><Button variant={mode==='existing'?'secondary':'ghost'} disabled={busy} onClick={()=>{setMode('existing');setError('');}}>继续已有对话</Button>{data.capabilities.create&&<Button variant={mode==='new'?'secondary':'ghost'} disabled={busy} onClick={()=>{setMode('new');setWorkspace(activeProject.workspace||'');setError('');}}>在此项目新建对话</Button>}</div>}

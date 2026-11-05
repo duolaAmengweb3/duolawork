@@ -31,3 +31,25 @@ test('native injected Hub messages authorize only their current turn; a later hu
  await fs.appendFile(file,JSON.stringify({source:'USER_EXPLICIT',type:'USER_INPUT',content:'now work for me directly'})+'\n');assert.equal(await nativeHubScope(input,'step_one',env),false);
  assert.equal(await nativeHubScope({...input,conversationId:'bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee'},'step_one',env),false);
 });
+
+test('a completed Hub receipt retains native turn cleanup permissions, but a human follow-up does not',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-native-finish-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',file=path.join(dir,'brain',id,'.system_generated/logs/transcript.jsonl');await fs.mkdir(path.dirname(file),{recursive:true});
+ const input={conversationId:id,transcriptPath:file,toolCall:{name:'run_command',args:{CommandLine:'git status'}}},env={ANTIGRAVITY_APP_DATA_DIR:dir};
+ await fs.writeFile(file,JSON.stringify({source:'SYSTEM',type:'SYSTEM_MESSAGE',content:'[Message] sender='+id+' content=DuolaWork collaboration step_done\nfinish'})+'\n');
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{engine:'antigravity-cli',enabled:true,permissionMode:'full',inFlight:null,nativeDeliveries:{step_done:{sessionId:id,status:'sent'}}}}));
+ assert.equal((await cliHook(dir,input,{env})).decision,'auto_approve');
+ await fs.appendFile(file,JSON.stringify({source:'USER_EXPLICIT',type:'USER_INPUT',content:'my own next task'})+'\n');assert.equal((await cliHook(dir,input,{env})).decision,'allow');
+});
+
+test('automatic reattachment skips managed sessions and approves only the exact installed bootstrap command',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-native-reattach-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',file=path.join(dir,'brain',id,'.system_generated/logs/transcript.jsonl');await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,'');await fs.writeFile(path.join(dir,'runtime.json'),'{}');
+ const input={conversationId:id,transcriptPath:file},env={ANTIGRAVITY_APP_DATA_DIR:dir};
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{managedNativePid:process.pid,managedNativeSessionIds:[id]}}));assert.deepEqual(await cliHook(dir,input,{env}),{});
+ await fs.writeFile(path.join(dir,'native-coding.json'),'{}');const output=await cliHook(dir,input,{env});assert.equal(output.injectSteps.length,1);
+ const command=output.injectSteps[0].systemMessage.systemMessage.split('原样运行一次：')[1].split('。')[0];
+ assert.equal((await cliHook(dir,{...input,toolCall:{name:'run_command',args:{CommandLine:command}}},{env})).decision,'auto_approve');
+ assert.equal((await cliHook(dir,{...input,toolCall:{name:'run_command',args:{CommandLine:command+'; echo extra'}}},{env})).decision,'allow');
+ assert.deepEqual(await cliHook(dir,{...input,transcriptPath:path.join(dir,'desktop/brain',id,'transcript.jsonl')},{env}),{});
+});

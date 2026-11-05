@@ -9,7 +9,7 @@ import {safeError} from './native-agent.mjs';
 import {acceptsWork} from './session-routing.mjs';
 
 export const name='agent-hub-existing-session';
-export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry'];
+export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry','permissionPresets'];
 const digest=value=>createHash('sha256').update(value).digest('hex');
 
 export class DshConnector {
@@ -121,15 +121,26 @@ export class DshConnector {
    const expected=Buffer.from('Bearer '+this.state.controlToken),got=Buffer.from(req.headers.authorization||'');
    if(req.headers.origin||got.length!==expected.length||!timingSafeEqual(got,expected))return send(401,{error:'Local connector authorization required'});
    const route=new URL(req.url,'http://127.0.0.1').pathname;
-   if(req.method==='GET'&&route==='/health')return send(200,{ready:this.ready,protocolVersion:6,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
+   if(req.method==='GET'&&route==='/health'){
+    const p=this.ctx.get?.('profileContext'),profile=p?.dir?{name:p.name,dir:await fs.realpath(p.dir)}:undefined;
+    return send(200,{ready:this.ready,protocolVersion:7,profile,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
+   }
    if(req.method==='GET'&&route==='/sessions')return send(200,await this.sessions());
    if(req.method!=='POST')return send(404,{error:'Unknown connector route'});
    let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>65536)return send(413,{error:'Request too large'});}
    const body=JSON.parse(raw||'{}');
    if(!this.ready)return send(503,{error:'Native Host is restoring original bindings; retry after ready'});
+   if(route==='/session-link/prompt'){
+    const s=await this.sessionInfo(body.sessionId);
+    if(await fs.realpath(s.cwd)!==await fs.realpath(body.workspace)||!/^sessionlink_\w+$/.test(body.requestId||'')||typeof body.prompt!=='string'||body.prompt.length>6000)throw Error('原对话关联请求无效');
+    return send(200,await this.ctx.sessionController.prompt({sessionId:s.sessionId,mode:'queue',requestId:body.requestId,content:[{type:'text',text:body.prompt}]},new AbortController().signal));
+   }
    if(route==='/sessions/create'){
     const workspace=await fs.realpath(body.workspace);if(!(await fs.stat(workspace)).isDirectory())throw Error('Workspace is not a directory');
     const created=await this.ctx.sessionController.create({cwd:workspace});
+    // Hub-created work conversations use the owner's full-tools default.
+    // Existing conversations retain their native permission settings.
+    if(this.ctx.permissionPresets){const found=await this.ctx.sessionController.resolveAgent(created.sessionId);if(found.error)throw found.error;this.ctx.permissionPresets.set(found.agent.session,'danger-full-access');}
     if(this.ctx.workspaceRegistry){const project=await this.ctx.workspaceRegistry.create(workspace);await project.attachSession(created.sessionId);}
     return send(200,created);
    }

@@ -26,5 +26,17 @@ try{
  for(let i=0;i<25&&!cmd;i++){await new Promise(r=>setTimeout(r,300));cmd=(await h.request('/v2/self/runtime',undefined,token)).commands[0];}assert.ok(cmd);
  await post({action:'complete',requestId:randomUUID(),commandId:cmd.id,binding:{sessionId:'original-session-id',workspace:'/srv/website',title:'修复官网登录'}});await post({action:'activate',requestId:randomUUID(),commandId:cmd.id});await saving;
  await page.getByRole('dialog').waitFor({state:'hidden',timeout:10000});await page.getByRole('button',{name:/我的 VPS Gemini.*修复官网登录/}).waitFor();assert.deepEqual(errors,[]);
- await fs.writeFile('evidence/remote-native-ui.json',JSON.stringify({at:new Date().toISOString(),fixtureOnly:true,realNativeModelTested:false,checks:['default copy instruction uses Antigravity CLI, not this Mac desktop','clipboard contains complete ready-to-use member instruction','remote heartbeat automatically updates original-environment status','inventory alone does not display successful native verification','select original project and conversation through real UI and binding routes'],errors},null,2));console.log('remote native UI accepted');
+ await page.getByRole('button',{name:/我的 VPS Gemini.*修复官网登录/}).click();await page.getByRole('button',{name:'从 Agent 配对当前对话',exact:true}).click();
+ await page.getByRole('button',{name:'复制配对说明',exact:true}).click();await page.getByText('已复制，发给原 Agent',{exact:true}).waitFor();
+ const linkText=await page.evaluate(()=>navigator.clipboard.readText()),linkInput=JSON.parse(linkText.match(/传入：(\{.+?\})。/)[1]);assert.match(linkText,/账号已经连接/);
+ await page.screenshot({path:'evidence/screenshots/session-link-copy.png'});
+ const linkPost=body=>h.request('/v2/self/session-links',{requestId:randomUUID(),...body},token);
+ await linkPost({action:'redeem',...linkInput,runtimeId,session:{id:'original-session-id',title:'修复官网登录',workspace:'/srv/website'}});
+ await page.getByText('已找到原对话，正在确认',{exact:true}).waitFor({timeout:15000});await page.screenshot({path:'evidence/screenshots/session-link-confirming.png'});
+ const link=(await h.request('/v2/self/session-links',undefined,token)).items.find(l=>l.id===linkInput.id);
+ await linkPost({action:'confirm',id:link.id,challenge:link.challenge,sessionId:link.session.id});
+ const state=await post({action:'link',requestId:randomUUID(),linkId:link.id}),linked=state.commands[0];
+ await post({action:'complete',requestId:randomUUID(),commandId:linked.id,binding:{sessionId:'original-session-id',workspace:'/srv/website',title:'修复官网登录'}});await post({action:'activate',requestId:randomUUID(),commandId:linked.id});
+ await page.getByRole('dialog').waitFor({state:'hidden',timeout:15000});assert.deepEqual(errors,[]);
+ await fs.writeFile('evidence/remote-native-ui.json',JSON.stringify({at:new Date().toISOString(),fixtureOnly:true,realNativeModelTested:false,checks:['default copy instruction uses Antigravity CLI, not this Mac desktop','clipboard contains complete ready-to-use member instruction','remote heartbeat automatically updates original-environment status','inventory alone does not display successful native verification','select original project and conversation through real UI and binding routes','third current-conversation instruction is copied and native-confirmation progress updates automatically','dialog closes only after the confirmed binding is activated'],errors},null,2));console.log('remote native UI accepted');
 }finally{await browser?.close();await local?.close();await h.stop();}

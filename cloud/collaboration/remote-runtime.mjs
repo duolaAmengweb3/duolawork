@@ -43,20 +43,33 @@ export async function runtimeSelf(repo,identity,actor,input={},write=false){
         if(old&&(old.runtimeId!==runtimeId||live(old)&&old.instanceId!==instanceId))fail('runtime_conflict','此账号已连接另一个环境；原连接保留，不自动覆盖',409);
         tx.put('remote-runtime',{...old,id:m.id,runtimeId,instanceId,form:input.form,label:required(input.label,'环境名称',200),seenAt:tx.now,sourceReady:input.sourceReady===true,status:['idle','working','needs_review','connecting'].includes(input.status)?input.status:'offline',message:String(input.message||'').slice(0,1000),items,projects,create:form.create,bindings:old?.bindings||{}});return{};
       });
+    }else if(input.action==='link'){
+      await repo.transact(required(input.requestId,'请求编号',120),input,async tx=>{
+        const r=await tx.get('remote-runtime',m.id),link=await tx.get('session-link',key(input.linkId));
+        if(r.runtimeId!==runtimeId||r.instanceId!==instanceId||link.memberId!==m.id||link.runtimeId!==runtimeId)fail('forbidden','关联不属于这个原环境',403);
+        const commandId='nativecmd_'+link.id.slice(12),old=await tx.get('native-command',commandId,false);if(old)return old;
+        if(link.status!=='verified')fail('unverified','尚未收到原生对话确认',409);
+        if(JSON.stringify(r.bindings[link.channelId]||null)!==JSON.stringify(link.previousBinding))fail('binding_changed','这个聊天刚刚选择了其他对话，旧配对说明不会覆盖它',409);
+        const channel=await tx.get('channel',link.channelId);if(!channel.memberIds.includes(m.id))fail('forbidden','成员已离开聊天',403);
+        const c={id:commandId,parentId:m.id,memberId:m.id,runtimeId,channelId:link.channelId,mode:'existing',sessionId:link.session.id,workspace:link.session.workspace,title:link.session.title,status:'pending',createdAt:tx.now,previousBinding:link.previousBinding,linkIntentId:link.id};
+        tx.put('native-command',c);return c;
+      });
     }else if(input.action==='release'){
       await repo.transact(id('runtimebye'),{memberId:m.id,runtimeId,instanceId},async tx=>{const r=await tx.get('remote-runtime',m.id,false);if(r?.runtimeId===runtimeId&&r.instanceId===instanceId){r.seenAt=new Date(0).toISOString();tx.put('remote-runtime',r);}return{};});
     }else if(['complete','activate'].includes(input.action)){
       await repo.transact(required(input.requestId,'请求编号',120),input,async tx=>{
         const r=await tx.get('remote-runtime',m.id);if(r.runtimeId!==runtimeId||r.instanceId!==instanceId)fail('runtime_conflict','运行端已变化',409);
         const c=await tx.get('native-command',key(input.commandId));if(c.memberId!==m.id||c.runtimeId!==runtimeId)fail('forbidden','不能完成其他运行端的请求',403);if(['completed','failed'].includes(c.status))return{};
-        if(input.error){c.status='failed';c.message=String(input.error).slice(0,1000);}else{
+        const link=c.linkIntentId?await tx.get('session-link',c.linkIntentId):null;
+        if(link&&link.status!=='verified'){c.status='failed';c.message='原对话关联已取消，原绑定保留';tx.put('native-command',c);return{};}
+        if(input.error){c.status='failed';c.message=String(input.error).slice(0,1000);if(link){link.status='failed';link.message=c.message;tx.put('session-link',link);}}else{
           const b=input.action==='activate'?c.binding:input.binding;if(!b||!b.sessionId||!b.workspace)fail('invalid_binding','未收到原生对话回执');
           if(input.action==='activate'&&c.status!=='prepared')fail('invalid_phase','原生对话还未准备完成',409);
           if(c.mode==='existing'&&b.sessionId!==c.sessionId)fail('wrong_session','返回了另一段对话，原绑定保留',409);
           if(JSON.stringify(r.bindings[c.channelId]||null)!==JSON.stringify(c.previousBinding))fail('binding_changed','聊天已选择其他对话，未覆盖',409);
           const channel=await tx.get('channel',c.channelId);if(!channel.memberIds.includes(m.id))fail('forbidden','成员已离开该聊天',403);
           c.binding={sessionId:key(b.sessionId),title:required(b.title||c.title,'对话名称',200),workspace:required(b.workspace,'项目位置',1000),mode:b.mode==='native-existing'?'native-existing':'existing',runtimeId};
-          if(input.action==='activate'){r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';}else c.status='prepared';
+          if(input.action==='activate'){r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';if(link){link.status='completed';link.binding=c.binding;link.completedAt=tx.now;tx.put('session-link',link);}}else c.status='prepared';
         }c.completedAt=tx.now;tx.put('native-command',c);return{};
       });
     }else fail('invalid_action','无效的运行端操作');

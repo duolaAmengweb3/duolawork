@@ -1,9 +1,11 @@
 import {randomUUID} from 'node:crypto';
+import path from 'node:path';
+import {queueSessionLink} from './session-link-runner.mjs';
 import {SESSION_CAPABILITIES,publicAssignments} from './session-routing.mjs';
 import {presentSessions,sessionProjects,sessionErrorMessage} from './session-presentation.mjs';
 
 export class ChatSessions {
-  constructor({coding,dsh,ag}) { Object.assign(this,{coding,dsh,ag});this.jobs=new Map();this.locks=new Map(); }
+  constructor({coding,dsh,ag}) { Object.assign(this,{coding,dsh,ag});this.jobs=new Map();this.locks=new Map();this.linkJobs=new Map(); }
   owner(...args) { return this.coding.owner(...args); }
   async member(id) {
     const w=await this.owner('/v2/workspace'),m=w.members.find(m=>m.id===id);
@@ -12,12 +14,14 @@ export class ChatSessions {
   manager(m) { return m.platformId==='codex'||m.platformId==='gemini-cli'?this.coding:m.platformId==='antigravity'?(this.ag.records[m.id]?.enabled||!this.coding.records[m.id]?.enabled?this.ag:this.coding):m.platformId==='deepseek-harness'?this.dsh:null; }
   async status(memberId) {
     const m=await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
-    if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:SESSION_CAPABILITIES['claude-code']};}
-    if(manager){const remote=await this.owner('/v2/native-runtime?memberId='+memberId);if(remote.remote)return{...remote,assignments:remote.record.assignments};}
+    if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:{...SESSION_CAPABILITIES['claude-code'],linkCurrent:true}};}
+    if(manager){const remote=await this.owner('/v2/native-runtime?memberId='+memberId);if(remote.remote)return{...remote,capabilities:{...remote.capabilities,linkCurrent:remote.record.form!=='gemini-cli'},assignments:remote.record.assignments};}
     const capabilities={...(SESSION_CAPABILITIES[m.platformId]||{kind:'fixed'})};if(manager===this.coding)Object.assign(capabilities,{kind:'sessions',existing:true,create:true,label:m.platformId==='codex'?'Codex 工作会话':'Gemini 后台会话'});
+    capabilities.linkCurrent=!!r?.enabled&&(manager===this.coding?['codex','antigravity-cli'].includes(r.engine):manager===this.ag||manager===this.dsh&&manager.hostFor(memberId).kind==='desktop');
     return {capabilities,record:manager===this.coding?manager.status().members.find(r=>r.memberId===memberId):manager?.status().find(r=>r.memberId===memberId),assignments:publicAssignments(r||{})};
   }
   async connect({memberId,form}) {
+    if(form==='deepseek-harness')throw Error('原服务器上的 Harness 请使用“复制说明接入”，把说明发给原 Agent');
     const m=await this.member(memberId),manager=['gemini-cli','antigravity-cli'].includes(form)&&['gemini-cli','antigravity'].includes(m.platformId)?this.coding:this.manager(m);if(!manager)throw Error('这个平台使用固定 Agent 接入');
     // A second account must not silently attach to the same default login.
     // Existing members and same-account legacy assignments remain intact.
@@ -32,6 +36,36 @@ export class ChatSessions {
       await manager.connectSource({memberId});
     }
     return this.status(memberId);
+  }
+  async createLink({memberId,channelId}){
+    await this.channel(memberId,channelId);const m=await this.member(memberId),status=await this.status(memberId);
+    if(m.platformId==='claude-code')return this.owner('/v2/session-links',{action:'create',memberId,channelId,form:'claude-code',executor:'claude'});
+    if(status.remote)return this.owner('/v2/session-links',{action:'create',memberId,channelId});
+    const manager=this.manager(m),r=manager?.records[memberId];if(!r?.enabled)throw Error('请先连接这个账号');
+    const form=manager===this.coding?r.engine:manager===this.ag?'antigravity-desktop':manager.hostFor(memberId).kind==='desktop'?'deepseek-desktop':null;
+    if(!form)throw Error('请从已有项目列表选择，这个运行形态尚未适配当前对话关联');
+    return this.owner('/v2/session-links',{action:'create',memberId,channelId,executor:'local',form,locator:{dataDir:manager.dataDir,file:path.basename(manager.file)},previousBinding:r.chatBindings?.[channelId]||null});
+  }
+  start(){this.linkStopped=false;this.linkTimer=setInterval(()=>void this.tickLinks().catch(()=>{}),4000);this.linkTimer.unref();}
+  async stop(){this.linkStopped=true;clearInterval(this.linkTimer);while(this.linkTicking)await new Promise(r=>setTimeout(r,20));await Promise.allSettled([...this.linkJobs.values()]);}
+  async tickLinks(){
+    if(this.linkStopped||this.linkTicking)return;this.linkTicking=true;
+    try{const {items}=await this.owner('/v2/session-links');
+      for(const l of items.filter(l=>l.executor==='local'&&l.locator?.dataDir===this.coding.dataDir)){
+        if(this.linkStopped)break;
+        if(this.linkJobs.has(l.id)||!['confirming','verified','applying'].includes(l.status))continue;
+        const manager=this.manager(await this.member(l.memberId));
+        if(l.status!=='confirming'&&(manager.records[l.memberId]?.inFlight||manager.jobs?.has(l.memberId)))continue;
+        const job=(async()=>{
+          if(l.status==='confirming'){await queueSessionLink(manager,l,manager.dataDir);return;}
+          const current=manager.records[l.memberId]?.chatBindings?.[l.channelId]||null;
+          if(current?.sessionId!==l.session.id&&JSON.stringify(current)!==JSON.stringify(l.previousBinding))throw Error('聊天刚刚选择了其他对话，旧配对说明没有覆盖它');
+          await this.owner('/v2/session-links',{action:'begin',id:l.id,requestId:'link-begin-'+l.id});
+          if(current?.sessionId!==l.session.id)await this.assign({memberId:l.memberId,channelId:l.channelId,mode:'existing',sessionId:l.session.id,expectedPreviousBinding:l.previousBinding});
+          await this.owner('/v2/session-links',{action:'completed',id:l.id,requestId:'link-completed-'+l.id});
+        })().catch(async e=>{await this.owner('/v2/session-links',{action:'failed',id:l.id,requestId:'link-failed-'+l.id,message:e.message}).catch(()=>{});}).finally(()=>this.linkJobs.delete(l.id));this.linkJobs.set(l.id,job);
+      }
+    }finally{this.linkTicking=false;}
   }
   async options({memberId,channelId}) {
     const m=await this.member(memberId),manager=this.manager(m),status=await this.status(memberId);
@@ -68,6 +102,7 @@ export class ChatSessions {
     }
     const m=await this.member(input.memberId),manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{...input,requestId:randomUUID()});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
     const channels=await this.channel(input.memberId,input.channelId);
+    if(Object.hasOwn(input,'expectedPreviousBinding')&&JSON.stringify(manager.records[input.memberId]?.chatBindings?.[input.channelId]||null)!==JSON.stringify(input.expectedPreviousBinding))throw Error('聊天刚刚选择了其他对话，旧配对说明没有覆盖它');
     if(input.mode==='new'&&manager!==this.coding&&SESSION_CAPABILITIES[m.platformId]?.create!==true)throw Error(SESSION_CAPABILITIES[m.platformId]?.createHint||'此平台尚未支持在 Hub 新建会话');
     const title=channels.find(c=>c.id===input.channelId).name;
     return {binding:await manager.assign({...input,title,channels})};

@@ -56,10 +56,34 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  const until=Date.now()+15000;while(!notification&&Date.now()<until)await new Promise(r=>setTimeout(r,100));assert.ok(notification,'Official channel event emitted');assert.equal(notification.params.meta.session_id,two.sessionId);
  const call=async(name,args={})=>{const r=await sdk.callTool({name,arguments:args});assert.ok(!r.isError,JSON.stringify(r));return JSON.parse(r.content[0].text);};
  const listing=await sdk.listTools();assert.ok(listing.tools.some(x=>x.name==='post_message'));assert.ok(!listing.tools.some(x=>/shell|terminal|exec|receive_messages/.test(x.name)));
+ assert.ok(listing.tools.some(x=>x.name==='link_current_conversation'));assert.ok(listing.tools.some(x=>x.name==='confirm_current_conversation'));
  const cc=await call('claim_work',{requestId:randomUUID(),stepId:foreign.stepId});await call('post_message',{requestId:randomUUID(),channelId:b.id,turnId:cc.turnId,body:'App protocol fixture'});
  await sdk.close();const records=await h.request('/v2/native-sessions?memberId='+member.id);assert.equal(records.bindings[b.id].sessionId,two.sessionId);
  await h.request('/admin/action',{type:'member.disconnect',memberId:member.id});
  await assert.rejects(()=>client.api('/v2/self/native-sessions'));
+});
+
+test('Claude current-conversation code uses the registered native channel, survives restart and rejects stale replacement',async t=>{
+ const h=await startHarness();t.after(()=>h.stop());await h.request('/admin/action',{type:'platform.create',payload:{id:'claude-code',name:'Claude Code'}});
+ const m=await h.member('claude-code','Claude original'),channel=await h.command('channel.create',{name:'code selection',memberIds:[m.id]});
+ const one={sessionId:randomUUID(),instanceId:randomUUID(),runtimeId:'original-server',title:'原项目对话',workspace:'/srv/project'},two={...one,sessionId:randomUUID(),instanceId:randomUUID(),title:'另一段对话'};
+ const client={api:(route,options)=>h.request(route,options?.body,m.token)};
+ for(const s of [one,two])await client.api('/v2/self/native-sessions',{body:s});
+ const create=()=>h.request('/v2/session-links',{action:'create',memberId:m.id,channelId:channel.id,form:'claude-code'});
+ const parse=l=>JSON.parse(l.skill.match(/参数 (\{.+?\})。/)[1]);
+ let notifications=[];const stateFile=path.join(h.directory,'claude-link.json'),bridge=new ClaudeChannel({client,session:one,stateFile,notify:async n=>notifications.push(n)});await bridge.load();
+ const link=await create();await bridge.tool('link_current_conversation',parse(link));await bridge.linkTick();await bridge.linkTick();assert.equal(notifications.length,1);
+ assert.equal((await h.request('/v2/native-sessions?memberId='+m.id)).bindings[channel.id],undefined);
+ const pending=(await client.api('/v2/self/session-links')).items.find(l=>l.id===link.id);
+ const other=new ClaudeChannel({client,session:two,stateFile:path.join(h.directory,'other.json'),notify:async()=>{}});await other.load();
+ await assert.rejects(()=>other.tool('confirm_current_conversation',{id:link.id,challenge:pending.challenge}),/不是这段/);
+ await bridge.tool('confirm_current_conversation',{id:link.id,challenge:pending.challenge});
+ const restarted=new ClaudeChannel({client,session:one,stateFile,notify:async n=>notifications.push(n)});await restarted.load();await restarted.linkTick();
+ assert.equal((await h.request('/v2/session-links?id='+link.id)).status,'completed');assert.equal((await h.request('/v2/native-sessions?memberId='+m.id)).bindings[channel.id].sessionId,one.sessionId);
+ const stale=await create();await restarted.tool('link_current_conversation',parse(stale));const p=(await client.api('/v2/self/session-links')).items.find(l=>l.id===stale.id);
+ await restarted.tool('confirm_current_conversation',{id:stale.id,challenge:p.challenge});
+ await h.request('/v2/native-sessions',{requestId:randomUUID(),memberId:m.id,channelId:channel.id,sessionId:two.sessionId,mode:'existing'});await restarted.linkTick();
+ assert.equal((await h.request('/v2/session-links?id='+stale.id)).status,'failed');assert.equal((await h.request('/v2/native-sessions?memberId='+m.id)).bindings[channel.id].sessionId,two.sessionId);
 });
 
 test('launcher adds per-launch plugin/MCP only and preserves official resume argument and metadata boundary',async t=>{

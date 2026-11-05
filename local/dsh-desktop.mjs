@@ -93,7 +93,7 @@ export class DshDesktopHost {
   this.progress='正在连接已登录的官方桌面版';
   try{
    await this.deploy(d.profile);
-   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready&&health.protocolVersion>=6)return health;if(state.pid===d.pid&&health.ready&&health.protocolVersion<6)throw Object.assign(Error('Hub 插件需要重新加载：请在 DeepSeek 当前工作结束后正常退出并重开一次，原登录、项目和会话保留，然后重新连接'),{reloadRequired:true});}catch(e){if(e.reloadRequired)throw e;}await new Promise(r=>setTimeout(r,300));}
+   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready&&health.protocolVersion>=7)return health;if(state.pid===d.pid&&health.ready&&health.protocolVersion<7)throw Object.assign(Error('Hub 插件需要重新加载：请在 DeepSeek 当前工作结束后正常退出并重开一次，原登录、项目和会话保留，然后重新连接'),{reloadRequired:true});}catch(e){if(e.reloadRequired)throw e;}await new Promise(r=>setTimeout(r,300));}
    throw Error('桌面版尚未加载 Hub 插件，原登录和会话保留；请在原生插件页查看具体原因');
   }finally{this.progress=null;}
  }

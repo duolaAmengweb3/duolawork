@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-export async function startHarness({outboundService} = {}) {
+export async function startHarness({outboundService,node=process.execPath} = {}) {
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hub-v1-integration-"),
   );
   execFileSync(
-    process.execPath,
+    node,
     [
       "node_modules/wrangler/bin/wrangler.js",
       "deploy",

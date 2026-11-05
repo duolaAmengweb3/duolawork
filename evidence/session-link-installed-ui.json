@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-05T07:37:45.640Z",
+  "actualInstalledService": true,
+  "readOnly": true,
+  "member": "Gemini2VPS",
+  "remote": true,
+  "form": "antigravity-cli",
+  "linkCurrent": true,
+  "existingAssignmentsPreserved": true,
+  "createdLinkIntent": false,
+  "buttonVisible": true,
+  "finalCheckedAt": "2026-11-05T07:44:15.865Z",
+  "buildId": "8406a3e461849a5c"
+}

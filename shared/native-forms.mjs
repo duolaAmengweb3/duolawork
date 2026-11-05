@@ -6,6 +6,7 @@ export const NATIVE_FORMS = {
   'gemini-cli': { platformIds:['gemini-cli','antigravity'], name:'Gemini CLI', systems:['darwin','linux'], manager:'coding', engine:'gemini-cli', create:true },
   'antigravity-desktop': { platformIds:['antigravity','gemini-cli'], name:'Antigravity 桌面版', systems:['darwin'], manager:'antigravity', create:false },
   'deepseek-desktop': { platformIds:['deepseek-harness'], name:'DeepSeek Harness 桌面版', systems:['darwin'], manager:'dsh', create:true },
+  'deepseek-harness': { platformIds:['deepseek-harness'], name:'DeepSeek Harness（原服务器或终端）', systems:['darwin','linux'], manager:'dsh-original', create:true },
   'claude-code': { platformIds:['claude-code'], name:'Claude Code', systems:['darwin','linux'], manager:'claude', create:false },
 };
 export function formsFor(platformId){ return Object.entries(NATIVE_FORMS).filter(([,f])=>f.platformIds.includes(platformId)).map(([id,f])=>({id,...f})); }

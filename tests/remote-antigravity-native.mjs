@@ -39,8 +39,12 @@ try{
  const source=await until(async()=>{const s=await state();return s.record.sourceReady&&s.items.some(i=>i.id===session.id)?s:null;},'native inventory');
  const original=source.items.find(i=>i.id===session.id);if(original.mode!=='native-existing')throw Error('Original live bridge missing');stages.push({stage:'original-live-inventory',mode:original.mode});console.log('original inventory mode: '+original.mode);
  const channel=await h.command('channel.create',{name:'原终端与Hub协作',memberIds:[member.id]});
- const command=await h.request('/v2/native-runtime',{requestId:randomUUID(),memberId:member.id,channelId:channel.id,sessionId:session.id,mode:'existing'});hubPhase=true;
- await until(async()=>{const c=await h.request('/v2/native-runtime?'+new URLSearchParams({memberId:member.id,commandId:command.id}));if(c.status==='failed')throw Error(c.message);return c.status==='completed';},'binding');
+ const link=await h.request('/v2/session-links',{action:'create',memberId:member.id,channelId:channel.id});
+ const linkInput=JSON.parse(link.skill.match(/传入：(\{.+?\})。/)[1]),linkFile=path.join(h.directory,'link-input.json');await fs.writeFile(linkFile,JSON.stringify(linkInput),{mode:0o600});
+ await agent.run({session,prompt:'请在本原对话用 run_command 执行以下命令一次，成功后结束本轮，等待 DuolaWork 自动确认，不读取其他配置，不输出配对码：\n'+['env','AGENT_HUB_CONNECTOR_TEST=1','DUOLAWORK_RUNTIME_DIR='+remote,process.execPath,path.join(unpack,'connectors/runtime/session-link.mjs')].map(q).join(' ')+' < '+q(linkFile)});await fs.rm(linkFile);hubPhase=true;
+ await until(async()=>{const c=await h.request('/v2/session-links?id='+link.id);if(['failed','cancelled'].includes(c.status))throw Error(c.message||c.status);return c.status==='completed';},'current-conversation code and native challenge',240000);
+ if((await state()).bindings[channel.id]?.sessionId!==session.id)throw Error('Pair code selected a different original session');
+ stages.push({stage:'one-instruction-current-session-link',sameOriginalSession:true,noNewMember:true});console.log('current-conversation code and native challenge passed');
  const client=new CodingMemberClient(path.join(base,'grant.json'));await until(async()=>(await client.api('/v2/self/status')).complete,'real native tools and verification',240000);console.log('real native verification passed');
  await until(async()=>Object.values(JSON.parse(await fs.readFile(path.join(base,'native-coding.json')))).every(r=>!r.inFlight),'verification idle');
  const post=body=>h.command('channel.post',{channelId:channel.id,body,mentions:[member.id]});

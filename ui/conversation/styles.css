@@ -1319,6 +1319,7 @@
 
 .session-dialog {display:flex;flex-direction:column;height:min(760px,85dvh);max-height:85dvh;overflow:hidden;}
 .session-dialog>div:first-child {flex-shrink:0;}
+.session-dialog:has(.session-link-mode) {height:auto;}
 .session-picker {display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0;flex:1;}
 .session-picker-body {display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:4px;flex:1;}
 .session-current {font-size:12px;color:#53688c;background:#f3f6fc;border-radius:8px;padding:9px 12px;line-height:1.6;overflow-wrap:anywhere;}

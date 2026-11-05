@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-05T06:26:01.701Z",
+  "at": "2026-11-05T07:20:21.495Z",
   "fixtureOnly": true,
   "realNativeModelTested": false,
   "checks": [
@@ -7,7 +7,9 @@
     "clipboard contains complete ready-to-use member instruction",
     "remote heartbeat automatically updates original-environment status",
     "inventory alone does not display successful native verification",
-    "select original project and conversation through real UI and binding routes"
+    "select original project and conversation through real UI and binding routes",
+    "third current-conversation instruction is copied and native-confirmation progress updates automatically",
+    "dialog closes only after the confirmed binding is activated"
   ],
   "errors": []
 }

@@ -34,6 +34,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  for(const r of Object.values(ag.records).filter(r=>r.enabled)){const prior=coding.records[r.memberId];if(prior?.enabled){prior.enabled=false;prior.status="paused";prior.message="当前由桌面原会话接收，原后台会话保留";await coding.save();}}
  await dsh.migrateExisting().catch(()=>{});await ag.migrateExisting().catch(()=>{});
  const chatSessions=new ChatSessions({coding,dsh,ag});
+ if(!maintenance)chatSessions.start();
  let remoteMembers=[],remoteStatusAt=0,remoteRefresh;
  const refreshRemote=()=>{if(!remoteRefresh&&Date.now()-remoteStatusAt>10000){remoteStatusAt=Date.now();remoteRefresh=requestJson(config.endpoint+'/v2/native-sessions',{token:config.adminKey,timeout:4000}).then(r=>{remoteMembers=r.members;}).catch(()=>{}).finally(()=>{remoteRefresh=null;});}return remoteMembers;};
 
@@ -52,6 +53,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/local/sources/status'&&req.method==='GET'){const value=await chatSessions.status(url.searchParams.get('memberId'));if(value.capabilities?.remote===true){remoteMembers=[...remoteMembers.filter(r=>r.memberId!==value.record.memberId),value.record];}return json(res,value);}
  if(url.pathname==='/api/local/sources/connect'&&req.method==='POST')return json(res,await chatSessions.connect(await body(req)));
  if(url.pathname==='/api/local/chat-sessions'&&req.method==='GET')return json(res,await chatSessions.options(Object.fromEntries(url.searchParams)));
+ if(url.pathname==='/api/local/session-links'&&req.method==='POST')return json(res,await chatSessions.createLink(await body(req)));
  if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST'){const input=await body(req),result=await chatSessions.assign(input);remoteMembers=remoteMembers.map(r=>r.memberId===input.memberId?{...r,assignments:[...r.assignments.filter(b=>b.channelId!==input.channelId),{channelId:input.channelId,...result.binding}]}:r);return json(res,result);}
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
  if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status(),remote=refreshRemote();return json(res,{...s,members:[...remote,...s.members.filter(m=>!ag.records[m.memberId]?.enabled),...dsh.status(),...ag.status().filter(m=>m.enabled)]});}
@@ -210,6 +212,6 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  res.writeHead(200,{'Content-Type':mime,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; frame-ancestors 'none'",'Cache-Control':'no-cache'});res.end(data);
  }catch(e){if(res.headersSent||res.destroyed||req.aborted){res.destroy();return;}json(res,{message:e.message||'操作失败',...(e.code?{error:e.code}:{}),...(e.uncertain?{uncertain:true}:{})},e.status||400);}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();if(!maintenance){await coding.start();await dsh.start();await ag.start();}
- return{url:origin,server,runner,browsers,coding,dsh,ag,setClientView(value){clientView={...clientView,...value};},async close(){await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
+ return{url:origin,server,runner,browsers,coding,dsh,ag,setClientView(value){clientView={...clientView,...value};},async close(){await chatSessions.stop();await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){const instance=await start();console.log('Agent Hub 本地工作台：'+instance.url);for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>instance.close().finally(()=>process.exit(0)));}

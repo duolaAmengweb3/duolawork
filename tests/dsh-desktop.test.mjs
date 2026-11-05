@@ -25,6 +25,11 @@ test('Desktop discovery selects the actual original Host, not a separate Web pro
 test('Desktop bridge does not open another instance in a background restore when the native app is closed',async()=>{
  const d=new DshDesktopHost('/private/fixture');d.discover=async()=>({installed:true,supported:true,running:false});d.open=async()=>{throw Error('must not open');};await assert.rejects(d.start({launch:false}),/桌面版已关闭/);
 });
+test('Desktop old plugin cannot claim the new current-conversation route is ready',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-desktop-version-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const d=new DshDesktopHost(dir);await fs.mkdir(d.root,{recursive:true});await fs.writeFile(d.stateFile,JSON.stringify({pid:123}));
+ d.discover=async()=>({installed:true,supported:true,running:true,pid:123,profile:'/fixture'});d.deploy=async()=>{};d.call=async()=>({ready:true,protocolVersion:6});
+ await assert.rejects(d.start({launch:false}),/重新加载/);d.call=async()=>({ready:true,protocolVersion:7});assert.equal((await d.start({launch:false})).protocolVersion,7);
+});
 test('new members use Desktop while pre-existing managed DSH sessions keep their exact original runtime',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-desktop-routing-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const m=new DshManager({config:{},dataDir:dir});m.records.member_old={memberId:'member_old',sessionId:'original',enabled:true};m.records.member_new={memberId:'member_new',sessionId:'desktop-original',hostKind:'desktop'};

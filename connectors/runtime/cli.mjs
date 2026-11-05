@@ -8,12 +8,14 @@ import {promisify} from 'node:util';
 import {randomUUID,createHash} from 'node:crypto';
 import {CodingManager} from '../../local/coding-manager.mjs';
 import {DshManager} from '../../local/dsh-manager.mjs';
+import {DshOriginalHost} from '../../local/dsh-original-host.mjs';
 import {AntigravityDesktopHost} from '../../local/antigravity-host.mjs';
 import {installCliAttachment,attachCurrentCli} from '../../local/antigravity-cli-bridge.mjs';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {requestJson} from '../../local/transport.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
+import {queueSessionLink} from '../../local/session-link-runner.mjs';
 import {safeError,findExecutable} from '../../local/native-agent.mjs';
 const execute=promisify(execFile),entry=fileURLToPath(import.meta.url);
 const root=process.env.DUOLAWORK_RUNTIME_DIR||path.join(os.homedir(),'.config','duolawork-runtime');
@@ -42,6 +44,7 @@ export async function setup(input){
   }
   try{config=await read(configFile);}catch(e){if(e.code!=='ENOENT')throw e;}
   if(config&&(config.memberId!==memberId||config.endpoint!==u.origin||config.form!==form))throw Error('这个连接位置已属于另一个账号或运行形态，原资料保留');
+  if(f.manager==='dsh-original')await new DshOriginalHost(base).register();
   try{grant=await read(grantFile);}catch(e){if(e.code!=='ENOENT')throw e;}
   if(grant&&(grant.memberId!==memberId||grant.endpoint!==u.origin))throw Error('原授权属于其他账号，未覆盖');
   if(grant){
@@ -107,7 +110,7 @@ export async function run(alias,{interval=4000}={}){
   let lock;try{lock=await fs.open(lockFile,'wx',0o600);}catch(e){if(e.code!=='EEXIST')throw e;const prior=await read(lockFile);let alive=true;try{process.kill(prior.pid,0);}catch(err){if(err.code==='ESRCH')alive=false;else throw err;}if(alive)throw Error('这个账号的连接器已经运行');await fs.rm(lockFile);lock=await fs.open(lockFile,'wx',0o600);}
   await lock.writeFile(JSON.stringify({pid:process.pid,instanceId}));
   let context=await client.api('/v2/self/runtime');if(context.member.platformId!==config.platformId)throw Error('成员平台已改变，未连接其他账号');
-  const manager=f.manager==='coding'?new CodingManager({config:{endpoint:config.endpoint},dataDir:base}):new DshManager({config:{endpoint:config.endpoint},dataDir:base,...(f.manager==='antigravity'?{host:new AntigravityDesktopHost(base),platformId:config.platformId,engine:'antigravity',fileName:'antigravity-desktop-members.json',requireFreshReceipt:true}:{})});
+  const manager=f.manager==='coding'?new CodingManager({config:{endpoint:config.endpoint},dataDir:base}):new DshManager({config:{endpoint:config.endpoint},dataDir:base,...(f.manager==='antigravity'?{host:new AntigravityDesktopHost(base),platformId:config.platformId,engine:'antigravity',fileName:'antigravity-desktop-members.json',requireFreshReceipt:true}:f.manager==='dsh-original'?{host:new DshOriginalHost(base),requireFreshReceipt:true}:{})});
   await manager.load();
   manager.owner=async(route)=>{if(route==='/v2/workspace')return{members:[context.member]};if(route==='/v2/channels')return{items:context.channels};throw Error('远程成员没有所有者管理权限');};
   // Reuse one grant file, including token refresh locks, across every helper.
@@ -123,7 +126,7 @@ export async function run(alias,{interval=4000}={}){
   // Do not resume persisted work until this runtime owns a fresh heartbeat and
   // has reconciled the authoritative chat bindings (including a lost ACK).
   await manager.jobs.get(config.memberId);manager.stopped=true;
-  let stopped=false,pending=false,commandBusy=false,catalogAt=0,catalog={items:[],projects:[]};
+  let stopped=false,pending=false,commandBusy=false,catalogAt=0,catalog={items:[],projects:[]};const linkJobs=new Map();
   const reconcile=async current=>{
     if(current.runtime?.runtimeId!==config.runtimeId)throw Error('原环境身份未确认，未派发消息');
     const r=manager.records[config.memberId],bindings=current.runtime.bindings||{};
@@ -141,8 +144,16 @@ export async function run(alias,{interval=4000}={}){
     if(!commandBusy){await reconcile(context);if(!stopped){if(!manager.timer)await manager.start();else manager.stopped=false;
       if(f.manager==='coding'&&r.inFlight&&r.status==='needs_review'&&!manager.jobs.has(config.memberId))await manager.resume({memberId:config.memberId});
     }}
+    const links=(await client.api('/v2/self/session-links')).items.filter(l=>l.executor==='runtime'&&l.runtimeId===config.runtimeId);
+    for(const link of links){
+      if(link.status==='confirming'&&!linkJobs.has(link.id)){
+        const job=queueSessionLink(manager,link,base).catch(async e=>{await client.api('/v2/self/session-links',{method:'POST',body:{action:'failed',id:link.id,requestId:'link-fail-'+link.id,message:safeError(e)}}).catch(()=>{});}).finally(()=>linkJobs.delete(link.id));linkJobs.set(link.id,job);
+      }else if(link.status==='verified'){
+        try{context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'link',runtimeId:config.runtimeId,instanceId,requestId:'link-apply-'+link.id,linkId:link.id}});}catch(e){await client.api('/v2/self/session-links',{method:'POST',body:{action:'failed',id:link.id,requestId:'link-cas-'+link.id,message:safeError(e)}});}
+      }
+    }
     const command=context.commands.find(c=>c.runtimeId===config.runtimeId);
-    if(command&&!commandBusy){commandBusy=true;void (async()=>{
+    if(command&&!commandBusy&&!(command.linkIntentId&&(r.inFlight||manager.jobs.has(config.memberId)))){commandBusy=true;void (async()=>{
       // Pause dispatch while the candidate is prepared and committed. A failed
       // cloud CAS must never make this receiver send work to a different session.
       manager.stopped=true;let routingConfirmed=false;
@@ -174,7 +185,7 @@ export async function run(alias,{interval=4000}={}){
     await privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)});
   }finally{pending=false;}};
   const timer=setInterval(()=>void tick(),interval);await tick();
-  const close=async()=>{if(stopped)return;stopped=true;clearInterval(timer);manager.stopped=true;while(pending||commandBusy||manager.jobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
+  const close=async()=>{if(stopped)return;stopped=true;clearInterval(timer);manager.stopped=true;while(pending||commandBusy||manager.jobs.size||linkJobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
   process.once('SIGTERM',()=>void close());process.once('SIGINT',()=>void close());return{manager,close,tick};
 }
 if(process.argv[1]&&await fs.realpath(process.argv[1]).catch(()=>'')===entry){const [command,alias]=process.argv.slice(2);(async()=>{if(command==='setup'){let raw='';for await(const c of process.stdin){raw+=c;if(raw.length>10000)throw Error('接入参数过大');}console.log(JSON.stringify(await setup(JSON.parse(raw))));}else if(command==='run')await run(alias);else throw Error('请使用软件复制的接入说明');})().catch(e=>{console.error('DuolaWork: '+safeError(e));process.exitCode=1;});}

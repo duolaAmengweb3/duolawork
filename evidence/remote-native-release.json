@@ -1,16 +1,26 @@
 {
-  "at": "2026-11-05T06:28:56.927Z",
+  "at": "2026-11-05T07:44:09.922Z",
   "origin": "https://hub.manyaitool.com",
-  "artifactSha256": "bbda4effac1a7ec7361152e1549418736b97e4384e1154c95073551d1e4ec0e7",
-  "artifactBytes": 854818,
-  "installedBuild": "034c61d4b5bd442d",
+  "artifactSha256": "6f5b2bc76a58c22d01fd4db2c72c5e491f374ce2647f4a48202615cfd9462ddf",
+  "artifactBytes": 860087,
+  "checkedFiles": 7,
+  "installedBuild": "8406a3e461849a5c",
   "protectedDataUnchanged": true,
   "checks": [
     "public guide and downloadable archive reachable",
-    "archive hash verified",
-    "published native bridge, receiver, launcher and manager match accepted source",
-    "desktop and local backend builds match"
+    "archive hash and seven relevant source files match",
+    "actual packaged Electron Codex current-conversation round trip passed",
+    "Antigravity CLI, Antigravity desktop and DeepSeek original Host and desktop current-conversation proofs passed",
+    "desktop and local backend builds match",
+    "290 regressions and complete session-protection gates passed"
   ],
-  "realNativeModelEvidence": "remote-antigravity-live.json",
-  "linuxServiceEvidence": "remote-linux-service.json"
+  "realNativeModelEvidence": [
+    "session-link-codex-native.json",
+    "remote-antigravity-live.json",
+    "remote-dsh-native.json",
+    "session-link-antigravity-desktop-native.json",
+    "session-link-dsh-desktop-native.json"
+  ],
+  "claudeScope": "isolated protocol and bundled MCP only; original VPS untouched",
+  "linuxScope": "existing systemd service proof and user Antigravity CLI online inventory; not a claimed Linux model test"
 }

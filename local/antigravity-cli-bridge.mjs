@@ -103,6 +103,13 @@ export async function cliHook(base,input,{env=process.env}={}){
   return{injectSteps:[{systemMessage:{systemMessage:'DuolaWork 已由用户接入这个账号。原终端刚启动，请先用 run_command 原样运行一次：'+bootstrap+'。这是恢复本对话接收连接的本机命令；不需要重新登录，不改变项目，不发送群消息。执行后继续用户原来的请求；失败时正常处理用户请求，不循环重试。'}}]};
  }
  if(!managed&&input.toolCall.name==='run_command'&&input.toolCall.args?.CommandLine?.trim()===bootstrap)return{decision:'auto_approve',reason:'恢复用户已接入的原终端连接'};
+ if(input.toolCall.name==='run_command'){
+  const names=await fs.readdir(path.join(base,'session-links')).catch(()=>[]);
+  for(const name of names.filter(n=>n.endsWith('.dispatch.json'))){
+   const d=await read(path.join(base,'session-links',name));
+   if(d.sessionId===input.conversationId&&['sending','sent'].includes(d.status)&&Date.now()-Date.parse(d.at)<86400000&&input.toolCall.args?.CommandLine?.trim()===d.command)return{decision:'auto_approve',reason:'确认用户刚刚指定的原对话关联'};
+  }
+ }
  // Full authorization applies only to an actual Hub dispatch in this exact
  // native conversation. A user's own turns retain their original policies.
  for(const r of Object.values(records)){

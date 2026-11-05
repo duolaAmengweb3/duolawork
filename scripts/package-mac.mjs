@@ -18,6 +18,9 @@ for (const name of ["dist", "desktop", "local", "shared"])
   await fs.cp(path.join(root, name), path.join(appDir, name), {
     recursive: true,
   });
+// Current-conversation confirmation runs inside the native Agent. Its helper
+// must exist in the installed application, not only in the source checkout.
+await fs.cp(path.join(root,"connectors/runtime"),path.join(appDir,"connectors/runtime"),{recursive:true});
 await fs.writeFile(
   path.join(appDir, "package.json"),
   JSON.stringify({
@@ -34,6 +37,9 @@ for (const name of ["playwright-core", "undici", "yaml", "ws"])
     path.join(appDir, "node_modules", name),
     { recursive: true },
   );
+// Import from the actual isolated installation to catch omitted files and
+// dependencies. This does not read accounts or invoke a native Agent.
+execFileSync(process.execPath,["--input-type=module","-e","await import("+JSON.stringify("file://"+path.join(appDir,"connectors/runtime/session-link.mjs"))+");"],{stdio:"inherit"});
 const plist = path.join(out, "Contents/Info.plist");
 execFileSync("/usr/libexec/PlistBuddy", [
   "-c",

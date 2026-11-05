@@ -3,6 +3,7 @@ import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-downloa
 import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
 import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
 import {runtimeOwner,runtimeSelf,remoteRuntimeMembers} from './remote-runtime.mjs';
+import {sessionLinks} from './session-links.mjs';
 import {runtimeRecipe,runtimeSkill} from './runtime-setup.mjs';
 import {sha256 as runtimeSHA,archive as runtimeArchive} from './runtime-download.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
@@ -606,6 +607,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     return json({skill:runtimeSkill({origin:url.origin,member:m,form,pairingCode:pair.pairingCode}),expiresAt:pair.expiresAt,form,sha256:runtimeSHA});
   }
   if(url.pathname==='/v2/self/runtime')return json(await runtimeSelf(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
+  if(url.pathname==='/v2/session-links'||url.pathname==='/v2/self/session-links')return json(await sessionLinks(repo,identity,actor,request.method==='POST'?await readJSON(request):Object.fromEntries(url.searchParams),request.method==='POST',url.origin));
   if(url.pathname==='/v2/native-runtime')return json(await runtimeOwner(repo,identity,actor,request.method==='POST'?await readJSON(request):Object.fromEntries(url.searchParams),request.method==='POST'));
   if(url.pathname==='/v2/self/native-sessions')return json(await remoteSessions(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
   if(url.pathname==='/v2/native-sessions'){

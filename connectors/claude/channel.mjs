@@ -7,13 +7,29 @@ import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotoco
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
+export const sessionLinkTools=[
+ {name:'link_current_conversation',description:'Link this exact original Claude conversation using the instruction copied by the user from DuolaWork. Reuses the existing account.',inputSchema:{type:'object',properties:{id:{type:'string'},code:{type:'string'}},required:['id','code']}},
+ {name:'confirm_current_conversation',description:'Confirm an original-conversation challenge received through this Claude channel.',inputSchema:{type:'object',properties:{id:{type:'string'},challenge:{type:'string'}},required:['id','challenge']}},
+];
 
 // The MCP subprocess has only Hub credentials. Native files/shell remain the
 // parent Claude's tools in its own environment, never RPC methods on the Mac.
 export class ClaudeChannel {
   constructor({client,session,notify,stateFile}){Object.assign(this,{client,session,notify,stateFile});this.sent={};this.claims={};this.pending=null;}
-  async load(){try{const s=JSON.parse(await fs.readFile(this.stateFile));this.sent=s.sent||{};this.claims=s.claims||{};}catch(e){if(e.code!=='ENOENT')throw e;}}
-  save(){return privateJson(this.stateFile,{sent:this.sent,claims:this.claims});}
+  async load(){try{const s=JSON.parse(await fs.readFile(this.stateFile));this.sent=s.sent||{};this.claims=s.claims||{};this.linkSent=s.linkSent||{};}catch(e){if(e.code!=='ENOENT')throw e;}}
+  save(){return privateJson(this.stateFile,{sent:this.sent,claims:this.claims,linkSent:this.linkSent||{}});}
+  async linkTick(){
+    const {items=[]}=await this.client.api('/v2/self/session-links');this.linkSent??={};
+    for(const l of items.filter(l=>l.executor==='claude'&&l.session?.id===this.session.sessionId)){
+      if(l.status==='confirming'&&!this.linkSent[l.id]){this.linkSent[l.id]=true;await this.save();try{await this.notify({method:'notifications/claude/channel',params:{content:'用户指定的原对话关联确认。请调用 confirm_current_conversation，参数 '+JSON.stringify({id:l.id,challenge:l.challenge})+'。这只关联当前对话，不改项目、模型或原任务。',meta:{session_id:this.session.sessionId}}});}catch(e){delete this.linkSent[l.id];await this.save();throw e;}}
+      if(l.status==='verified')try{await this.client.api('/v2/self/session-links',{method:'POST',body:{action:'apply-claude',id:l.id,requestId:'claude-link-apply-'+l.id}});}catch(e){
+        // A busy original conversation keeps receiving its existing work.
+        // Stale instructions must not silently overwrite a later user choice.
+        if(/聊天刚刚选择了其他对话/.test(e.message))await this.client.api('/v2/self/session-links',{method:'POST',body:{action:'failed',id:l.id,requestId:'claude-link-failed-'+l.id,message:e.message}});
+        else if(!/等待原工作|暂时离线/.test(e.message))throw e;
+      }
+    }
+  }
   async scope(){return this.client.api('/v2/self/native-sessions');}
   allowed(w,r){return w.channelId?r.bindings[w.channelId]?.sessionId===this.session.sessionId:r.verificationSessionId===this.session.sessionId;}
   async work(){const [r,{work}]=await Promise.all([this.scope(),this.client.tool('list_work')]);return work.filter(w=>this.allowed(w,r));}
@@ -28,6 +44,8 @@ export class ClaudeChannel {
     catch(e){delete this.sent[w.stepId];await this.save();throw e;}
   })().finally(()=>{this.pending=null;});}
   async tool(name,args){
+    if(name==='link_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'redeem',id:args.id,code:args.code,runtimeId:this.session.runtimeId,session:{id:this.session.sessionId,workspace:this.session.workspace,title:this.session.title},requestId:'claude-link-'+args.id+'-'+this.session.sessionId}});
+    if(name==='confirm_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'confirm',id:args.id,challenge:args.challenge,sessionId:this.session.sessionId,requestId:'claude-link-confirm-'+args.id}});
     if(['setup_connection','check_connection','report_setup_status','receive_messages'].includes(name))throw Error('连接由本机接收器维护；请使用 list_work 与 claim_work');
     const r=await this.scope();
     if(args.channelId&&r.bindings[args.channelId]?.sessionId!==this.session.sessionId)throw Error('这个聊天未分配给当前 Claude 会话');
@@ -46,7 +64,7 @@ export async function serve({grantFile,runFile,stateDir}){
   const client=new CodingMemberClient(grantFile);
   const server=new Server({name:'agent-hub',version:'1.0.0'},{capabilities:{tools:{},experimental:{'claude/channel':{}}},instructions:'这是原生 Claude 会话的 Hub 协作通道。收到通知后用 list_work、claim_work 领取；普通聊天用 post_message 回原群，验证按指令 submit_work。使用你原来的项目和工具。不要输出任何凭证，不要自行配置别人的连接。'});
   let bridge,session,closed=false,polling=false,lastHeartbeat=0,checkId;
-  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:(await client.tools()).filter(t=>!['setup_connection','check_connection','report_setup_status','receive_messages'].includes(t.name))}));
+  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...(await client.tools()).filter(t=>!['setup_connection','check_connection','report_setup_status','receive_messages'].includes(t.name)),...sessionLinkTools]}));
   server.setRequestHandler(CallToolRequestSchema,async req=>{try{if(!bridge)throw Error('正在等待原生会话登记');const value=await bridge.tool(req.params.name,req.params.arguments||{});return{content:[{type:'text',text:JSON.stringify(value)}]};}catch(e){return{isError:true,content:[{type:'text',text:e.status===401||e.status===403?'Hub 授权已失效，请查看成员连接':e.message}]};}});
   const heartbeat=async()=>{session=await refreshSessionInfo(session);return client.api('/v2/self/native-sessions',{method:'POST',body:session});};
   async function tick(){if(polling||closed)return;polling=true;try{
@@ -61,7 +79,7 @@ export async function serve({grantFile,runFile,stateDir}){
     if(!status.complete&&!checkId){
       const r=await bridge.scope();if(r.verificationSessionId===session.sessionId){const requestId='claude-probe-'+session.sessionId;await client.api('/v2/self/check',{method:'POST',body:{requestId}});checkId=requestId;}
     }
-    await bridge.tick();
+    await bridge.linkTick();await bridge.tick();
   }catch(e){if(e.code!=='ENOENT')process.stderr.write('Agent Hub: '+(e.status===403?'连接已撤销或会话被占用':e.status===401?'授权需要重新连接':'连接暂未就绪，保留状态重试')+'\n');}finally{polling=false;}}
   await server.connect(new StdioServerTransport());
   const timer=setInterval(()=>void tick(),5000);await tick();
