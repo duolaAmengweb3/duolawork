@@ -57,3 +57,9 @@ test('a previously completed binding left in connecting by the old version resum
  const {manager,record}=await fixture(t);record.status='connecting';record.chatBindings.channel_old={sessionId:'exact-old',title:'旧对话',workspace:record.cwd};await manager.save();
  const restored=new CodingManager({dataDir:manager.dataDir,config:{}});await restored.load();assert.equal(restored.records[record.memberId].status,'idle');assert.equal(restored.records[record.memberId].chatBindings.channel_old.sessionId,'exact-old');
 });
+test('catalog initialization after idle process cleanup does not stop normal message polling',async t=>{
+ const {manager,record}=await fixture(t);
+ await manager.prepareNative(record,manager.client(),{preserveStatus:true});
+ assert.equal(record.status,'idle');
+ let checked=0;manager.check=async()=>{checked++;};await manager.tick();assert.equal(checked,1);
+});

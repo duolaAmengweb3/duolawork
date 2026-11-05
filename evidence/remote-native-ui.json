@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-05T06:26:01.701Z",
+  "fixtureOnly": true,
+  "realNativeModelTested": false,
+  "checks": [
+    "default copy instruction uses Antigravity CLI, not this Mac desktop",
+    "clipboard contains complete ready-to-use member instruction",
+    "remote heartbeat automatically updates original-environment status",
+    "inventory alone does not display successful native verification",
+    "select original project and conversation through real UI and binding routes"
+  ],
+  "errors": []
+}

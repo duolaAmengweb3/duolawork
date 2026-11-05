@@ -48,7 +48,7 @@ export class DshManager {
   r.chatBindings=Object.fromEntries(channels.filter(c=>c.memberIds.includes(r.memberId)).map(c=>[c.id,{sessionId:r.sessionId,workspace:r.cwd,title:r.title,mode:'existing',migrated:true}]));
   r.verificationSessionId=r.sessionId;await this.save();
  }
- async assign({memberId,channelId,sessionId,mode='existing',workspace,title,channels}){
+ async assign({memberId,channelId,sessionId,mode='existing',workspace,title,channels,prepareOnly=false}){
   const r=this.records[memberId];if(!r?.enabled||this.jobs.has(memberId))throw Error('请先连接原生运行端，等待准备完成');
   if(!['existing','new'].includes(mode))throw Error('请选择已有会话或新建会话');
   const host=this.recordHost(r);await host.start({launch:false});await this.migrateAssignments(r,channels);
@@ -62,9 +62,14 @@ export class DshManager {
   }
   const selected=(await host.sessions()).items.find(s=>s.id===sessionId);if(!selected?.workspace)throw Error('请选择存在且关联本地项目的会话');
   for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&nativeBindings(other).some(b=>b.sessionId===sessionId))throw Error('这个原生会话已有另一位工作成员，请选择其他会话');
-  r.chatBindings[channelId]={sessionId,workspace:selected.workspace,title:mode==='new'?(title||selected.title):selected.title,mode};if(!Object.values(r.chatBindings).some(b=>b.sessionId===r.verificationSessionId))r.verificationSessionId=sessionId;
+  const binding={sessionId,workspace:selected.workspace,title:mode==='new'?(title||selected.title):selected.title,mode};
+  if(prepareOnly)return binding;
+  return this.commitBinding({memberId,channelId,binding});
+ }
+ async commitBinding({memberId,channelId,binding,verify=true}){
+  const r=this.records[memberId];r.chatBindings[channelId]={...binding};if(!Object.values(r.chatBindings).some(b=>b.sessionId===r.verificationSessionId))r.verificationSessionId=binding.sessionId;
   r.sourceReady=true;r.status='idle';await this.save();await this.syncBindings(r);
-  const current=await this.client(r).api('/v2/self/status');if(!r.proofRunId){r.verified=false;const proof=await this.client(r).api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;}
+  if(verify){const current=await this.client(r).api('/v2/self/status');if(!r.proofRunId){r.verified=false;const proof=await this.client(r).api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;}}
   await this.save();return r.chatBindings[channelId];
  }
  async syncBindings(r){

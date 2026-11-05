@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {privateJson} from './storage.mjs';
 import {requestJson} from './transport.mjs';
 import {CodingMemberClient} from './coding-client.mjs';
@@ -9,8 +11,11 @@ import {NativeAgent,findExecutable,safeError} from './native-agent.mjs';
 import {NativeRuntime} from './native-runtime.mjs';
 import {CodexWorkingHost} from './codex-working-host.mjs';
 import {AntigravityDesktopHost} from './antigravity-host.mjs';
+import {GeminiCliProjects} from './gemini-cli-projects.mjs';
+import {AntigravityCliHost} from './antigravity-cli-bridge.mjs';
 import {publicAssignments} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
+const exec=promisify(execFile);
 const nativeLabel=r=>r.engine==='codex'?'Codex':'Gemini';
 export function rememberAccount(record,auth){
  if(record.engine!=='codex'||!auth)return;
@@ -33,7 +38,7 @@ export class CodingManager{
    else if(['installing','connecting','waiting_login'].includes(r.status)){r.status='disconnected';r.message='上次连接未完成，点击连接继续；原登录资料保留';}
   }
  }
- workingHostFor(r){return r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
+ workingHostFor(r){return r.engine==='antigravity-cli'?(this.antigravityCliHost??=new AntigravityCliHost(this.dataDir)):r.engine==='gemini-cli'?(this.geminiProjects??=new GeminiCliProjects()):r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
  get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
  status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
@@ -41,10 +46,10 @@ export class CodingManager{
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
  launch(r,fn){if(this.jobs.has(r.memberId))return;const job=Promise.resolve().then(fn).catch(async e=>{if(r.enabled){r.status='needs_review';r.message=safeError(e);}delete r.authorizationUrl;await this.save();}).finally(()=>this.jobs.delete(r.memberId));this.jobs.set(r.memberId,job);}
  async connect({memberId,engine,sourceOnly=false}){
-  if(!/^member_[a-zA-Z0-9_-]+$/.test(memberId||'')||!['codex','antigravity'].includes(engine))throw new Error('不支持这个原生成员');
+  if(!/^member_[a-zA-Z0-9_-]+$/.test(memberId||'')||!['codex','antigravity','gemini-cli','antigravity-cli'].includes(engine))throw new Error('不支持这个原生成员');
   if(this.jobs.has(memberId))return this.status();
   const workspace=await this.owner('/v2/workspace'),member=workspace.members.find(m=>m.id===memberId);
-  if(!member||!([engine,...(engine==='antigravity'?['gemini-cli']:[])].includes(member.platformId)))throw new Error('成员与原生运行环境不匹配');
+  if(!member||!([engine,...(['antigravity','gemini-cli','antigravity-cli'].includes(engine)?['gemini-cli','antigravity']:[])].includes(member.platformId)))throw new Error('成员与原生运行环境不匹配');
   const base=path.join(this.dataDir,'coding',memberId);await fs.mkdir(base,{recursive:true,mode:0o700});let r=this.records[memberId];
   if(r?.engine&&r.engine!==engine)throw new Error('已有会话属于其他运行环境，未覆盖');
   if(r?.inFlight)throw new Error('上次工作尚未确认，请使用“继续原会话”');
@@ -63,14 +68,21 @@ export class CodingManager{
   r.status='idle';r.inFlight=null;r.message=r.manualAssignments?'运行端已连接，请在聊天中选择或新建工作会话':'正在自动验证连接，原生 Agent 回复后即可聊天';await this.save();
  }
  client(r){return new CodingMemberClient(r.grantFile,{request:this.request});}
- async prepareNative(r,client){
+ async prepareNative(r,client,{preserveStatus=false}={}){
   this.nativeUsedAt.set(r.memberId,Date.now());
   let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed&&!agent.rpc?.closing){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
-  const spec=await this.runtime.ensure(r.engine,p=>{Object.assign(r,p,{status:p.phase==='installing'?'installing':'connecting'});});
+  const spec=['gemini-cli','antigravity-cli'].includes(r.engine)?{command:await findExecutable(r.engine==='gemini-cli'?'gemini':'agy'),args:[]}:await this.runtime.ensure(r.engine,p=>{Object.assign(r,p,{status:p.phase==='installing'?'installing':'connecting'});});
+  if(!spec.command)throw Error('这个环境尚未安装对应的原生 CLI，请在原 Agent 所在的环境执行接入说明');
+  if(r.engine==='antigravity-cli'){
+   const {stdout}=await exec(spec.command,['--version'],{timeout:10000});const version=stdout.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+   if(!version||Number(version[1])<1||Number(version[1])===1&&Number(version[2])<5)throw Error('Antigravity CLI '+stdout.trim()+' 尚不支持此接入接口。请在原环境用 agy update 更新到 1.5.0 或以上，再重试；原登录和会话保留。');
+  }
   let node=await findExecutable('node');if(!node&&process.versions.electron)node=process.execPath;
   if(!node)throw new Error('本机缺少 Node.js 运行环境');
   const env={...process.env,PATH:[path.dirname(spec.command),path.dirname(node),process.env.PATH||''].join(path.delimiter)};
+  if(r.engine==='antigravity-cli')env.DUOLAWORK_MANAGED_CLI='1';
   let processTemp;
+  if(['gemini-cli','antigravity-cli'].includes(r.engine))r.mcpServers=[{name:'hub_'+r.memberId.slice(-16),command:node,args:[path.join(here,'coding-mcp.mjs'),r.grantFile,this.file,r.memberId],env:[]}];
   if(r.engine==='antigravity'){
    const provider=path.join(this.dataDir,'coding',r.memberId,'google'),temp=path.join(provider,'runtime-temp');await fs.mkdir(temp,{recursive:true,mode:0o700});processTemp=await fs.mkdtemp(path.join(temp,'run-'));
    const settings=path.join(provider,'antigravity-acp/settings.json');try{await fs.access(settings);}catch(e){if(e.code!=='ENOENT')throw e;await privateJson(settings,{auth:{type:'oauth-personal'}});}
@@ -89,7 +101,7 @@ export class CodingManager{
    onAuthorization:url=>{if(!['https://accounts.google.com','https://auth.openai.com','https://auth0.openai.com'].includes(new URL(url).origin))return;r.status='waiting_login';r.authorizationUrl=url;r.message='请点击官方登录按钮完成这一次登录；后续自动复用';}
   };
   agent=this.agentFactory?this.agentFactory(options):new NativeAgent(options);this.agents.set(r.memberId,agent);
-  try{rememberAccount(r,await agent.initialize());delete r.authorizationUrl;r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(r.memberId);throw e;}
+  try{rememberAccount(r,await agent.initialize());delete r.authorizationUrl;if(!preserveStatus)r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(r.memberId);throw e;}
  }
  async tick(){
   if(this.stopped)return;
@@ -103,12 +115,25 @@ export class CodingManager{
    if(this.sessionOperations.has(r.memberId))return;
    if(!first){r.inFlight=null;r.status='idle';r.message='已检查原回执，继续接收消息';await this.save();return;}
    const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key};r.lastRunAt=r.inFlight.at;r.status='working';r.message='原生 Agent 正在处理消息';await this.save();
-   if(binding?.mode==='native-existing'){await this.runExisting(r,first,binding,client);return;}
+   if(r.engine==='antigravity-cli'&&binding){
+    const host=this.workingHostFor(r);
+    if(await host.attached(binding.sessionId)){
+     // The original interactive process is authoritative. Discard our idle
+     // cache before using its queue, so no second context can overwrite it.
+     await this.agents.get(r.memberId)?.stop();this.agents.delete(r.memberId);
+     await this.runExisting(r,first,binding,client);return;
+    }
+    await host.assertAvailable(binding.workspace);
+   }
+   if(binding?.mode==='native-existing'&&r.engine!=='antigravity-cli'){await this.runExisting(r,first,binding,client);return;}
+   if(r.engine==='gemini-cli'&&binding)await this.workingHostFor(r).assertAvailable(binding.workspace);
    const agent=await this.prepareNative(r,client),tools=await client.tools();this.hubToolNames.set(r.memberId,new Set(tools.map(t=>t.name)));const session=await agent.session({id:binding?.sessionId||(!first.channelId&&r.manualAssignments?r.verificationSessionId:r.sessions[key]),cwd:binding?.workspace||r.cwd,tools,mcpServers:r.mcpServers||[]});r.sessions[key]=session.id;await this.save();
    const quote=v=>"'"+v.replaceAll("'","'\"'\"'")+"'";
-   const toolFallback=first.channelId?['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,first.channelId].map(quote).join(' '):null;
+   const bindingChannel=first.channelId||Object.entries(r.chatBindings||{}).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];
+   const toolFallback=bindingChannel?['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,bindingChannel].map(quote).join(' '):null;
    const fallbackInstruction=toolFallback?' 若原会话缓存了旧工具列表而缺少本次所需工具，不换会话、不扫描凭证。直接使用本环境连接器：'+toolFallback+' list_tools 查看最新工具；'+toolFallback+' call <工具名> <JSON参数> 调用。这是同一成员、同一群的已授权工具入口。':'';
    const prompt=`你是 Agent Hub 成员 ${r.memberId}，使用你自己的原生工具、模型、规则和本会话记忆。Hub 工具来自${r.engine==='codex'?' hub_ 前缀动态工具':' MCP hub_'+r.memberId.slice(-16)}。直接调用已提供的工具，不需要先通过终端扫描工具目录。常用签名：list_work({})；claim_work({requestId,stepId})；post_message({requestId,channelId,turnId,body,mentions?})；submit_work({requestId,attemptId,lease,items:[{title,body}]} )。先用 list_work 读取真实工作，本轮只处理 stepId=${first.stepId}，channelId=${first.channelId||'无'}。${recover?'上次运行中断：检查原领取和已经完成的操作，沿用原 attemptId/lease 继续未完成部分，不要重做副作用；不清楚时回报具体问题。':'用 claim_work 领取并遵循完整指令。'}普通群消息直接沟通，不擅自建任务或文档。使用所需原生工具完成后，必须调用 post_message 或 submit_work 回到这个 Hub 会话；只在原生终端输出不算回群。验证任务严格提交要求的内容，不自称验证通过。不轮询空跑、不改提供方配置、不替其他成员领取、不回显凭证。${fallbackInstruction}`;
+   if(r.engine==='antigravity-cli'){r.managedNativePid=agent.rpc.child?.pid;r.managedNativeSessionIds=[...agent.sessions.keys()];await this.save();}
    const result=await agent.run({session,prompt});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
    const remaining=await client.tool('list_work');if(remaining.work.some(w=>w.stepId===first.stepId))throw new Error('原生运行结束，但 Hub 未收到该工作回复；原会话保留，请继续检查');
    const status=await client.api('/v2/self/status');r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message=status.complete?'已接入，正在后台接收消息':'本轮已回传，连接验证仍待完成';await this.save();
@@ -127,14 +152,14 @@ export class CodingManager{
   this.sessionOperations.set(memberId,operation);
   try{return await operation;}finally{if(this.sessionOperations.get(memberId)===operation)this.sessionOperations.delete(memberId);}
  }
- async assignSession({memberId,channelId,sessionId,mode='new',workspace,title}){
+ async assignSession({memberId,channelId,sessionId,mode='new',workspace,title,prepareOnly=false}){
   const r=this.records[memberId];if(!r?.enabled||!r.sourceReady&&r.status!=='idle')throw Error('请先连接这个 Agent 的账号');
   if(!['existing','new'].includes(mode))throw Error('无效的会话选项');
   r.chatBindings??=Object.fromEntries(Object.entries(r.sessions||{}).filter(([id])=>id!=='verification').map(([id,s])=>[id,{sessionId:s,workspace:r.cwd,title:'原工作会话',mode:'existing',migrated:true}]));
   const client=this.client(r);let selected;
   if(mode==='existing'){
    selected=Object.values(r.chatBindings).find(b=>b.sessionId===sessionId);
-   if(!selected){const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});const native=(await host.sessions()).items.find(s=>s.id===sessionId);if(native){for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&Object.values(other.chatBindings||{}).some(b=>b.sessionId===sessionId))throw Error('此原生会话已有另一位工作成员');selected={sessionId:native.id,title:native.title,workspace:native.workspace,mode:'native-existing',source:native.source};}}
+   if(!selected){const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});const native=(r.engine==='antigravity-cli'?await this.cliSessionOptions(r):await host.sessions()).items.find(s=>s.id===sessionId);if(native){for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&Object.values(other.chatBindings||{}).some(b=>b.sessionId===sessionId))throw Error('此原生会话已有另一位工作成员');selected={sessionId:native.id,title:native.title,workspace:native.workspace,mode:['gemini-cli','antigravity-cli'].includes(r.engine)?'existing':'native-existing',source:native.source};}}
    if(!selected)throw Error('请选择这位成员已有的工作会话；不会读取其他成员的上下文');
   }else{
    if(r.creationPending)throw Error('上次会话创建结果待确认，请先查看已有会话，未重复创建');
@@ -144,18 +169,29 @@ export class CodingManager{
    try{session=await agent.session({cwd,tools,mcpServers:r.mcpServers||[]});}catch(error){if(typeof error.code==='number'){r.creationPending=false;await this.save();}throw error;}
    r.creationPending=false;selected={sessionId:session.id,workspace:cwd,title:title||'新对话',mode:'new',createdAt:new Date().toISOString()};
   }
+  if(prepareOnly)return {...selected};
+  return this.commitBinding({memberId,channelId,binding:selected});
+ }
+ async commitBinding({memberId,channelId,binding:selected,verify=true}){
+  const r=this.records[memberId],client=this.client(r);
   r.manualAssignments=true;r.sourceReady=true;r.chatBindings[channelId]={...selected};r.sessions[channelId]=selected.sessionId;r.verificationSessionId??=selected.sessionId;await this.save();
-  const status=await client.api('/v2/self/status');if(!status.complete&&!r.proofRunId){const proof=await client.api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;await this.save();}
+  if(verify){const status=await client.api('/v2/self/status');if(!status.complete&&!r.proofRunId){const proof=await client.api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;await this.save();}}
   return r.chatBindings[channelId];
  }
- async sessionOptions(memberId){const r=this.records[memberId];let native=[],projects=[],existingHint='';if(r)try{const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});({items:native,projects=[]}=await host.sessions());}catch(e){existingHint=(r.engine==='antigravity'?'Antigravity 桌面项目暂不可用：':'Codex 原项目暂不可用：')+safeError(e);}
+ async cliSessionOptions(r){
+  const agent=await this.prepareNative(r,this.client(r),{preserveStatus:true}),items=[];let cursor;const seen=new Set();
+  do{const page=await agent.rpc.call('session/list',cursor?{cursor}:{});for(const s of page.sessions||[]){if(s.sessionId&&s.cwd)items.push({id:s.sessionId,title:s.title||'未命名对话',workspace:s.cwd,updatedAt:s.updatedAt,source:'antigravity-cli',mode:'existing'});}cursor=page.nextCursor;if(cursor&&seen.has(cursor))throw Error('原对话列表分页异常');seen.add(cursor);}while(cursor);
+  const live=(await this.workingHostFor(r).sessions()).items;
+  return{items:[...new Map([...items,...live].map(s=>[s.id,s])).values()],projects:[]};
+ }
+ async sessionOptions(memberId){const r=this.records[memberId];let native=[],projects=[],existingHint='';if(r)try{const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});({items:native,projects=[]}=r.engine==='antigravity-cli'?await this.cliSessionOptions(r):await host.sessions());}catch(e){existingHint='原项目暂不可用：'+safeError(e);}
   const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace,mode:b.mode,createdAt:b.createdAt}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,projects,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
  async runExisting(r,first,binding,client){
   const key=first.channelId||Object.entries(r.chatBindings).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];if(!key)throw Error('请选择负责连接验证的工作会话');
   r.nativeDeliveries??={};const delivery=r.nativeDeliveries[first.stepId];
   if(delivery&&delivery.status!=='sent')throw Error('原会话发送结果待确认，请查看原会话；未重复执行');
   const q=v=>"'"+v.replaceAll("'","'\"'\"'")+"'",helper=['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,key].map(q).join(' ');
-  const prompt='Hub 有一条发给你这个原工作会话的消息，保留原项目、模型、工具和记忆。Hub 工具命令：'+helper+'。先运行命令加 claim_step '+first.stepId+'，按领取返回的真实指令完成；只处理这个工作。其他工具用 call <工具名> <JSON>，定义可用 list_tools 查询。普通消息必须用 post_message({requestId,channelId,turnId,body,mentions?}) 回到原 Hub 聊天；验证用 submit_work，不能只在原界面回答。不扫描登录资料、不读其他会话、不自动创建任务文档或分工。';
+  const prompt='DuolaWork collaboration '+first.stepId+'\nHub 有一条发给你这个原工作会话的消息，保留原项目、模型、工具和记忆。Hub 工具命令：'+helper+'。先运行命令加 claim_step '+first.stepId+'，按领取返回的真实指令完成；只处理这个工作。其他工具用 call <工具名> <JSON>，定义可用 list_tools 查询。普通消息必须用 post_message({requestId,channelId,turnId,body,mentions?}) 回到原 Hub 聊天；验证用 submit_work，不能只在原界面回答。回传成功后结束本轮，下一条消息由连接器唤醒；不要自行领取 follow-up、inbox:after 或循环监听。不扫描登录资料、不读其他会话、不自动创建任务文档或分工。';
   const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
   try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
@@ -166,11 +202,11 @@ export class CodingManager{
   }finally{await stopWatching?.();}
  }
  approve(r,{engine,method,params,sessionId}){
-  const supported=engine==='antigravity'?method==='session/request_permission':['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput'].includes(method);
+  const acp=['antigravity','antigravity-cli','gemini-cli'].includes(engine),supported=acp?method==='session/request_permission':['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput'].includes(method);
   if(!supported)throw new Error('原生 Agent 请求暂未支持的交互：'+method+'；未自动批准');
-  if(engine==='antigravity'&&sessionId!==params.sessionId)throw new Error('原生批准请求的会话不匹配');
+  if(acp&&sessionId!==params.sessionId)throw new Error('原生批准请求的会话不匹配');
   if(r.permissionMode==='full'&&method!=='item/tool/requestUserInput'){
-   if(engine==='antigravity'){const option=params.options?.find(o=>o.kind==='allow_once');if(option)return Promise.resolve({outcome:{outcome:'selected',optionId:option.optionId}});}
+   if(acp){const option=params.options?.find(o=>o.kind==='allow_once');if(option)return Promise.resolve({outcome:{outcome:'selected',optionId:option.optionId}});}
    else if(method==='item/permissions/requestApproval')return Promise.resolve({permissions:params.permissions,scope:'turn'});
    else return Promise.resolve({decision:'accept'});
   }

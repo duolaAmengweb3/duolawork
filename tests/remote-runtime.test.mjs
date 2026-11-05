@@ -1,0 +1,58 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {randomUUID,createHash} from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {startHarness} from './v1-harness.mjs';
+import {CodingMemberClient} from '../local/coding-client.mjs';
+import {NativeAgent} from '../local/native-agent.mjs';
+import {EventEmitter} from 'node:events';
+
+test('remote account setup is reusable; native catalog, commands and routing survive restart without granting owner access',async t=>{
+ const h=await startHarness();t.after(()=>h.stop());
+ await h.request('/admin/action',{type:'platform.create',payload:{id:'antigravity',name:'Antigravity'}});
+ const account=(await h.request('/admin/action',{type:'account.create',payload:{platformId:'antigravity',label:'remote fixture'}})).result;
+ const member=(await h.request('/admin/action',{type:'member.create',payload:{accountId:account.id,name:'Remote AG',mode:'connector'}})).result;
+ const setup=await h.request('/v2/connect/native',{memberId:member.id,form:'antigravity-cli'});
+ assert.match(setup.skill,/antigravity-cli/);assert.match(setup.skill,/原系统用户/);
+ const recipe=await(await fetch(h.base+'/v2/connectors/native/guide')).json();assert.equal(recipe.protocol,'duolawork-native/1');
+ const artifact=Buffer.from(await(await fetch(h.base+'/v2/connectors/native/download?version='+setup.sha256)).arrayBuffer());assert.equal(createHash('sha256').update(artifact).digest('hex'),setup.sha256);
+ const input=JSON.parse(setup.skill.match(/setup：(\{.+?\})。/)[1]);
+ const remoteDir=path.join(h.directory,'remote'),linked=path.join(h.directory,'linked-program');await fs.symlink(path.resolve('.'),linked,'dir');const entry=path.join(linked,'connectors/runtime/cli.mjs');
+ const bin=path.join(h.directory,'bin');await fs.mkdir(bin);await fs.writeFile(path.join(bin,'agy'),'#!/bin/sh\necho 1.5.0\n',{mode:0o700});
+ const install=async input=>{const p=spawn(process.execPath,[entry,'setup'],{env:{...process.env,PATH:bin+path.delimiter+process.env.PATH,AGENT_HUB_CONNECTOR_TEST:'1',DUOLAWORK_RUNTIME_DIR:remoteDir},stdio:['pipe','pipe','pipe']});p.stdin.end(JSON.stringify(input));let out='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>out+=d);return{code:await new Promise(r=>p.once('exit',r)),out};};
+ const first=await install(input);assert.equal(first.code,0,first.out);assert.doesNotMatch(first.out,/access_token|refresh_token|ahv1_/);
+ const file=path.join(remoteDir,input.alias,'grant.json'),bytes=await fs.readFile(file);assert.equal((await install(input)).code,0);assert.deepEqual(await fs.readFile(file),bytes);
+ assert.equal((await install({...input,form:'gemini-cli'})).code,1);assert.deepEqual(await fs.readFile(file),bytes);
+ const client=new CodingMemberClient(file),config=JSON.parse(await fs.readFile(path.join(remoteDir,input.alias,'runtime.json'))),instanceId=randomUUID();
+ const post=b=>client.api('/v2/self/runtime',{method:'POST',body:{runtimeId:config.runtimeId,instanceId,...b}});
+ const heartbeat={action:'heartbeat',form:'antigravity-cli',label:'VPS fixture',sourceReady:true,status:'idle',message:'connected',items:[{id:'native-one',title:'网站',workspace:'/srv/site'},{id:'native-two',title:'App',workspace:'/srv/app'}],projects:[]};
+ await post(heartbeat);assert.equal((await client.api('/v2/self/status')).complete,false,'Inventory cannot verify native model execution');
+ await assert.rejects(()=>post({...heartbeat,instanceId:'another'}),/另一个环境/);
+ const channel=await h.command('channel.create',{name:'网站协作',memberIds:[member.id]}),other=await h.command('channel.create',{name:'另一个聊天',memberIds:[member.id]});
+ const create=(channelId,sessionId)=>h.request('/v2/native-runtime',{requestId:randomUUID(),memberId:member.id,channelId,sessionId,mode:'existing'});
+ const command=await create(channel.id,'native-one');assert.equal((await create(channel.id,'native-two')).id,command.id,'Repeated click cannot replace in-flight selection');
+ assert.equal((await h.request('/v2/native-runtime?memberId='+member.id)).bindings[channel.id],undefined);
+ await assert.rejects(()=>post({action:'complete',commandId:command.id,requestId:randomUUID(),binding:{sessionId:'native-two',workspace:'/srv/app'}}),/另一段对话/);
+ await post({action:'complete',commandId:command.id,requestId:randomUUID(),binding:{sessionId:'native-one',workspace:'/srv/site',title:'网站'}});
+ assert.equal((await h.request('/v2/native-runtime?memberId='+member.id)).bindings[channel.id],undefined);
+ await post({action:'activate',commandId:command.id,requestId:randomUUID()});
+ await post(heartbeat);let owner=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(owner.bindings[channel.id].sessionId,'native-one');
+ const second=await create(other.id,'native-two');await post({action:'complete',commandId:second.id,requestId:randomUUID(),binding:{sessionId:'native-two',workspace:'/srv/app',title:'App'}});
+ await post({action:'activate',commandId:second.id,requestId:randomUUID()});
+ const failed=await create(channel.id,'native-two');await post({action:'complete',commandId:failed.id,requestId:randomUUID(),error:'原对话仍在工作'});owner=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(owner.bindings[channel.id].sessionId,'native-one');
+ await assert.rejects(()=>client.api('/v2/native-runtime?memberId='+member.id),/用户/);
+ const self=await client.api('/v2/self/runtime');assert.equal(self.member.id,member.id);assert.ok(self.channels.every(c=>c.memberIds.length===1));
+ await h.request('/admin/action',{type:'member.disconnect',memberId:member.id});await assert.rejects(()=>post(heartbeat));
+});
+
+test('Gemini CLI and Antigravity CLI use their own protocols and never authenticate with another runtime profile',async()=>{
+ for(const engine of ['gemini-cli','antigravity-cli']){
+  const calls=[];class Rpc extends EventEmitter{async call(name,args){calls.push({name,args});if(name==='initialize')return{agentInfo:{name:engine},agentCapabilities:{loadSession:true}};if(name==='session/list')return{sessions:[]};if(name==='session/new')return{sessionId:'same',modes:{availableModes:[]}};return{};}async stop(){}}
+  let launch;const agent=new NativeAgent({engine,cwd:'/native-project',command:engine,permissionMode:'native',rpcFactory:o=>{launch=o;return new Rpc();}});
+  await agent.initialize();await agent.session({id:'exact-original-id',cwd:'/native-project'});
+  assert.deepEqual(launch.args,engine==='gemini-cli'?['--acp']:['acp']);assert.equal(calls.some(c=>c.name==='authenticate'),false);
+  assert.equal(calls[1].name,engine==='gemini-cli'?'session/load':'session/resume');assert.equal(calls[1].args.sessionId,'exact-original-id');assert.equal(calls.some(c=>c.name==='session/new'),false);
+ }
+});

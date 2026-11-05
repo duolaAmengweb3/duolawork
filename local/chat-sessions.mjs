@@ -13,11 +13,12 @@ export class ChatSessions {
   async status(memberId) {
     const m=await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
     if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:SESSION_CAPABILITIES['claude-code']};}
+    if(manager){const remote=await this.owner('/v2/native-runtime?memberId='+memberId);if(remote.remote)return{...remote,assignments:remote.record.assignments};}
     const capabilities={...(SESSION_CAPABILITIES[m.platformId]||{kind:'fixed'})};if(manager===this.coding)Object.assign(capabilities,{kind:'sessions',existing:true,create:true,label:m.platformId==='codex'?'Codex 工作会话':'Gemini 后台会话'});
     return {capabilities,record:manager===this.coding?manager.status().members.find(r=>r.memberId===memberId):manager?.status().find(r=>r.memberId===memberId),assignments:publicAssignments(r||{})};
   }
-  async connect({memberId}) {
-    const m=await this.member(memberId),manager=this.manager(m);if(!manager)throw Error('这个平台使用固定 Agent 接入');
+  async connect({memberId,form}) {
+    const m=await this.member(memberId),manager=['gemini-cli','antigravity-cli'].includes(form)&&['gemini-cli','antigravity'].includes(m.platformId)?this.coding:this.manager(m);if(!manager)throw Error('这个平台使用固定 Agent 接入');
     // A second account must not silently attach to the same default login.
     // Existing members and same-account legacy assignments remain intact.
     if(!manager.records[memberId]?.enabled){
@@ -25,7 +26,7 @@ export class ChatSessions {
       const existing=w.members.find(peer=>peer.id!==memberId&&peer.platformId===m.platformId&&peer.accountId!==m.accountId&&peer.status!=='disabled'&&manager.records[peer.id]?.enabled);
       if(existing)throw Error(`这台电脑的 ${m.platformId==='codex'?'Codex':'Agent'} 已连接为「${existing.name}」。不同项目请在它的聊天里选择工作会话；另一个账号需要连接它自己的环境，不能直接复用这个登录。`);
     }
-    if(manager===this.coding)await manager.connect({memberId,engine:m.platformId==='codex'?'codex':'antigravity',sourceOnly:true});
+    if(manager===this.coding)await manager.connect({memberId,engine:m.platformId==='codex'?'codex':['gemini-cli','antigravity-cli'].includes(form)?form:this.coding.records[memberId]?.engine||'antigravity',sourceOnly:true});
     else {
       if(manager===this.ag&&this.coding.records[memberId]?.enabled)await this.coding.pause({memberId});
       await manager.connectSource({memberId});
@@ -35,12 +36,12 @@ export class ChatSessions {
   async options({memberId,channelId}) {
     const m=await this.member(memberId),manager=this.manager(m),status=await this.status(memberId);
     const channels=channelId?await this.channel(memberId,channelId):[];
-    if(m.platformId==='claude-code'){const items=presentSessions(status.items.filter(s=>s.online),{bindings:status.bindings,channels,platform:'Claude'});const binding=status.bindings[channelId];return{...status,items,projects:sessionProjects(items),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};}
+    if(status.capabilities?.remote){const items=presentSessions(status.items,{bindings:status.bindings,channels,platform:m.platformId==='claude-code'?'Claude':m.name});const binding=status.bindings[channelId];return{...status,items,projects:sessionProjects(items,status.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};}
     if(!manager)return {...status,items:[]};
     const r=manager.records[memberId];if(!r?.enabled)return {...status,items:[]};
     const listed=manager===this.coding?await manager.sessionOptions(memberId):await manager.hostFor(memberId).sessions();
     const items=presentSessions(listed.items,{bindings:r.chatBindings,channels,dataDir:manager.dataDir,platform:m.platformId==='codex'?'Codex':m.platformId==='deepseek-harness'?'DeepSeek':'Gemini'}),binding=r.chatBindings?.[channelId]||(!r.chatBindings&&r.sessionId?{sessionId:r.sessionId,title:r.title,workspace:r.cwd,migrated:true}:null);
-    const legacyGemini=manager===this.coding&&m.platformId!=='codex';
+    const legacyGemini=manager===this.coding&&r.engine==='antigravity';
     return {...status,...listed,newSessionHint:legacyGemini?'新对话使用 Gemini 后台助手；如需使用 Antigravity 桌面原会话，请在桌面新建后回到项目列表选择。':'',existingHint:listed.existingHint?sessionErrorMessage(listed.existingHint):'',items,projects:sessionProjects(items,listed.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};
   }
   async channel(memberId,channelId) {
@@ -56,7 +57,16 @@ export class ChatSessions {
     try{return await job;}finally{this.jobs.delete(key);}
   }
   async assignOnce(input) {
-    const m=await this.member(input.memberId),manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{method:'POST',body:{...input,requestId:randomUUID()}});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
+    const status=await this.status(input.memberId);
+    if(status.remote){
+      let command=await this.owner('/v2/native-runtime',{...input,requestId:input.requestId||randomUUID()});
+      const deadline=Date.now()+150000;
+      while(['pending','prepared','running'].includes(command.status)&&Date.now()<deadline){await new Promise(r=>setTimeout(r,1000));command=await this.owner('/v2/native-runtime?'+new URLSearchParams({memberId:input.memberId,commandId:command.id}));}
+      if(command.status==='completed')return{binding:command.binding};
+      if(command.status==='failed')throw Error(command.message);
+      throw Error('原环境还在处理这次选择，请刷新列表查看结果；不要重复新建对话。原绑定仍保留。');
+    }
+    const m=await this.member(input.memberId),manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{...input,requestId:randomUUID()});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
     const channels=await this.channel(input.memberId,input.channelId);
     if(input.mode==='new'&&manager!==this.coding&&SESSION_CAPABILITIES[m.platformId]?.create!==true)throw Error(SESSION_CAPABILITIES[m.platformId]?.createHint||'此平台尚未支持在 Hub 新建会话');
     const title=channels.find(c=>c.id===input.channelId).name;

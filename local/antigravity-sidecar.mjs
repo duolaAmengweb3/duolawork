@@ -15,14 +15,14 @@ const UUID=/^[a-f0-9-]{36}$/i;
 // Native authentication is inherited from the official Sidecar parent, kept in
 // memory, and never copied into Hub state, prompts, logs or provider settings.
 export class AntigravityNative {
- constructor({env=process.env,exec=execute}={}){this.env=env;this.exec=exec;}
+ constructor({env=process.env,exec=execute,cli=false}={}){this.env=env;this.exec=exec;this.cli=cli;}
  async compatibility(){const {stdout}=await this.exec('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString','/Applications/Antigravity.app/Contents/Info.plist']);return{supported:/^2\.(28|29)\.\d+$/.test(stdout.trim())};}
  async rpc(method,body={}){
   if(!['GetAllCascadeTrajectories','GetConversationMetadata'].includes(method))throw Error('Unsupported native read');
-  const address=this.env.ANTIGRAVITY_LS_ADDRESS;if(!address||!this.env.ANTIGRAVITY_CSRF_TOKEN)throw Error('Official Sidecar environment unavailable');
+  const address=this.env.ANTIGRAVITY_LS_ADDRESS;if(!address||(!this.env.ANTIGRAVITY_CSRF_TOKEN&&!(this.cli&&Object.hasOwn(this.env,'ANTIGRAVITY_CSRF_TOKEN'))))throw Error('Official Sidecar environment unavailable');
   const u=new URL('http://'+address.replace(/^https?:\/\//,''));if(!['localhost','127.0.0.1','[::1]'].includes(u.hostname))throw Error('Native service is not loopback');
   return new Promise((resolve,reject)=>{
-   const req=http.request({hostname:u.hostname,port:u.port,path:'/exa.language_server_pb.LanguageServerService/'+method,method:'POST',headers:{'Content-Type':'application/json','x-codeium-csrf-token':this.env.ANTIGRAVITY_CSRF_TOKEN}},res=>{
+   const req=http.request({hostname:u.hostname,port:u.port,path:'/exa.language_server_pb.LanguageServerService/'+method,method:'POST',headers:{'Content-Type':'application/json',...(this.env.ANTIGRAVITY_CSRF_TOKEN?{'x-codeium-csrf-token':this.env.ANTIGRAVITY_CSRF_TOKEN}:{})}},res=>{
     let raw='';res.on('data',b=>{raw+=b;if(Buffer.byteLength(raw)>8e6)req.destroy(Error('Native metadata too large'));});res.on('end',()=>{try{const d=JSON.parse(raw);if(res.statusCode!==200)throw Error('Native metadata request failed ('+res.statusCode+')');resolve(d);}catch(e){reject(e);}});
    });req.on('error',reject);req.setTimeout(10000,()=>req.destroy(Error('Native metadata timed out')));req.end(JSON.stringify(body));
   });

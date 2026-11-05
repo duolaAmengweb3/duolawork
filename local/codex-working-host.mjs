@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import fs from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash} from 'node:crypto';
@@ -13,8 +14,13 @@ export class CodexWorkingHost {
   constructor({exec=execute,home=os.homedir(),rpcFactory}={}) {Object.assign(this,{exec,home,rpcFactory});}
   async socket() {
     const {stdout}=await this.exec('/bin/ps',['-ax','-o','pid=,command=']);
-    const pids=stdout.split('\n').flatMap(l=>{const m=l.match(/^\s*(\d+)\s+(.+)$/);return m&&m[2].startsWith(path.join(this.home,'.codex/packages/app-server-daemon/'))&&m[2].includes('--listen unix://')?[m[1]]:[];});
-    const candidates=new Set();for(const pid of pids){const {stdout}=await this.exec('/usr/sbin/lsof',['-a','-p',pid,'-U','-Fn']);for(const l of stdout.split('\n'))if(l.startsWith('n/private/tmp/codex-daemon-'+process.getuid()+'/'))candidates.add(l.slice(1));}
+    const rows=stdout.split('\n').flatMap(l=>{const m=l.match(/^\s*(\d+)\s+(.+)$/);return m&&m[2].startsWith(path.join(this.home,'.codex/packages/app-server-daemon/'))?[{pid:m[1],command:m[2]}]:[];});
+    const candidates=new Set();
+    for(const row of rows){
+      const match=row.command.match(/--listen(?:=|\s+)(?:"unix:\/\/([^"]+)"|'unix:\/\/([^']+)'|unix:\/\/(\S+))/),socket=match&&(match[1]||match[2]||match[3]);
+      if(socket&&path.isAbsolute(socket)){try{const stat=await fs.stat(socket);if(stat.isSocket()&&stat.uid===process.getuid())candidates.add(socket);}catch{}continue;}
+      if(process.platform==='darwin'&&row.command.includes('--listen unix://')){const {stdout}=await this.exec('/usr/sbin/lsof',['-a','-p',row.pid,'-U','-Fn']);for(const l of stdout.split('\n'))if(l.startsWith('n/private/tmp/codex-daemon-'+process.getuid()+'/'))candidates.add(l.slice(1));}
+    }
     if(candidates.size!==1)throw Error('原 Codex 运行端未开启或实例不唯一，请先在 Codex 中打开工作会话');return [...candidates][0];
   }
   async open() {

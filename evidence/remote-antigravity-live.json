@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-05T06:22:03.388Z",
+  "artifactSha256": "59fe03997af397bd8944a17f1ea0d10dbca978e7de63ee667b0d97bc4d45ac61",
+  "sessionId": "273848ee-ff68-4785-968f-5988633def68",
+  "platform": "darwin",
+  "stages": [
+    {
+      "stage": "downloaded-artifact-setup",
+      "reply": "命令执行完成，退出码为 `0`。\n\n真实输出内容：\n\n```json\n{\"stage\":\"connecting\",\"message\":\"原环境连接器已启动，项目和对话将在 DuolaWork 中自动出现。选定对话并收到 Agent 的真实回复后才表示协作可用。\",\"service\":{\"kind\":\"test\",\"args\":[\"/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-liyoI5/program/connectors/runtime/cli.mjs\",\"run\",\"member_50360270510c40ee827dcb75fc467944\"]},\"nativeAttachment\":{\"attached\":true,\"sessionId\":\"273848ee-ff68-4785-968f-5988633def68\"}}\n```"
+    },
+    {
+      "stage": "original-live-inventory",
+      "mode": "native-existing"
+    },
+    {
+      "stage": "same-live-session-reply",
+      "body": "海狸753"
+    },
+    {
+      "stage": "original-cli-restart-and-automatic-attachment",
+      "reply": "海狸753"
+    },
+    {
+      "stage": "restart-native-file-and-original-context",
+      "reply": "已在当前项目目录创建 [duet.txt](file:///private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-liyoI5/original-project/duet.txt)，内容为 `海狸753`。\n\n并已向 Hub 群聊回复“文件已写入”：\n- **Message ID**: `chat_62e2f136f9af4695b6a02b226962b4b5`\n- **Channel ID**: `channel_a10cb79c58d648c8841fc63944d8367d`\n- **Turn ID**: `turn_chat_a11506e65f324d94a7cf8e2f47e62d40_member_50360270510c40ee827dcb75fc467944`\n\n本轮完成，等待后续唤醒。duet.txt",
+      "unexpectedApprovals": 0
+    }
+  ]
+}

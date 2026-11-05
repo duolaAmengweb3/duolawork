@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {randomUUID} from 'node:crypto';
+import {startHarness} from './v1-harness.mjs';
+const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');process.env.AGENT_HUB_TEST_MODE='1';
+const {start}=await import('../local/server.mjs');let local,browser;const errors=[];
+try{
+ local=await start({port:0,config:{endpoint:h.base,adminKey:h.key,runnerId:'remote-ui-fixture'},vaultKey:Buffer.alloc(32,19)});
+ browser=await chromium.launch({channel:'chrome',headless:true});const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['clipboard-read','clipboard-write']});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(local.url);
+ await page.getByRole('button',{name:/成员与连接/}).click();await page.getByRole('button',{name:'添加成员',exact:true}).first().click();
+ await page.getByRole('textbox',{name:'成员备注名称'}).fill('我的 VPS Gemini');await page.getByRole('combobox',{name:'成员平台'}).selectOption('antigravity');await page.getByRole('button',{name:'添加并连接',exact:true}).click();
+ const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'复制接入说明',exact:true}).waitFor();assert.equal(await dialog.getByRole('combobox',{name:'Agent 软件'}).inputValue(),'antigravity-cli');assert.equal(await dialog.getByText('连接本机账号',{exact:true}).count(),0);
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/v2/connect/native')&&r.request().method()==='POST');await dialog.getByRole('button',{name:'复制接入说明',exact:true}).click();const setup=await(await response).json();await dialog.getByText('已复制，发给 Agent',{exact:true}).waitFor();const copied=await page.evaluate(()=>navigator.clipboard.readText());assert.equal(copied,setup.skill);assert.match(copied,/antigravity-cli/);
+ await fs.mkdir('evidence/screenshots',{recursive:true});await page.screenshot({path:'evidence/screenshots/remote-native-copy.png'});
+ const input=JSON.parse(setup.skill.match(/setup：(\{.+?\})。/)[1]);const grant=await h.request('/v2/connect/redeem',{code:input.code,attemptId:randomUUID()});const token=grant.access_token;
+ await h.request('/v2/self/connection',{requestId:randomUUID(),transport:'pull',pollSeconds:15},token);
+ const runtimeId=randomUUID(),instanceId=randomUUID(),post=body=>h.request('/v2/self/runtime',{runtimeId,instanceId,...body},token);
+ await post({action:'heartbeat',form:'antigravity-cli',label:'VPS-01',sourceReady:true,status:'idle',message:'原环境已连接，请选择工作对话',items:[{id:'original-session-id',title:'修复官网登录',workspace:'/srv/website',updatedAt:new Date().toISOString()}],projects:[]});
+ await dialog.getByText('✓ 原环境已连接',{exact:true}).waitFor({timeout:15000});assert.equal((await h.request('/v2/self/status',undefined,token)).complete,false);assert.equal(await dialog.getByText('✓ 已接入，可以聊天',{exact:true}).count(),0);
+ await page.screenshot({path:'evidence/screenshots/remote-native-connected.png'});
+ await dialog.getByRole('button',{name:'选择项目，开始聊天'}).click();await page.getByRole('button',{name:/我的 VPS Gemini.*选择/}).first().click({timeout:10000});
+ await page.getByRole('button',{name:/website.*1 段对话/}).click();await page.getByRole('radio',{name:/修复官网登录/}).click();
+ const saving=page.getByRole('button',{name:'继续这段对话',exact:true}).click();let cmd;
+ for(let i=0;i<25&&!cmd;i++){await new Promise(r=>setTimeout(r,300));cmd=(await h.request('/v2/self/runtime',undefined,token)).commands[0];}assert.ok(cmd);
+ await post({action:'complete',requestId:randomUUID(),commandId:cmd.id,binding:{sessionId:'original-session-id',workspace:'/srv/website',title:'修复官网登录'}});await post({action:'activate',requestId:randomUUID(),commandId:cmd.id});await saving;
+ await page.getByRole('dialog').waitFor({state:'hidden',timeout:10000});await page.getByRole('button',{name:/我的 VPS Gemini.*修复官网登录/}).waitFor();assert.deepEqual(errors,[]);
+ await fs.writeFile('evidence/remote-native-ui.json',JSON.stringify({at:new Date().toISOString(),fixtureOnly:true,realNativeModelTested:false,checks:['default copy instruction uses Antigravity CLI, not this Mac desktop','clipboard contains complete ready-to-use member instruction','remote heartbeat automatically updates original-environment status','inventory alone does not display successful native verification','select original project and conversation through real UI and binding routes'],errors},null,2));console.log('remote native UI accepted');
+}finally{await browser?.close();await local?.close();await h.stop();}

@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-05T06:28:56.927Z",
+  "origin": "https://hub.manyaitool.com",
+  "artifactSha256": "bbda4effac1a7ec7361152e1549418736b97e4384e1154c95073551d1e4ec0e7",
+  "artifactBytes": 854818,
+  "installedBuild": "034c61d4b5bd442d",
+  "protectedDataUnchanged": true,
+  "checks": [
+    "public guide and downloadable archive reachable",
+    "archive hash verified",
+    "published native bridge, receiver, launcher and manager match accepted source",
+    "desktop and local backend builds match"
+  ],
+  "realNativeModelEvidence": "remote-antigravity-live.json",
+  "linuxServiceEvidence": "remote-linux-service.json"
+}

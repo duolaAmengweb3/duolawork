@@ -2,6 +2,10 @@ import {SHARED_TOOLS, SHARED_TOOL_ENVELOPE, sharedToolEnvelope, sharedTool, shar
 import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
 import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
 import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
+import {runtimeOwner,runtimeSelf,remoteRuntimeMembers} from './remote-runtime.mjs';
+import {runtimeRecipe,runtimeSkill} from './runtime-setup.mjs';
+import {sha256 as runtimeSHA,archive as runtimeArchive} from './runtime-download.mjs';
+import {nativeForm} from '../../shared/native-forms.mjs';
 import { oauthFetch, startPairing } from "./pairing.mjs";
 import { fileStore } from "./file-store.mjs";
 import { Repository, fail, digest, required, id } from "./repository.mjs";
@@ -533,6 +537,11 @@ export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
   if(url.pathname==='/v2/connectors/claude/guide'&&request.method==='GET')return json(claudeRecipe(url.origin,claudeSHA));
+  if(url.pathname==='/v2/connectors/native/guide'&&request.method==='GET')return json(runtimeRecipe(url.origin,runtimeSHA));
+  if(url.pathname==='/v2/connectors/native/download'&&request.method==='GET'){
+    if(url.searchParams.get('version')!==runtimeSHA)return json({message:'连接器已更新，请重新复制接入说明'},409);
+    return new Response(Uint8Array.from(atob(runtimeArchive),c=>c.charCodeAt(0)),{headers:{'Content-Type':'application/gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':runtimeSHA}});
+  }
   if(url.pathname==='/v2/connectors/claude/download'&&request.method==='GET'){
     if(url.searchParams.has('version')&&url.searchParams.get('version')!==claudeSHA)return json({message:'连接器已更新，请重新生成安装步骤'},409);
     return new Response(Uint8Array.from(atob(claudeDownload),c=>c.charCodeAt(0)),{encodeBody:'manual',headers:{'Content-Type':'application/javascript','Content-Encoding':'gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':claudeSHA}});
@@ -589,6 +598,15 @@ export async function v2Fetch(request, env, ctx, identity) {
       install:claudeRecipe(url.origin,claudeSHA).install,
       pair:'node '+entry+' pair '+url.origin+' '+alias,start:'node '+entry+' start '+alias+' --resume'});
   }
+  if(url.pathname==='/v2/connect/native'&&request.method==='POST'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    const {memberId,form}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.status!=='disabled');if(!m)fail('invalid_member','成员不可用');
+    const f=nativeForm(form,m.platformId);if(f.manager==='claude')fail('use_claude','Claude 使用官方 Channel 连接入口');
+    const pair=await issueAgentSkill(repo,identity,memberId,url.origin);
+    return json({skill:runtimeSkill({origin:url.origin,member:m,form,pairingCode:pair.pairingCode}),expiresAt:pair.expiresAt,form,sha256:runtimeSHA});
+  }
+  if(url.pathname==='/v2/self/runtime')return json(await runtimeSelf(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
+  if(url.pathname==='/v2/native-runtime')return json(await runtimeOwner(repo,identity,actor,request.method==='POST'?await readJSON(request):Object.fromEntries(url.searchParams),request.method==='POST'));
   if(url.pathname==='/v2/self/native-sessions')return json(await remoteSessions(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
   if(url.pathname==='/v2/native-sessions'){
     if(!actor.owner)fail('forbidden','需要所有者身份',403);
@@ -596,7 +614,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     const memberId=url.searchParams.get('memberId');
     if(memberId)return json(await remoteSessions(repo,identity,actor,{memberId}));
     const members=[];for(const m of identity.members.filter(m=>m.platformId==='claude-code'&&m.status!=='disabled')){const c=await repo.get('connection',m.id,false);if(c?.status!=='disconnected')members.push((await remoteSessions(repo,identity,actor,{memberId:m.id})).record);}
-    return json({members});
+    return json({members:[...members,...await remoteRuntimeMembers(repo,identity)]});
   }
   if (url.pathname === "/v2/self/connection" && request.method === "POST") {
     const result = await selfConnection(repo, identity, actor, await readJSON(request), env.ADMIN_KEY);

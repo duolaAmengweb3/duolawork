@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-05T05:16:37.110Z",
+  "nativeVersion": "1.5.0",
+  "memberId": "member_6c77439be0a54d30a4023f4d206592e4",
+  "channelId": "channel_fa2ccfa18d4f437bb1cad9183601b18e",
+  "sameSessionId": "afb8bb8e-baef-4533-af09-961d59a4e9c6",
+  "reply": {
+    "id": "chat_3d4cce1137f44eccb9bb5d580d65e5d7",
+    "scopeId": "channel_fa2ccfa18d4f437bb1cad9183601b18e",
+    "parentId": "channel_fa2ccfa18d4f437bb1cad9183601b18e",
+    "number": 2,
+    "body": "DuolaWork原生CLI验证",
+    "authorId": "member_6c77439be0a54d30a4023f4d206592e4",
+    "createdAt": "2026-11-05T05:16:36.270Z",
+    "type": "message",
+    "mentions": [],
+    "mentionsFromText": false,
+    "replyTo": "chat_b8b5c6d00ab44c4fa1d888760c275da0",
+    "rootId": "chat_b8b5c6d00ab44c4fa1d888760c275da0",
+    "hops": 1,
+    "kind": "channel_message",
+    "revision": 1,
+    "updatedAt": "2026-11-05T05:16:36.270Z"
+  }
+}

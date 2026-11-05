@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import {EventEmitter} from 'node:events';
 import readline from 'node:readline';
 
-export const NATIVE_ENGINES={codex:{name:'Codex',command:'codex',args:['app-server']},antigravity:{name:'Gemini · Antigravity',command:'agy_acp_server.par',args:[]}};
+export const NATIVE_ENGINES={codex:{name:'Codex',command:'codex',args:['app-server']},antigravity:{name:'Gemini · Antigravity',command:'agy_acp_server.par',args:[]},'gemini-cli':{name:'Gemini CLI',command:'gemini',args:['--acp']},'antigravity-cli':{name:'Antigravity CLI',command:'agy',args:['acp']}};
 export const safeError=value=>String(value?.message||value||'原生进程连接失败').replace(/(?:Bearer\s+|sk-|ahv1_|ahr_)[A-Za-z0-9_+/=.-]+/g,'[凭证已隐藏]').replace(/https?:\/\/\S+/g,'[服务地址]').slice(0,1000);
 // Only documented account metadata, never login tokens or raw auth responses.
 export const codexAccountSummary=account=>({kind:account?.type||null,loggedIn:!!account,accountLabel:typeof account?.email==='string'&&account.email.length<=254?account.email:null});
@@ -94,6 +94,14 @@ export class NativeAgent{
     await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.rpc.off('notification',handler);reject(new Error('本次官方登录已过期，请重新点击连接'));},5*60000);const handler=(method,p)=>{if(method==='account/login/completed'&&p.loginId===login.loginId){clearTimeout(timer);this.rpc.off('notification',handler);p.success?resolve():reject(new Error('官方登录未完成'));}};this.rpc.on('notification',handler);});
     account=await this.rpc.call('account/read',{refreshToken:false});this.auth=codexAccountSummary(account.account);
    }
+  }else if(this.engine==='antigravity-cli'){
+   if(!/antigravity/i.test(this.capabilities.agentInfo?.name||''))throw Error('当前 agy 未提供官方 ACP，请在原环境更新至支持 ACP 的 Antigravity CLI（1.5.0 起）');
+   this.auth={kind:'antigravity-cli-native',loggedIn:false};
+  }else if(this.engine==='gemini-cli'){
+   // Gemini CLI uses its OWN saved authentication. Do not launch OAuth or
+   // substitute Antigravity's profile, executable, provider or API key.
+   if(!/gemini/i.test(this.capabilities.agentInfo?.name||''))throw Error('运行组件未声明为 Gemini CLI，未继续连接');
+   this.auth={kind:'gemini-cli-native',loggedIn:false};
   }else {
    if(this.capabilities.agentInfo?.name!=='antigravity-acp')throw new Error('运行组件不是 Google 官方 Antigravity ACP，未继续登录');
    await this.rpc.call('authenticate',{methodId:'oauth-personal'},5*60000);
@@ -109,10 +117,13 @@ export class NativeAgent{
    data=await this.rpc.call(id?'thread/resume':'thread/start',id?{threadId:id,excludeTurns:true,...permission}:{cwd,dynamicTools:tools.map(t=>({name:'hub_'+t.name,description:t.description,inputSchema:t.inputSchema})),serviceName:'agent-hub',...permission});
    session={id:data.thread.id,model:data.model||null,modelProvider:data.modelProvider||data.thread.modelProvider||null};
   }else{
-   const appended=this.capabilities.agentCapabilities?._meta?.antigravity?.systemPrompt?.append===true?{_meta:{antigravity:{systemPrompt:{append:'Hub 已授权协作工具的完整参数定义如下；可直接使用对应 MCP 工具，无需先运行终端命令扫描工具目录：'+JSON.stringify(tools)}}}}:{};
-   data=await this.rpc.call(id?'session/resume':'session/new',{...(id?{sessionId:id}:{}),cwd,mcpServers,...appended},120000);
+   // The native CLI registers session MCP tools itself. Duplicating their full
+   // schemas in its system prompt competes with its own tool-discovery rules.
+   const appended=this.engine==='antigravity'&&this.capabilities.agentCapabilities?._meta?.antigravity?.systemPrompt?.append===true?{_meta:{antigravity:{systemPrompt:{append:'Hub 已授权协作工具的完整参数定义如下；可直接使用对应 MCP 工具，无需先运行终端命令扫描工具目录：'+JSON.stringify(tools)}}}}:{};
+   if(id&&this.engine==='gemini-cli'&&!this.capabilities.agentCapabilities?.loadSession)throw Error('当前 Gemini CLI 未提供恢复原对话能力；原对话保留，不创建替代会话');
+   data=await this.rpc.call(id?(this.engine==='gemini-cli'?'session/load':'session/resume'):'session/new',{...(id?{sessionId:id}:{}),cwd,mcpServers,...appended},120000);
    session={id:id||data.sessionId,model:data.models?.currentModelId||null,modelProvider:'native-gemini'};
-   if(['full','ask'].includes(this.permissionMode))await this.rpc.call('session/set_mode',{sessionId:session.id,modeId:this.permissionMode==='full'?'yolo':'default'});
+   if(['full','ask'].includes(this.permissionMode)&&this.engine!=='antigravity-cli')await this.rpc.call('session/set_mode',{sessionId:session.id,modeId:this.permissionMode==='full'?'yolo':'default'});
   }
   this.sessions.set(session.id,session);return session;
  }
