@@ -38,6 +38,7 @@ import {
 import { uploadFile, downloadFile } from "./files.mjs";
 import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
 import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
+import { readSpaceObject } from './workspace-objects.mjs';
 import { meetingDetail } from './meetings.mjs';
 import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup, completeGuidedConnection } from "./onboarding.mjs";
 
@@ -716,6 +717,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     const rows=await repo.list('channel_meeting',{scope:channel.id,order:'recent',limit:101,...(url.searchParams.get('cursor')?{cursor:decodeCursor(url.searchParams.get('cursor'))}:{})});
     return json({items:rows.slice(0,100),nextCursor:rows.length>100?encodeCursor(rows[99]):null});
   }
+  if(url.pathname==="/v2/space-object"&&request.method==="GET")return json(await readSpaceObject(repo,actor,Object.fromEntries(url.searchParams)));
   if(url.pathname==="/v2/channel-doc"&&request.method==="GET")return json(await conversationTool(repo,identity,actor,"read_doc",{documentId:url.searchParams.get("id")}));
   if (url.pathname === "/v2/pairing" && request.method === "POST")
     return json(

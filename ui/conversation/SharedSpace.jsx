@@ -5,13 +5,13 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@
 import {api,time} from '../v1/api.mjs';
 import {queueFile,uploadQueued,pendingFiles,forgetFile} from './shared-upload.mjs';
 const size=n=>n<1024?`${n} B`:n<1048576?`${(n/1024).toFixed(1)} KB`:`${(n/1048576).toFixed(1)} MB`;
-export function UploadFiles({channelId,onDone,previous,compact=false}){
+export function UploadFiles({channelId,onDone,previous,compact=false,announce=true,listenDrop=compact,folderId=null}){
  const input=useRef(null),[queue,setQueue]=useState([]),[running,setRunning]=useState(''),[progress,setProgress]=useState(0),[error,setError]=useState('');
- const refresh=()=>pendingFiles().then(items=>setQueue(items.filter(i=>i.channelId===channelId&&(!previous||i.resourceId===previous.id)))).catch(e=>setError('暂存队列不可用：'+e.message));
+ const refresh=()=>pendingFiles().then(items=>setQueue(items.filter(i=>i.channelId===channelId&&(i.announce??true)===announce&&(!previous||i.resourceId===previous.id)))).catch(e=>setError('暂存队列不可用：'+e.message));
  useEffect(()=>{refresh();window.addEventListener('duolawork-upload-queue',refresh);return()=>window.removeEventListener('duolawork-upload-queue',refresh);},[channelId,previous?.id]);
  async function run(item){setRunning(item.id);setError('');setProgress(0);try{await uploadQueued(item,setProgress);await onDone?.();}catch(e){setError(e.message+'；文件已暂存在本机，可继续上传。');}finally{setRunning('');await refresh();}}
- async function choose(event){const files=[...event.target.files];event.target.value='';for(const f of files){try{const item=await queueFile(f,channelId,previous);await run(item);}catch(e){setError('未能暂存：'+e.message);}}}
- useEffect(()=>{if(!compact)return;const drop=e=>{if(e.detail.channelId===channelId&&!running)choose({target:{files:e.detail.files,value:''}});};window.addEventListener('duolawork-files',drop);return()=>window.removeEventListener('duolawork-files',drop);},[channelId,running,compact]);
+ async function choose(event){const files=[...event.target.files];event.target.value='';for(const f of files){try{const item=await queueFile(f,channelId,previous,announce,folderId);await run(item);}catch(e){setError('未能暂存：'+e.message);}}}
+ useEffect(()=>{if(!listenDrop)return;const drop=e=>{if(e.detail.channelId===channelId&&!running)choose({target:{files:e.detail.files,value:''}});};window.addEventListener('duolawork-files',drop);return()=>window.removeEventListener('duolawork-files',drop);},[channelId,running,listenDrop]);
  async function cancel(item){try{if(item.uploadId)await api('/v2/shared',{action:'cancel',requestId:crypto.randomUUID(),uploadId:item.uploadId});await forgetFile(item.id);await refresh();}catch(e){setError(e.message);}}
  return <div className={compact?'shared-upload compact':'shared-upload'}><input ref={input} type="file" hidden multiple={!previous} onChange={choose}/><Button variant="ghost" type="button" disabled={!!running} aria-label={previous?'上传新版本':'上传共享文件'} onClick={()=>input.current.click()}><Paperclip size={16}/>{!compact&&(previous?'上传新版本':'上传文件')}</Button>{running&&<span role="status">上传 {progress}%</span>}{error&&<p role="alert" className="shared-error">{error}</p>}{queue.filter(i=>i.id!==running).map(item=><div className="pending-file" key={item.id}><span>{item.name} · 待上传</span><button type="button" disabled={!!running} onClick={()=>run(item)}>继续</button><button type="button" disabled={!!running} onClick={()=>cancel(item)} aria-label={'取消上传 '+item.name}><X size={13}/></button></div>)}</div>;
 }

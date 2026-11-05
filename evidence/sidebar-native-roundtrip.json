@@ -1,0 +1,23 @@
+{
+  "at": "2026-11-05T12:55:45.318Z",
+  "provider": "Dot",
+  "channelId": "channel_67114773929c4d139eb5be4a5716b165",
+  "taskId": "board_d6bc23493d144cce897bfb5bd85a795a",
+  "taskVersion": 3,
+  "acceptedBy": "member_0ff5c20718654c9db5ab3b1d0334133e",
+  "completedBy": "member_0ff5c20718654c9db5ab3b1d0334133e",
+  "replyIds": [
+    "chat_9e2e647cd96347048c71ebe5ad8fe227",
+    "chat_8108e91ca3674445ade01e6aee7d5a03"
+  ],
+  "checks": [
+    "existing native Dot accepted actual Todo",
+    "read pinned first document version despite newer version",
+    "used shared memory not included in task body",
+    "recorded concrete result and replied in same channel",
+    "old native cached catalog worked through authenticated compatibility transport"
+  ],
+  "initialBlocker": "cached catalog lacked new tools and Todo result fields; fixed without reconnecting",
+  "result": "已通过 read_space_object 实际读取 refs 指定文档 shared_doc_a6c6e597a461433682fcbaa10d6ff21f 第1版，试用名额为 12 个。当前文档为第2版，本次核对依据为 Todo 引用的第1版。通过 read_memory 实际读取本群共享记忆 memory_ebd839b3dd2f426e85783b8ea281118a 第1版，本群验收代号为 DW-0099db。指定版本资料与共享记忆已核对。",
+  "passed": true
+}

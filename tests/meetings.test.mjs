@@ -48,7 +48,7 @@ test('多轮筹备只有负责人收到，真实安排产生后再开始，原�
  assert.deepEqual((await f.repo.list('channel_turn')).map(t=>t.memberId),['grok']);
  const c=await f.claim('grok'),context=await withConversationContext(f.repo,f.identity,actor('grok'),c);
  assert(context.input.meeting.records.some(r=>r.body?.includes('还没有想清楚')));
- assert.equal((await readChannel(f.repo,f.identity,actor('check'),{channelId:f.channel.id})).messages.length,0);
+ assert.equal((await readChannel(f.repo,f.identity,actor('check'),{channelId:f.channel.id})).messages.length,1);
  await f.meet('say',{body:'你更想先明确服务谁，还是比较几个方向？'},actor('grok'));
  await f.meet('say',{body:'先明确服务谁'});
  await f.plan();

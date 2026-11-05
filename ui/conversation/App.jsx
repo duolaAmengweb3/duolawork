@@ -1,3 +1,4 @@
+import CollaborationSpace,{ReferenceChip,refOf,MeetingStart} from './CollaborationSpace.jsx';
 import {SharedFiles,UploadFiles,FileCard,FileDialog,HandoffCard,HandoffDialog} from './SharedSpace.jsx';
 import React, {
   useCallback,
@@ -111,7 +112,9 @@ export default function App() {
     [current, setCurrent] = useState(saved.current.channelId || ""),
     [snapshot, setSnapshot] = useState(null),
     [page, setPage] = useState(saved.current.page === "members" ? "members" : "chat"),
-    [tab, setTab] = useState("documents"),
+    [tab, setTab] = useState(saved.current.spaceTab||"documents"),
+    [spaceSelection,setSpaceSelection]=useState(null),[spaceEditor,setSpaceEditor]=useState(null),[meetingStart,setMeetingStart]=useState(false),
+    [references,setReferences]=useState(saved.current.references||{}),
     [side, setSide] = useState(true),
     [modal, setModal] = useState(null),
     [error, setError] = useState(""),
@@ -187,6 +190,7 @@ export default function App() {
   }, [refreshWorkspace, refresh]);
   useEffect(() => {
     setSnapshot(null);
+    setSpaceSelection(null);setSpaceEditor(null);
     setOlder([]);
     setOlderMeetings([]);setMeetingCursor(undefined);
     setMoreCursor(undefined);
@@ -200,9 +204,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current, drafts, addressing, meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
+      JSON.stringify({ channelId: current, drafts, addressing, references,spaceTab:tab,meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
     );
-  }, [current, drafts, addressing, page, meetingPanel,meetingScopes]);
+  }, [current, drafts, addressing,references,tab, page, meetingPanel,meetingScopes]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
@@ -245,7 +249,7 @@ export default function App() {
     setCurrent(dm.id); setPage("chat"); setModal(null);
   };
   const channel = snapshot?.channel,
-    activeMeetings=(snapshot?.meetings||[]).filter(m=>['running','closing'].includes(m.status)),
+    activeMeetings=(snapshot?.meetings||[]).filter(m=>['preparing','running','closing'].includes(m.status)),
     scopedMeeting=Object.hasOwn(meetingScopes,current)?activeMeetings.find(m=>m.id===meetingScopes[current]):(activeMeetings.length===1?activeMeetings[0]:activeMeetings.find(m=>m.id===meetingPanel?.id)),
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
@@ -271,6 +275,14 @@ export default function App() {
     setShowMentions(false);
     document.querySelector('[aria-label="群消息"]')?.focus();
   }
+  function quoteObject(ref){setReferences(old=>({...old,[current]:[...(old[current]||[]).filter(r=>r.kind!==ref.kind||r.id!==ref.id),ref]}));document.querySelector('[aria-label="群消息"]')?.focus();}
+  function openObject(ref){if(ref.kind==='meeting'){setMeetingPanel({id:ref.id,channelId:current});return;}if(ref.kind==='message'){jumpToSource(ref.id);return;}setMeetingPanel(null);setSide(true);setTab(ref.kind==='task'?'tasks':ref.kind==='memory'?'memory':'documents');setSpaceSelection({kind:ref.kind,id:ref.id,...(ref.version?{version:ref.version}:{})});}
+  async function jumpToSource(id){
+    let el=document.getElementById(id);
+    if(!el){try{const m=await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id}));const d=await api('/v2/channel?'+new URLSearchParams({id:current,before:String(m.number+1)}));setOlder(old=>[...old,...d.messages]);setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'center'}),100);}catch(e){setError(e.message);}return;}
+    el.scrollIntoView({behavior:'smooth',block:'center'});el.animate([{background:'#e8efff'},{background:'transparent'}],{duration:1800});
+  }
+  function createFromMessage(kind,m){setMeetingPanel(null);setSide(true);setTab(kind==='task'?'tasks':'memory');setSpaceEditor({kind,prefill:{title:m.body.slice(0,70),body:m.body,refs:[refOf('message',m)],...(kind==='task'?{sourceMessageId:m.id,meetingIds:m.meetingId?[m.meetingId]:[]}: {})}});}
   async function send(e) {
     e?.preventDefault();
     if (!draft.trim() || busy || !channel) return;
@@ -282,6 +294,7 @@ export default function App() {
     const input = {
       channelId: current,
       body: draft,
+      refs: (references[current]||[]).map(({kind,id,version})=>({kind,id,version})),
       mentions: addressedMembers,
       mentionAll: allSelected,
       replyTo: reply?.id,
@@ -299,6 +312,7 @@ export default function App() {
         }),
       );
       setDrafts((d) => ({ ...d, [current]: "" }));
+      setReferences(r=>({...r,[current]:[]}));
       setReply(null);
       setMentions([]);
       setMentionAll(false);
@@ -464,7 +478,7 @@ export default function App() {
                 </div>
               </div>
               <div>
-                {!channel.direct&&<Button className="meeting-open-button" variant="ghost" onClick={()=>setMeetingPanel({id:snapshot.meetings.find(m=>m.status==='preparing')?.id||null,channelId:current})}><Video size={15}/>开会</Button>}
+                {!channel.direct&&<Button className="meeting-open-button" variant="ghost" onClick={()=>{const m=snapshot.meetings.find(m=>m.status==='preparing');if(m)setMeetingPanel({id:m.id,channelId:current});else setMeetingStart(true);}}><Video size={15}/>开会</Button>}
                 {!channel.direct && <><button
                   className="member-stack"
                   aria-label="管理群成员"
@@ -561,6 +575,7 @@ export default function App() {
                           >
                             <Reply size={15} />
                           </button>
+                          <DropdownMenu><DropdownMenuTrigger asChild><button aria-label="消息更多操作"><MoreHorizontal size={15}/></button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={()=>createFromMessage('task',m)}>留下 Todo</DropdownMenuItem><DropdownMenuItem onSelect={()=>createFromMessage('memory',m)}>记住这条</DropdownMenuItem><DropdownMenuItem onSelect={()=>quoteObject(refOf('message',m))}>引用到聊天</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                         </header>
                         {m.replyTo && (
                           <button
@@ -592,6 +607,8 @@ export default function App() {
                             ))}
                           </div>
                         )}
+                        {!!m.refs?.length&&<div className="message-references">{m.refs.map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject}/>)}</div>}
+                        {m.meetingId&&m.type==='message'&&<button className="message-meeting-link" onClick={()=>setMeetingPanel({id:m.meetingId,channelId:current})}><Video size={12}/>会议：{snapshot.meetings.find(x=>x.id===m.meetingId)?.title||'查看记录'}</button>}
                         {m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
                           <button
                             className="shared-document-card"
@@ -672,6 +689,7 @@ export default function App() {
                 )}
                 <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^(?:channel_|原工作会话|新会话|独立工作会话)/.test(b.title)?b.title:b?'更换项目与对话':'选择项目与对话'}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
+                  {!!references[current]?.length&&<div className="composer-references">{references[current].map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject} onRemove={()=>setReferences(old=>({...old,[current]:(old[current]||[]).filter(v=>v.id!==r.id||v.kind!==r.kind)}))}/>)}</div>}
                   {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
                     <div className="composing-reply">
@@ -796,314 +814,16 @@ export default function App() {
                   <span>原生 Agent 异步回应</span>
                 </footer>
               </section>
-              {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} activity={snapshot.activity} notifications={snapshot.notifications} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})}/> : side && (
-                <aside className="collaboration-space">
-                  <div className="space-title">
-                    <strong>协作空间</strong>
-                    <span>需要时再用</span>
-                  </div>
-                  <nav className="space-tabs">
-                    {[
-                      ["documents", "资料", FileText],
-                      ["tasks", "事项", Columns3],
-                      ["meetings", "会议", Video],
-                      ["members", "成员", Users],
-                    ].map(([id, text, Icon]) => (
-                      <button
-                        key={id}
-                        className={tab === id ? "active" : ""}
-                        onClick={() => setTab(id)}
-                      >
-                        <Icon size={15} />
-                        {text}
-                      </button>
-                    ))}
-                  </nav>
-                  <div className="space-content">
-                    {tab === "documents" ? (
-                      <>
-                        <SharedFiles key={current} channelId={current} files={snapshot.files||[]} onOpen={setSharedFileId} onDone={refresh}/>
-                        <div className="section-heading">
-                          <h3>
-                            共享文档 <span>{snapshot.documents.length}</span>
-                          </h3>
-                          <button
-                            aria-label="添加共享文档"
-                            onClick={() => setModal({ type: "doc" })}
-                          >
-                            <Plus size={16} />
-                          </button>
-                        </div>
-                        {snapshot.documents.length ? (
-                          snapshot.documents.map((d) => (
-                            <button
-                              className="space-doc"
-                              key={d.id}
-                              onClick={() => setDocumentId(d.id)}
-                            >
-                              <FileText size={19} />
-                              <div>
-                                <strong>{d.title}</strong>
-                                <small>
-                                  {name(d.lastEditorId)} 更新 · v{d.version}
-                                </small>
-                              </div>
-                              {d.status === "delivered" && <span>已交付</span>}
-                            </button>
-                          ))
-                        ) : (
-                          <Empty
-                            icon={FileText}
-                            text="讨论可以先开始，文档随时共写。"
-                          />
-                        )}
-                        <div className="section-heading lower">
-                          <h3>团队知识</h3>
-                          <BookOpen size={15} />
-                        </div>
-                        {snapshot.knowledge.map((k) => (
-                          <div className="memory-note" key={k.id}>
-                            <strong>{k.title}</strong>
-                            <p>{k.body}</p>
-                            {k.status === "pending" ? (
-                              <div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    act("channel.memory.review", {
-                                      memoryId: k.id,
-                                      status: "approved",
-                                    })
-                                  }
-                                >
-                                  记住
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    act("channel.memory.review", {
-                                      memoryId: k.id,
-                                      status: "rejected",
-                                    })
-                                  }
-                                >
-                                  不用
-                                </Button>
-                              </div>
-                            ) : (
-                              <small>
-                                {k.status === "approved" ? "已记住" : "未采用"}
-                              </small>
-                            )}
-                          </div>
-                        ))}
-                        {!snapshot.knowledge.length && (
-                          <p className="space-hint">
-                            成员提出的经验，经用户确认后保留。
-                          </p>
-                        )}
-                      </>
-                    ) : tab === "members" ? (
-                      <>
-                        <div className="section-heading">
-                          <h3>群成员</h3>
-                          <button onClick={() => setModal({ type: "group" })}>
-                            管理
-                          </button>
-                        </div>
-                        {groupMembers.map((m) => (
-                          <div className="space-member" key={m.id}>
-                            <Face name={m.name} id={m.id} platformId={m.platformId} />
-                            <div>
-                              <strong>
-                                {m.name}
-                                {channel.coordinatorId === m.id && (
-                                  <span>负责人</span>
-                                )}
-                              </strong>
-                              <small>
-                                {workspace.connections.find(
-                                  (c) => c.id === m.id,
-                                )?.status === "verified"
-                                  ? "自动通道已验证"
-                                  : "自动接入未就绪"}
-                              </small>
-                            </div>
-                            <button
-                              aria-label={"私聊 " + m.name}
-                              onClick={() => openDirect(m).catch(()=>{})}
-                            >
-                              <MessageSquare size={16} />
-                            </button>
-                          </div>
-                        ))}
-                        <p className="space-hint">
-                          负责人由用户指定，随时可换。群内其他成员仍可直接交流。
-                        </p>
-                      </>
-                    ) : tab === "tasks" ? (
-                      <>
-                        <div className="section-heading">
-                          <h3>事项看板</h3>
-                          <button onClick={() => setModal({ type: "task" })}>
-                            <Plus size={16} />
-                          </button>
-                        </div>
-                        {["todo", "doing", "done"].map((status) => (
-                          <section className="board-column" key={status}>
-                            <h4>
-                              {
-                                {
-                                  todo: "待办",
-                                  doing: "进行中",
-                                  done: "已完成",
-                                }[status]
-                              }
-                              <span>
-                                {
-                                  snapshot.tasks.filter(
-                                    (t) => t.status === status,
-                                  ).length
-                                }
-                              </span>
-                            </h4>
-                            {snapshot.tasks
-                              .filter((t) => t.status === status)
-                              .map((t) => (
-                                <div className="board-item" key={t.id}>
-                                  <p>{t.title}</p>
-                                  <footer>
-                                    <small>
-                                      {t.assigneeId
-                                        ? name(t.assigneeId)
-                                        : "未指定成员"}
-                                    </small>
-                                    <select
-                                      aria-label={"事项状态 " + t.title}
-                                      value={t.status}
-                                      disabled={busy}
-                                      onChange={(e) =>
-                                        act("channel.task", {
-                                          action: "update",
-                                          taskId: t.id,
-                                          status: e.target.value,
-                                        })
-                                      }
-                                    >
-                                      <option value="todo">待办</option>
-                                      <option value="doing">进行中</option>
-                                      <option value="done">已完成</option>
-                                    </select>
-                                  </footer>
-                                </div>
-                              ))}
-                          </section>
-                        ))}
-                      </>
-                    ) : tab === "meetings" ? (
-                      <>
-                        <div className="section-heading">
-                          <h3>讨论记录</h3>
-                          <button aria-label="筹备新会议" onClick={() => setMeetingPanel({id:null,channelId:current})}>
-                            <Plus size={16} />
-                          </button>
-                        </div>
-                        {[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).map((mt) => (
-                          <div className="meeting-record" key={mt.id}>
-                            <Video size={18} />
-                            <button className="meeting-card-open" onClick={()=>setMeetingPanel({id:mt.id,channelId:current})}><strong>{mt.title}</strong></button>
-                            <small>
-                              {{preparing:'筹备中',running:'讨论中',closing:'整理结果',ended:'已结束',open:'历史讨论',closed:'已记录结论'}[mt.status]||mt.status}
-                            </small>
-                            {mt.summary && <p>{mt.summary}</p>}
-                            {mt.version!==undefined&&<Button size="sm" variant="ghost" onClick={()=>setMeetingPanel({id:mt.id,channelId:current})}>{mt.status==='preparing'?'继续与负责人沟通':'查看会议'}</Button>}
-                            {mt.status === "open" && mt.version===undefined && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  setModal({
-                                    type: "close-meeting",
-                                    meeting: mt,
-                                  })
-                                }
-                              >
-                                记录结论
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                        {!snapshot.meetings.length && (
-                          <Empty
-                            icon={Video}
-                            text="需要集中讨论时，开一场会。"
-                          />
-                        )}
-                        {meetingCursor&&<Button variant="ghost" onClick={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}>查看更早会议</Button>}
-                      </>
-                    ) : (
-                      <>
-                        <div className="section-heading">
-                          <h3>消息处理记录</h3>
-                          <button onClick={() => setTab("members")}>
-                            返回
-                          </button>
-                        </div>
-                        {snapshot.activity.map((t) => (
-                          <div className="activity-entry" key={t.id}>
-                            <strong>{name(t.memberId)}</strong>
-                            <span>{statusText[t.status] || t.status}</span>
-                            {messages.find(m => m.id === t.messageId) && <p className="activity-source">{name(messages.find(m => m.id === t.messageId).authorId)}：{messages.find(m => m.id === t.messageId).body.slice(0, 180)}</p>}
-                            <small>
-                              {(t.status === "limited" ? "消息已保留，直接发下一句即可继续交流。" : t.reason) ||
-                                t.progress ||
-                                (t.status === "ready" &&
-                                snapshot.notifications?.find(
-                                  (n) => n.stepId === t.id,
-                                )?.status === "accepted"
-                                  ? "原平台已接收通知，尚未领取；不是已回复"
-                                  : null) ||
-                                time(
-                                  t.completedAt || t.claimedAt || t.createdAt,
-                                )}
-                            </small>
-                          </div>
-                        ))}
-                        {snapshot.activity.some((t) =>
-                          ["stalled", "unavailable"].includes(
-                            t.status,
-                          ),
-                        ) && (
-                          <Button
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => act("channel.continue")}
-                          >
-                            重试未回应的成员
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <button
-                    className="space-activity"
-                    onClick={() =>
-                      setTab(tab === "activity" ? "documents" : "activity")
-                    }
-                  >
-                    <Clock size={14} />
-                    查看消息处理记录
-                  </button>
-                </aside>
+              {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} activity={snapshot.activity} notifications={snapshot.notifications} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})} onChat={()=>{setMeetingScopes(old=>({...old,[current]:meetingPanel.id}));setMeetingPanel(null);document.querySelector('[aria-label="群消息"]')?.focus();}} onTodo={m=>{setMeetingPanel(null);setSide(true);setTab('tasks');setSpaceEditor({kind:'task',prefill:{meetingIds:[m.id],refs:[refOf('meeting',m)]}});}} tasks={snapshot.tasks} onTask={t=>openObject(refOf('task',t))}/> : side && (
+                tab==='activity'?<aside className="collaboration-space space-redesign"><div className="space-title"><h3>消息处理记录</h3><button onClick={()=>setTab('documents')}>返回</button></div><div className="space-content">{snapshot.activity.map(t=><div className="activity-entry" key={t.id}><strong>{name(t.memberId)}</strong><p>{statusText[t.status]||t.status}</p><small>{t.reason||time(t.completedAt||t.createdAt)}</small><button className="activity-source" onClick={()=>jumpToSource(t.messageId)}>{messages.find(m=>m.id===t.messageId)?.body.slice(0,100)||'查看对应消息'}</button></div>)}{snapshot.activity.some(t=>['stalled','unavailable'].includes(t.status))&&<Button variant="outline" disabled={busy} onClick={()=>act('channel.continue')}>重试未回应的成员</Button>}</div></aside>:
+                <CollaborationSpace key={current} channel={channel} snapshot={{...snapshot,meetings:[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i)}} tab={tab==='members'?'documents':tab} setTab={setTab} name={name} members={groupMembers} onChanged={refresh} onQuote={quoteObject} onOpenDoc={setDocumentId} onOpenFile={setSharedFileId} onCreateDoc={folderId=>setModal({type:'doc',folderId})} onMeeting={id=>setMeetingPanel({id,channelId:current})} onNewMeeting={()=>setMeetingStart(true)} selection={spaceSelection} setSelection={setSpaceSelection} editor={spaceEditor} setEditor={setSpaceEditor} onSource={jumpToSource} onClose={()=>setSide(false)} onActivity={()=>setTab('activity')} moreMeetings={meetingCursor} loadMeetings={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}/>
+
               )}
             </div>
           </>
         )}
       </main>
+      {meetingStart&&channel&&<MeetingStart channel={channel} members={groupMembers} onClose={()=>setMeetingStart(false)} onStart={async(body,host)=>{const m=await perform(()=>command('channel.meeting',{channelId:current,action:'prepare',body,coordinatorId:host}));setMeetingStart(false);setMeetingPanel(null);setSide(true);setTab('meetings');setMeetingScopes(old=>({...old,[current]:m.id}));nearBottom.current=true;}}/>}
       {modal && (
         <Modal
           sessionPicker={modal.type==='session'}
@@ -1213,6 +933,7 @@ export default function App() {
                     command(mapping[modal.type], {
                       channelId: current,
                       ...values,
+                      ...(modal.type==='doc'&&modal.folderId?{folderId:modal.folderId}:{}),
                       ...(modal.type === "task" ? { action: "create" } : {}),
                       ...(modal.type === "meeting" ? { action: "open" } : {}),
                       ...(modal.type === "close-meeting"

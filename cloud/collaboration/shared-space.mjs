@@ -1,5 +1,6 @@
+import {folderAccess,placeMaterial} from './material-folders.mjs';
 import { fail, id, required, digest } from './repository.mjs';
-import { channelAccess, meetingHelpers } from './conversation.mjs';
+import { channelAccess, meetingHelpers, CHANNEL_TOOLS, conversationTool } from './conversation.mjs';
 import { base64, unbase64, readBounded } from './security.mjs';
 import { fileStore } from './file-store.mjs';
 
@@ -13,7 +14,7 @@ const refSchema = { type: 'array', maxItems: 30, items: { type: 'object', proper
 const tool = (name, description, properties, keys = Object.keys(properties)) => ({ name, description, inputSchema: { type: 'object', properties, required: keys, additionalProperties: false } });
 export const SHARED_TOOLS = [
   tool('shared_files', '列出群内共享文件；文件 ID 与版本在所有环境相同。after 用于继续翻页。', {channelId:string, after:string}, ['channelId']),
-  tool('begin_file', '发布文件前登记名称、大小和 SHA256。返回 uploadId/chunkSize；按分块上传后 finish_file 才算共享成功。同一 requestId 重试可续传。更新已有文件必须带 resourceId/expectedVersion。', {requestId:string,channelId:string,name:string,mime:string,size:integer,sha256:string,resourceId:string,expectedVersion:integer}, ['requestId','channelId','name','size','sha256']),
+  tool('begin_file', '发布文件前登记名称、大小和 SHA256。返回 uploadId/chunkSize；按分块上传后 finish_file 才算共享成功。同一 requestId 重试可续传。新文件可指定 folderId；更新已有文件必须带 resourceId/expectedVersion，保留原位置。', {requestId:string,channelId:string,name:string,mime:string,size:integer,sha256:string,resourceId:string,folderId:string,expectedVersion:integer}, ['requestId','channelId','name','size','sha256']),
   tool('write_file_chunk', '上传一块真实文件字节（base64，最多64KiB）。同一块重复提交安全；不同字节不能覆盖。', {uploadId:string,index:{type:'integer',minimum:0},base64:string}),
   tool('file_upload_status', '读取上传进度和已收到的分块，网络中断后继续同一次上传。', {uploadId:string}),
   tool('finish_file', '核对完整大小与哈希后发布文件版本；未完成分块不显示为共享成功。', {uploadId:string}),
@@ -67,11 +68,12 @@ export async function beginFile(repo,actor,args,env){
   const name=safeName(args.name),storage=env.SHARED_FILE_STORAGE||env.FILE_STORAGE||'r2';fileStore(env,storage);
   return repo.transact('shared-begin:'+who(actor)+':'+required(args.requestId,'请求编号',100),{...args,actor},async tx=>{
     await channelAccess(tx,args.channelId,actor);
+    await folderAccess(tx,args.channelId,args.folderId);
     if(args.resourceId){const previous=await tx.get('shared_file',args.resourceId);if(previous.scopeId!==args.channelId)fail('forbidden','资料不属于此群',403);if(previous.status==='deleted'||previous.version!==args.expectedVersion)fail('version_conflict','资料已变化，请重读版本后发布',409);}
     const usage=await tx.get('shared_usage','bytes',false)||{id:'bytes',reserved:0,stored:0};
     if(usage.reserved+usage.stored+size>quota)fail('space_limit','共享空间容量不足，历史版本仍占空间；请联系管理员扩容，原文件保留',413);
     tx.put('shared_usage',{...usage,reserved:usage.reserved+size});
-    const upload=tx.put('shared_upload',{id:id('upload'),scopeId:args.channelId,parentId:who(actor),authorId:who(actor),name,mime:String(args.mime||'application/octet-stream').slice(0,120),size,sha256:args.sha256,resourceId:args.resourceId||id('shared_file'),expectedVersion:args.expectedVersion||0,storage,chunkSize:CHUNK_SIZE,chunks:Math.ceil(size/CHUNK_SIZE),status:'uploading',createdAt:tx.now});
+    const upload=tx.put('shared_upload',{id:id('upload'),scopeId:args.channelId,parentId:who(actor),authorId:who(actor),announce:args.announce!==false,folderId:args.folderId||null,name,mime:String(args.mime||'application/octet-stream').slice(0,120),size,sha256:args.sha256,resourceId:args.resourceId||id('shared_file'),expectedVersion:args.expectedVersion||0,storage,chunkSize:CHUNK_SIZE,chunks:Math.ceil(size/CHUNK_SIZE),status:'uploading',createdAt:tx.now});
     return upload;
   });
 }
@@ -107,9 +109,11 @@ export async function finishFile(repo,identity,actor,args,env){
     if((previous?.version||0)!==u.expectedVersion||previous?.status==='deleted')fail('version_conflict','文件已有新版本，原上传保留；请核对后重新发布',409);
     const version=(previous?.version||0)+1;
     const file=tx.put('shared_file',{...previous,id:u.resourceId,scopeId:u.scopeId,parentId:u.scopeId,name:u.name,mime:u.mime,size:u.size,sha256:u.sha256,objectKey:key,storage:u.storage,version,status:'published',authorId:previous?.authorId||who(actor),lastEditorId:who(actor),createdAt:previous?.createdAt||tx.now});
+    if(!previous&&upload.folderId)await placeMaterial(tx,u.scopeId,'file',file.id,upload.folderId,actor);
     tx.put('shared_file_version',{...file,id:versionId(file.id,version),parentId:file.id,authorId:who(actor),createdAt:tx.now});
     tx.put('shared_upload',{...upload,status:'published',publishedVersion:version});
     const usage=await tx.get('shared_usage','bytes');tx.put('shared_usage',{...usage,reserved:usage.reserved-u.size,stored:usage.stored+u.size});
+    if(!previous&&upload.announce===false)return publicFile(file);
     const message=await notify(tx,identity,channel,actor,`${previous?'更新':'共享'}文件：${file.name} · v${version}`,{type:'shared_file',resourceId:file.id,resourceVersion:version,fileName:file.name,fileSize:file.size,resourceAction:previous?'updated':'created'},previous?await readerIds(tx,file.id):[]);
     tx.put('shared_file',{...file,sourceMessageId:message.id});
     return publicFile({...file,sourceMessageId:message.id});
@@ -201,7 +205,9 @@ export async function sharedToolEnvelope(repo,identity,actor,message,env){
   const channel=await channelAccess(repo,message.channelId,actor);
   let envelope;
   try{envelope=JSON.parse(message.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','共享工具请求必须是完整JSON');}
-  const definition=envelope&&SHARED_TOOLS.find(t=>t.name===envelope.name);
+  const workspaceNames=['board_task','remember','revise_memory','read_space_object','search_memory','read_memory','read_todo','manage_folder','move_material'];
+  const workspaceDefinition=envelope&&workspaceNames.includes(envelope.name)&&CHANNEL_TOOLS.find(t=>t.name===envelope.name);
+  const definition=workspaceDefinition||envelope&&SHARED_TOOLS.find(t=>t.name===envelope.name);
   if(!definition)fail('unknown_tool','此兼容入口只接受已发布的共享工具',404);
   const args=envelope.arguments;
   if(!args||typeof args!=='object'||Array.isArray(args))fail('invalid_tool_envelope','工具参数必须是JSON对象');
@@ -213,5 +219,6 @@ export async function sharedToolEnvelope(repo,identity,actor,message,env){
   if(args.resourceId)scopes.push((await repo.get('shared_file',args.resourceId)).scopeId);
   if(args.handoffId)scopes.push((await repo.get('shared_handoff',args.handoffId)).scopeId);
   if(!scopes.length||scopes.some(scope=>scope!==channel.id))fail('forbidden','共享工具请求必须属于当前群',403);
+  if(workspaceDefinition)return conversationTool(repo,identity,actor,envelope.name,{...args,requestId:message.requestId});
   return sharedTool(repo,identity,actor,envelope.name,{...args,requestId:message.requestId},env);
 }

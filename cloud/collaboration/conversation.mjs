@@ -1,3 +1,5 @@
+import {FOLDER_TOOLS,folderCommand,allFolders,allPlacements,placeMaterial} from './material-folders.mjs';
+import { SPACE_TOOLS, referenceSchema, spaceCommand, validateRefs, publicMemory, readSpaceObject } from './workspace-objects.mjs';
 import { fail, id, required } from "./repository.mjs";
 import { messageRecipients, namedMentions, hasAllMention } from '../../shared/chat-routing.mjs';
 import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
@@ -22,6 +24,7 @@ const BASIC_CHANNEL_TOOLS = [
       mentionAll: "boolean",
       replyTo: "string",
       turnId: "string",
+      refs: referenceSchema,
     },
     ["requestId", "channelId", "body"],
   ],
@@ -39,7 +42,9 @@ const BASIC_CHANNEL_TOOLS = [
       channelId: "string",
       title: "string",
       body: "string",
+      folderId: "string",
     },
+    ["requestId","channelId","title","body"],
   ],
   ["read_doc", "读取共享文档全文、版本和修改者。", { documentId: "string" }],
   [
@@ -80,13 +85,16 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "remember",
-    "提出团队经验，用户批准后才进入群知识。",
+    "记录本群的背景、要求、决定或经验。附来源 refs；成员提出的内容待核实，用户保存立即生效。",
     {
       requestId: "string",
       channelId: "string",
       title: "string",
       body: "string",
+      category: "string",
+      refs: referenceSchema,
     },
+    ["requestId", "channelId", "title", "body"],
   ],
   [
     "meeting",
@@ -103,7 +111,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "board_task",
-    "可选看板工具：create 或 update 事项，可指定群内执行成员；只记录约定，不另起强制工作流。",
+    "Todo：create/update/accept。指派会真实通知成员；执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。只在需要跟进时使用。",
     {
       requestId: "string",
       channelId: "string",
@@ -112,6 +120,9 @@ const BASIC_CHANNEL_TOOLS = [
       taskId: "string",
       assigneeId: "string",
       status: "string",
+      body: "string", progress: "string", blocker: "string", result: "string",
+      dueDate: "string", expectedVersion: "number", sourceMessageId: "string",
+      meetingIds: "array", refs: referenceSchema,
     },
     ["requestId", "channelId", "action"],
   ],
@@ -123,7 +134,7 @@ const BASIC_CHANNEL_TOOLS = [
     properties: Object.fromEntries(
       Object.entries(properties).map(([k, t]) => [
         k,
-        t === "array"
+        typeof t === "object" ? t : t === "array"
           ? { type: t, items: { type: "string" }, maxItems: 30 }
           : t === "number"
             ? { type: "integer", minimum: 0 }
@@ -135,7 +146,7 @@ const BASIC_CHANNEL_TOOLS = [
   },
 }));
 
-export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS];
+export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS];
 const activeMember = (identity, memberId) =>
   identity.members.find(
     (m) =>
@@ -472,9 +483,10 @@ export async function readChannel(repo, identity, actor, args) {
     files: (await repo.list("shared_file", {scope:channel.id,limit:100,order:"recent"})).filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
     handoffs: await repo.list("shared_handoff", {scope:channel.id,limit:100,order:"recent"}),
     decisions,
-    knowledge: actor.owner
-      ? knowledge
-      : knowledge.filter((k) => k.status === "approved"),
+    folders: await allFolders(repo,channel.id),
+    placements: await allPlacements(repo,channel.id),
+    links: (await repo.list("channel_link", {scope:channel.id,limit:100,order:"recent"})).filter(x=>x.status!=="deleted"),
+    knowledge: knowledge.filter(k=>k.status!=="deleted"&&(actor.owner||k.status==="approved")).map(publicMemory),
     meetings: meetings.slice(0,100).map(m => publicMeeting(m, actor)).filter(Boolean),
     meetingsCursor:actor.owner&&meetings.length>100?btoa(JSON.stringify({updatedAt:meetings[99].updatedAt,id:meetings[99].id})):null,
     tasks,
@@ -593,6 +605,8 @@ export async function conversationCommand(
       }
       const channel = await tx.get("channel", channelId);
       scoped(channel, actor);
+      if (['channel.folder','channel.material.move'].includes(type)) return folderCommand(tx,actor,cmd,channel);
+      if (['channel.task','channel.remember','channel.memory.update','channel.memory.review','channel.link'].includes(type)) return spaceCommand(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);
       if (type === "channel.update") {
         owner(actor);
@@ -645,6 +659,7 @@ export async function conversationCommand(
       }
       if (type === "channel.post") {
         const body = messageText(cmd.body);
+        const refs = await validateRefs(tx, channel.id, cmd.refs||[]);
         // Legacy housekeeping states must never require the human to unlock chat.
         // An Agent cannot reactivate a stopped channel on its own.
         if (channel.status !== "active") {
@@ -653,7 +668,7 @@ export async function conversationCommand(
           channel.status = "active";
           tx.put("channel", channel);
         }
-        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body }, channel, meetingHelpers);
+        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs }, channel, meetingHelpers);
         if (meeting?.handled) return meeting.result;
         const mentions = listIds(
           cmd.mentions === undefined
@@ -707,6 +722,7 @@ export async function conversationCommand(
           mentions,
           mentionAll,
           recipientIds: targets,
+          refs,
           mentionsFromText: cmd.mentions === undefined && mentions.length > 0,
           replyTo: parent?.id || null,
           rootId: actor.owner ? null : parent?.rootId || parent?.id,
@@ -785,6 +801,7 @@ export async function conversationCommand(
           type: "document",
           documentId: doc.id,
         });
+        if(cmd.folderId)await placeMaterial(tx,channel.id,'document',doc.id,cmd.folderId,actor);
         return doc;
       }
       if (type === "channel.doc.edit") {
@@ -925,26 +942,6 @@ export async function conversationCommand(
           await enqueue(tx, identity, channel, message, q.authorId);
         return message;
       }
-      if (type === "channel.remember")
-        return tx.put("channel_memory", {
-          id: id("memory"),
-          scopeId: channel.id,
-          parentId: channel.id,
-          title: required(cmd.title, "知识标题", 160),
-          body: required(cmd.body, "知识正文", 12000),
-          authorId: actor.memberId || "owner",
-          status: "pending",
-          createdAt: tx.now,
-        });
-      if (type === "channel.memory.review") {
-        owner(actor);
-        const memory = await tx.get("channel_memory", cmd.memoryId);
-        if (memory.scopeId !== channel.id)
-          fail("forbidden", "知识不属于此群", 403);
-        if (!["approved", "rejected"].includes(cmd.status))
-          fail("invalid_status", "请选择记住或不用");
-        return tx.put("channel_memory", { ...memory, status: cmd.status });
-      }
       if (type === "channel.suggestion.review") {
         owner(actor);
         const suggestion = await tx.get("channel_suggestion", cmd.suggestionId),
@@ -1008,38 +1005,6 @@ export async function conversationCommand(
           closedAt: tx.now,
         });
       }
-      if (type === "channel.task") {
-        let task =
-          cmd.action === "create"
-            ? {
-                id: id("board"),
-                scopeId: channel.id,
-                parentId: channel.id,
-                status: "todo",
-                createdAt: tx.now,
-                authorId: actor.memberId || "owner",
-              }
-            : await tx.get("channel_task", cmd.taskId);
-        if (
-          !["create", "update"].includes(cmd.action) ||
-          task.scopeId !== channel.id
-        )
-          fail("invalid_task", "事项操作无效");
-        if (cmd.title !== undefined)
-          task.title = required(cmd.title, "事项", 1000);
-        if (!task.title) fail("invalid_input", "请填写事项");
-        if (cmd.assigneeId !== undefined) {
-          if (cmd.assigneeId && !channel.memberIds.includes(cmd.assigneeId))
-            fail("invalid_member", "执行成员须在本群内");
-          task.assigneeId = cmd.assigneeId || null;
-        }
-        if (cmd.status !== undefined) {
-          if (!["todo", "doing", "done"].includes(cmd.status))
-            fail("invalid_status", "事项状态无效");
-          task.status = cmd.status;
-        }
-        return tx.put("channel_task", task);
-      }
       fail("unknown_command", "未知沟通工具", 404);
     },
     now,
@@ -1050,15 +1015,19 @@ const toolCommands = {
   post_message: "channel.post",
   stay_silent: "channel.silent",
   create_doc: "channel.doc.create",
+  manage_folder: "channel.folder",
+  move_material: "channel.material.move",
   edit_doc: "channel.doc.edit",
   suggest_edit: "channel.doc.suggest",
   ask_user: "channel.ask",
   deliver: "channel.doc.deliver",
   remember: "channel.remember",
+  revise_memory: "channel.memory.update",
   meeting: "channel.meeting",
   board_task: "channel.task",
 };
 export async function conversationTool(repo, identity, actor, name, args) {
+  if (["search_memory","read_memory","read_todo","read_space_object"].includes(name)) return readSpaceObject(repo,actor,args);
   if (name === "read_channel") return readChannel(repo, identity, actor, args);
   if (name === 'meeting' && args.action === 'read') return meetingDetail(repo, identity, actor, args);
   if (name === "read_doc") {

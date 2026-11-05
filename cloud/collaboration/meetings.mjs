@@ -399,6 +399,7 @@ async function preparationPost(tx, identity, actor, cmd, channel, m, helpers) {
   const prior=actor.owner?null:await tx.get('meeting_preparation',replyId,false);
   if(prior){await release(tx,actor,{...cmd,meetingId:m.id},helpers,channel);return {...prior,meetingId:m.id,alreadyReceived:true};}
   const message = tx.put('meeting_preparation', { id: replyId, scopeId: channel.id, parentId: m.id, authorId: actor.owner ? 'owner' : actor.memberId, body,inReplyTo:m.lastOwnerMessageId||null,createdAt: tx.now });
+  await helpers.channelMessage(tx,channel,actor,body,{id:message.id,meetingId:m.id,type:'message',replyTo:actor.owner?null:m.lastOwnerMessageId,refs:cmd.refs||[],hops:0});
   if (actor.owner) {
     m.lastOwnerMessageId = message.id;
     if (ownerStop(body)) { m.status = 'ended'; m.endReason = '筹备取消'; m.endedAt = tx.now; await cancelPending(tx, m, '筹备已取消'); }
