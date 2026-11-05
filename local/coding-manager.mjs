@@ -8,6 +8,7 @@ import {CodingMemberClient} from './coding-client.mjs';
 import {NativeAgent,findExecutable,safeError} from './native-agent.mjs';
 import {NativeRuntime} from './native-runtime.mjs';
 import {CodexWorkingHost} from './codex-working-host.mjs';
+import {AntigravityDesktopHost} from './antigravity-host.mjs';
 import {publicAssignments} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const nativeLabel=r=>r.engine==='codex'?'Codex':'Gemini';
@@ -32,6 +33,7 @@ export class CodingManager{
    else if(['installing','connecting','waiting_login'].includes(r.status)){r.status='disconnected';r.message='上次连接未完成，点击连接继续；原登录资料保留';}
   }
  }
+ workingHostFor(r){return r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
  get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
  status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
@@ -132,7 +134,7 @@ export class CodingManager{
   const client=this.client(r);let selected;
   if(mode==='existing'){
    selected=Object.values(r.chatBindings).find(b=>b.sessionId===sessionId);
-   if(!selected&&r.engine==='codex'){const native=(await this.workingHost.sessions()).items.find(s=>s.id===sessionId);if(native){for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&Object.values(other.chatBindings||{}).some(b=>b.sessionId===sessionId))throw Error('此原生会话已有另一位工作成员');selected={sessionId:native.id,title:native.title,workspace:native.workspace,mode:'native-existing'};}}
+   if(!selected){const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});const native=(await host.sessions()).items.find(s=>s.id===sessionId);if(native){for(const other of Object.values(this.records))if(other.memberId!==memberId&&other.enabled&&Object.values(other.chatBindings||{}).some(b=>b.sessionId===sessionId))throw Error('此原生会话已有另一位工作成员');selected={sessionId:native.id,title:native.title,workspace:native.workspace,mode:'native-existing',source:native.source};}}
    if(!selected)throw Error('请选择这位成员已有的工作会话；不会读取其他成员的上下文');
   }else{
    if(r.creationPending)throw Error('上次会话创建结果待确认，请先查看已有会话，未重复创建');
@@ -146,19 +148,22 @@ export class CodingManager{
   const status=await client.api('/v2/self/status');if(!status.complete&&!r.proofRunId){const proof=await client.api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;await this.save();}
   return r.chatBindings[channelId];
  }
- async sessionOptions(memberId){const r=this.records[memberId];let native=[],existingHint='';if(r?.engine==='codex')try{native=(await this.workingHost.sessions()).items;}catch(e){existingHint=safeError(e);}
-  const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace,mode:b.mode,createdAt:b.createdAt}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
+ async sessionOptions(memberId){const r=this.records[memberId];let native=[],projects=[],existingHint='';if(r)try{const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});({items:native,projects=[]}=await host.sessions());}catch(e){existingHint=(r.engine==='antigravity'?'Antigravity 桌面项目暂不可用：':'Codex 原项目暂不可用：')+safeError(e);}
+  const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace,mode:b.mode,createdAt:b.createdAt}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,projects,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
  async runExisting(r,first,binding,client){
   const key=first.channelId||Object.entries(r.chatBindings).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];if(!key)throw Error('请选择负责连接验证的工作会话');
   r.nativeDeliveries??={};const delivery=r.nativeDeliveries[first.stepId];
   if(delivery&&delivery.status!=='sent')throw Error('原会话发送结果待确认，请查看原会话；未重复执行');
   const q=v=>"'"+v.replaceAll("'","'\"'\"'")+"'",helper=['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,key].map(q).join(' ');
   const prompt='Hub 有一条发给你这个原工作会话的消息，保留原项目、模型、工具和记忆。Hub 工具命令：'+helper+'。先运行命令加 claim_step '+first.stepId+'，按领取返回的真实指令完成；只处理这个工作。其他工具用 call <工具名> <JSON>，定义可用 list_tools 查询。普通消息必须用 post_message({requestId,channelId,turnId,body,mentions?}) 回到原 Hub 聊天；验证用 submit_work，不能只在原界面回答。不扫描登录资料、不读其他会话、不自动创建任务文档或分工。';
+  const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
+  try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
-  try{await this.workingHost.queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status='uncertain';await this.save();throw e;}}
+  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status='uncertain';await this.save();throw e;}}
   const deadline=Date.now()+20*60000;
-  while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');if(!work.some(w=>w.stepId===first.stepId)){r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message='原 Codex 工作会话已回复';await this.save();return;}}
-  throw Error('尚未收到原 Codex 会话回传，原工作和消息保留，未重复发送');
+  while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');if(!work.some(w=>w.stepId===first.stepId)){r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message='原工作会话已回复';await this.save();return;}}
+  throw Error('尚未收到原工作会话回传，原工作和消息保留，未重复发送');
+  }finally{await stopWatching?.();}
  }
  approve(r,{engine,method,params,sessionId}){
   const supported=engine==='antigravity'?method==='session/request_permission':['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput'].includes(method);

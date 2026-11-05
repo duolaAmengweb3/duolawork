@@ -73,10 +73,10 @@ const statusText = {
 const markdown = (body) => DOMPurify.sanitize(marked.parse(body || ""));
 const Face=AgentAvatar;
 
-function Modal({ title, description, children, error, onClose }) {
+function Modal({ title, description, children, error, onClose, sessionPicker=false }) {
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-xl">
+      <DialogContent className={sessionPicker?'session-dialog sm:max-w-xl':'max-h-[85vh] overflow-auto sm:max-w-xl'}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -1119,6 +1119,7 @@ export default function App() {
       </main>
       {modal && (
         <Modal
+          sessionPicker={modal.type==='session'}
           error={error}
           title={
             {

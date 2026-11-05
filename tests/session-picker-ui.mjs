@@ -23,12 +23,15 @@ try{
   }
   const id=new URL(route.request().url()).searchParams.get('memberId'),member=members.find(m=>m.id===id);
   const items=presentSessions([{id:'one',title:'购物车修复',workspace:'/work/store',projectName:'我的商店',projectId:'p1',source:'desktop'},{id:'two',title:'支付接口',workspace:'/work/store',projectName:'我的商店',projectId:'p1',source:'desktop'},{id:'other',title:'另一个项目',workspace:'/client/store',source:'desktop'},{id:'legacy',title:'原工作会话',workspace:'/hub/coding/internal',mode:'new'}],{dataDir:'/hub',platform:member.name,bindings:{[group.id]:{sessionId:'legacy'}},channels:[group]});
-  return route.fulfill({json:{record:{enabled:true},capabilities:{create:!['claude-code','antigravity'].includes(member.platformId)},items,projects:sessionProjects(items),binding:null}});
+  return route.fulfill({json:{record:{enabled:true},capabilities:{create:!['claude-code','antigravity'].includes(member.platformId)},items,projects:sessionProjects(items),binding:{sessionId:"legacy",...items.find(s=>s.id==="legacy")}}});
  });
  await p.goto(local.url);await p.getByRole('button',{name:/项目选择验收/}).first().click();
  for(const member of members){
+  await p.setViewportSize({width:1280,height:700});
   await p.getByRole('button',{name:member.name+' · 选择项目与对话',exact:true}).click();const dialog=p.getByRole('dialog');
+  await dialog.getByRole('button',{name:/我的商店 2 段对话/}).waitFor({state:'visible'});
   await dialog.getByRole('button',{name:/我的商店 2 段对话/}).click();await dialog.getByRole('radio',{name:/购物车修复/}).click();
+  const box=await dialog.boundingBox(),footer=await dialog.getByRole('button',{name:'继续这段对话',exact:true}).boundingBox();assert.ok(box.y>=0&&box.y+box.height<=700);assert.ok(footer.y+footer.height<=box.y+box.height);
   assert.equal(await dialog.getByRole('radio').count(),2);assert.equal(await dialog.getByText('原工作会话',{exact:true}).count(),0);
   if(member.name==='Codex'){await fs.mkdir('evidence',{recursive:true});await p.screenshot({path:'evidence/session-picker-dialogs.png'});}
   await dialog.getByRole('button',{name:'继续这段对话',exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(saves.at(-1).sessionId,'one');assert.equal(saves.at(-1).memberId,member.id);

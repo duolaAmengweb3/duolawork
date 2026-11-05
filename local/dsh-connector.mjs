@@ -129,7 +129,9 @@ export class DshConnector {
    if(!this.ready)return send(503,{error:'Native Host is restoring original bindings; retry after ready'});
    if(route==='/sessions/create'){
     const workspace=await fs.realpath(body.workspace);if(!(await fs.stat(workspace)).isDirectory())throw Error('Workspace is not a directory');
-    return send(200,await this.ctx.sessionController.create({cwd:workspace}));
+    const created=await this.ctx.sessionController.create({cwd:workspace});
+    if(this.ctx.workspaceRegistry){const project=await this.ctx.workspaceRegistry.create(workspace);await project.attachSession(created.sessionId);}
+    return send(200,created);
    }
    if(route==='/bind')return send(200,await this.bind(body));
    if(route==='/unbind')return send(200,await this.unbind(body.sessionId));

@@ -1317,14 +1317,20 @@
 .agent-avatar img[data-artwork="app-icon"] {width:100%;height:100%;}
 .agent-avatar img[data-artwork="mascot"] {width:94%;height:94%;}
 
-.session-picker {display:grid;gap:16px;min-width:0;}
+.session-dialog {display:flex;flex-direction:column;height:min(760px,85dvh);max-height:85dvh;overflow:hidden;}
+.session-dialog>div:first-child {flex-shrink:0;}
+.session-picker {display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0;flex:1;}
+.session-picker-body {display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:4px;flex:1;}
+.session-current {font-size:12px;color:#53688c;background:#f3f6fc;border-radius:8px;padding:9px 12px;line-height:1.6;overflow-wrap:anywhere;}
+.session-list-heading,.session-history>summary {font-size:12px;font-weight:500;color:#77859a;padding:12px 10px 5px;}
+.session-history>summary {cursor:pointer;}
 .session-intro {margin:0;color:#66758c;font-size:13px;line-height:1.8;}
 .session-tabs {display:flex;gap:4px;padding:4px;background:#f3f5f8;border-radius:11px;}
 .session-tabs>button {flex:1;font-size:13px;box-shadow:none;}
 .session-tabs>button[data-variant="secondary"] {background:#fff;box-shadow:0 1px 3px #14203912;}
 .session-search {display:flex;align-items:center;gap:8px;border:1px solid #e5e9f0;border-radius:9px;padding-left:12px;color:#8a96a9;}
 .session-search input {border:0;box-shadow:none;background:transparent;font-size:13px;}
-.session-options {display:grid;gap:6px;max-height:310px;overflow:auto;padding:2px;overscroll-behavior:contain;}
+.session-options {display:grid;gap:6px;padding:2px;}
 .session-option {display:flex;align-items:flex-start;gap:12px;width:100%;padding:13px 12px;border:1px solid transparent;border-radius:10px;text-align:left;background:#fff;}
 .session-option:hover {background:#f7f9fc;}
 .session-option.is-selected {background:#f1f5ff;border-color:#a9bff5;}
@@ -1344,7 +1350,7 @@
 .session-details summary {cursor:pointer;}
 .session-details p {margin:8px 0 0;}
 .session-error {padding:10px 12px;border-radius:8px;background:#fff3f2;color:#b8433b;font-size:13px;line-height:1.7;}
-.session-picker-footer {display:flex;align-items:center;gap:8px;border-top:1px solid #e9edf3;padding-top:15px;}
+.session-picker-footer {display:flex;align-items:center;gap:8px;border-top:1px solid #e9edf3;padding-top:15px;flex-shrink:0;}
 .session-picker-footer>button {font-size:13px;}
 .session-new {display:grid;gap:14px;border:1px solid #e6eaf1;border-radius:12px;padding:18px;}
 .session-new-heading {display:flex;gap:12px;color:#6980a6;}

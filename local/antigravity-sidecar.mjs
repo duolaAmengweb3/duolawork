@@ -16,7 +16,7 @@ const UUID=/^[a-f0-9-]{36}$/i;
 // memory, and never copied into Hub state, prompts, logs or provider settings.
 export class AntigravityNative {
  constructor({env=process.env,exec=execute}={}){this.env=env;this.exec=exec;}
- async compatibility(){const {stdout}=await this.exec('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString','/Applications/Antigravity.app/Contents/Info.plist']);return{supported:stdout.trim()==='2.28.0'};}
+ async compatibility(){const {stdout}=await this.exec('/usr/libexec/PlistBuddy',['-c','Print :CFBundleShortVersionString','/Applications/Antigravity.app/Contents/Info.plist']);return{supported:/^2\.(28|29)\.\d+$/.test(stdout.trim())};}
  async rpc(method,body={}){
   if(!['GetAllCascadeTrajectories','GetConversationMetadata'].includes(method))throw Error('Unsupported native read');
   const address=this.env.ANTIGRAVITY_LS_ADDRESS;if(!address||!this.env.ANTIGRAVITY_CSRF_TOKEN)throw Error('Official Sidecar environment unavailable');
@@ -41,7 +41,7 @@ export class AntigravityNative {
 export function nativeSession(id,s){
  const workspace=s.workspaces?.[0]?.workspaceFolderAbsoluteUri||s.workspaces?.[0]?.workspaceFolderUri||s.workspaceUri||s.workspacePath||'';
  let cwd=workspace;try{if(workspace.startsWith('file:'))cwd=fileURLToPath(workspace);}catch{cwd='';}
- return{id,title:s.summary||s.title||'未命名会话',workspace:cwd,running:!!s.isRunning||s.status!=='CASCADE_RUN_STATUS_IDLE',nativeStatus:s.status||null};
+ return{id,title:s.summary||s.title||'未命名会话',workspace:cwd,updatedAt:s.lastModifiedTime||s.updatedAt||s.createdTime,source:'desktop',runtime:'desktop',mode:'native-existing',running:!!s.isRunning||s.status!=='CASCADE_RUN_STATUS_IDLE',nativeStatus:s.status||null};
 }
 
 export class AntigravitySidecar {
@@ -102,6 +102,13 @@ export class AntigravitySidecar {
    if(req.method!=='POST')return send(404,{error:'Unknown route'});
    let raw='';for await(const c of req){raw+=c;if(Buffer.byteLength(raw)>200000)throw Error('Request too large');}const input=JSON.parse(raw||'{}');
    if(!this.ready)throw Error('Native Sidecar is starting');
+   if(route==='/queue'){
+    const s=(await this.sessions()).items.find(s=>s.id===input.sessionId);
+    if(!s?.workspace||await fs.realpath(s.workspace)!==await fs.realpath(input.workspace))throw Error('原会话项目已变化，未发送消息');
+    if(typeof input.prompt!=='string'||!input.prompt.trim())throw Error('消息不能为空');
+    if(s.running)return send(200,{waiting:true});
+    await this.native.send(s.id,input.prompt);return send(200,{sent:true,sessionId:s.id});
+   }
    if(route==='/bind')return send(200,await this.bind(input));
    if(route==='/unbind')return send(200,await this.unbind(input.sessionId));
    if(route==='/tool'){

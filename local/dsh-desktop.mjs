@@ -9,7 +9,7 @@ import {parseDocument,isSeq,isMap} from 'yaml';
 import {privateJson} from './storage.mjs';
 const exec=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_ID='duola-agent-hub-desktop';
-const runtimeFiles=['dsh-connector.mjs','coding-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
+const runtimeFiles=['dsh-connector.mjs','coding-client.mjs','shared-file-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
 const read=file=>fs.readFile(file,'utf8').then(JSON.parse);
 
 // Patch only Hub's own plugin node. YAML tags and comments remain data, never evaluated here.

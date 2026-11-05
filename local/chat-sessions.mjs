@@ -41,7 +41,7 @@ export class ChatSessions {
     const listed=manager===this.coding?await manager.sessionOptions(memberId):await manager.hostFor(memberId).sessions();
     const items=presentSessions(listed.items,{bindings:r.chatBindings,channels,dataDir:manager.dataDir,platform:m.platformId==='codex'?'Codex':m.platformId==='deepseek-harness'?'DeepSeek':'Gemini'}),binding=r.chatBindings?.[channelId]||(!r.chatBindings&&r.sessionId?{sessionId:r.sessionId,title:r.title,workspace:r.cwd,migrated:true}:null);
     const legacyGemini=manager===this.coding&&m.platformId!=='codex';
-    return {...status,...listed,existingHint:listed.existingHint?sessionErrorMessage(listed.existingHint):legacyGemini?'此账号当前连接的是 Gemini 后台助手，下面是它的对话，不包含 Antigravity 桌面里的项目和对话。':'',items,projects:sessionProjects(items,listed.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};
+    return {...status,...listed,newSessionHint:legacyGemini?'新对话使用 Gemini 后台助手；如需使用 Antigravity 桌面原会话，请在桌面新建后回到项目列表选择。':'',existingHint:listed.existingHint?sessionErrorMessage(listed.existingHint):'',items,projects:sessionProjects(items,listed.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};
   }
   async channel(memberId,channelId) {
     if(typeof channelId!=='string'||!/^channel_[a-zA-Z0-9_-]+$/.test(channelId))throw Error('请选择工作区里的聊天');

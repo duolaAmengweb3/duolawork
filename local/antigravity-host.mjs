@@ -8,7 +8,7 @@ import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {privateJson} from './storage.mjs';
 const execute=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const SIDECAR='duola-agent-hub';
-const assets=['antigravity-sidecar.mjs','antigravity-tools.mjs','coding-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
+const assets=['antigravity-sidecar.mjs','antigravity-tools.mjs','coding-client.mjs','shared-file-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
 export function sidecarConfig(raw){const d=raw===null?{}:JSON.parse(raw);if(d.sidecars?.[SIDECAR]&&d.sidecars[SIDECAR].enabled!==true)throw Error('Hub 原生连接已在 Antigravity 中停用，请由用户重新启用');return{...d,sidecars:{...d.sidecars,[SIDECAR]:{...(d.sidecars?.[SIDECAR]||{}),enabled:true}}};}
 export class AntigravityDesktopHost {
  constructor(dataDir,{home=os.homedir(),exec=execute,source=here}={}){Object.assign(this,{dataDir,home,exec,source});this.kind='antigravity-desktop';this.root=process.env.AGENT_HUB_TEST_MODE==='1'&&process.env.AGENT_HUB_TEST_ANTIGRAVITY_BRIDGE_ROOT||path.join(dataDir,'native-bridges/antigravity-desktop');this.stateFile=path.join(this.root,'connector.json');}
@@ -19,7 +19,7 @@ export class AntigravityDesktopHost {
   const ps=(await this.exec('/bin/ps',['-ax','-o','pid=,command='])).stdout;const exe=app+'/Contents/Resources/bin/language_server';
   const rows=ps.split('\n').map(l=>l.match(/^\s*(\d+)\s+(.+)$/)).filter(m=>m&&m[2].startsWith(exe+' ')&&m[2].includes('--standalone'));
   if(rows.length>1)throw Error('多个 Antigravity 桌面运行端，未猜测实例');
-  return{app,version,installed:true,supported:version==='2.28.0',running:rows.length===1,pid:rows[0]?Number(rows[0][1]):null};
+  return{app,version,installed:true,supported:/^2\.(28|29)\.\d+$/.test(version),running:rows.length===1,pid:rows[0]?Number(rows[0][1]):null};
  }
  async call(route,body){
   const s=JSON.parse(await fs.readFile(this.stateFile)),url=new URL(s.controlUrl);if(url.protocol!=='http:'||url.hostname!=='127.0.0.1')throw Error('Invalid native Hub endpoint');
@@ -51,6 +51,11 @@ export class AntigravityDesktopHost {
  }
  async startOnce(launch){let d=await this.discover();if(!d.installed)throw Error('请先安装并登录官方 Antigravity 桌面版');if(!d.supported)throw Error('此桌面版本尚未通过兼容验证，未更换原软件');if(!d.running){if(!launch)throw Error('原 Antigravity 桌面版已退出，打开后继续原会话');await this.open();for(let i=0;i<60;i++){d=await this.discover();if(d.running)break;await new Promise(r=>setTimeout(r,300));}}this.progress='正在连接官方桌面原会话';try{const revision=await this.deploy();let old;try{old=await this.call('/health');}catch{}if(old&&old.revision!==revision)await this.reloadOwnSidecar();for(let i=0;i<100;i++){if((await this.status()).online){const health=await this.call('/health');if(health.revision===revision)return health;}await new Promise(r=>setTimeout(r,300));}throw Error('官方 Sidecar 尚未就绪，原登录和会话保留');}finally{this.progress=null;}}
  sessions(){return this.call('/sessions');}
+ async queue({sessionId,workspace,prompt}){
+  await this.start({launch:false});const deadline=Date.now()+20*60000;
+  while(Date.now()<deadline){const r=await this.call('/queue',{sessionId,workspace,prompt});if(r.sent)return;if(!r.waiting)throw Error('原会话未确认消息，未重复发送');await new Promise(r=>setTimeout(r,1500));}
+  throw Error('原 Antigravity 会话仍在工作，未打断当前任务');
+ }
  create(){throw Error('请在官方桌面开启工作会话，或选择 Hub 的独立后台助手');}
  async open(){await this.exec('/usr/bin/open',['-a','/Applications/Antigravity.app']);return{opened:true};}
 }

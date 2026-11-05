@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-05T03:47:44.294Z",
+  "scope": "Installed local service, real inventories, read-only project picker navigation in headless Chrome; desktop build verified independently by activation",
+  "buildId": "2bf6923846bf7b06",
+  "desktopBuildId": "2bf6923846bf7b06",
+  "checks": [
+    {
+      "member": "Codex",
+      "nativeProject": "atel",
+      "conversationCount": 6,
+      "sourceLabels": [
+        "Codex 中的对话 · 11/5",
+        "Codex 中的对话 · 11/5",
+        "Codex 中的对话 · 10/27",
+        "Codex 中的对话 · 10/21",
+        "Codex 中的对话 · 9/16",
+        "Codex 中的对话 · 9/12"
+      ]
+    },
+    {
+      "member": "Gemini",
+      "nativeProject": "afterhours",
+      "conversationCount": 1,
+      "sourceLabels": [
+        "Gemini 中的对话 · 11/4"
+      ]
+    },
+    {
+      "member": "DeepSeek本地",
+      "nativeProject": "default-workspace",
+      "conversationCount": 1,
+      "sourceLabels": [
+        "DeepSeek 中的对话 · 11/5"
+      ]
+    }
+  ],
+  "errors": [],
+  "savedAssignments": false
+}
