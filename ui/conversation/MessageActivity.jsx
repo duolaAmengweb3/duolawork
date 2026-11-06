@@ -2,12 +2,10 @@ import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ArrowUpRight,CheckCircle2,Clock3,ShieldCheck} from 'lucide-react';
 import {api,time} from '../v1/api.mjs';
 import AgentAvatar from './AgentAvatar.jsx';
-import {processingLabel,turnNotification,waitingLabel,nativeTurnDelivery} from '../../shared/chat-activity.mjs';
+import {pendingTurnState,turnNotification} from '../../shared/chat-activity.mjs';
 import {deliveryView} from '../../shared/delivery-view.mjs';
 export function activityLabel(turn,notification,native){
- if(turn.status==='active')return processingLabel(turn);
- if(turn.status==='ready')return nativeTurnDelivery(turn,native)?'等待原会话处理':waitingLabel(notification);
- if(turn.status==='limited'&&turn.resumeAfter)return '消息较密，稍后自动继续';
+ const pending=pendingTurnState(turn,notification,native);if(pending)return pending.label;
  return {done:'已回复',silent:'已读，无需补充',merged:'已合并处理',removed:'已收尾',limited:'正在核对重复通知',stalled:turn.claimedAt?'正在核对原执行结果':'尚未收到领取回执',unavailable:'等待恢复连接'}[turn.status]||'等待更新';
 }
 function Source({id,channelId,messages,onSource,label='相关消息'}){
@@ -45,7 +43,7 @@ export default function MessageActivity({snapshot,messages,members,nativeMembers
   {error&&<p role="alert" className="delivery-error">{error}</p>}
   <section aria-label="需要你处理"><h4>需要你处理 <span>{view.attention.length||''}</span></h4>{view.attention.length?view.attention.map(i=>issueCard(i,true)):<div className="delivery-clear"><CheckCircle2 size={18}/><span>暂时没有需要你操作的事情</span></div>}</section>
   {followup.length>0&&<section aria-label="待负责人跟进"><h4>待负责人跟进</h4>{followup.map(i=>issueCard(i))}</section>}
-  {(view.waiting.length>0||automatic.length>0)&&<section className="delivery-auto"><h4>自动处理中</h4>{automatic.map(i=>issueCard(i))}{view.waiting.map(group=><article className="delivery-case" key={group.id}><Source id={group.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{group.turns.map(t=>{const m=members.find(m=>m.id===t.memberId);return <div className="delivery-recipient" key={t.id}><AgentAvatar small name={m?.name} platformId={m?.platformId}/><strong>{name(t.memberId)}</strong><span>{activityLabel(t,turnNotification(t,snapshot.notifications),nativeMembers.find(m=>m.memberId===t.memberId))}</span></div>;})}<p className="delivery-next">消息已保存；正在处理时收到的补充会排队，无需重发。</p></article>)}</section>}
+  {(view.waiting.length>0||automatic.length>0)&&<section className="delivery-auto"><h4>接收与处理</h4>{automatic.map(i=>issueCard(i))}{view.waiting.map(group=><article className="delivery-case" key={group.id}><Source id={group.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{group.turns.map(t=>{const m=members.find(m=>m.id===t.memberId),state=pendingTurnState(t,turnNotification(t,snapshot.notifications),nativeMembers.find(m=>m.memberId===t.memberId),snapshot.activity);return <React.Fragment key={t.id}><div className="delivery-recipient"><AgentAvatar small name={m?.name} platformId={m?.platformId}/><strong>{name(t.memberId)}</strong><span>{state.label}</span></div><p className="delivery-next">{state.detail}</p>{state.waitingForMessageId&&<Source id={state.waitingForMessageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="正在处理的前一条消息"/>}</React.Fragment>;})}</article>)}</section>}
   <details className="delivery-history"><summary>已处理记录 · {view.history.length+view.resolved.length}</summary>{view.resolved.map(i=><article key={i.id} className="delivery-case">
    <strong>{resolutionLabel(i)}</strong><p className="delivery-impact">{i.summary}</p>
    <Source id={i.rootId||i.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="原需求"/>
