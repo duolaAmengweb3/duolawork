@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-06T02:45:47.249Z",
+  "candidateBuild": {
+    "id": "caae8fe4d98a22bf",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T02:39:16.216Z"
+  },
+  "validation": {
+    "unitTestsPassed": 342,
+    "typecheck": true,
+    "sessionProtection": true,
+    "packagedRestart": true,
+    "standaloneServerHttp": true,
+    "isolatedDesktop": "message-processing-desktop.json"
+  },
+  "liveObservation": {
+    "scope": "Current bound Codex thread metadata only; no prompt sent or native task stopped",
+    "state": "running"
+  },
+  "production": {
+    "activationBlockedByActiveWork": true,
+    "installedBuild": "d08ee31dabdd444b",
+    "desktopBuild": "d08ee31dabdd444b",
+    "backendHealthy": true,
+    "activated": false,
+    "deployed": false
+  }
+}

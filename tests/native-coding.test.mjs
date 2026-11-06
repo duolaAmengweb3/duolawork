@@ -43,7 +43,7 @@ test('idle signal polling never starts a model or claims work; failed reads do n
 });
 test('crash recovery preserves the exact session and refuses to silently replay unknown execution',async t=>{
  const dir=await temp(t);await privateJson(path.join(dir,'native-coding.json'),{member_test:{memberId:'member_test',engine:'codex',enabled:true,status:'working',sessions:{channel1:'native-session'},inFlight:{stepId:'turn1'}}});
- const manager=new CodingManager({config:{},dataDir:dir,request:async()=>{throw new Error('must not poll');}});await manager.load();assert.equal(manager.records.member_test.sessions.channel1,'native-session');assert.equal(manager.records.member_test.status,'needs_review');await manager.tick();assert.equal(manager.jobs.size,0);
+ let reads=0;const manager=new CodingManager({config:{},dataDir:dir,request:async()=>{throw new Error('No credentials in this fixture');}});manager.client=()=>({tool:async()=>{reads++;return{work:[{stepId:'turn1',status:'ready'}]};}});await manager.load();assert.equal(manager.records.member_test.sessions.channel1,'native-session');assert.equal(manager.records.member_test.status,'needs_review');await manager.tick();assert.equal(manager.jobs.size,0);assert.equal(reads,1);assert.equal(manager.records.member_test.status,'needs_review');
 });
 test('token refresh is serialized across independent MCP and receiver clients without losing rotated credentials',async t=>{
  const dir=await temp(t),file=path.join(dir,'grant.json');await privateJson(file,{memberId:'member_test',endpoint:'https://hub.test',access_token:'old-test',refresh_token:'refresh-test',client_id:'member-client',expiresAt:1});let refreshes=0;

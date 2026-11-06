@@ -2,9 +2,10 @@ import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ArrowUpRight,ChevronDown} from 'lucide-react';
 import {api,time} from '../v1/api.mjs';
 import AgentAvatar from './AgentAvatar.jsx';
+import {processingLabel} from '../../shared/chat-activity.mjs';
 const pending=new Set(['ready','active','stalled','unavailable','limited']);
 export function activityLabel(turn,notification,native){
- if(turn.status==='active')return '正在回复';
+ if(turn.status==='active')return processingLabel(turn);
  if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'原对话正在工作，已排队':notification?.status==='accepted'?'已送达，等待接收':'等待接收';
  return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:'尚未收到回复',unavailable:'等待成员连接'}[turn.status]||'等待更新';
 }

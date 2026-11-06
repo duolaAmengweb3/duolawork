@@ -86,7 +86,7 @@ test('restart observes claimed original work without interrupting, replaying or 
 });
 test('original reply completed across restart automatically clears stale interruption and resumes reception',async t=>{
  const {manager,record,agents}=await originalDelivery(t);let checks=0;
- manager.client=()=>({tool:async()=>({work:[]}),api:async p=>{assert.equal(p,'/v2/self/status');return{complete:true};}});
+ manager.client=()=>({tool:async()=>({work:[]}),api:async p=>{if(p==='/v2/self/status')return{complete:true};assert.equal(p,'/v2/self/conversation-state?turnId=turn_original');return{status:'done',completedAt:'2026-11-06T01:00:00Z'};}});
  manager.check=async()=>{checks++;};await manager.tick();
  assert.equal(record.status,'idle');assert.equal(record.inFlight,null);assert.equal(agents.length,0);assert.equal(checks,0);
  assert.equal(manager.status().members[0].pendingReply,false);
@@ -106,7 +106,7 @@ test('uncertain queued delivery is never silently sent again or declared finishe
 });
 test('disappeared work cannot make an unverified connection ready',async t=>{
  const {manager,record}=await originalDelivery(t);
- manager.client=()=>({tool:async()=>({work:[]}),api:async()=>({complete:false})});
+ manager.client=()=>({tool:async()=>({work:[]}),api:async p=>p==='/v2/self/status'?{complete:false}:{status:'done',completedAt:'2026-11-06T01:00:00Z'}});
  await manager.tick();assert.equal(record.status,'needs_review');assert.equal(record.inFlight,null);
 });
 test('a native queue receipt distinguishes pending original work from a failed connection, without replay',async t=>{
@@ -117,6 +117,6 @@ test('a native queue receipt distinguishes pending original work from a failed c
  assert.equal(record.status,'syncing');assert.equal(record.nativeDeliveries.turn_original.status,'queued');
  const state=manager.status().members[0];assert.equal(state.pendingStepId,'turn_original');assert.equal(state.deliveryState,'queued');
  assert.equal(record.chatBindings.channel_original.sessionId,'exact-original');assert.equal(agents.length,0);
- manager.client=()=>({tool:async()=>({work:[]}),api:async()=>({complete:true})});
+ manager.client=()=>({tool:async()=>({work:[]}),api:async p=>p==='/v2/self/status'?{complete:true}:{status:'done',completedAt:'2026-11-06T01:00:00Z'}});
  await manager.tick();assert.equal(record.status,'idle');assert.equal(record.inFlight,null);
 });

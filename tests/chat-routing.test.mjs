@@ -61,5 +61,5 @@ test('a completed reply is not pending; a later queued message remains visible a
   rows=pendingMemberActivity([done,next],[],[{memberId:'codex',pendingStepId:'new',deliveryState:'sent'}]);
   assert.equal(rows[0].label,'1 条消息在原会话排队');
   assert.deepEqual(rows[0].turnIds,['new']);
-  assert.match(pendingMemberActivity([done,{...next,status:'active'}])[0].label,/正在回复/);
+  assert.equal(pendingMemberActivity([done,{...next,status:'active',progress:'正在运行测试'}])[0].label,'处理中 · 正在运行测试');
 });

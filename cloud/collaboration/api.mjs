@@ -1,4 +1,5 @@
 import {registerExecutionBindings} from './execution-bindings.mjs';
+import {conversationRuntime} from './conversation.mjs';
 import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
 import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
 import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
@@ -652,6 +653,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     kick();
     return json(result);
   }
+  if(url.pathname==='/v2/self/conversation-state')return json(await conversationRuntime(repo,actor,request.method==='GET'?{action:'read',turnId:url.searchParams.get('turnId')}:await readJSON(request)));
   if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
   if (url.pathname === "/v2/self/status" && request.method === "POST") return json(await reportSetup(repo, actor, await readJSON(request)));
   if (url.pathname === "/v2/mcp") {

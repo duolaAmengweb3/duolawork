@@ -293,6 +293,25 @@ async function finishTurn(tx, actor, turnId, status, reason) {
 // claim unstarted work; an expired execution always requires explicit recovery.
 export const receivableTurn = turn => turn.status === 'ready' ||
   (turn.status === 'stalled' && !turn.claimedAt && !turn.lease);
+
+// Runtime observations do not acknowledge delivery or fabricate an Agent reply.
+export async function conversationRuntime(repo,actor,args){
+  const turn=await repo.get('channel_turn',required(args.turnId,'通知'));
+  if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能核对自己的通知',403);
+  const publicState=t=>({turnId:t.id,status:t.status,completedAt:t.completedAt||null,reason:t.reason||null});
+  if(args.action==='read')return publicState(turn);
+  if(!['running','ended','unreachable'].includes(args.state))fail('invalid_state','运行观察状态无效');
+  return repo.transact(args.requestId,{...args,actor},async tx=>{
+    const current=await tx.get('channel_turn',turn.id);
+    if(current.status!=='active')return publicState(current);
+    if(args.state==='running')return publicState(tx.put('channel_turn',{...current,nativeObservedAt:tx.now,expiresAt:new Date(Date.parse(tx.now)+30*60000).toISOString()}));
+    const reason=args.state==='ended'?'原对话已结束，但这条消息尚未回传；请在原环境检查。':'暂时无法确认原运行端状态，消息和原工作保留；未自动重做。';
+    const next=tx.put('channel_turn',{...current,status:'stalled',reason,nativeObservedAt:tx.now,interruptedAt:tx.now});
+    const resource=await tx.get('resource',current.resourceKey,false);
+    if(resource?.turnId===current.id)tx.put('resource',{...resource,status:'idle',turnId:null});
+    return publicState(next);
+  });
+}
 async function pendingConversationTurns(tx, options) {
   return (await Promise.all(['ready', 'stalled'].map(status =>
     tx.list('channel_turn', { ...options, status })))).flat().filter(receivableTurn);

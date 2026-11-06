@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-06T02:42:57.409Z",
+  "isolated": true,
+  "nativeAgentSimulated": true,
+  "realElectron": true,
+  "checks": [
+    "Packaged Mac UI shows processing and actual report_progress in chat and message details",
+    "After 61 real seconds of observed idle without receipt, cloud becomes stalled and pending indicator clears",
+    "Real isolated native-coding.json records inFlight=null and needs_review, not a fake completed reply"
+  ],
+  "elapsedToStalledMs": 61019,
+  "build": {
+    "id": "caae8fe4d98a22bf",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T02:39:16.216Z"
+  },
+  "desktopBuild": "caae8fe4d98a22bf",
+  "passed": true
+}

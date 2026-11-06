@@ -57,6 +57,13 @@ export class CodexWorkingHost {
       return queue.data?.some(item => JSON.stringify(item).includes('claim_step '+workMarker)) || false;
     });
   }
+  async executionState({sessionId}) {
+    // Read only this already-bound thread's metadata; never inspect other chats.
+    return this.read(async rpc => {
+      const {thread}=await rpc.call('thread/read',{threadId:sessionId,includeTurns:false});
+      return {state:thread.status?.type==='active'?'running':thread.status?.type==='idle'?'idle':'unknown'};
+    });
+  }
   async queue({sessionId,workspace,prompt}) {
     const list=await this.sessions(),s=list.items.find(s=>s.id===sessionId);if(!s||path.resolve(s.workspace)!==path.resolve(workspace))throw Error('原 Codex 会话未开启或项目已变化，未创建替代会话');
     return this.read(async rpc=>{
