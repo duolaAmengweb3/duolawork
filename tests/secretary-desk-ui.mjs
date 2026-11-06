@@ -16,7 +16,13 @@ try{
  await page.getByRole('button',{name:'秘书',exact:true}).click();const desk=page.getByRole('complementary',{name:'秘书工作台'});await desk.getByRole('button',{name:'日报',exact:true}).waitFor();assert.equal(await scroll.evaluate(el=>el.scrollTop),top);
  await desk.getByRole('button',{name:'全屏展开秘书'}).click();await desk.getByRole('button',{name:'收起全屏'}).click();await desk.getByRole('button',{name:'关闭秘书'}).click();assert.equal(await scroll.evaluate(el=>el.scrollTop),top);checks.push('打开、展开、关闭秘书不切群、不改变原阅读位置');
  await page.keyboard.press('Alt+KeyS');await desk.waitFor();await desk.getByRole('button',{name:'日报',exact:true}).click();const input=desk.getByRole('textbox',{name:'交代秘书'});assert.match(await input.inputValue(),/实际汇报/);
- await input.fill('请把当前项目的进展讲清楚');await input.press('Enter');assert.equal(await input.inputValue(),'');await desk.getByRole('heading',{name:'请把当前项目的进展讲清楚'}).waitFor();
+ let releasePoll,capturePoll;const pollGate=new Promise(r=>releasePoll=r),captured=new Promise(r=>capturePoll=r);let holdPoll=true;
+ await page.route('**/v2/secretary',async route=>{if(route.request().method()==='GET'&&holdPoll){holdPoll=false;const response=await route.fetch();capturePoll();await pollGate;await route.fulfill({response});}else await route.continue();});
+ await captured;await input.fill('请把当前项目的进展讲清楚');await input.press('Enter');assert.equal(await input.inputValue(),'');
+ await desk.getByText('已发送',{exact:true}).waitFor();releasePoll();await page.waitForTimeout(300);
+ assert.equal(await desk.locator('.secretary-receipt').filter({hasText:'请把当前项目的进展讲清楚'}).count(),1,'A stale in-flight poll cannot remove the acknowledged secretary request');
+ await page.unroute('**/v2/secretary');await desk.getByRole('heading',{name:'请把当前项目的进展讲清楚'}).waitFor();
+ assert.equal(await desk.locator('.secretary-receipt').filter({hasText:'请把当前项目的进展讲清楚'}).count(),1);checks.push('秘书发送确认保留到刷新读到回执，旧轮询不吞消息、不重复展示');
  const overview=await h.request('/v2/secretary');assert.equal(overview.requests.length,1);const r=overview.requests[0];assert.equal(r.context.channelId,c.id);
  const claimed=await a.call('receive_messages',{requestId:'receive-desk',channelId:r.channelId});assert.equal(claimed.input.secretaryRequests[0].id,r.id);
  await a.call('manage_workspace',{requestId:'update-result',action:'request_update',settings:{id:r.id,status:'done',progress:'已核对现有待办，发布结论尚未整理完成。'}});

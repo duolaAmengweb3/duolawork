@@ -60,6 +60,10 @@ test('a completed reply is not pending; a later queued message remains visible a
   assert.equal(rows[0].label,'1 条消息排队中');
   rows=pendingMemberActivity([done,next],[],[{memberId:'codex',pendingStepId:'new',deliveryState:'sent'}]);
   assert.equal(rows[0].label,'1 条消息排队中 · 已进入原会话');
+  rows=pendingMemberActivity([next],[],[{memberId:'codex',pendingStepId:null,assignments:[{pendingStepId:'other-channel',deliveryState:'sent'},{pendingStepId:'new',deliveryState:'queued'}]}]);
+  assert.equal(rows[0].label,'1 条消息排队中 · 已进入原会话');
+  rows=pendingMemberActivity([next],[],[{memberId:'codex',assignments:[{pendingStepId:'other-channel',deliveryState:'sent'}]}]);
+  assert.equal(rows[0].label,'1 条消息排队中');
   assert.deepEqual(rows[0].turnIds,['new']);
   assert.equal(pendingMemberActivity([done,{...next,status:'active',progress:'正在运行测试'}])[0].label,'处理中 · 正在运行测试');
 });

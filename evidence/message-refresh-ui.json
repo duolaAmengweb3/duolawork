@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-06T09:40:48.475Z",
+  "passed": true,
+  "checks": [
+    "late pre-send snapshot cannot erase acknowledged message",
+    "no transient disappearance",
+    "next poll deduplicates",
+    "one persisted message"
+  ]
+}

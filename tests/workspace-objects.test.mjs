@@ -6,6 +6,16 @@ import {callTool} from '../cloud/collaboration/api.mjs';
 import {withConversationContext} from '../cloud/collaboration/inbox.mjs';
 const owner={owner:true},agent={memberId:'grok'};
 async function setup(t){const f=await fixture(t);let n=0;const send=(type,args={},actor=owner)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'space-'+(++n),...args});const c=await send('channel.create',{name:'协作',memberIds:['grok','check'],coordinatorId:'grok'});return {...f,c,send};}
+test('coordinator can record progress on an accepted Todo without taking it over or resetting acceptance',async t=>{
+ const f=await setup(t),channelId=f.c.id;
+ const task=await f.send('channel.task',{channelId,action:'create',title:'实现并验证',assigneeId:'check'});
+ const accepted=await f.send('channel.task',{channelId,taskId:task.id,action:'accept'},{memberId:'check'});
+ const updated=await f.send('channel.task',{channelId,taskId:task.id,action:'update',progress:'已收到执行成员的初步结果'},agent);
+ assert.equal(updated.assigneeId,'check');assert.equal(updated.acceptedBy,'check');assert.equal(updated.acceptedAt,accepted.acceptedAt);assert.equal(updated.status,'doing');
+ const own=await f.send('channel.task',{channelId,taskId:task.id,action:'update',progress:'正在验证'},{memberId:'check'});
+ assert.equal(own.acceptedAt,accepted.acceptedAt);
+ await assert.rejects(f.send('channel.task',{channelId,taskId:task.id,action:'accept'},agent),e=>e.code==='forbidden');
+});
 test('Todo assignment delivers once, assignee accepts and reports blockers and results with meeting provenance',async t=>{
  const f=await setup(t),channelId=f.c.id;
  const source=await f.send('channel.post',{channelId,body:'请跟进测试结果'});

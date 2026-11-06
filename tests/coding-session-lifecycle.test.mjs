@@ -85,12 +85,12 @@ test('restart observes claimed original work without interrupting, replaying or 
  assert.equal(record.chatBindings.channel_original.sessionId,'exact-original');
 });
 test('original reply completed across restart automatically clears stale interruption and resumes reception',async t=>{
- const {manager,record,agents}=await originalDelivery(t);let checks=0;
- manager.client=()=>({tool:async()=>({work:[]}),api:async p=>{if(p==='/v2/self/status')return{complete:true};assert.equal(p,'/v2/self/conversation-state?turnId=turn_original');return{status:'done',completedAt:'2026-11-06T01:00:00Z'};}});
- manager.check=async()=>{checks++;};await manager.tick();
+ const {manager,record,agents}=await originalDelivery(t);let checks=0,pending=false;
+ manager.client=()=>({tool:async()=>({work:pending?[{stepId:'turn_next',channelId:'channel_original',status:'ready'}]:[]}),api:async p=>{if(p==='/v2/self/status')return{complete:true};if(p==='/v2/self/execution-bindings')return{};assert.equal(p,'/v2/self/conversation-state?turnId=turn_original');return{status:'done',completedAt:'2026-11-06T01:00:00Z'};}});
+ manager.check=async state=>{assert.equal(state.executionSessionId,'exact-original');checks++;};await manager.tick();
  assert.equal(record.status,'idle');assert.equal(record.inFlight,null);assert.equal(agents.length,0);assert.equal(checks,0);
  assert.equal(manager.status().members[0].pendingReply,false);
- await manager.tick();assert.equal(checks,1);
+ pending=true;await manager.tick();assert.equal(checks,1);assert.equal(record.executionReady,true);
 });
 test('lost polling response preserves original delivery and retries only the read',async t=>{
  const {manager,record,agents}=await originalDelivery(t);

@@ -130,12 +130,12 @@ export class CodingManager{
  async tickExecutions(r){
   if(r.inFlight||this.jobs.has(r.memberId)||this.sessionOperations.has(r.memberId))return;
   await this.syncExecutionBindings(r);
-  const states=this.executionRecords(r),active=states.filter(s=>this.jobs.has(executionKey(s))).length;
+  const states=this.executionRecords(r);
   const {work}=await this.client(r).tool('list_work');
-  let capacity=Math.max(0,2-active);const launched=[];
+  const launched=[];
   for(const state of states){const key=executionKey(state);if(this.jobs.has(key))continue;
    if(state.inFlight){const job=this.reconcileOriginal(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);continue;}
-   if(state.status!=='idle'||!capacity||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]))continue;capacity--;
+   if(state.status!=='idle'||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]))continue;
    const job=this.check(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);
   }
   await Promise.allSettled(launched);
@@ -151,7 +151,15 @@ export class CodingManager{
   if(this.stopped)return;
   for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)&&this.agents.has(r.memberId)&&Date.now()-(this.nativeUsedAt.get(r.memberId)||Date.parse(r.lastCompletedAt)||Date.now())>120000){const agent=this.agents.get(r.memberId);if(agent.busy||agent.rpc?.pending?.size)continue;this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
   for(const root of Object.values(this.records))for(const state of this.executionRecords(root)){const key=executionKey(state),agent=this.agents.get(key);if(agent&&state.status==='idle'&&!state.inFlight&&!this.jobs.has(key)&&Date.now()-(this.nativeUsedAt.get(key)||Date.now())>120000){this.agents.delete(key);await agent.stop().catch(()=>{});}}
-  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{if(r.executionReady&&Object.keys(r.chatBindings||{}).length){await this.tickExecutions(r);return;}const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}if(!r.inFlight&&r.status==='idle'&&r.sourceReady){const status=await this.client(r).api('/v2/self/status').catch(()=>null);if(status?.complete){r.executionReady=true;await this.save();}}}));
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{
+   // Original interactive receivers settle on a later tick. Checking readiness
+   // only after check() returns kept those verified accounts in the legacy
+   // account-wide queue forever. Upgrade before dispatching their next work.
+   if(!r.executionReady&&r.sourceReady&&Object.keys(r.chatBindings||{}).length){const status=await this.client(r).api('/v2/self/status').catch(()=>null);if(status?.complete){r.executionReady=true;await this.save();}}
+   if(r.executionReady&&Object.keys(r.chatBindings||{}).length){await this.tickExecutions(r);return;}
+   const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}
+   if(!r.inFlight&&r.status==='idle'&&r.sourceReady){const status=await this.client(r).api('/v2/self/status').catch(()=>null);if(status?.complete){r.executionReady=true;await this.save();}}
+  }));
  }
  async settleOriginal(r,client){
   const flight=r.inFlight;if(!flight)return true;

@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-06T05:02:28.663Z",
+  "at": "2026-11-06T09:48:54.145Z",
   "scope": "Isolated HTTP Hub and actual Chrome UI; protocol members, not production model latency.",
   "checks": [
     "群内已有筹备会议不自动把普通输入归入会议",

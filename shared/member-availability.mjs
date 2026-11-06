@@ -13,6 +13,7 @@ export function memberAvailability(member,connection,native,channelId,turns=[]){
   if(['disconnected','waiting_login','offline'].includes(native.status))return {state:'offline',label:'需要连接',detail:native.message||'请在原环境恢复连接。'};
   if(bound?.pendingStepId&&!turns.some(t=>t.id===bound.pendingStepId&&['done','silent','stalled','merged','removed'].includes(t.status)))return {state:bound.workState==='working'?'working':'waiting',label:bound.workState==='working'?'处理中':'等待原对话',detail:bound.workMessage||'消息已保存，原工作继续。'};
   const observed=Date.now()-Date.parse(bound?.observedAt||0)<30000?bound?.nativeState:null;
+  if(observed==='unavailable')return {state:'offline',label:'对话暂不可用',detail:'账号仍已连接；这段原对话暂未找到，请打开原对话或在本聊天重新选择。其他聊天不受影响。'};
   if(observed==='idle')return {state:'idle',label:'空闲',detail:'原运行端已报告当前对话空闲。'};
   if(observed==='running')return {state:'working',label:'运行中',detail:'当前绑定的原对话正在工作。'};
   if(['disconnected','waiting_login'].includes(native.status))return {state:'offline',label:'需要连接',detail:native.message||'请在原环境恢复连接。'};

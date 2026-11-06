@@ -1,8 +1,9 @@
 {
-  "at": "2026-11-05T07:20:21.495Z",
+  "at": "2026-11-06T09:48:42.406Z",
   "fixtureOnly": true,
   "realNativeModelTested": false,
   "checks": [
+    "update instruction reuses the existing grant; new revision receipt clears update prompt; syncing remains connected",
     "default copy instruction uses Antigravity CLI, not this Mac desktop",
     "clipboard contains complete ready-to-use member instruction",
     "remote heartbeat automatically updates original-environment status",

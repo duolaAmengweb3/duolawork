@@ -90,7 +90,8 @@ export async function cliHook(base,input,{env=process.env}={}){
  if(!await isCliTranscript(input,nativeDir))return input.toolCall?{decision:'allow'}:{};
  const bootstrap=[process.execPath,path.join(base,'native-hook.mjs'),'--attach'].map(quote).join(' ');
  const records=await read(path.join(base,'native-coding.json')).catch(()=>({}));
- const managed=Object.values(records).some(r=>{
+ const executions=Object.values(records).flatMap(r=>[r,...Object.values(r.executions||{}).map(s=>({...r,...s}))]);
+ const managed=executions.some(r=>{
   if(!r.managedNativeSessionIds?.includes(input.conversationId)||!r.managedNativePid)return false;
   try{process.kill(r.managedNativePid,0);return true;}catch{return false;}
  });
@@ -112,7 +113,7 @@ export async function cliHook(base,input,{env=process.env}={}){
  }
  // Full authorization applies only to an actual Hub dispatch in this exact
  // native conversation. A user's own turns retain their original policies.
- for(const r of Object.values(records)){
+ for(const r of executions){
   if(r.engine!=='antigravity-cli'||!r.enabled||r.permissionMode!=='full')continue;
   // A cloud receipt can arrive before the native Agent finishes its final
   // read-back. Keep that same turn authorized through native completion; the

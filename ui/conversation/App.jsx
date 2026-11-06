@@ -1,4 +1,5 @@
 import SecretaryDesk from './SecretaryDesk.jsx';
+import {MessageSnapshots} from './message-snapshots.mjs';
 import BrandMark from './BrandMark.jsx';
 import WorkspaceServices from './WorkspaceServices.jsx';
 import MessageActivity from './MessageActivity.jsx';
@@ -166,7 +167,7 @@ export default function App() {
     pendingSend = useRef(null),
     lastMessage = useRef("");
   currentRef.current = current;
-  const viewCache=useRef(new Map()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
+  const viewCache=useRef(new MessageSnapshots()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
   const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false);
   const scrollInteraction=useRef(null);
   const isUserInteracting=()=>scrollInteraction.current?.element===scroll.current&&scrollInteraction.current?.active;
@@ -174,9 +175,8 @@ export default function App() {
   const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
   readRef.current=readThrough;
   const appendMessage=useCallback((message,channelId)=>{
-    const cached=viewCache.current.get(channelId);
-    if(cached) viewCache.current.set(channelId,{...cached,messages:[...cached.messages.filter(m=>m.id!==message.id),message]});
-    if(currentRef.current===channelId)setSnapshot(old=>old?{...old,messages:[...old.messages.filter(m=>m.id!==message.id),message]}:old);
+    const next=viewCache.current.append(channelId,message);
+    if(currentRef.current===channelId&&next)setSnapshot(next);
   },[]);
   const outbox=useMessageOutbox(appendMessage);
   const savePosition=()=>{const el=scroll.current;if(!el||el.dataset.channelId!==currentRef.current)return;const top=el.getBoundingClientRect().top;const first=[...el.querySelectorAll('.chat-message')].find(m=>m.getBoundingClientRect().bottom>top);positions.current[currentRef.current]={id:first?.id,offset:first?first.getBoundingClientRect().top-top:0,number:Number(first?.dataset.messageNumber)||null,top:el.scrollTop,bottom:nearBottom.current};};
@@ -230,6 +230,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     const id = currentRef.current;
     if (!id) return;
+    const readSequence=viewCache.current.beginRead(id);
     const data = await api("/v2/channel?id=" + id);
     const first=!positions.current[id]&&unreadRef.current[id]?.firstNumber;
     if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20)}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
@@ -239,9 +240,10 @@ export default function App() {
       olderCache.current.set(id,window.messages);
       if(currentRef.current===id){setOlder(window.messages);setMoreCursor(window.before);}
     }
-    viewCache.current.set(id,data);
+    const reconciled=viewCache.current.apply(id,data,readSequence);
+    if(!reconciled)return;
     if (currentRef.current === id) {
-      setSnapshot(data);
+      setSnapshot(reconciled);
       setLastSync(new Date().toISOString());
       setMoreCursor((old) => (old === undefined ? data.before : old));
       setMeetingCursor(old=>old===undefined?data.meetingsCursor:old);

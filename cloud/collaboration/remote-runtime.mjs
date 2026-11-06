@@ -1,6 +1,8 @@
 import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
+import {revision as currentRevision} from './runtime-download.mjs';
+import {runtimeUpdateSkill} from './runtime-setup.mjs';
 
 const live=r=>!!r&&Date.now()-Date.parse(r.seenAt)<90000;
 const key=value=>required(value,'编号',120);
@@ -12,12 +14,12 @@ function member(identity,actor,memberId){
 function publicRuntime(r,m){
   const online=live(r),items=r?.items||[],bindings=r?.bindings||{};
   return {remote:!!r,items,projects:r?.projects||[],bindings,capabilities:{kind:'sessions',remote:true,existing:true,create:!!r?.create,multiple:true,label:m.name+' 的对话'},
-    record:{memberId:m.id,enabled:!!r,sourceReady:online&&r.sourceReady,status:online?r.status:'offline',message:online?r.message:r?'原环境暂时离线，连接、项目和对话均已保留':'复制说明，发给原来的 Agent 完成连接',runtimeLabel:r?.label||'',form:r?.form,assignments:Object.entries(bindings).map(([channelId,b])=>({channelId,...b}))}};
+    record:{memberId:m.id,enabled:!!r,sourceReady:online&&r.sourceReady,status:online?r.status:'offline',message:online?r.message:r?'原环境暂时离线，连接、项目和对话均已保留':'复制说明，发给原来的 Agent 完成连接',runtimeLabel:r?.label||'',form:r?.form,assignments:Object.entries(bindings).map(([channelId,b])=>({channelId,...b,...(online?(r.executions||[]).find(e=>e.channelId===channelId&&e.sessionId===b.sessionId)||{}:{})}))}};
 }
-export async function runtimeOwner(repo,identity,actor,input={},write=false){
+export async function runtimeOwner(repo,identity,actor,input={},write=false,origin=''){
   if(!actor.owner)fail('forbidden','只有用户可以选择工作对话',403);
   const m=member(identity,actor,input.memberId),r=await repo.get('remote-runtime',m.id,false);
-  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
+  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if(r){result.record.receiverRevision=r.receiverRevision||null;result.record.updateAvailable=r.receiverRevision!==currentRevision;if(origin&&result.record.updateAvailable)result.updateSkill=runtimeUpdateSkill({origin,member:m,form:r.form});}if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
   if((await repo.get('connection',m.id,false))?.status==='disconnected')fail('disconnected','请先重新连接这个账号',409);
   if(!live(r)||!r.sourceReady)fail('runtime_offline','Agent 所在的电脑或服务器暂未连接，原对话保留',409);
   if(!['existing','new'].includes(input.mode))fail('invalid_mode','请选择已有对话或新建对话');
@@ -43,7 +45,8 @@ export async function runtimeSelf(repo,identity,actor,input={},write=false){
       await repo.transact(id('runtimebeat'),{memberId:m.id,runtimeId,instanceId},async tx=>{
         const old=await tx.get('remote-runtime',m.id,false);
         if(old&&(old.runtimeId!==runtimeId||live(old)&&old.instanceId!==instanceId))fail('runtime_conflict','此账号已连接另一个环境；原连接保留，不自动覆盖',409);
-        tx.put('remote-runtime',{...old,id:m.id,runtimeId,instanceId,form:input.form,label:required(input.label,'环境名称',200),seenAt:tx.now,sourceReady:input.sourceReady===true,status:['idle','working','needs_review','connecting'].includes(input.status)?input.status:'offline',message:String(input.message||'').slice(0,1000),items,projects,create:form.create,bindings:old?.bindings||{}});return{};
+        const executions=(Array.isArray(input.executions)?input.executions:[]).filter(e=>old?.bindings?.[e.channelId]?.sessionId===e.sessionId).slice(0,1000).map(e=>({channelId:key(e.channelId),sessionId:key(e.sessionId),pendingStepId:e.pendingStepId?key(e.pendingStepId):null,nativeState:['idle','running','unavailable','unknown'].includes(e.nativeState)?e.nativeState:undefined,observedAt:Number.isFinite(Date.parse(e.observedAt))?e.observedAt:undefined,deliveryState:['sent','queued','sending','uncertain','working'].includes(e.deliveryState)?e.deliveryState:null,workState:String(e.workState||'').slice(0,60),workMessage:String(e.workMessage||'').slice(0,1000)}));
+        tx.put('remote-runtime',{...old,id:m.id,runtimeId,instanceId,form:input.form,label:required(input.label,'环境名称',200),seenAt:tx.now,sourceReady:input.sourceReady===true,receiverRevision:/^[a-f0-9]{64}$/.test(input.receiverRevision||'')?input.receiverRevision:null,status:['idle','working','syncing','needs_review','connecting','waiting_login'].includes(input.status)?input.status:'offline',message:String(input.message||'').slice(0,1000),executions,items,projects,create:form.create,bindings:old?.bindings||{}});return{};
       });
     }else if(input.action==='link'){
       await repo.transact(required(input.requestId,'请求编号',120),input,async tx=>{

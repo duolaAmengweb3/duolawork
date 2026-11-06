@@ -98,10 +98,10 @@ export async function spaceCommand(tx,identity,actor,cmd,channel,helpers){
   for(const mid of next.meetingIds){const m=await tx.get('channel_meeting',mid);if(m.scopeId!==channel.id)fail('forbidden','会议不属于本群',403);}
   if(cmd.sourceMessageId!==undefined){const m=await tx.get('channel_message',cmd.sourceMessageId);if(m.scopeId!==channel.id||m.hidden)fail('forbidden','原消息不在本群',403);next.sourceMessageId=m.id;}
   if(next.assigneeId!==old?.assigneeId){next.acceptedAt=null;next.acceptedBy=null;}
-  if(cmd.action==='accept'||(!actor.owner&&next.status==='doing')){
+  if(cmd.action==='accept'||(!actor.owner&&next.status==='doing'&&old?.status!=='doing')){
    if(next.assigneeId&&next.assigneeId!==authorId)fail('forbidden','只有执行成员可以接手',403);
    if(actor.owner)fail('forbidden','接手状态由实际成员报告');
-   next.assigneeId=authorId;next.status='doing';next.acceptedAt=tx.now;next.acceptedBy=authorId;
+   next.assigneeId=authorId;next.status='doing';next.acceptedAt=next.acceptedAt||tx.now;next.acceptedBy=authorId;
   }
   next.completedAt=next.status==='done'?(old?.completedAt||tx.now):null;
   next.completedBy=next.status==='done'?authorId:null;

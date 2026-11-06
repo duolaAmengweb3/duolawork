@@ -29,10 +29,10 @@ try{
  const claim=await coordinator.call('claim_work',{requestId:'ui-claim-review',stepId:issue.reviewTurnId});
  await coordinator.call('post_message',{requestId:'ui-receipt-only',channelId:group.id,turnId:claim.turnId,body:'收到，正在核对。'});
  await conversationMaintenance(repo,identity);
- await page.getByText('负责人核对未完成',{exact:true}).waitFor();assert.equal(await page.locator('.delivery-case.attention').count(),0);checks.push('只回复收到仍由负责人跟进，显示最近核对时间，不成为人类待办');
+ await page.getByText('负责人核对未完成',{exact:true}).waitFor();assert.equal(await page.locator('.delivery-case.attention').count(),0);await page.getByRole('region',{name:'待负责人跟进'}).waitFor();assert.equal(await page.locator('.delivery-auto .delivery-case').count(),0);checks.push('只回复收到显示待负责人跟进，不冒充自动处理中，也不成为人类待办');
  await repo.transact('ui-burst-cause',{},async tx=>tx.put('channel_delivery_issue',{...await tx.get('channel_delivery_issue',issue.id),cause:'automatic_burst',impact:'旧的流量提示',summary:'负责人还在核对后续结果。'}));
  await conversationMaintenance(repo,identity);
- await page.locator('.delivery-auto .delivery-case > .delivery-next').filter({hasText:'流量保护暂缓通知'}).waitFor();checks.push('流量保护原因在有负责人摘要时仍可见，不把过密认定成循环');
+ await page.getByRole('region',{name:'待负责人跟进'}).locator('.delivery-case > .delivery-next').filter({hasText:'流量保护暂缓通知'}).waitFor();checks.push('流量保护原因在有负责人摘要时仍可见，不把过密认定成循环');
  issue=await repo.get('channel_delivery_issue',issue.id);
  await coordinator.call('resolve_delivery',{requestId:'ui-decision',channelId:group.id,issueId:issue.id,expectedVersion:issue.version,action:'needs_user',summary:'白皮书需要确定面向技术读者还是业务读者，影响章节表达。',nextAction:'请告诉负责人优先面向哪类读者，已有草稿保留。'});
  await page.getByText('请告诉负责人优先面向哪类读者，已有草稿保留。',{exact:true}).waitFor();

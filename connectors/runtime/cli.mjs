@@ -105,12 +105,13 @@ export async function installService(alias,base){
   return{kind:'systemd'};
 }
 
-export async function run(alias,{interval=4000}={}){
+export async function run(alias,{interval=4000,managerFactory}={}){
   const base=folder(alias),config=await read(path.join(base,'runtime.json')),grantFile=path.join(base,'grant.json'),client=new CodingMemberClient(grantFile),f=nativeForm(config.form,config.platformId),instanceId=randomUUID(),lockFile=path.join(base,'service-lock.json');
+  const receiverRevision=(await read(path.resolve(path.dirname(entry),'../../runtime-version.json')).catch(()=>({}))).revision;
   let lock;try{lock=await fs.open(lockFile,'wx',0o600);}catch(e){if(e.code!=='EEXIST')throw e;const prior=await read(lockFile);let alive=true;try{process.kill(prior.pid,0);}catch(err){if(err.code==='ESRCH')alive=false;else throw err;}if(alive)throw Error('这个账号的连接器已经运行');await fs.rm(lockFile);lock=await fs.open(lockFile,'wx',0o600);}
   await lock.writeFile(JSON.stringify({pid:process.pid,instanceId}));
   let context=await client.api('/v2/self/runtime');if(context.member.platformId!==config.platformId)throw Error('成员平台已改变，未连接其他账号');
-  const manager=f.manager==='coding'?new CodingManager({config:{endpoint:config.endpoint},dataDir:base}):new DshManager({config:{endpoint:config.endpoint},dataDir:base,...(f.manager==='antigravity'?{host:new AntigravityDesktopHost(base),platformId:config.platformId,engine:'antigravity',fileName:'antigravity-desktop-members.json',requireFreshReceipt:true}:f.manager==='dsh-original'?{host:new DshOriginalHost(base),requireFreshReceipt:true}:{})});
+  const manager=managerFactory?managerFactory():f.manager==='coding'?new CodingManager({config:{endpoint:config.endpoint},dataDir:base}):new DshManager({config:{endpoint:config.endpoint},dataDir:base,...(f.manager==='antigravity'?{host:new AntigravityDesktopHost(base),platformId:config.platformId,engine:'antigravity',fileName:'antigravity-desktop-members.json',requireFreshReceipt:true}:f.manager==='dsh-original'?{host:new DshOriginalHost(base),requireFreshReceipt:true}:{})});
   await manager.load();
   manager.owner=async(route)=>{if(route==='/v2/workspace')return{members:[context.member]};if(route==='/v2/channels')return{items:context.channels};throw Error('远程成员没有所有者管理权限');};
   // Reuse one grant file, including token refresh locks, across every helper.
@@ -126,7 +127,8 @@ export async function run(alias,{interval=4000}={}){
   // Do not resume persisted work until this runtime owns a fresh heartbeat and
   // has reconciled the authoritative chat bindings (including a lost ACK).
   await manager.jobs.get(config.memberId);manager.stopped=true;
-  let stopped=false,pending=false,commandBusy=false,catalogAt=0,catalog={items:[],projects:[]};const linkJobs=new Map();
+  let stopped=false,pending=false,commandBusy=false,managerStarting=null,catalogJob=null,catalogAt=0,catalog={items:[],projects:[]};const linkJobs=new Map();
+  const reportError=e=>privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)}).catch(()=>{});
   const reconcile=async current=>{
     if(current.runtime?.runtimeId!==config.runtimeId)throw Error('原环境身份未确认，未派发消息');
     const r=manager.records[config.memberId],bindings=current.runtime.bindings||{};
@@ -139,9 +141,9 @@ export async function run(alias,{interval=4000}={}){
   const tick=async()=>{if(pending||stopped)return;pending=true;try{
     context=await client.api('/v2/self/runtime');
     const r=manager.records[config.memberId],s=f.manager==='coding'?manager.status().members.find(s=>s.memberId===config.memberId):manager.status().find(s=>s.memberId===config.memberId);
-    if(r.sourceReady&&Date.now()-catalogAt>30000){catalog=f.manager==='coding'?await manager.sessionOptions(config.memberId):await manager.hostFor(config.memberId).sessions();catalogAt=Date.now();}
-    context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'heartbeat',runtimeId:config.runtimeId,instanceId,form:config.form,label:config.label,sourceReady:!!r.sourceReady,status:s.status,message:s.message,items:catalog.items.map(s=>({...s,title:String(s.title||'未命名对话').slice(0,200)})),projects:catalog.projects||[]}});
-    if(!commandBusy){await reconcile(context);if(!stopped){if(!manager.timer)await manager.start();else manager.stopped=false;
+    if(r.sourceReady&&!catalogJob&&Date.now()-catalogAt>30000){catalogAt=Date.now();catalogJob=Promise.resolve().then(()=>f.manager==='coding'?manager.sessionOptions(config.memberId):manager.hostFor(config.memberId).sessions()).then(next=>{catalog=next;}).catch(reportError).finally(()=>{catalogJob=null;});}
+    context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'heartbeat',receiverRevision,runtimeId:config.runtimeId,instanceId,form:config.form,label:config.label,sourceReady:!!r.sourceReady,status:s.status,message:s.message,executions:(s.assignments||[]).filter(b=>b.pendingStepId||b.nativeState).map(({channelId,sessionId,pendingStepId,deliveryState,workState,workMessage,nativeState,observedAt})=>({channelId,sessionId,pendingStepId,deliveryState,workState,workMessage,nativeState,observedAt})),items:catalog.items.map(s=>({...s,title:String(s.title||'未命名对话').slice(0,200)})),projects:catalog.projects||[]}});
+    if(!commandBusy){await reconcile(context);if(!stopped){if(!manager.timer&&!managerStarting)managerStarting=manager.start().catch(reportError).finally(()=>{managerStarting=null;});else manager.stopped=false;
       if(f.manager==='coding'&&r.inFlight&&r.status==='needs_review'&&!manager.jobs.has(config.memberId))await manager.resume({memberId:config.memberId});
     }}
     const links=(await client.api('/v2/self/session-links')).items.filter(l=>l.executor==='runtime'&&l.runtimeId===config.runtimeId);
@@ -185,7 +187,7 @@ export async function run(alias,{interval=4000}={}){
     await privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)});
   }finally{pending=false;}};
   const timer=setInterval(()=>void tick(),interval);await tick();
-  const close=async()=>{if(stopped)return;stopped=true;clearInterval(timer);manager.stopped=true;while(pending||commandBusy||manager.jobs.size||linkJobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
+  const close=async()=>{if(stopped)return;stopped=true;clearInterval(timer);manager.stopped=true;while(pending||commandBusy||managerStarting||catalogJob||manager.jobs.size||linkJobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
   process.once('SIGTERM',()=>void close());process.once('SIGINT',()=>void close());return{manager,close,tick};
 }
 if(process.argv[1]&&await fs.realpath(process.argv[1]).catch(()=>'')===entry){const [command,alias]=process.argv.slice(2);(async()=>{if(command==='setup'){let raw='';for await(const c of process.stdin){raw+=c;if(raw.length>10000)throw Error('接入参数过大');}console.log(JSON.stringify(await setup(JSON.parse(raw))));}else if(command==='run')await run(alias);else throw Error('请使用软件复制的接入说明');})().catch(e=>{console.error('DuolaWork: '+safeError(e));process.exitCode=1;});}

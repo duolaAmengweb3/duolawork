@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {DshManager} from '../local/dsh-manager.mjs';
 import {DshHost} from '../local/dsh-host.mjs';
+import {memberAvailability} from '../shared/member-availability.mjs';
 async function fixture(t){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-dsh-manager-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let complete=false,online=true;const calls=[],bindings=[];
  const host={load:async()=>{},start:async()=>{},status:async()=>({online,configured:true,model:'fixture-model'}),sessions:async()=>({items:[{id:'original-session',title:'Original work',workspace:dir,running:false}]}),create:async()=>{throw Error('Must not create replacement');},call:async(route,body)=>{calls.push({route,body});if(!online)throw Error('offline');if(route==='/health')return{bindings};if(route==='/bind'){bindings.push({sessionId:body.sessionId,memberId:'member_one'});return{};}if(route==='/unbind'){bindings.length=0;return{nativeSessionRetained:true};}throw Error(route);}};
@@ -12,6 +13,17 @@ async function fixture(t){
  const manager=new DshManager({config:{endpoint:'https://hub.test',adminKey:'private-admin-test'},dataDir:dir,host,request});await manager.load();
  return{dir,manager,host,calls,bindings,setComplete:v=>complete=v,setOnline:v=>online=v};
 }
+test('one missing desktop conversation does not mark every other conversation offline',async t=>{
+ const f=await fixture(t);await f.manager.connectSource({memberId:'member_one'});await f.manager.jobs.get('member_one');
+ const r=f.manager.records.member_one;r.chatBindings={good:{sessionId:'original-session',workspace:f.dir},missing:{sessionId:'not-found',workspace:f.dir}};
+ await f.manager.tick();const status=f.manager.status()[0],member={id:'member_one',platformId:'deepseek-harness'};
+ assert.equal(status.status,'idle');assert.equal(status.sourceReady,true);
+ assert.equal(memberAvailability(member,{},status,'good').state,'idle');
+ assert.equal(memberAvailability(member,{},status,'missing').label,'对话暂不可用');
+ assert.ok(!f.calls.some(c=>c.route==='/bind'&&c.body.sessionId==='not-found'));
+ f.host.sessions=async()=>({items:[{id:'original-session',running:false},{id:'not-found',running:false}]});
+ await f.manager.tick();assert.equal(memberAvailability(member,{},f.manager.status()[0],'missing').state,'idle');
+});
 test('existing DSH binding preserves native work and becomes ready only after an actual provider receipt',async t=>{
  const f=await fixture(t);await f.manager.connect({memberId:'member_one',sessionId:'original-session'});await f.manager.jobs.get('member_one');await f.manager.tick();
  assert.equal(f.manager.records.member_one.sessionId,'original-session');assert.equal(f.manager.status()[0].verified,false);

@@ -39,6 +39,8 @@ test('a completed Hub receipt retains native turn cleanup permissions, but a hum
  await fs.writeFile(file,JSON.stringify({source:'SYSTEM',type:'SYSTEM_MESSAGE',content:'[Message] sender='+id+' content=DuolaWork collaboration step_done\nfinish'})+'\n');
  await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{engine:'antigravity-cli',enabled:true,permissionMode:'full',inFlight:null,nativeDeliveries:{step_done:{sessionId:id,status:'sent'}}}}));
  assert.equal((await cliHook(dir,input,{env})).decision,'auto_approve');
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{engine:'antigravity-cli',enabled:true,permissionMode:'full',executions:{[id]:{nativeDeliveries:{step_done:{sessionId:id,status:'sent'}}}}}}));
+ assert.equal((await cliHook(dir,input,{env})).decision,'auto_approve','Parallel native execution retains its own authorization');
  await fs.appendFile(file,JSON.stringify({source:'USER_EXPLICIT',type:'USER_INPUT',content:'my own next task'})+'\n');assert.equal((await cliHook(dir,input,{env})).decision,'allow');
 });
 
@@ -47,6 +49,7 @@ test('automatic reattachment skips managed sessions and approves only the exact 
  const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',file=path.join(dir,'brain',id,'.system_generated/logs/transcript.jsonl');await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,'');await fs.writeFile(path.join(dir,'runtime.json'),'{}');
  const input={conversationId:id,transcriptPath:file},env={ANTIGRAVITY_APP_DATA_DIR:dir};
  await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{managedNativePid:process.pid,managedNativeSessionIds:[id]}}));assert.deepEqual(await cliHook(dir,input,{env}),{});
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{executions:{[id]:{managedNativePid:process.pid,managedNativeSessionIds:[id]}}}}));assert.deepEqual(await cliHook(dir,input,{env}),{},'A parallel managed session must not attach a second receiver');
  await fs.writeFile(path.join(dir,'native-coding.json'),'{}');const output=await cliHook(dir,input,{env});assert.equal(output.injectSteps.length,1);
  const command=output.injectSteps[0].systemMessage.systemMessage.split('原样运行一次：')[1].split('。')[0];
  assert.equal((await cliHook(dir,{...input,toolCall:{name:'run_command',args:{CommandLine:command}}},{env})).decision,'auto_approve');

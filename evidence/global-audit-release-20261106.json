@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-06T09:49:53.393Z",
+  "buildId": "01a4be49dd7017c9",
+  "checks": {
+    "installedSourceMatches": [
+      "local/coding-manager.mjs",
+      "local/dsh-manager.mjs",
+      "shared/chat-activity.mjs",
+      "shared/member-availability.mjs",
+      "dist/index.html"
+    ],
+    "serverWorkerHash": "d6d7acaae189443d1676a40f667753a049c486ea1344ff4d8c9af2d4491f6f0d",
+    "desktopAndServiceMatch": true,
+    "protectedLocalDataUnchanged": true,
+    "workspaceDataUnchanged": true,
+    "unitTests": 391,
+    "unitFailed": 0
+  },
+  "runtime": {
+    "publishedSHA256": "f3f6391596b6fa99c0d9d63e2c5201a538535b41f96a31c48b5c56123f953744",
+    "expectedRevision": "65fe72fdedf466629b8a8fa6d6d642c9cd41064ceaad24bcb84739929550f682",
+    "observedGeminiRevision": null,
+    "geminiUpdateRequired": true,
+    "nativeConcurrencyVerified": false,
+    "claudeModified": false
+  },
+  "browserEvidence": [
+    "message-refresh-ui.json",
+    "secretary-desk-ui.json",
+    "experience-ui.json",
+    "delivery-review-ui.json",
+    "meeting-addressing-ui.json",
+    "remote-native-ui.json"
+  ]
+}

@@ -15,6 +15,9 @@ export function waitingLabel(notice) {
   if (notice?.unclaimedRetry && notice.status === 'accepted') return '尚未接收 · 已重新通知';
   return notice?.status === 'accepted' ? '等待成员接收' : '排队中';
 }
+export function nativeTurnDelivery(turn, native) {
+  return [native,...(native?.assignments||[])].find(state=>state?.pendingStepId===turn.id&&['sent','queued'].includes(state.deliveryState));
+}
 export function pendingMemberActivity(activity = [], notifications = [], nativeMembers = []) {
   const grouped = new Map();
   for (const turn of activity) {
@@ -26,7 +29,7 @@ export function pendingMemberActivity(activity = [], notifications = [], nativeM
     const active = turns.filter(t => t.status === 'active');
     const ready = turns.filter(t => t.status === 'ready');
     const native = nativeMembers.find(m => m.memberId === memberId);
-    const queued = ready.some(t => t.id === native?.pendingStepId && ['sent','queued'].includes(native.deliveryState));
+    const queued = ready.some(t => nativeTurnDelivery(t,native));
     const notices = ready.map(t => turnNotification(t, notifications));
     const retried = notices.find(n => n?.unclaimedRetry && ['accepted','retry','sending'].includes(n.status));
     const accepted = notices.find(n => n?.status === 'accepted');
