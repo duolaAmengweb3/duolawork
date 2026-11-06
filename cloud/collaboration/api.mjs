@@ -1,3 +1,4 @@
+import {secretaryOverview,secretaryCommand} from './secretary.mjs';
 import {registerExecutionBindings} from './execution-bindings.mjs';
 import {conversationRuntime} from './conversation.mjs';
 import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
@@ -740,6 +741,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});
   if(url.pathname==='/v2/memory-forget'&&request.method==='POST')return json(await memoryTool(repo,actor,'forget_memory',await readJSON(request),identity));
   if(url.pathname==='/v2/memory-search'&&request.method==='GET')return json(await recallMemory(repo,actor,Object.fromEntries(url.searchParams),env.MEMORY));
+  if(url.pathname==='/v2/secretary'){const result=request.method==='GET'?await secretaryOverview(repo,identity,actor):await secretaryCommand(repo,identity,actor,await readJSON(request));if(request.method!=='GET')kick();return json(result);}
   if(url.pathname==='/v2/management')return json(request.method==='GET'?await workspaceOverview(repo,identity,actor):await managementSettings(repo,identity,actor,await readJSON(request)));
   if(url.pathname==='/v2/channel-unread'&&request.method==='POST')return json(await channelUnread(repo,(await readJSON(request)).cursors));
   if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await repo.list("channel",{order:"recent",limit:500})});

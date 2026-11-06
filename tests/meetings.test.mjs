@@ -16,6 +16,19 @@ async function setup(t,mode='crosscheck') {
  const plan=async()=>{const c=await claim('grok');const p=await meet('plan',{title:'产品机会',goal:'澄清用户价值',deliverable:'候选方向与验证办法',mode,body:'先分别判断，再核查关键依据。',agenda:[{title:'需求是否成立'}]},actor('grok'));return p;};
  return {...f,send,meet,claim,plan,channel,prepare,now};
 }
+test('自然确认不要求固定口令；负责人引用最新用户原话，旧消息和成员代确认无效',async t=>{
+ const f=await setup(t);await f.plan();
+ let msg=await f.meet('say',{body:'就这么开吧'});
+ let started=await f.meet('start',{},actor('grok'));assert.equal(started.status,'running');
+ const g=await setup(t);await g.plan();
+ const first=await g.meet('say',{body:'这个安排可以，大家现在开始讨论。'});
+ await assert.rejects(g.meet('start',{ownerMessageId:first.id,confirmationQuote:'伪造用户确认'},actor('grok')),e=>e.code==='start_not_confirmed');
+ await assert.rejects(g.meet('start',{ownerMessageId:first.id,confirmationQuote:first.body},actor('check')),e=>e.code==='forbidden');
+ started=await g.meet('start',{ownerMessageId:first.id,confirmationQuote:first.body},actor('grok'));
+ assert.equal(started.status,'running');assert.equal(started.startConfirmation.messageId,first.id);
+ const h=await setup(t);await h.plan();const old=await h.meet('say',{body:'这个安排可以，大家现在开始讨论。'});await h.meet('say',{body:'等一下，我再补充一些要求。'});
+ await assert.rejects(h.meet('start',{ownerMessageId:old.id,confirmationQuote:old.body},actor('grok')),e=>e.code==='start_not_confirmed');
+});
 test('原生完成状态统一且不能绕过依据检查；结构化金额原样保存',async t=>{
  for(const status of ['supported','done','resolved','confirmed','completed']){
   const f=await setup(t);await f.plan();let m=await f.meet('start');

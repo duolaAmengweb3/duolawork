@@ -1,3 +1,4 @@
+import {secretaryManage} from './secretary.mjs';
 import {runtimeSkill} from './runtime-setup.mjs';
 import {claudeSkill} from './claude-setup.mjs';
 import {formsFor,nativeForm} from '../../shared/native-forms.mjs';
@@ -8,7 +9,7 @@ import {requireManager,workspaceGrant} from './delegation.mjs';
 import {conversationCommand,readChannel} from './conversation.mjs';
 import {issueAgentSkill} from './onboarding.mjs';
 const string={type:'string'};
-export const MANAGEMENT_TOOLS=[{name:'manage_workspace',description:'当前全局秘书的实际管理工具。list查看所有单聊/群聊、成员和接入状态；read读取指定聊天；create_group/update_group管理群；prepare_member准备新账号成员；prepare_connection返回一次性接入说明，官方登录仍由用户完成。skills/skill 列出与配置共享技能；connections/connection 管理连接使用范围，settings 使用同名管理表单字段；需要令牌授权时让用户在连接器页完成。保留实际秘书身份，不读取原生登录凭证。跨群管理需依据用户委托；更换负责人不能自行改用户安排。',inputSchema:{type:'object',properties:{requestId:string,action:{type:'string',enum:['list','read','create_group','update_group','prepare_member','prepare_connection','skills','skill','connections','connection']},channelId:string,before:{type:'integer'},name:string,memberId:string,platformId:string,form:string,memberIds:{type:'array',items:string,maxItems:30},coordinatorId:string,description:string,settings:{type:'object'}},required:['requestId','action'],additionalProperties:false}}];
+export const MANAGEMENT_TOOLS=[{name:'manage_workspace',description:'当前全局秘书的实际管理工具。list查看所有单聊/群聊、成员和接入状态；read读取指定聊天；create_group/update_group管理群；prepare_member准备新账号成员；prepare_connection返回一次性接入说明，官方登录仍由用户完成。skills/skill 列出与配置共享技能；connections/connection 管理连接使用范围，settings 使用同名管理表单字段；需要令牌授权时让用户在连接器页完成。overview读取跨群现状与秘书委托；watch用settings.kind(task/meeting)、id关注真实事项完结；request_update用settings.id、status(doing/done/blocked/watching)、progress、refs更新真实委托进度。保留实际秘书身份，不读取原生登录凭证。跨群管理需依据用户委托；更换负责人不能自行改用户安排。',inputSchema:{type:'object',properties:{requestId:string,action:{type:'string',enum:['list','read','create_group','update_group','prepare_member','prepare_connection','skills','skill','connections','connection','overview','watch','request_update']},channelId:string,before:{type:'integer'},name:string,memberId:string,platformId:string,form:string,memberIds:{type:'array',items:string,maxItems:30},coordinatorId:string,description:string,settings:{type:'object'}},required:['requestId','action'],additionalProperties:false}}];
 export async function managementSettings(repo,identity,actor,args){
  if(!actor.owner)fail('forbidden','秘书由用户指定和更换',403);
  return repo.transact(args.requestId,{...args,actor},async tx=>{
@@ -26,6 +27,7 @@ export async function workspaceOverview(repo,identity,actor){
 }
 export async function manageWorkspace(repo,identity,actor,args,env={}){
  const grant=await requireManager(repo,actor);
+ if(['overview','watch','request_update'].includes(args.action))return secretaryManage(repo,identity,actor,args);
  if(['skills','skill'].includes(args.action))return skillSettings(repo,identity,actor,args.action==='skills'?{action:'list'}:{...args.settings,requestId:args.requestId});
  if(['connections','connection'].includes(args.action))return connectorSettings(repo,identity,actor,args.action==='connections'?{action:'list'}:{...args.settings,requestId:args.requestId},env);
  if(args.action==='list')return workspaceOverview(repo,identity,actor);

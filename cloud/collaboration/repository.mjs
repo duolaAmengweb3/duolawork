@@ -47,6 +47,8 @@ export class Repository {
       order = "id",
       cursor,
       excludeHidden = false,
+      replyTo,
+      questionIds,
     } = {},
   ) {
     let sql = "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind=?";
@@ -62,6 +64,17 @@ export class Repository {
       }
     if (excludeHidden)
       sql += " AND COALESCE(json_extract(body,'$.hidden'),0)=0";
+    if (replyTo?.length) {
+      const roots = replyTo.slice(0,100);
+      const placeholders = roots.map(()=>'?').join(',');
+      sql += ` AND (json_extract(body,'$.replyTo') IN (${placeholders}) OR json_extract(body,'$.rootId') IN (${placeholders}))`;
+      params.push(...roots,...roots);
+    }
+    if (questionIds?.length) {
+      const ids=questionIds.slice(0,500);
+      sql += ` AND json_extract(body,'$.questionId') IN (${ids.map(()=>'?').join(',')}) AND json_extract(body,'$.type')='question'`;
+      params.push(...ids);
+    }
     if (order === "recent") {
       if (cursor) {
         sql += " AND (updated_at<? OR (updated_at=? AND id<?))";

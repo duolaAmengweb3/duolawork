@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-06T03:21:33.201Z",
+  "at": "2026-11-06T04:04:01.637Z",
   "isolated": true,
   "realElectron": false,
   "realBrowser": true,
@@ -13,11 +13,11 @@
     "Switching away and back still restores the final user-selected reading position"
   ],
   "build": {
-    "id": "888b3fcb7cdc079b",
+    "id": "f4eadefb53f0f67d",
     "version": "0.1.0",
-    "builtAt": "2026-11-06T03:20:23.590Z"
+    "builtAt": "2026-11-06T04:01:47.200Z"
   },
-  "renderedBuild": "888b3fcb7cdc079b",
+  "renderedBuild": "f4eadefb53f0f67d",
   "wheelWrites": [],
   "pointerWrites": [],
   "keyboardWrites": [],

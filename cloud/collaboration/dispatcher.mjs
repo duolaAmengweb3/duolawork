@@ -1,3 +1,4 @@
+import {secretaryMaintenance} from './secretary.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import { signedHeaders } from "./security.mjs";
 import { fail, id } from "./repository.mjs";
@@ -297,6 +298,7 @@ export async function maintenance(
   now = new Date().toISOString(),
 ) {
   await conversationMaintenance(repo,identity,now);
+  await secretaryMaintenance(repo,identity,now);
   const beganAt = Date.now();
   // Deliver current conversation work before schedule scans and recovery work.
   const summary = { ...(await dispatchPending(repo,identity,env,fetcher,now)), schedules:0,recovered:0 };

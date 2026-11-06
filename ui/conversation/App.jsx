@@ -1,3 +1,5 @@
+import SecretaryDesk from './SecretaryDesk.jsx';
+import BrandMark from './BrandMark.jsx';
 import WorkspaceServices from './WorkspaceServices.jsx';
 import MessageActivity from './MessageActivity.jsx';
 import CollaborationSpace,{ReferenceChip,refOf,MeetingStart} from './CollaborationSpace.jsx';
@@ -128,7 +130,8 @@ export default function App() {
     [channels, setChannels] = useState([]),
     [current, setCurrent] = useState(saved.current.channelId || ""),
     [snapshot, setSnapshot] = useState(null),
-    [page, setPage] = useState(["members","secretary","connectors","skills"].includes(saved.current.page) ? saved.current.page : "chat"),
+    [secretaryOpen,setSecretaryOpen]=useState(saved.current.page==="secretary"),[secretarySource,setSecretarySource]=useState(null),
+    [page, setPage] = useState(["members","connectors","skills"].includes(saved.current.page) ? saved.current.page : "chat"),
     [tab, setTab] = useState(saved.current.spaceTab||"documents"),
     [spaceSelection,setSpaceSelection]=useState(null),[spaceEditor,setSpaceEditor]=useState(null),[meetingStart,setMeetingStart]=useState(false),
     [references,setReferences]=useState(saved.current.references||{}),
@@ -321,6 +324,8 @@ export default function App() {
     perform(() => command(type, { channelId: current, ...args })).catch(
       () => {},
     );
+  useEffect(()=>{const key=e=>{if(e.altKey&&e.code==='KeyS'){e.preventDefault();setSecretaryOpen(v=>!v);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+  useEffect(()=>{if(!secretarySource||snapshot?.channel.id!==secretarySource.channelId)return;const ref=secretarySource.ref;setSecretarySource(null);if(!ref)return;if(ref.kind==='question'){const message=snapshot.messages.find(m=>m.questionId===ref.id);if(message)jumpToSource(message.id);else setError('请在原群查看待回答的问题');}else openObject(ref);},[secretarySource,snapshot]);
   const openDirect = async (member) => {
     const directChannels = channels.filter(c => c.direct && c.memberIds.length === 1 && c.memberIds[0] === member.id);
     let dm = directChannels.find(c => c.status !== "archived") || directChannels[0];
@@ -527,9 +532,7 @@ export default function App() {
     <div className="communication" data-build-id={BUILD.id}>
       <aside className="comm-sidebar">
         <div className="comm-brand">
-          <span>
-            <Layers size={20} />
-          </span>
+          <BrandMark size={38} loop/>
           <strong>
             DuolaWork<small>一起沟通，一起完成</small>
           </strong>
@@ -550,7 +553,7 @@ export default function App() {
           <Users size={17} />
           成员与连接<span>{workspace.members.length}</span>
         </button>
-        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} className={"nav-home "+(page===key?"selected":"")} onClick={()=>setPage(key)}><Icon size={17}/>{label}</button>)}
+        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} aria-label={label} title={label} className={"nav-home "+((key==="secretary"?secretaryOpen:page===key)?"selected":"")} onClick={()=>key==="secretary"?setSecretaryOpen(v=>!v):setPage(key)}>{key==="secretary"?<BrandMark motion="hand" size={22} alt=""/>:<Icon size={17}/>}{label}</button>)}
         <div className="sidebar-caption">
           <div className="chat-kind-tabs" role="group" aria-label="聊天类型">{[['direct','单聊'],['group','群聊']].map(([kind,label])=><button key={kind} aria-pressed={chatKind===kind} onClick={()=>switchChatKind(kind)}>{label}{channels.some(c=>!!c.direct===(kind==='direct')&&!!unread[c.id]?.count)&&<i/>}</button>)}</div>
           <button
@@ -616,7 +619,7 @@ export default function App() {
             {notice}
           </div>
         )}
-        {["secretary","connectors","skills"].includes(page)?<WorkspaceServices key={page} page={page} workspace={workspace} channels={channels} onChat={openDirect} onChannel={id=>{savePosition();setCurrent(id);setChatKind(channels.find(c=>c.id===id)?.direct?"direct":"group");setPage("chat");}}/>:page === "members" ? (
+        {["connectors","skills"].includes(page)?<WorkspaceServices key={page} page={page} workspace={workspace} channels={channels} onChat={openDirect} onChannel={id=>{savePosition();setCurrent(id);setChatKind(channels.find(c=>c.id===id)?.direct?"direct":"group");setPage("chat");}}/>:page === "members" ? (
           <Members
             workspace={workspace}
             coding={codingStatus}
@@ -629,7 +632,7 @@ export default function App() {
         ) : !channel ? (
           <div className="comm-welcome">
             <div className="welcome-icon">
-              <MessageSquare size={32} />
+              <BrandMark motion="hand" loop size={64}/>
             </div>
             <small>YOUR AGENT WORKSPACE</small>
             <h1>从一段对话开始</h1>
@@ -697,6 +700,7 @@ export default function App() {
                 </Button>
               </div>
             </header>
+            {(snapshot.meetings||[]).length>0&&<div className="meeting-status-strip" aria-label="本群会议状态">{(activeMeetings.length?activeMeetings:[snapshot.meetings[0]]).slice(0,3).map(m=><div key={m.id}><button onClick={()=>setMeetingPanel({id:m.id,channelId:current})}><Video size={15}/><span className={'meeting-state '+m.status}>{{preparing:'筹备中',running:'进行中',closing:'整理结论',ended:'已结束',closed:'已结束'}[m.status]||'会议记录'}</span><strong>{m.title}</strong></button>{m.status==='preparing'&&<Button size="sm" variant="outline" disabled={!m.plannedAt} onClick={()=>act('channel.meeting',{action:'start',meetingId:m.id,expectedVersion:m.version})}>{m.plannedAt?'按此安排开始':'负责人正在整理安排'}</Button>}{['running','closing'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>act('channel.meeting',{action:'stop',meetingId:m.id})}>结束会议</Button>}{['ended','closed'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>setMeetingPanel({id:m.id,channelId:current})}>查看记录与总结</Button>}</div>)}</div>}
             <div className="comm-body">
               <section className="conversation-column">
                 <div
@@ -895,6 +899,7 @@ export default function App() {
           </>
         )}
       </main>
+      <SecretaryDesk open={secretaryOpen} onClose={()=>setSecretaryOpen(false)} workspace={workspace} codingStatus={codingStatus} context={channel?{channelId:channel.id,name:channel.name,...(spaceSelection?{ref:spaceSelection}:documentId?{ref:{kind:'document',id:documentId}}:{})}:null} onChanged={refreshWorkspace} onConnect={member=>setModal({type:'connect',member})} onSource={(channelId,ref)=>{savePosition();setCurrent(channelId);setChatKind(channels.find(c=>c.id===channelId)?.direct?'direct':'group');setPage('chat');setSecretaryOpen(false);setSecretarySource({channelId,ref});}}/>
       {meetingStart&&channel&&<MeetingStart channel={channel} members={groupMembers} onClose={()=>setMeetingStart(false)} onStart={async(body,host)=>{const m=await perform(()=>command('channel.meeting',{channelId:current,action:'prepare',body,coordinatorId:host}));setMeetingStart(false);setMeetingPanel(null);setSide(true);setTab('meetings');setMeetingScopes(old=>({...old,[current]:m.id}));nearBottom.current=true;}}/>}
       {modal && (
         <Modal

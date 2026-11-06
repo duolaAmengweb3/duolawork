@@ -56,6 +56,8 @@ execFileSync("/usr/libexec/PlistBuddy", [
   "Set :CFBundleIdentifier com.duola.agenthub",
   plist,
 ]);
+await fs.copyFile(path.join(root,'desktop/assets/DuolaWork.icns'),path.join(out,'Contents/Resources/DuolaWork.icns'));
+execFileSync('/usr/libexec/PlistBuddy',['-c','Set :CFBundleIconFile DuolaWork.icns',plist]);
 execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", out]);
 console.log("本机可运行构建：" + out + "（本机签名，尚无 Developer ID 公证）");
 

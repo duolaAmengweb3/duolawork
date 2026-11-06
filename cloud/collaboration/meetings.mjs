@@ -20,7 +20,7 @@ export const MEETING_TOOLS = [{
       memberIds: { type: 'array', items: string, maxItems: 30 },
       durationSeconds: { type: 'integer', minimum: 60, maximum: 7200 },
       expectedVersion: { type: 'integer' }, round: { type: 'integer' },
-      sourceVersion: { type: 'integer' }, ownerMessageId: string,
+      sourceVersion: { type: 'integer' }, ownerMessageId: string, confirmationQuote: {type:'string',description:'负责人理解用户已明确同意按当前安排开始时，逐字引用最新用户筹备消息；与ownerMessageId一起记录确认来源，不得引用成员意见或旧消息。'},
       closure: { type: 'string', enum: ['coordinator', 'deadline'] },
       agenda: { type: 'array', maxItems: 20, items: { type: 'object', properties: { id: string, title: string, expected: string, status: string, replaces: { type: 'array', items: string } }, required: ['title'] } },
       answers: { type: 'array', maxItems: 20, items: { type: 'object', properties: { agendaId: string, body: string, status: {type:'string',description:'supported=有本场依据的结论；partial=部分回答；unresolved=尚未解决；disputed=仍有分歧。done/resolved/confirmed兼容为supported，同样必须附本场evidenceIds。'}, evidenceIds: { type: 'array', items: string }, dissent: string }, required: ['agendaId', 'body'] } },
@@ -49,7 +49,7 @@ export function publicMeeting(m, actor = { owner: true }) {
   if (m.status === 'preparing' && !actor.owner && actor.memberId !== m.coordinatorId && actor.memberId !== m.createdBy) return null;
   return m;
 }
-const ownerStart = body => /^(就这样开|就这么开|按这个开|按这个开始|开始|开始吧|开始会议|开始开会|开会吧|就这样开始)[。！!\s]*$/u.test(body.trim());
+const ownerStart = body => /^(就这样开(?:吧)?|就这么开(?:吧)?|按这个开(?:吧)?|按这个开始(?:吧)?|开始|开始吧|开始会议|开始开会|开会吧|就这样开始(?:吧)?)[。！!\s]*$/u.test(body.trim());
 const ownerStop = body => /^(停止本场会议|结束这场会议|停止会议|结束会议|这场会议先停|立刻停止本场会议|停止全部调用)[。！!\s]*$/u.test(body.trim());
 
 async function release(tx, actor, cmd, helpers, channel) {
@@ -213,10 +213,19 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     return next;
   }
   if (action === 'start') {
-    if (!actor.owner) { host(m, actor); if (!m.startAuthorizedVersion || m.startAuthorizedVersion !== m.version) fail('start_not_confirmed', '请先和用户确定目标与交付，用户可以在筹备对话说“就这样开”'); }
+    let semanticConfirmation=false;
+    if(!actor.owner){
+      host(m,actor);
+      if(cmd.confirmationQuote&&cmd.ownerMessageId===m.lastOwnerMessageId){
+        const confirmation=await tx.get('meeting_preparation',cmd.ownerMessageId);
+        semanticConfirmation=confirmation.authorId==='owner'&&confirmation.parentId===m.id&&confirmation.body===cmd.confirmationQuote&&confirmation.createdAt>=m.plannedAt&&m.basedOnOwnerMessageId!==confirmation.id;
+        if(semanticConfirmation)m.startConfirmation={messageId:confirmation.id,quote:confirmation.body,interpretedBy:actor.memberId,planVersion:m.version};
+      }
+      if(!semanticConfirmation&&(!m.startAuthorizedVersion||m.startAuthorizedVersion!==m.version))fail('start_not_confirmed','请先与用户确认本场安排；明确同意后引用最新用户原话作为确认来源，或由用户点击开始');
+    }
     if (m.status !== 'preparing') { if (active(m)) return m; fail('meeting_ended', '会议已结束，请保留原记录后另开'); }
     if (!m.version || !m.goal || !m.deliverable) fail('plan_required', '负责人尚未提交本场目标、交付和组织安排，请继续沟通');
-    if(m.basedOnOwnerMessageId!==m.lastOwnerMessageId&&!ownerStart((await tx.get('meeting_preparation',m.lastOwnerMessageId)).body))fail('new_owner_input','负责人正在处理你的新补充，请等最新安排形成后再开始',409);
+    if(!semanticConfirmation&&m.basedOnOwnerMessageId!==m.lastOwnerMessageId&&!ownerStart((await tx.get('meeting_preparation',m.lastOwnerMessageId)).body))fail('new_owner_input','负责人正在处理你的新补充，请等最新安排形成后再开始',409);
     if (cmd.expectedVersion !== undefined && cmd.expectedVersion !== m.version) fail('version_conflict', '筹备安排已变化，请查看最新安排后开始', 409);
     const available = [];
     for (const mid of m.memberIds) if (liveMember(identity, mid) && (await tx.get('connection', mid, false))?.status === 'verified') available.push(mid);
@@ -408,7 +417,7 @@ async function preparationPost(tx, identity, actor, cmd, channel, m, helpers) {
     if (ownerStop(body)) { m.status = 'ended'; m.endReason = '筹备取消'; m.endedAt = tx.now; await cancelPending(tx, m, '筹备已取消'); }
     else {
       if (ownerStart(body)) m.startAuthorizedVersion = m.version;
-      await wake(tx, identity, channel, m, [m.coordinatorId], '用户在筹备对话中提出新要求。请与用户必要地多轮明确本场目标和交付，不为了讨论而讨论；每次只问最影响结果的一两项缺失信息。成员、时长和组织方法已有默认或由你安排，不让用户再分工或选择专业模式；交付形式由你提出建议，不抛一张问卷给用户。信息充分时调用meeting(action="plan")保存真实安排，并用人话回应。用户明确开始后可调用start；不要提前通知全体。', helpers, { preparation: true });
+      await wake(tx, identity, channel, m, [m.coordinatorId], '用户在筹备对话中提出新要求。请与用户必要地多轮明确本场目标和交付，不为了讨论而讨论；每次只问最影响结果的一两项缺失信息。成员、时长和组织方法已有默认或由你安排，不让用户再分工或选择专业模式；交付形式由你提出建议，不抛一张问卷给用户。信息充分时调用meeting(action="plan")保存真实安排，并用人话回应。用户明确开始后可调用start；口语确认可传ownerMessageId和confirmationQuote逐字引用最新用户同意原话，不需要固定口令；不确定是否同意时简短确认，不提前通知全体。', helpers, { preparation: true });
     }
     stamp(tx, m);
   } else await release(tx, actor, { ...cmd, meetingId: m.id }, helpers, channel);
