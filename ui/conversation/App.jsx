@@ -164,6 +164,8 @@ export default function App() {
   currentRef.current = current;
   const viewCache=useRef(new Map()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
   const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false);
+  const scrollInteraction=useRef(null);
+  const isUserInteracting=()=>scrollInteraction.current?.element===scroll.current&&scrollInteraction.current?.active;
   const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
   const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
   readRef.current=readThrough;
@@ -174,6 +176,33 @@ export default function App() {
   },[]);
   const outbox=useMessageOutbox(appendMessage);
   const savePosition=()=>{const el=scroll.current;if(!el||el.dataset.channelId!==currentRef.current)return;const top=el.getBoundingClientRect().top;const first=[...el.querySelectorAll('.chat-message')].find(m=>m.getBoundingClientRect().bottom>top);positions.current[currentRef.current]={id:first?.id,offset:first?first.getBoundingClientRect().top-top:0,number:Number(first?.dataset.messageNumber)||null,top:el.scrollTop,bottom:nearBottom.current};};
+
+  useEffect(()=>{
+    const el=scroll.current;if(!el||page!=='chat')return;
+    const state={element:el,active:false,pointer:false,touch:false};scrollInteraction.current=state;
+    let timer;
+    // Position tracking is synchronous and independent of unread/focus tracking.
+    // A refresh or ResizeObserver callback may run before the next animation frame.
+    const capture=()=>{if(scroll.current!==el)return;nearBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<4;savePosition();};
+    const settle=()=>{clearTimeout(timer);if(state.pointer||state.touch)return;timer=setTimeout(()=>{if(scroll.current!==el)return;capture();state.active=false;},220);};
+    const begin=()=>{state.active=true;nearBottom.current=false;restorePosition.current=false;oldHeight.current=null;savePosition();settle();};
+    const editable=target=>target instanceof Element&&target.closest('button,a,input,textarea,select,[contenteditable="true"]');
+    const pointerDown=e=>{if(editable(e.target))return;state.pointer=true;begin();};
+    const pointerUp=()=>{if(!state.pointer)return;state.pointer=false;settle();};
+    const touchStart=()=>{state.touch=true;begin();};
+    const touchEnd=e=>{state.touch=!!e.touches?.length;settle();};
+    const keyDown=e=>{if(!editable(e.target)&&['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key))begin();};
+    const moved=()=>{capture();if(state.active)settle();};
+    const blur=()=>{state.pointer=false;state.touch=false;if(state.active)settle();};
+    el.addEventListener('wheel',begin,{passive:true});
+    el.addEventListener('pointerdown',pointerDown,{passive:true});
+    el.addEventListener('touchstart',touchStart,{passive:true});
+    el.addEventListener('keydown',keyDown);
+    el.addEventListener('scroll',moved,{passive:true});
+    window.addEventListener('pointerup',pointerUp);window.addEventListener('pointercancel',pointerUp);
+    window.addEventListener('touchend',touchEnd);window.addEventListener('touchcancel',touchEnd);window.addEventListener('blur',blur);
+    return()=>{clearTimeout(timer);el.removeEventListener('wheel',begin);el.removeEventListener('pointerdown',pointerDown);el.removeEventListener('touchstart',touchStart);el.removeEventListener('keydown',keyDown);el.removeEventListener('scroll',moved);window.removeEventListener('pointerup',pointerUp);window.removeEventListener('pointercancel',pointerUp);window.removeEventListener('touchend',touchEnd);window.removeEventListener('touchcancel',touchEnd);window.removeEventListener('blur',blur);if(scrollInteraction.current===state)scrollInteraction.current=null;};
+  },[current,snapshot?.channel.id,page]);
 
   useEffect(()=>{let alive=true;const tick=()=>api('/local/coding/status').then(x=>{if(alive&&Array.isArray(x.members))setCodingStatus(x);}).catch(()=>{});tick();const timer=setInterval(tick,4000);return()=>{alive=false;clearInterval(timer);};},[]);
   useEffect(()=>{const mq=window.matchMedia('(max-width:850px)');const changed=()=>{if(mq.matches)setSide(false);};mq.addEventListener('change',changed);return()=>mq.removeEventListener('change',changed);},[]);
@@ -255,6 +284,7 @@ export default function App() {
   }, [notice]);
   useLayoutEffect(()=>{
     const el=scroll.current;if(!el||!snapshot||snapshot.channel.id!==current)return;
+    if(isUserInteracting()){oldHeight.current=null;restorePosition.current=false;return;}
     if(oldHeight.current){el.scrollTop+=el.scrollHeight-oldHeight.current;oldHeight.current=null;}
     else if(restorePosition.current){const pos=positions.current[current];const anchor=pos?.id&&document.getElementById(pos.id);const unreadAnchor=firstUnread.current&&el.querySelector('[data-message-number="'+firstUnread.current+'"]');if(firstUnread.current&&!pos&&!unreadAnchor)return;el.scrollTop=unreadAnchor&&!pos?el.scrollTop+unreadAnchor.getBoundingClientRect().top-el.getBoundingClientRect().top:pos?(anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top):el.scrollHeight;restorePosition.current=false;}
     else if(nearBottom.current)el.scrollTop=el.scrollHeight;
@@ -269,7 +299,7 @@ export default function App() {
   },[current,snapshot,page]);
   useEffect(()=>{const save=()=>{savePosition();try{const prior=JSON.parse(localStorage.getItem('hub-communication')||'{}');localStorage.setItem('hub-communication',JSON.stringify({...prior,positions:positions.current,tabViews:tabViews.current}));}catch{}};window.addEventListener('pagehide',save);return()=>window.removeEventListener('pagehide',save);},[]);
   useEffect(()=>{let alive=true;const timer=setTimeout(()=>{const cursors={...readRef.current};api('/v2/channel-unread',{cursors}).then(x=>{if(alive){setUnread(Object.fromEntries(x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber).map(r=>[r.channelId,r])));setReadThrough(old=>{let changed=false;const next={...old};for(const [id,n]of Object.entries(x.cursors||{}))if(next[id]===undefined||n>next[id]){next[id]=n;changed=true;}return changed?next:old;});}}).catch(()=>{});},250);return()=>{alive=false;clearTimeout(timer);};},[readThrough,channels]);
-  useEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current)return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
+  useEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current||isUserInteracting())return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
   const perform = async (fn) => {
     setBusy(true);
     setError("");
@@ -672,13 +702,7 @@ export default function App() {
                 <div
                   className="messages-scroll" data-channel-id={snapshot.channel.id} key={current}
                   ref={scroll}
-                  onScroll={(e) => {
-                    nearBottom.current =
-                      e.currentTarget.scrollHeight -
-                        e.currentTarget.scrollTop -
-                        e.currentTarget.clientHeight <
-                      100;
-                  }}
+                  tabIndex={0} aria-label="聊天记录"
                 >
                   {moreCursor && (
                     <Button

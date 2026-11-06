@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-06T03:21:21.888Z",
+  "isolated": true,
+  "realElectron": true,
+  "realBrowser": false,
+  "commercialAgentTest": false,
+  "checks": [
+    "Native wheel input plus ten delayed height changes causes zero automatic scrollTop writes; no rebound on release",
+    "After interaction ends, a later image-like resize preserves the new reading anchor",
+    "Held pointer and real background HTTP refresh do not force any calibration",
+    "Native PageDown scrolling is protected during delayed resize",
+    "Simulated touch hold remains protected until touchend",
+    "Switching away and back still restores the final user-selected reading position"
+  ],
+  "build": {
+    "id": "888b3fcb7cdc079b",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T03:20:23.590Z"
+  },
+  "renderedBuild": "888b3fcb7cdc079b",
+  "wheelWrites": [],
+  "pointerWrites": [],
+  "keyboardWrites": [],
+  "passed": true
+}

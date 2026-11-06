@@ -1,0 +1,66 @@
+{
+  "at": "2026-11-06T03:11:56.088Z",
+  "isolated": true,
+  "realElectron": true,
+  "commercialAgentTest": false,
+  "checks": [],
+  "build": {
+    "id": "be8b366b2c25bebc",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T02:50:08.016Z"
+  },
+  "desktopBuild": "be8b366b2c25bebc",
+  "wheelWrites": [
+    {
+      "at": 1015.7999999523163,
+      "from": 2478,
+      "to": 2502
+    },
+    {
+      "at": 1083.7000000476837,
+      "from": 2612,
+      "to": 2636
+    },
+    {
+      "at": 1150.7000000476837,
+      "from": 2746,
+      "to": 2770
+    },
+    {
+      "at": 1221.7000000476837,
+      "from": 2880,
+      "to": 2904
+    },
+    {
+      "at": 1288.9000000953674,
+      "from": 3014,
+      "to": 3038
+    },
+    {
+      "at": 1355.0999999046326,
+      "from": 3148,
+      "to": 3172
+    },
+    {
+      "at": 1420.7999999523163,
+      "from": 3282,
+      "to": 3306
+    },
+    {
+      "at": 1498.5,
+      "from": 3416,
+      "to": 3440
+    },
+    {
+      "at": 1637.9000000953674,
+      "from": 3550,
+      "to": 3574
+    },
+    {
+      "at": 1731,
+      "from": 3684,
+      "to": 3708
+    }
+  ],
+  "failure": "automatic calibration must not fight wheel input and delayed content sizing\n\n10 !== 0\n"
+}
