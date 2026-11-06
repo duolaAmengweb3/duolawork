@@ -1,22 +1,42 @@
 import React,{useEffect,useState} from 'react';
-import {ArrowLeft,ArrowUpRight,ChevronDown} from 'lucide-react';
+import {ArrowLeft,ArrowUpRight,CheckCircle2,Clock3,ShieldCheck} from 'lucide-react';
 import {api,time} from '../v1/api.mjs';
 import AgentAvatar from './AgentAvatar.jsx';
 import {processingLabel,turnNotification,waitingLabel} from '../../shared/chat-activity.mjs';
-const pending=new Set(['ready','active','stalled','unavailable','limited']);
+import {deliveryView} from '../../shared/delivery-view.mjs';
 export function activityLabel(turn,notification,native){
  if(turn.status==='active')return processingLabel(turn);
- if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'排队中 · 已进入原会话':waitingLabel(notification);
- return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:turn.claimedAt?'处理已中断，尚未回传':'成员尚未接收',unavailable:'等待成员连接'}[turn.status]||'等待更新';
+ if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'等待原会话处理':waitingLabel(notification);
+ return {done:'已回复',silent:'已读，无需补充',merged:'已合并处理',removed:'已收尾',limited:'正在核对重复通知',stalled:turn.claimedAt?'正在核对原执行结果':'尚未收到领取回执',unavailable:'等待恢复连接'}[turn.status]||'等待更新';
 }
-function Entry({turn,message,member,notification,native,onSource}){
- const [source,setSource]=useState(message);
- useEffect(()=>{if(message){setSource(message);return;}let alive=true;api('/v2/space-object?'+new URLSearchParams({channelId:turn.scopeId,kind:'message',id:turn.messageId})).then(x=>{if(alive)setSource(x);}).catch(()=>{});return()=>{alive=false;};},[message,turn.messageId,turn.scopeId]);
- return <article className="delivery-entry"><header><AgentAvatar small name={member?.name} platformId={member?.platformId}/><strong>{member?.name||'成员'}</strong><span className={'delivery-state '+(turn.status==='active'?'active':'')}>{activityLabel(turn,notification,native)}</span></header><button className="delivery-source" onClick={()=>onSource(turn.messageId)}><span>{source?.body||'打开对应消息'}</span><ArrowUpRight size={14}/></button><footer><time>{time(turn.createdAt)}</time>{source?.authorId==='owner'&&<span>你发出的消息</span>}</footer>{turn.reason&&<details><summary>{turn.status==='silent'?'暂无补充的原因':'详情'}</summary><p>{turn.reason}</p></details>}</article>;
+function Source({id,channelId,messages,onSource,label='相关消息'}){
+ const known=messages.find(m=>m.id===id),[loaded,setLoaded]=useState(null);
+ useEffect(()=>{setLoaded(null);if(!id||known)return;let alive=true;api('/v2/space-object?'+new URLSearchParams({channelId,kind:'message',id})).then(x=>{if(alive)setLoaded(x);}).catch(()=>{});return()=>{alive=false;};},[id,channelId,!!known]);
+ const source=known||loaded;
+ return <button className="delivery-source" onClick={()=>onSource(id)}><span><small>{label}</small>{source?.body?.replace(/[*#`]/g,'')||'查看原消息'}</span><ArrowUpRight size={14}/></button>;
 }
-export default function MessageActivity({snapshot,messages,members,nativeMembers,onBack,onSource,onRetry}){
- const current=snapshot.activity.filter(t=>pending.has(t.status)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
- const history=snapshot.activity.filter(t=>!pending.has(t.status)&&t.status!=='merged').sort((a,b)=>(b.completedAt||b.createdAt).localeCompare(a.completedAt||a.createdAt));
- const row=t=><Entry key={t.id} turn={t} message={messages.find(m=>m.id===t.messageId)} member={members.find(m=>m.id===t.memberId)} notification={turnNotification(t,snapshot.notifications)} native={nativeMembers.find(m=>m.memberId===t.memberId)} onSource={onSource}/>;
- return <aside className="collaboration-space space-redesign"><div className="space-title"><button className="space-back" onClick={onBack}><ArrowLeft size={16}/>返回</button><h3>消息进度</h3></div><div className="space-content delivery-list"><h4>待处理 <span>{current.length}</span></h4>{current.length?current.map(row):<p className="space-empty">当前没有待处理的消息。</p>}{current.some(t=>['stalled','unavailable','limited'].includes(t.status))&&<button className="delivery-retry" onClick={onRetry}>重新通知未回应的成员</button>}<details className="delivery-history"><summary><ChevronDown size={15}/>已处理记录 · {history.length}</summary>{history.map(row)}</details></div></aside>;
+export default function MessageActivity({snapshot,messages,members,nativeMembers,onBack,onSource,onResolve,onConnect,onDiscuss,onSelectSession}){
+ const view=deliveryView(snapshot,members,nativeMembers),[working,setWorking]=useState(null),[error,setError]=useState('');
+ const name=id=>members.find(m=>m.id===id)?.name||'成员';
+ const act=async(issue,action)=>{setWorking(issue.id);setError('');try{await onResolve(issue,action);}catch(e){setError(e.message);}finally{setWorking(null);}};
+ const issueCard=(issue,attention=false)=><article className={'delivery-case '+(attention?'attention':'')} key={issue.id}>
+  <header><span className="delivery-case-icon">{attention?<Clock3 size={16}/>:<ShieldCheck size={16}/>}</span><strong>{attention?'需要你处理':issue.status==='recovering'?'正在恢复投递':'已交给负责人核对'}</strong></header>
+  <p className="delivery-impact">{issue.summary||issue.impact}</p>
+  {issue.nextAction?<p className="delivery-next">{issue.nextAction}</p>:<p className="delivery-next">{issue.status==='recovering'?'等待实际回执，无需重复发送。':'无需操作。负责人会核对已有结果，再决定是否继续通知。'}</p>}
+  <Source id={issue.rootId||issue.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="相关需求"/>
+  <footer><span>{issue.memberIds.map(name).join('、')}</span>{issue.reviewerId&&<span>由 {name(issue.reviewerId)} 跟进</span>}</footer>
+  {attention&&<div className="delivery-case-actions">
+   {issue.action==='select_session'?<button onClick={()=>onSelectSession(issue.memberIds[0])}>选择工作对话</button>:issue.action==='connect'?issue.memberIds.filter(id=>issue.local||snapshot.activity.some(t=>issue.turnIds.includes(t.id)&&t.memberId===id&&t.status==='unavailable')).map(id=><button key={id} onClick={()=>onConnect(id)}>连接 {name(id)}</button>):issue.action==='coordinator'&&snapshot.channel.coordinatorId?<button onClick={()=>onConnect(snapshot.channel.coordinatorId)}>连接负责人</button>:null}
+   <button onClick={()=>onDiscuss(issue)}>和负责人沟通</button>
+   {issue.cause==='not_received'&&<button disabled={!!working} onClick={()=>act(issue,'retry')}>{working===issue.id?'正在通知…':'再次通知'}</button>}
+   {!issue.local&&<button disabled={!!working} className="quiet" onClick={()=>act(issue,'dismiss')}>不再需要</button>}
+  </div>}
+  <details className="delivery-diagnostics"><summary>处理详情</summary><p>{issue.impact}</p><small>{time(issue.createdAt)}</small>{issue.messageId!==issue.rootId&&<Source id={issue.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>}</details>
+ </article>;
+ return <aside className="collaboration-space space-redesign"><div className="space-title"><button className="space-back" onClick={onBack}><ArrowLeft size={16}/>返回</button><h3>消息进度</h3></div><div className="space-content delivery-list">
+  {error&&<p role="alert" className="delivery-error">{error}</p>}
+  <section aria-label="需要你处理"><h4>需要你处理 <span>{view.attention.length||''}</span></h4>{view.attention.length?view.attention.map(i=>issueCard(i,true)):<div className="delivery-clear"><CheckCircle2 size={18}/><span>暂时没有需要你操作的事情</span></div>}</section>
+  {(view.waiting.length>0||view.recovering.length>0)&&<section className="delivery-auto"><h4>自动处理中</h4>{view.recovering.map(i=>issueCard(i))}{view.waiting.map(group=><article className="delivery-case" key={group.id}><Source id={group.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{group.turns.map(t=>{const m=members.find(m=>m.id===t.memberId);return <div className="delivery-recipient" key={t.id}><AgentAvatar small name={m?.name} platformId={m?.platformId}/><strong>{name(t.memberId)}</strong><span>{activityLabel(t,turnNotification(t,snapshot.notifications),nativeMembers.find(m=>m.memberId===t.memberId))}</span></div>;})}<p className="delivery-next">消息已保存；正在处理时收到的补充会排队，无需重发。</p></article>)}</section>}
+  <details className="delivery-history"><summary>已处理记录 · {view.history.length+view.resolved.length}</summary>{view.resolved.map(i=><article key={i.id} className="delivery-case"><strong>已收尾</strong><p className="delivery-impact">{i.summary}</p><small>{time(i.resolvedAt)}</small></article>)}{view.history.map(t=><article className="delivery-entry" key={t.id}><header><strong>{name(t.memberId)}</strong><span className="delivery-state">{activityLabel(t)}</span></header><Source id={t.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{t.reason&&<p className="delivery-next">{t.reason}</p>}<footer>{time(t.completedAt||t.createdAt)}</footer></article>)}</details>
+ </div></aside>;
 }

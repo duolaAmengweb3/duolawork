@@ -1,4 +1,5 @@
 import {executionResource} from './execution-bindings.mjs';
+import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
 import {recordMemoryEvent,queueMemoryIndex} from './memory-context.mjs';
 import {workspaceGrant,requireManager} from './delegation.mjs';
 import {MATERIAL_TOOLS,materialCommand} from './materials.mjs';
@@ -153,7 +154,7 @@ const BASIC_CHANNEL_TOOLS = [
   },
 }));
 
-export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS, ...COORDINATION_TOOLS, ...MATERIAL_TOOLS];
+export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS, ...COORDINATION_TOOLS, ...MATERIAL_TOOLS, ...DELIVERY_TOOLS];
 const activeMember = (identity, memberId) =>
   identity.members.find(
     (m) =>
@@ -215,10 +216,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     connection = await tx.get("connection", memberId, false);
   if (!m) return;
   const turnId = `turn_${message.id}_${memberId}`;
-  // A long discussion is not evidence of a loop. Explicit addressing must
-  // still reach its recipient, including a review requested late in a thread.
-  const addressed = message.mentionAll || message.mentions?.includes(memberId);
-  const deferred = !addressed && message.hops > channel.maxHops && !message.coordinationFeedback;
+  const deferred = !!message.holdReason && !message.deliveryReview;
   const available = !m.paused && connection?.status === "verified";
   // Native source setup and per-chat context selection are separate. Preserve
   // the first message while that context proves its round trip; only a verified
@@ -230,6 +228,8 @@ async function enqueue(tx, identity, channel, message, memberId) {
     parentId: memberId,
     memberId,
     messageId: message.id,
+    ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
+    ...(message.holdReason?{holdReason:message.holdReason}:{}),
     ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1}:{}),
     wakeSource: message.authorId === "owner" ? "user" : "agent",
     number: message.number,
@@ -239,7 +239,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     createdAt: tx.now,
     ...(message.meetingId && !message.meetingChat ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
     reason: deferred
-      ? "达到本群连续唤醒上限，消息已保留，可继续讨论"
+      ? "暂缓重复自动通知，交由负责人核对；原消息与其他工作保留"
       : available
         ? null
         : "成员的自动接入尚未就绪，消息已保留",
@@ -269,6 +269,7 @@ async function outbox(tx, channel, turn, c) {
     memberId: turn.memberId,
     generation: 1,
     conversation: true,
+    ...(turn.deliveryReview ? { deliveryReview: turn.deliveryReview } : {}),
     ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion,meetingPurpose:turn.meetingPurpose } : {}),
     configVersion: c.configVersion,
     transport: c.transport,
@@ -287,6 +288,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
   tx.put("channel_turn", { ...turn, status, reason, completedAt: tx.now });
+  for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
   const r = await tx.get("resource", turn.resourceKey, false);
   if (r?.turnId === turn.id)
     tx.put("resource", { ...r, status: "idle", turnId: null });
@@ -419,7 +421,7 @@ export async function claimConversation(
       const pending = (await pendingConversationTurns(tx, {
         scope: channel.id,
         parent: actor.memberId,
-      })).filter(t => (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
+      })).filter(t => (t.deliveryReview || null) === (turn.deliveryReview || null) && (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
       const lease = id("lease");
       for (const other of pending)
         if (other.id !== turn.id)
@@ -442,6 +444,7 @@ export async function claimConversation(
         ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
         expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),
         mergedMessageIds: pending.map((t) => t.messageId),
+        deliveryIssueIds: unique(pending.flatMap(t=>[t.deliveryIssueId,...(t.deliveryIssueIds||[])]).filter(Boolean)),
       });
       tx.put("resource", {
         ...resource,
@@ -468,6 +471,7 @@ export async function claimConversation(
         channelId: channel.id,
         input: {
           kind: "conversation",
+          ...(turn.deliveryReview?{deliveryReview:await deliveryIssueDetail(tx,channel,await tx.get('channel_delivery_issue',turn.deliveryReview))}:{}),
           ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,
           coordinatorId: channel.coordinatorId,
@@ -499,6 +503,12 @@ export async function readChannel(repo, identity, actor, args) {
     .bind(repo.workspaceId, channel.id, before)
     .all();
   const rows = messages.results.map((r) => JSON.parse(r.body));
+  // Older replies may point at a hidden recovery notification. Show the actual
+  // source message, not internal instructions labeled as a meeting record.
+  await Promise.all(rows.filter(m=>m.replyTo&&m.replySnapshot?.authorId==='system').map(async m=>{
+    const parent=await repo.get('channel_message',m.replyTo,false),source=await deliveryReviewSource(repo,parent);
+    if(source&&source.id!==parent?.id){m.replyTo=source.id;m.replySnapshot={body:source.body.slice(0,400),version:source.version||1,authorId:source.authorId};}
+  }));
   const [documents, decisions, knowledge, meetings, tasks, suggestions, turns] =
     await Promise.all(
       [
@@ -580,6 +590,7 @@ export async function readChannel(repo, identity, actor, args) {
         )
       : [],
     coordination: await repo.list('channel_coordination',{scope:channel.id,order:'recent',limit:100}),
+    deliveryIssues: await repo.list('channel_delivery_issue',{scope:channel.id,order:'recent',limit:100}),
     activity: actor.owner
       ? turns.map(({ lease, resourceKey, ...t }) => t)
       : turns
@@ -712,6 +723,7 @@ export async function conversationCommand(
         return channel;
       }
       if(type==='channel.material')return materialCommand(tx,actor,cmd,channel,{identity,helpers:meetingHelpers});
+      if(type==='channel.delivery.resolve')return deliveryReviewCommand(tx,identity,channel,actor,cmd,meetingHelpers);
       if(doc?.status==='deleted')fail('resource_deleted','这份资料已移入回收站，可恢复后继续编辑',410);
       if (type === 'channel.message.edit') return editMessage(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === "channel.post") {
@@ -769,6 +781,7 @@ export async function conversationCommand(
         }
         // A reply without explicit turnId still acknowledges this member's active
         // delivery. Omitting both references cannot reset the causal wake budget.
+        parent = await deliveryReviewSource(tx,parent);
         if (actor.memberId && !parent && !await workspaceGrant(tx,actor))
           fail(
             "context_required",
@@ -788,6 +801,7 @@ export async function conversationCommand(
           rootId: actor.owner ? null : parent?.rootId || parent?.id,
           hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
         });
+        if(targets.length){const holdReason=await automationHold(tx,channel,message);if(holdReason){message.holdReason=holdReason;tx.put('channel_message',message);}}
         await trackCoordination(tx,channel,message,parent,targets);
         const coordinated=await relatedCoordination(tx,channel,message,parent);
         if(coordinated&&channel.coordinatorId&&await registerFeedback(tx,channel,coordinated,message)){
@@ -820,6 +834,8 @@ export async function conversationCommand(
           )
         ).flat()) {
           if (cmd.turnId && turn.id !== cmd.turnId) continue;
+          if(turn.claimedAt||turn.lease)continue;
+          if(!await meetingTurnAllowed(tx,turn))continue;
           const c = await tx.get("connection", turn.memberId, false),
             m = activeMember(identity, turn.memberId);
           if (
@@ -1081,6 +1097,7 @@ export async function conversationCommand(
 }
 
 const toolCommands = {
+  resolve_delivery: "channel.delivery.resolve",
   coordinate: "channel.coordination",
   manage_material: "channel.material",
   post_message: "channel.post",
@@ -1150,6 +1167,7 @@ export async function conversationMaintenance(
         },
         now,
       );
+  await deliveryReviewMaintenance(repo,identity,meetingHelpers,now);
 }
 
-export const meetingHelpers = { channelMessage, enqueue, finishTurn, objectFeedback };
+export const meetingHelpers = { channelMessage, enqueue, finishTurn, objectFeedback, outbox, meetingTurnAllowed };

@@ -8,7 +8,7 @@ import { command } from "./engine.mjs";
 import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
-const sameDeliveryScope=(a,b)=>(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
+const sameDeliveryScope=(a,b)=>(a.deliveryReview||null)===(b.deliveryReview||null)&&(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
 const claimWaitMs = 2 * 60000;
 const maxUnclaimedWakes = 3;
 

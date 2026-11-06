@@ -342,7 +342,7 @@ export async function callTool(repo, identity, actor, name, args, env, options =
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['manage_workspace','github','search_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['resolve_delivery','manage_workspace','github','search_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);

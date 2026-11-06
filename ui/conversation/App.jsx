@@ -63,6 +63,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { messageRecipients, hasAllMention, namedMentions } from '../../shared/chat-routing.mjs';
 import { pendingMemberActivity } from '../../shared/chat-activity.mjs';
+import {deliveryView} from '../../shared/delivery-view.mjs';
 import {memberAvailability} from '../../shared/member-availability.mjs';
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
@@ -345,7 +346,8 @@ export default function App() {
   const allSelected = mentionAll;
   const addressedMembers = mentions;
   const recipients = channel ? messageRecipients(channel, { owner: true, mentions: addressedMembers, mentionAll: allSelected }) : [];
-  const pendingActivity = pendingMemberActivity(snapshot?.activity, snapshot?.notifications, codingStatus.members);
+  const pendingActivity = pendingMemberActivity(snapshot?.activity?.filter(t=>!t.deliveryReview), snapshot?.notifications, codingStatus.members);
+  const delivery = deliveryView(snapshot||{},workspace.members,codingStatus.members);
   const availability=(member,channelId=current)=>memberAvailability(member,workspace.connections.find(c=>c.id===member.id),codingStatus.members.find(m=>m.memberId===member.id),channelId,(channelId===current?snapshot:viewCache.current.get(channelId))?.activity||[]);
   const mentionQuery = (draft.match(/@([^\s@]*)$/)?.[1] || '').toLowerCase();
   const recipientHint = allSelected ? `通知全员 · ${groupMembers.length} 位成员`
@@ -731,35 +733,10 @@ export default function App() {
                   {messageNodes}
                 </div>
                 {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
-                {snapshot.activity.some((t) =>
-                  [
-                    "ready",
-                    "active",
-                    "limited",
-                    "stalled",
-                    "unavailable",
-                  ].includes(t.status),
-                ) && (
+                {(pendingActivity.length>0||delivery.attention.length>0||delivery.recovering.length>0) && (
                   <div className="conversation-activity">
-                    {pendingActivity.map(item => (
-                      <button type="button" key={item.memberId} className="pending-member" onClick={() => { setTab('activity'); setSide(true); }} title="查看对应消息">
-                        <i className={item.working ? 'working' : ''}/>
-                        {name(item.memberId)} {item.label}
-                      </button>
-                    ))}
-                    {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
-                {snapshot.activity.some((t) =>
-                      ["limited", "stalled", "unavailable"].includes(t.status),
-                    ) && (
-                      <button
-                        onClick={() => {
-                          setTab("activity");
-                          setSide(true);
-                        }}
-                      >
-                        有消息尚未回应，查看原因
-                      </button>
-                    )}
+                    {pendingActivity.map(item => <button type="button" key={item.memberId} className="pending-member" onClick={()=>{setTab('activity');setSide(true);}} title="查看对应消息"><i className={item.working?'working':''}/>{name(item.memberId)} {item.label}</button>)}
+                    {delivery.attention.length>0?<button className="delivery-attention-link" onClick={()=>{setTab('activity');setSide(true);}}>{delivery.attention.length} 件事需要你处理</button>:delivery.recovering.length>0?<button onClick={()=>{setTab('activity');setSide(true);}}>正在核对 {delivery.recovering.length} 件消息异常 · 无需操作</button>:null}
                   </div>
                 )}
 
@@ -891,7 +868,7 @@ export default function App() {
                 </footer>
               </section>
               {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} activity={snapshot.activity} notifications={snapshot.notifications} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})} onChat={()=>{setMeetingScopes(old=>({...old,[current]:meetingPanel.id}));setMeetingPanel(null);document.querySelector('[aria-label="群消息"]')?.focus();}} onTodo={m=>{setMeetingPanel(null);setSide(true);setTab('tasks');setSpaceEditor({kind:'task',prefill:{meetingIds:[m.id],refs:[refOf('meeting',m)]}});}} tasks={snapshot.tasks} onTask={t=>openObject(refOf('task',t))}/> : side && (
-                tab==='activity'?<MessageActivity snapshot={snapshot} messages={messages} members={workspace.members} nativeMembers={codingStatus.members} onBack={()=>setTab('documents')} onSource={jumpToSource} onRetry={()=>act('channel.continue')}/>:
+                tab==='activity'?<MessageActivity snapshot={snapshot} messages={messages} members={workspace.members} nativeMembers={codingStatus.members} onBack={()=>setTab('documents')} onSource={jumpToSource} onResolve={async(issue,action)=>{await command('channel.delivery.resolve',{channelId:current,issueId:issue.id,expectedVersion:issue.version,action,summary:action==='retry'?'用户要求再次通知尚未接收的成员。':'用户确认不再需要这条旧通知。'});await refresh();}} onConnect={id=>{const member=workspace.members.find(m=>m.id===id);if(member)setModal({type:'connect',member});}} onSelectSession={id=>{const member=workspace.members.find(m=>m.id===id);if(member)setModal({type:'session',member});}} onDiscuss={async issue=>{if(!channel.coordinatorId){setModal({type:'group'});return;}setMentions([channel.coordinatorId]);setMentionAll(false);try{const source=messages.find(m=>m.id===issue.messageId)||await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id:issue.messageId}));if(currentRef.current!==current)return;setReply(source);}catch(e){setError(e.message);return;}setDrafts(old=>({...old,[current]:old[current]||'请核对这件消息异常，并说明剩余工作和下一步。'}));document.querySelector('[aria-label="群消息"]')?.focus();}}/>:
                 <CollaborationSpace key={current} channel={channel} snapshot={{...snapshot,meetings:[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i)}} tab={tab==='members'?'documents':tab} setTab={setTab} name={name} members={groupMembers} onChanged={refresh} onQuote={quoteObject} onOpenDoc={setDocumentId} onOpenFile={setSharedFileId} onCreateDoc={folderId=>setModal({type:'doc',folderId})} onMeeting={id=>setMeetingPanel({id,channelId:current})} onNewMeeting={()=>setMeetingStart(true)} selection={spaceSelection} setSelection={setSpaceSelection} editor={spaceEditor} setEditor={setSpaceEditor} onSource={jumpToSource} onClose={()=>setSide(false)} onActivity={()=>setTab('activity')} moreMeetings={meetingCursor} loadMeetings={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}/>
 
               )}
