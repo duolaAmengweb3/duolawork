@@ -7,6 +7,7 @@ import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotoco
 import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
+import {claimNativeConversation} from '../../local/session-routing.mjs';
 export const sessionLinkTools=[
  {name:'link_current_conversation',description:'Link this exact original Claude conversation using the instruction copied by the user from DuolaWork. Reuses the existing account.',inputSchema:{type:'object',properties:{id:{type:'string'},code:{type:'string'}},required:['id','code']}},
  {name:'confirm_current_conversation',description:'Confirm an original-conversation challenge received through this Claude channel.',inputSchema:{type:'object',properties:{id:{type:'string'},challenge:{type:'string'}},required:['id','challenge']}},
@@ -32,9 +33,9 @@ export class ClaudeChannel {
   }
   async scope(){return this.client.api('/v2/self/native-sessions');}
   allowed(w,r){return w.channelId?r.bindings[w.channelId]?.sessionId===this.session.sessionId:r.verificationSessionId===this.session.sessionId;}
-  async work(){const [r,{work}]=await Promise.all([this.scope(),this.client.tool('list_work')]);return work.filter(w=>this.allowed(w,r));}
-  tick(){return this.pending??=(async()=>{
-    const work=await this.work(),current=new Set(work.map(w=>w.stepId));
+  async work(scope){const [r,{work}]=await Promise.all([scope||this.scope(),this.client.tool('list_work')]);return work.filter(w=>this.allowed(w,r));}
+  tick(scope){return this.pending??=(async()=>{
+    const work=await this.work(scope),current=new Set(work.map(w=>w.stepId));
     for(const key of Object.keys(this.sent))if(!current.has(key))delete this.sent[key];
     // A real claim is the receipt. Do not remind an executing conversation or
     // interrupt it with another wake; queued work remains on the server.
@@ -42,15 +43,13 @@ export class ClaudeChannel {
     const w=work.find(w=>w.status==='ready');if(!w)return;
     const prior=this.sent[w.stepId];if(prior&&(Date.now()-prior.at<120000||prior.count>=3))return;
     this.sent[w.stepId]={at:Date.now(),count:(prior?.count||0)+1};await this.save();
-    try{await this.notify({method:'notifications/claude/channel',params:{content:`Hub 有一条发给你的消息。调用 list_work，然后 claim_work 领取 stepId=${w.stepId}，按领取结果回复原聊天。验证工作按原指令提交。用你当前会话的原生工具完成工作；不要把回复只留在终端。`,meta:{step_id:w.stepId,session_id:this.session.sessionId}}});}
+    try{await this.notify({method:'notifications/claude/channel',params:{content:`Hub 有一条发给你的消息。直接调用 claim_work，使用新的 requestId 及 ${JSON.stringify({stepId:w.stepId,...(w.channelId?{channelId:w.channelId}:{})})}；无需先查询工作列表。按领取结果回复原聊天。验证工作按原指令提交。用你当前会话的原生工具完成工作；不要把回复只留在终端。`,meta:{step_id:w.stepId,session_id:this.session.sessionId,...(w.channelId?{channel_id:w.channelId}:{})}}});}
     catch(e){delete this.sent[w.stepId];await this.save();throw e;}
   })().finally(()=>{this.pending=null;});}
   async tool(name,args){
     if(name==='link_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'redeem',id:args.id,code:args.code,runtimeId:this.session.runtimeId,session:{id:this.session.sessionId,workspace:this.session.workspace,title:this.session.title},requestId:'claude-link-'+args.id+'-'+this.session.sessionId}});
     if(name==='confirm_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'confirm',id:args.id,challenge:args.challenge,sessionId:this.session.sessionId,requestId:'claude-link-confirm-'+args.id}});
     if(['setup_connection','check_connection','report_setup_status','receive_messages'].includes(name))throw Error('连接由本机接收器维护；请使用 list_work 与 claim_work');
-    const r=await this.scope();
-    if(args.channelId&&r.bindings[args.channelId]?.sessionId!==this.session.sessionId)throw Error('这个聊天未分配给当前 Claude 会话');
     if(name==='list_work')return{work:await this.work()};
     if(name==='claim_work'){
       let channelId;
@@ -59,17 +58,26 @@ export class ClaudeChannel {
         if(!prior)throw Error('当前会话没有领取此续接的原消息');
         if(args.channelId&&prior.channelId&&args.channelId!==prior.channelId)throw Error('续接不能切换原聊天');
         channelId=prior.channelId||args.channelId;
-        if(!channelId||r.bindings[channelId]?.sessionId!==this.session.sessionId)throw Error('原聊天已不属于当前会话，未领取后续消息');
+        if(!channelId)throw Error('原聊天尚未登记，未领取后续消息');
+      }else if(args.stepId?.startsWith('turn_')&&args.channelId){
+        // Claim is the authority: the server checks this exact turn, group,
+        // native session, membership and lease atomically. A preflight list is
+        // both redundant and subject to a binding race before the real claim.
+        channelId=args.channelId;
       }else{
         const work=(await this.work()).find(w=>w.stepId===args.stepId);
         if(!work)throw Error('此工作未分配给当前会话');
         channelId=work.channelId;
       }
-      const result=await this.client.tool(name,{...args,...(channelId?{channelId,expectedSessionId:this.session.sessionId}:{})});
+      const result=channelId&&(args.stepId?.startsWith('turn_')||args.stepId?.startsWith('inbox:after:'))
+        ?await claimNativeConversation(this.client,{...args,channelId,sessionId:this.session.sessionId})
+        :await this.client.tool(name,{...args,...(channelId?{channelId,expectedSessionId:this.session.sessionId}:{})});
       const key=result.attemptId||result.turnId;
       if(key){this.claims[key]={attemptId:result.attemptId,turnId:result.turnId,channelId:result.channelId||channelId};await this.save();}
       return result;
     }
+    const r=await this.scope();
+    if(args.channelId&&r.bindings[args.channelId]?.sessionId!==this.session.sessionId)throw Error('这个聊天未分配给当前 Claude 会话');
     if(args.attemptId&&!this.claims[args.attemptId])throw Error('当前会话没有领取此工作');
     if(args.turnId&&!Object.values(this.claims).some(c=>c.turnId===args.turnId))throw Error('当前会话没有领取这条消息');
     const result=await this.client.tool(name,args);
@@ -81,7 +89,7 @@ export class ClaudeChannel {
 
 export async function serve({grantFile,runFile,stateDir}){
   const client=new CodingMemberClient(grantFile);
-  const server=new Server({name:'agent-hub',version:'1.0.0'},{capabilities:{tools:{},experimental:{'claude/channel':{}}},instructions:'这是原生 Claude 会话的 Hub 协作通道。收到通知后用 list_work、claim_work 领取；普通聊天用 post_message 回原群，验证按指令 submit_work。使用你原来的项目和工具。不要输出任何凭证，不要自行配置别人的连接。'});
+  const server=new Server({name:'agent-hub',version:'1.0.0'},{capabilities:{tools:{},experimental:{'claude/channel':{}}},instructions:'这是原生 Claude 会话的 Hub 协作通道。收到带 stepId 的通知后直接用 claim_work 领取，保留通知中的 channelId；普通聊天用 post_message 回原群，验证按指令 submit_work。使用你原来的项目和工具。不要输出任何凭证，不要自行配置别人的连接。'});
   let bridge,session,closed=false,polling=false,lastHeartbeat=0,checkId;
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[...(await client.tools()).filter(t=>!['setup_connection','check_connection','report_setup_status','receive_messages'].includes(t.name)),...sessionLinkTools]}));
   server.setRequestHandler(CallToolRequestSchema,async req=>{try{if(!bridge)throw Error('正在等待原生会话登记');const value=await bridge.tool(req.params.name,req.params.arguments||{});return{content:[{type:'text',text:JSON.stringify(value)}]};}catch(e){return{isError:true,content:[{type:'text',text:e.status===401||e.status===403?'Hub 授权已失效，请查看成员连接':e.message}]};}});

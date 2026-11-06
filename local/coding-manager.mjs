@@ -14,7 +14,7 @@ import {AntigravityDesktopHost} from './antigravity-host.mjs';
 import {GeminiCliProjects} from './gemini-cli-projects.mjs';
 import {AntigravityCliHost} from './antigravity-cli-bridge.mjs';
 import {readNativeCompletion} from './native-completion.mjs';
-import {publicAssignments} from './session-routing.mjs';
+import {publicAssignments,claimNativeAssignment,receiveNativeConversation} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const exec=promisify(execFile);
 const executionKey=r=>r.executionSessionId?r.memberId+':'+r.executionSessionId:r.memberId;
@@ -101,12 +101,12 @@ export class CodingManager{
    for(const key of Object.keys(env))if(['GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_APPLICATION_CREDENTIALS','GOOGLE_GENAI_USE_VERTEXAI','GEMINI_HOME','ANTIGRAVITY_HARNESS_PATH','BROWSER'].includes(key.toUpperCase()))delete env[key];
    Object.assign(env,{GEMINI_HOME:provider,AGY_ACP_FORCE_FILE_STORAGE:'1',ANTIGRAVITY_HARNESS_PATH:spec.harness,PYTHONUNBUFFERED:'1',TMPDIR:processTemp,ELECTRON_RUN_AS_NODE:'1'});
    const q=s=>"'"+s.replaceAll("'","'\"'\"'")+"'";env.BROWSER=[node,path.join(here,'native-browser-helper.mjs')].map(q).join(' ')+' %s';
-   r.mcpServers=[{name:'hub_'+r.memberId.slice(-16),command:node,args:[path.join(here,'coding-mcp.mjs'),r.grantFile],env:[{name:'ELECTRON_RUN_AS_NODE',value:'1'}]}];
+   r.mcpServers=[{name:'hub_'+r.memberId.slice(-16),command:node,args:[path.join(here,'coding-mcp.mjs'),r.grantFile,this.file,r.memberId,r.executionSessionId||''],env:[{name:'ELECTRON_RUN_AS_NODE',value:'1'}]}];
   }
   const options={engine:r.engine,cwd:r.cwd,command:spec.command,extraArgs:r.engine==='antigravity'?spec.args:[],env,permissionMode:r.permissionMode||'full',
    toolCall:async(name,args)=>{const matches=w=>!r.manualAssignments||(w.channelId?r.inFlight?.key===w.channelId:r.inFlight?.stepId===w.stepId);
-    if(name==='claim_work'&&r.manualAssignments){const {work}=await client.tool('list_work');if(!work.some(w=>w.stepId===args.stepId&&matches(w)))throw Error('工作属于其他聊天会话，未领取');}
-    if(name==='claim_work'){const sessionId=r.executionSessionId||r.chatBindings?.[r.inFlight?.key]?.sessionId;if(sessionId)args={...args,expectedSessionId:sessionId};}
+    if(name==='claim_work')return claimNativeAssignment(client,{args,sessionId:r.executionSessionId||r.sessions?.[r.inFlight?.key]||r.chatBindings?.[r.inFlight?.key]?.sessionId,active:r.inFlight});
+    if(name==='receive_messages')return receiveNativeConversation(client,{args,sessionId:r.executionSessionId||r.sessions?.[r.inFlight?.key],channelId:r.inFlight?.key?.startsWith('channel_')?r.inFlight.key:null});
     const result=await client.tool(name,args);if(name==='list_work'&&r.manualAssignments)result.work=result.work.filter(matches);if(['submit_work','post_message','stay_silent','ask_user'].includes(name)){r.lastReceiptAt=new Date().toISOString();await this.save();}return result;},
    onStopped:async()=>{if(processTemp)await fs.rm(processTemp,{recursive:true,force:true});},
    onApproval:request=>this.approve(r,request),onProgress:p=>{r.message='正在使用原生工具：'+safeError(p.name);},
@@ -266,7 +266,7 @@ export class CodingManager{
    const bindingChannel=first.channelId||Object.entries(r.chatBindings||{}).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];
    const toolFallback=bindingChannel?['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,bindingChannel].map(quote).join(' '):null;
    const fallbackInstruction=toolFallback?' 若原会话缓存了旧工具列表而缺少本次所需工具，不换会话、不扫描凭证。直接使用本环境连接器：'+toolFallback+' list_tools 查看最新工具；'+toolFallback+' call <工具名> <JSON参数> 调用。这是同一成员、同一群的已授权工具入口。':'';
-   const prompt=`你是 Agent Hub 成员 ${r.memberId}，使用你自己的原生工具、模型、规则和本会话记忆。Hub 工具来自${r.engine==='codex'?' hub_ 前缀动态工具':' MCP hub_'+r.memberId.slice(-16)}。直接调用已提供的工具，不需要先通过终端扫描工具目录。常用签名：list_work({})；claim_work({requestId,stepId})；post_message({requestId,channelId,turnId,body,mentions?})；submit_work({requestId,attemptId,lease,items:[{title,body}]} )。先用 list_work 读取真实工作，本轮只处理 stepId=${first.stepId}，channelId=${first.channelId||'无'}。${recover?'上次运行中断：检查原领取和已经完成的操作，沿用原 attemptId/lease 继续未完成部分，不要重做副作用；不清楚时回报具体问题。':'用 claim_work 领取并遵循完整指令。'}普通群消息直接沟通，不擅自建任务或文档。使用所需原生工具完成后，必须调用 post_message 或 submit_work 回到这个 Hub 会话；只在原生终端输出不算回群。验证任务严格提交要求的内容，不自称验证通过。不轮询空跑、不改提供方配置、不替其他成员领取、不回显凭证。${fallbackInstruction}`;
+   const prompt=`你是 Agent Hub 成员 ${r.memberId}，使用你自己的原生工具、模型、规则和本会话记忆。Hub 工具来自${r.engine==='codex'?' hub_ 前缀动态工具':' MCP hub_'+r.memberId.slice(-16)}。直接调用已提供的工具，不需要先通过终端扫描工具目录。常用签名：list_work({})；claim_work({requestId,stepId,channelId?})；post_message({requestId,channelId,turnId,body,mentions?})；submit_work({requestId,attemptId,lease,items:[{title,body}]} )。本轮只处理 stepId=${first.stepId}，channelId=${first.channelId||'无'}。直接调用 claim_work，使用新的 requestId 和 ${JSON.stringify({stepId:first.stepId,...(first.channelId?{channelId:first.channelId}:{})})}；领取结果即真实工作，无需先查 list_work。${recover?'上次运行中断：检查原领取和已经完成的操作，沿用原 attemptId/lease 继续未完成部分，不要重做副作用；不清楚时回报具体问题。':'用 claim_work 领取并遵循完整指令。'}普通群消息直接沟通，不擅自建任务或文档。使用所需原生工具完成后，必须调用 post_message 或 submit_work 回到这个 Hub 会话；只在原生终端输出不算回群。验证任务严格提交要求的内容，不自称验证通过。不轮询空跑、不改提供方配置、不替其他成员领取、不回显凭证。${fallbackInstruction}`;
    if(r.engine==='antigravity-cli'){r.managedNativePid=agent.rpc.child?.pid;r.managedNativeSessionIds=[...agent.sessions.keys()];await this.save();}
    const result=await agent.run({session,prompt});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
    const remaining=await client.tool('list_work');

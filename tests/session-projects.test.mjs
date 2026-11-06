@@ -34,3 +34,10 @@ test('official Claude SDK resolves a renamed session from isolated fixture stora
  const code=`import{getSessionInfo}from'@anthropic-ai/claude-agent-sdk';const s=await getSessionInfo(${JSON.stringify(sessionId)},{dir:${JSON.stringify(workspace)}});console.log(JSON.stringify({id:s?.sessionId,title:s?.customTitle}));`;
  const {stdout}=await promisify(execFile)(process.execPath,['--input-type=module','-e',code],{env:{...process.env,CLAUDE_CONFIG_DIR:config}});assert.deepEqual(JSON.parse(stdout),{id:sessionId,title:'用户的真实会话名'});
 });
+
+
+test('remote collaboration folders show human project names without merging distinct workspaces',()=>{
+ const paths=['/home/user/.config/agent-hub-claude/account/workspaces/channel_aaa','/home/user/.config/duolawork-runtime/member/coding/member/chats/channel_bbb'];
+ const result=presentSessions(paths.map((workspace,i)=>({id:'s'+i,title:'工作 '+i,workspace})),{bindings:{channel_aaa:{sessionId:'s0'},channel_bbb:{sessionId:'s1'}},channels:[{id:'channel_aaa',name:'网站改版'},{id:'channel_bbb',name:'商品上线'}]});
+ assert.deepEqual(result.map(s=>s.projectName),['网站改版','商品上线']);assert.ok(result.every(s=>s.category==='hub'));assert.equal(sessionProjects(result).length,2);assert.deepEqual(result.map(s=>s.workspace),paths);
+});

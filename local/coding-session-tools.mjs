@@ -2,9 +2,11 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {CodingMemberClient} from './coding-client.mjs';
 import {safeError} from './native-agent.mjs';
+import {claimNativeConversation,receiveNativeConversation} from './session-routing.mjs';
 export async function sessionTool({record,channelId,operation,name,args={},client=new CodingMemberClient(record.grantFile)}) {
   const allowed=w=>w.channelId===channelId||!w.channelId&&record.verificationSessionId===record.chatBindings?.[channelId]?.sessionId;
   if(operation==='list_tools')return{tools:await client.tools()};
+  if(name==='receive_messages')return receiveNativeConversation(client,{args,channelId,sessionId:record.chatBindings?.[channelId]?.sessionId});
   if(operation==='claim_step'||name==='claim_work'){
     const stepId=operation==='claim_step'?name:args.stepId,requestId=args.requestId||createHash('sha256').update(record.memberId+':claim:'+stepId).digest('hex');
     if(stepId?.startsWith('inbox:after:')||stepId?.startsWith('turn_')){
@@ -12,7 +14,7 @@ export async function sessionTool({record,channelId,operation,name,args={},clien
       if(!sessionId||args.channelId&&args.channelId!==channelId)throw Error('续接不属于当前工作会话');
       // The addressed conversation is validated atomically by the server. Do
       // not add another list_work network round trip before every real claim.
-      return client.tool('claim_work',{requestId,stepId,channelId,expectedSessionId:sessionId});
+      return claimNativeConversation(client,{requestId,stepId,channelId,sessionId,contextMode:args.contextMode});
     }
     const {work}=await client.tool('list_work'),workItem=work.find(w=>w.stepId===stepId&&allowed(w));
     if(!workItem)throw Error('指定工作不属于这个聊天，未领取其他消息');

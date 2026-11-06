@@ -6,7 +6,7 @@ import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {CodingMemberClient} from './coding-client.mjs';
 import {privateJson} from './storage.mjs';
 import {safeError} from './native-agent.mjs';
-import {acceptsWork} from './session-routing.mjs';
+import {acceptsWork,claimNativeConversation,receiveNativeConversation} from './session-routing.mjs';
 
 export const name='agent-hub-existing-session';
 export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry','permissionPresets'];
@@ -85,8 +85,25 @@ export class DshConnector {
      output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
      execute:async(args,exec)=>{
       if(this.closed||this.bindings.get(b.sessionId)!==b||exec.agent.id!==b.sessionId)throw Error('Hub tool is not authorized for this native session');
-      if(tool.name==='claim_work'){const {work}=await b.client.tool('list_work');if(!work.some(w=>w.stepId===args.stepId&&acceptsWork(b,w)))throw Error('工作属于其他聊天的会话，未领取');}
-      const result=await b.client.tool(tool.name,args);if(tool.name==='list_work')result.work=result.work.filter(w=>acceptsWork(b,w));
+      let result;
+      if(tool.name==='claim_work'){
+        let channelId=args.channelId;
+        if(!channelId||!(args.stepId?.startsWith('turn_')||args.stepId?.startsWith('inbox:after:'))){
+          const {work}=await b.client.tool('list_work'),item=work.find(w=>w.stepId===args.stepId&&acceptsWork(b,w));
+          if(!item)throw Error('工作属于其他聊天的会话，未领取');
+          if(channelId&&channelId!==item.channelId)throw Error('工作属于其他聊天的会话，未领取');
+          channelId=item.channelId;
+        }
+        if(channelId&&!acceptsWork(b,{channelId}))throw Error('工作属于其他聊天的会话，未领取');
+        result=channelId&&(args.stepId?.startsWith('turn_')||args.stepId?.startsWith('inbox:after:'))
+          ?await claimNativeConversation(b.client,{...args,channelId,sessionId:b.sessionId})
+          :await b.client.tool(tool.name,args);
+      }else if(tool.name==='receive_messages'){
+        const channelId=args.channelId||(b.channelIds?.length===1?b.channelIds[0]:null);
+        if(!channelId||!acceptsWork(b,{channelId}))throw Error('收件范围必须是当前原会话的聊天');
+        result=await receiveNativeConversation(b.client,{args,channelId,sessionId:b.sessionId});
+      }else result=await b.client.tool(tool.name,args);
+      if(tool.name==='list_work')result.work=result.work.filter(w=>acceptsWork(b,w));
       b.toolCalls.push({name:tool.name,at:new Date().toISOString()});b.toolCalls=b.toolCalls.slice(-100);
       return result;
      },
@@ -118,7 +135,7 @@ export class DshConnector {
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;this.attachAgent(found.agent);
     const requestId=digest(b.memberId+':'+next.stepId);
-    const text=`Hub 有一条发给你的真实工作。你仍是当前项目的同一个原生 Agent，保留模型、工具、规则和原会话记忆。使用 hub_list_work 读取；只处理 stepId=${next.stepId}，channelId=${next.channelId||''}。使用 hub_claim_work 领取，严格按领取结果的指令执行。普通聊天用 hub_post_message 回到同一群，使用领取返回的 turnId；验证或交付任务按要求用 hub_submit_work 提交 attemptId、lease 和 items。所有写调用提供 requestId。不要只在原生界面输出而不回传。普通聊天不擅自创建任务、文档或额外分工。不要读其他会话或登录资料；不输出凭证。`;
+    const text=`Hub 有一条发给你的真实工作。你仍是当前项目的同一个原生 Agent，保留模型、工具、规则和原会话记忆。直接使用 hub_claim_work 领取，参数包含新的 requestId 和 ${JSON.stringify({stepId:next.stepId,...(next.channelId?{channelId:next.channelId}:{})})}，无需先查询工作列表，只处理这条工作。严格按领取结果的指令执行。普通聊天用 hub_post_message 回到同一群，使用领取返回的 turnId；验证或交付任务按要求用 hub_submit_work 提交 attemptId、lease 和 items。所有写调用提供 requestId。不要只在原生界面输出而不回传。普通聊天不擅自创建任务、文档或额外分工。不要读其他会话或登录资料；不输出凭证。`;
     await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId,content:[{type:'text',text}]},b.abort.signal);
     b.dispatched.add(next.stepId);await this.save();
     this.dispatches.push({sessionId:b.sessionId,stepId:next.stepId,requestId,at:new Date().toISOString()});this.dispatches=this.dispatches.slice(-100);

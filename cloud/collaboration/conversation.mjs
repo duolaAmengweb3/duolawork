@@ -1,3 +1,4 @@
+import {acknowledgeNativeContext} from './native-context.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
 import {recordMemoryEvent,queueMemoryIndex} from './memory-context.mjs';
@@ -293,6 +294,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
   tx.put("channel_turn", { ...turn, status, reason, completedAt: tx.now });
+  await acknowledgeNativeContext(tx,turn);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
   const r = await tx.get("resource", turn.resourceKey, false);
   if (r?.turnId === turn.id)
@@ -455,6 +457,7 @@ export async function claimConversation(
         lease,
         resourceKey,
         claimedAt: tx.now,
+        ...(args.expectedSessionId?{nativeSessionId:args.expectedSessionId,nativeContextMode:args.contextMode==='incremental'?'incremental':'full'}:{}),
         reason: null,
         ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
         expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),

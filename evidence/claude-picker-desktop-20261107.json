@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-06T17:29:28.545Z",
+  "passed": true,
+  "installedFrontend": true,
+  "isolatedElectronRenderer": true,
+  "channelId": "channel_162d9918c11d4822865186310b8c6b7a",
+  "previous": {
+    "sessionId": "47895c73-3a43-48d8-bb5b-01d33af64f00",
+    "title": "验收 · Claude 独立新建 A · 1107",
+    "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+    "mode": "new",
+    "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d"
+  },
+  "binding": {
+    "sessionId": "8525efec-a7d4-4299-afe5-c65580be254e",
+    "title": "验收 · Claude 独立新建 A · 1107",
+    "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+    "mode": "new",
+    "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d"
+  },
+  "otherGroupBindingsUnchanged": true
+}

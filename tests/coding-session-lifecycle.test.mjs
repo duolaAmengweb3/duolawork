@@ -48,7 +48,7 @@ test('actual in-flight work is preserved when a user tries changing its conversa
 test('legacy dialogs have recognizable chat and project labels without changing original bindings',()=>{
  const bindings={channel_old:{sessionId:'native-id',workspace:'/hub/coding/workspace',title:'原工作会话'}},before=JSON.stringify(bindings);
  const [s]=presentSessions([{id:'native-id',workspace:'/hub/coding/workspace',title:'原工作会话'}],{bindings,channels:[{id:'channel_old',name:'网站改版'}],dataDir:'/hub',platform:'Codex'});
- assert.equal(s.title,'网站改版');assert.equal(s.projectName,'Hub 独立工作区');assert.equal(s.sourceLabel,'Hub 中创建的对话');assert.equal(JSON.stringify(bindings),before);assert.equal(s.id,'native-id');
+ assert.equal(s.title,'网站改版');assert.equal(s.projectName,'网站改版');assert.equal(s.sourceLabel,'Hub 中创建的对话');assert.equal(JSON.stringify(bindings),before);assert.equal(s.id,'native-id');
  const [native]=presentSessions([{id:'ide-id',title:'修复购物车',workspace:'/work/shop',source:'vscode',mode:'native-existing',updatedAt:1700000000}],{platform:'Codex'});
  assert.equal(native.projectName,'shop');assert.equal(native.sourceLabel,'Codex 中的对话');assert.ok(native.updatedAt.startsWith('2023-'));
  assert.equal(sessionErrorMessage(Error('原生进程已退出 SIGTERM')).includes('SIGTERM'),false);

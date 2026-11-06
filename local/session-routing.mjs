@@ -5,6 +5,33 @@ export function acceptsWork(binding, work) {
   return work.channelId ? binding.channelIds.includes(work.channelId) : binding.verification === true;
 }
 
+// One contract for all native adapters. The server atomically validates the
+// addressed group, actual session, membership, lease and idempotent request.
+export function claimNativeConversation(client,{requestId,stepId,channelId,sessionId,contextMode='incremental'}) {
+  if(!requestId||!channelId||!sessionId||!(stepId?.startsWith('turn_')||stepId?.startsWith('inbox:after:')))
+    throw Error('领取原会话消息需要完整的消息、聊天和会话标识');
+  return client.tool('claim_work',{requestId,stepId,channelId,expectedSessionId:sessionId,contextMode});
+}
+
+// ACP MCP and Codex dynamic tools share the same execution scope. The session
+// and active assignment come from the receiver, never from model arguments.
+export async function claimNativeAssignment(client,{args,sessionId,active}){
+  if(!active||!sessionId)throw Error('当前原会话没有待领取的工作');
+  if(args.channelId&&args.channelId!==active.key)throw Error('工作属于其他聊天会话，未领取');
+  const continuation=args.stepId?.startsWith('inbox:after:');
+  if(args.stepId!==active.stepId&&!continuation)throw Error('工作不是本次原会话接收的消息，未领取');
+  if(active.key?.startsWith('channel_')&&(args.stepId?.startsWith('turn_')||continuation))
+    return claimNativeConversation(client,{...args,channelId:active.key,sessionId});
+  const {work}=await client.tool('list_work');
+  if(!work.some(w=>w.stepId===args.stepId&&(w.channelId?w.channelId===active.key:w.stepId===active.stepId)))throw Error('工作属于其他聊天会话，未领取');
+  return client.tool('claim_work',{...args,expectedSessionId:sessionId});
+}
+
+export function receiveNativeConversation(client,{args,channelId,sessionId}){
+  if(!channelId||!sessionId||args.channelId&&args.channelId!==channelId)throw Error('收件范围必须是当前原会话的聊天');
+  return client.tool('receive_messages',{...args,channelId,expectedSessionId:sessionId,contextMode:args.contextMode||'incremental'});
+}
+
 export function nativeBindings(record) {
   if (!record.chatBindings) return record.sessionId ? [{sessionId:record.sessionId, workspace:record.cwd}] : [];
   const result = new Map();

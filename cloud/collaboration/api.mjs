@@ -104,7 +104,7 @@ export const TOOLS = [
   {
     name: "receive_messages",
     description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
-    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, expectedSessionId: string,
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]},
       waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
   },
   {
@@ -124,7 +124,7 @@ export const TOOLS = [
     name: "claim_work",
     description:
       "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整上下文。群聊 stepId=inbox 一次接收；回应后 stepId=inbox:after:<turnId> 有限等待一次。不改变真实步骤 ID 的原领取语义。",
-    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string, channelId: string, expectedSessionId: string }, ["requestId", "stepId"]),
+    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string, channelId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]} }, ["requestId", "stepId"]),
   },
   {
     name: "report_progress",
@@ -362,6 +362,7 @@ export async function callTool(repo, identity, actor, name, args, env, options =
       requestId: args.requestId,
       ...(args.channelId?{channelId:args.channelId}:{}),
       ...(args.expectedSessionId?{expectedSessionId:args.expectedSessionId}:{}),
+      ...(args.contextMode?{contextMode:args.contextMode}:{}),
       ...(args.stepId === "inbox" ? {} : { afterTurnId: args.stepId.slice(12), waitSeconds: MAX_MESSAGE_WAIT_SECONDS }),
     }, options);
   if (name === "list_work")
@@ -646,7 +647,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     if(!actor.owner)fail('forbidden','需要所有者身份',403);
     if(request.method==='POST')return json(await assignRemoteSession(repo,identity,actor,await readJSON(request)));
     const memberId=url.searchParams.get('memberId');
-    if(memberId)return json(await remoteSessions(repo,identity,actor,{memberId}));
+    if(memberId)return json(await remoteSessions(repo,identity,actor,{memberId,commandId:url.searchParams.get('commandId')||undefined}));
     const members=[];for(const m of identity.members.filter(m=>m.platformId==='claude-code'&&m.status!=='disabled')){const c=await repo.get('connection',m.id,false);if(c?.status!=='disconnected')members.push((await remoteSessions(repo,identity,actor,{memberId:m.id})).record);}
     return json({members:[...members,...await remoteRuntimeMembers(repo,identity)]});
   }

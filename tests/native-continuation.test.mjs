@@ -122,3 +122,26 @@ test('addressed native claim needs one request and atomically rejects another gr
  const next=await f.send('new binding');await f.bind(f.channel.id,'session-two');
  await assert.rejects(()=>run(`turn_${next.id}_grok`),e=>e.code==='session_changed');
 });
+
+test('Claude addressed wake and continuation claim atomically without pre-listing work or scope',async t=>{
+ const f=await setup(t);await f.send('first addressed request');await f.bridge.tick();
+ const notice=f.notices[0].params;assert.equal(notice.meta.channel_id,f.channel.id);
+ assert.ok(notice.content.includes(f.channel.id));assert.ok(!notice.content.includes('调用 list_work'));
+ const calls=[];const client={api:async()=>{throw Error('unexpected preflight');},tool:(name,args)=>{calls.push(name);return f.client.tool(name,args);}};
+ const b=new ClaudeChannel({client,session:f.bridge.session,stateFile:path.join(f.directory,'direct.json'),notify:async()=>{}});await b.load();
+ const args={requestId:f.requestId(),stepId:notice.meta.step_id,channelId:f.channel.id};
+ const first=await b.tool('claim_work',args);assert.deepEqual(calls,['claim_work']);
+ assert.equal((await b.tool('claim_work',args)).turnId,first.turnId);
+ await f.command('channel.post',{channelId:f.channel.id,turnId:first.turnId,body:'answer'},f.actor);
+ await f.send('next request');calls.length=0;
+ const next=await b.tool('claim_work',{requestId:f.requestId(),stepId:first.input.continuation.stepId});
+ assert.equal(next.channelId,f.channel.id);assert.deepEqual(calls,['claim_work']);
+ await f.command('channel.post',{channelId:f.channel.id,turnId:next.turnId,body:'answer two'},f.actor);
+ const other=await f.command('channel.create',{name:'other context',memberIds:['grok']});await f.bind(other.id,'session-two');
+ const foreign=await f.send('belongs elsewhere',other.id);
+ await assert.rejects(()=>b.tool('claim_work',{requestId:f.requestId(),stepId:`turn_${foreign.id}_grok`,channelId:f.channel.id}),e=>e.code==='forbidden');
+ await assert.rejects(()=>b.tool('claim_work',{requestId:f.requestId(),stepId:`turn_${foreign.id}_grok`,channelId:other.id}),e=>e.code==='session_changed');
+ const rebound=await f.send('after reassignment');await f.bind(f.channel.id,'session-two');
+ await assert.rejects(()=>b.tool('claim_work',{requestId:f.requestId(),stepId:`turn_${rebound.id}_grok`,channelId:f.channel.id}),e=>e.code==='session_changed');
+ assert.equal((await f.repo.get('channel_turn',`turn_${rebound.id}_grok`)).status,'ready');
+});

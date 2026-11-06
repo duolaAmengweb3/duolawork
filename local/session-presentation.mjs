@@ -8,13 +8,16 @@ export const sessionCategory=(workspace,managed=false)=>/(?:\/T|\/tmp)\/hub-(?:.
 export function presentSessions(items,{bindings={},channels=[],dataDir,platform='Agent'}={}){
  return items.map((item,index)=>{
   const linked=Object.entries(bindings).filter(([,b])=>b.sessionId===item.id).map(([id])=>channels.find(c=>c.id===id)).filter(Boolean);
-  const managed=!!dataDir&&!!item.workspace&&(normalize(item.workspace)===normalize(dataDir)||normalize(item.workspace).startsWith(normalize(dataDir)+'/'));
+  // Remote receivers own these persistent collaboration folders; dataDir is
+  // intentionally local and cannot identify a VPS path. This is display-only.
+  const remoteManaged=/\/\.config\/(?:agent-hub-claude\/[^/]+\/workspaces|duolawork-runtime\/[^/]+\/coding\/[^/]+\/chats)\/channel_[a-zA-Z0-9_-]+$/.test(normalize(item.workspace));
+  const managed=!!item.managedWorkspace||remoteManaged||!!dataDir&&!!item.workspace&&(normalize(item.workspace)===normalize(dataDir)||normalize(item.workspace).startsWith(normalize(dataDir)+'/'));
   const native=item.mode==='native-existing'||(!managed&&!!item.source);
   const preview=clean(item.preview).slice(0,140);
   const title=generic(item.title)?linked[0]?.name||preview||`未命名对话 ${index+1}`:clean(item.title);
   const projectNameSource=clean(item.projectName)?'native':managed?'hub':item.workspace?'folder':'unknown';
-  const projectName=clean(item.projectName)||(managed?'Hub 独立工作区':item.workspace?normalize(item.workspace).split('/').pop()||item.workspace:'未指定项目');
-  const projectKey=item.projectId?'native:'+item.projectId:managed?'hub':item.workspace?'folder:'+normalize(item.workspace):'unknown';
+  const projectName=clean(item.projectName)||(managed?linked[0]?.name||(!generic(item.title)?clean(item.title):'协作项目'):item.workspace?normalize(item.workspace).split('/').pop()||item.workspace:'未指定项目');
+  const projectKey=item.projectId?'native:'+item.projectId:managed?'hub:'+normalize(item.workspace):item.workspace?'folder:'+normalize(item.workspace):'unknown';
   return{...item,title,preview:preview!==title?preview:'',projectKey,projectName,projectNameSource,category:sessionCategory(item.workspace,managed),sourceLabel:native?`${platform} 中的对话`:managed?'Hub 中创建的对话':`${platform} 对话`,managedWorkspace:managed,linkedChats:linked.map(c=>({id:c.id,name:c.name})),updatedAt:timestamp(item.updatedAt||item.createdAt)};
  });
 }

@@ -3,6 +3,7 @@ import readline from 'node:readline';
 import fs from 'node:fs/promises';
 import {CodingMemberClient} from './coding-client.mjs';
 import {safeError} from './native-agent.mjs';
+import {claimNativeAssignment,receiveNativeConversation} from './session-routing.mjs';
 const file=process.argv[2];if(!file)throw new Error('缺少成员私有配置路径');
 const client=new CodingMemberClient(file);
 const recordsFile=process.argv[3],memberId=process.argv[4],executionSessionId=process.argv[5];
@@ -17,9 +18,9 @@ async function callTool(params){
   if(record.engine==='antigravity-cli'&&(!actual||actual!==expected))throw Error('工具调用不是当前接收消息的原对话，未执行');
   matches=w=>!!active&&(w.channelId?active.key===w.channelId:active.stepId===w.stepId);
   if(name==='claim_work'){
-   const {work}=await client.tool('list_work');
-   if(!work.some(w=>w.stepId===args.stepId&&matches(w)))throw Error('工作属于其他聊天会话，未领取');
+   return claimNativeAssignment(client,{args,sessionId:expected,active});
   }
+  if(name==='receive_messages')return receiveNativeConversation(client,{args,sessionId:expected,channelId:active?.key?.startsWith('channel_')?active.key:null});
  }
  const result=await client.tool(name,args);
  if(name==='list_work'&&matches)result.work=result.work.filter(matches);

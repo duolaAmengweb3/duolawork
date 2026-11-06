@@ -1,0 +1,201 @@
+{
+  "at": "2026-11-06T16:36:46.360Z",
+  "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+  "cases": [
+    {
+      "label": "A",
+      "channelId": "channel_162d9918c11d4822865186310b8c6b7a",
+      "marker": "A_84a5fa72",
+      "previousCommandIds": [
+        "nativecmd_eea96005b6014be6ae183b84c56bc94b",
+        "nativecmd_bb40b88e6a6f44d19a44b9d0a7dd52d1"
+      ],
+      "commandId": "nativecmd_d5640d6b7469478794159c34065f050b",
+      "binding": {
+        "sessionId": "47895c73-3a43-48d8-bb5b-01d33af64f00",
+        "title": "验收 · Claude 独立新建 A · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d"
+      },
+      "postedAt": "2026-11-06T17:12:39.632Z",
+      "messageId": "chat_b70c1001be4e49869d10648ca32c1f9b",
+      "reply": {
+        "body": "已在当前项目目录运行完成。\n识别词：A_84a5fa72\n开始：1793985214.2694101（2026-11-06T17:13:34.269Z）\n结束：1793985222.2698438（2026-11-06T17:13:42.270Z）\n耗时约 8.0 秒；结果已写入 duolawork-concurrency-proof.json（cwd=/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a）。",
+        "at": "2026-11-06T17:13:59.941Z"
+      },
+      "activity": [
+        {
+          "id": "turn_chat_b70c1001be4e49869d10648ca32c1f9b_member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "scopeId": "channel_162d9918c11d4822865186310b8c6b7a",
+          "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "messageId": "chat_b70c1001be4e49869d10648ca32c1f9b",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_b70c1001be4e49869d10648ca32c1f9b",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-06T17:12:39.987Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-06T17:13:59.941Z",
+          "claimedAt": "2026-11-06T17:13:28.718Z",
+          "nativeSessionId": "47895c73-3a43-48d8-bb5b-01d33af64f00",
+          "nativeContextMode": "incremental",
+          "expiresAt": "2026-11-06T17:43:28.718Z",
+          "mergedMessageIds": [
+            "chat_b70c1001be4e49869d10648ca32c1f9b"
+          ],
+          "deliveryIssueIds": [],
+          "completedAt": "2026-11-06T17:13:59.941Z"
+        }
+      ]
+    },
+    {
+      "label": "B",
+      "channelId": "channel_dc41c3b569eb4470a68d0e6c29529124",
+      "marker": "B_46d12aae",
+      "previousCommandIds": [
+        "nativecmd_ce4c99b249754e739c01cb922abd22b4",
+        "nativecmd_178199df596c4b489f8f13aac6a6bea0",
+        "nativecmd_c1848c7e5ae74dbab47b59cd89384d03"
+      ],
+      "commandId": "nativecmd_142dccea42e74780aee9d758850d8912",
+      "binding": {
+        "sessionId": "9f831ffa-b20d-4fd1-b5e4-8bf31f926d9d",
+        "title": "验收 · Claude 独立新建 B · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_dc41c3b569eb4470a68d0e6c29529124",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d"
+      },
+      "postedAt": "2026-11-06T17:12:39.633Z",
+      "messageId": "chat_caec11a10cc048b98a295ec5139da3a2",
+      "reply": {
+        "body": "已在当前项目目录运行完成。\n识别词：B_46d12aae\n开始：1793985201.212025（2026-11-06T17:13:21.212Z）\n结束：1793985209.214224（2026-11-06T17:13:29.214Z），耗时约 8.002 秒\ncwd：/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_dc41c3b569eb4470a68d0e6c29529124\n结果已写入该目录下的 duolawork-concurrency-proof.json。",
+        "at": "2026-11-06T17:13:44.952Z"
+      },
+      "activity": [
+        {
+          "id": "turn_chat_caec11a10cc048b98a295ec5139da3a2_member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "scopeId": "channel_dc41c3b569eb4470a68d0e6c29529124",
+          "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "messageId": "chat_caec11a10cc048b98a295ec5139da3a2",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_caec11a10cc048b98a295ec5139da3a2",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-06T17:12:39.966Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-06T17:13:44.952Z",
+          "claimedAt": "2026-11-06T17:13:13.730Z",
+          "nativeSessionId": "9f831ffa-b20d-4fd1-b5e4-8bf31f926d9d",
+          "nativeContextMode": "incremental",
+          "expiresAt": "2026-11-06T17:43:13.730Z",
+          "mergedMessageIds": [
+            "chat_caec11a10cc048b98a295ec5139da3a2"
+          ],
+          "deliveryIssueIds": [],
+          "completedAt": "2026-11-06T17:13:44.952Z"
+        }
+      ]
+    },
+    {
+      "label": "C",
+      "channelId": "channel_f3ada76f59884b1f8b0cc146b35edbf4",
+      "marker": "C_224a9963",
+      "commandId": "nativecmd_2d1c57a997084f0b815319c2deb0ffcc",
+      "binding": {
+        "sessionId": "a3e369b7-7fef-410b-8d7a-0eb8ee87e78d",
+        "title": "验收 · Claude 独立新建 C · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_f3ada76f59884b1f8b0cc146b35edbf4",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d"
+      },
+      "postedAt": "2026-11-06T17:12:39.634Z",
+      "messageId": "chat_556711b39a064b4da24ba039a37a5f38",
+      "reply": {
+        "body": "已在当前项目目录运行完毕。\n识别词：C_224a9963\n开始：1793985202.131703（2026-11-06T17:13:22.132Z）\n结束：1793985210.1319654（2026-11-06T17:13:30.132Z）\n耗时约 8.00 秒；结果已写入 duolawork-concurrency-proof.json（cwd: /home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_f3ada76f59884b1f8b0cc146b35edbf4）。",
+        "at": "2026-11-06T17:13:43.741Z"
+      },
+      "activity": [
+        {
+          "id": "turn_chat_556711b39a064b4da24ba039a37a5f38_member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "scopeId": "channel_f3ada76f59884b1f8b0cc146b35edbf4",
+          "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "messageId": "chat_556711b39a064b4da24ba039a37a5f38",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_556711b39a064b4da24ba039a37a5f38",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-06T17:12:40.003Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-06T17:13:43.741Z",
+          "claimedAt": "2026-11-06T17:13:16.449Z",
+          "nativeSessionId": "a3e369b7-7fef-410b-8d7a-0eb8ee87e78d",
+          "nativeContextMode": "incremental",
+          "expiresAt": "2026-11-06T17:43:16.449Z",
+          "mergedMessageIds": [
+            "chat_556711b39a064b4da24ba039a37a5f38"
+          ],
+          "deliveryIssueIds": [],
+          "completedAt": "2026-11-06T17:13:43.741Z"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    "Three owner-created native VPS conversations register themselves",
+    "Distinct group/session/project bindings execute concurrently",
+    "Both replies return with their own marker and original group bindings remain unchanged",
+    "Actual native Python execution times overlap; each marker and cwd independently read from its own output file"
+  ],
+  "originalBindings": {
+    "channel_4ef452e331904b758d7d3c375215cb48": {
+      "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+      "title": "新电脑迁移",
+      "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs"
+    },
+    "channel_01fac83ae8334f64921e53ccc6e8a3d6": {
+      "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+      "title": "新电脑迁移",
+      "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs"
+    },
+    "channel_f0bf1704a50348789524283bea56e2fd": {
+      "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+      "title": "新电脑迁移",
+      "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs"
+    }
+  },
+  "retry": 3,
+  "peakActive": 3,
+  "passed": true,
+  "finishedAt": "2026-11-06T17:14:02.528Z",
+  "nativeToolProofs": [
+    {
+      "marker": "A_84a5fa72",
+      "start": 1793985214.2694101,
+      "cwd": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+      "end": 1793985222.2698438
+    },
+    {
+      "marker": "B_46d12aae",
+      "start": 1793985201.212025,
+      "cwd": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_dc41c3b569eb4470a68d0e6c29529124",
+      "end": 1793985209.214224
+    },
+    {
+      "marker": "C_224a9963",
+      "start": 1793985202.131703,
+      "cwd": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_f3ada76f59884b1f8b0cc146b35edbf4",
+      "end": 1793985210.1319654
+    }
+  ],
+  "nativeToolOverlapSeconds": 7.082521200180054
+}

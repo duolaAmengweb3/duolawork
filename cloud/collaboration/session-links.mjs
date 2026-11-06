@@ -1,5 +1,6 @@
 import {digest,fail,id,required} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
+import {executionResource} from './execution-bindings.mjs';
 
 const active=new Set(['waiting','confirming','verified','applying']);
 const publicLink=r=>{const {codeHash,challenge,locator,...v}=r;return v;};
@@ -58,9 +59,11 @@ export async function sessionLinks(repo,identity,actor,input,write,origin){
   return repo.transact(required(input.requestId,'请求',120),{id:r.id,action:'apply-claude'},async tx=>{
    const v=await tx.get('session-link',r.id);if(v.status==='completed')return publicLink(v);if(v.status!=='verified')fail('unverified','原对话尚未确认',409);
    const source=await tx.get('native-source',r.memberId),native=source.sessions[v.session.id];if(!native||native.status!=='online'||Date.now()-Date.parse(native.seenAt)>90000)fail('offline','原 Claude 暂时离线',409);
-   const c=await tx.get('connection',r.memberId),resource=await tx.get('resource',c.resourceKey||'',false);if(resource?.status==='busy')fail('busy','等待原工作完成后保存关联',409);
+   const c=await tx.get('connection',r.memberId),resource=await tx.get('resource',await executionResource(tx,c,v.channelId),false);if(resource?.status==='busy')fail('busy','等待原工作完成后保存关联',409);
    if(JSON.stringify(source.bindings[v.channelId]||null)!==JSON.stringify(v.previousBinding))fail('binding_changed','聊天刚刚选择了其他对话，旧说明没有覆盖它',409);
-   source.bindings[v.channelId]={sessionId:native.id,title:native.title,workspace:native.workspace};tx.put('native-source',source);v.status='completed';v.completedAt=tx.now;tx.put('session-link',v);return publicLink(v);
+   source.bindings[v.channelId]={sessionId:native.id,title:native.title,workspace:native.workspace};tx.put('native-source',source);
+   tx.put('execution_binding',{id:r.memberId+':'+v.channelId,parentId:r.memberId,scopeId:v.channelId,sessionKey:await digest(native.id),status:'active'});
+   v.status='completed';v.completedAt=tx.now;tx.put('session-link',v);return publicLink(v);
   });
  }
  if(input.action==='begin'){

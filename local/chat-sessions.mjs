@@ -14,7 +14,7 @@ export class ChatSessions {
   manager(m) { return m.platformId==='codex'||m.platformId==='gemini-cli'?this.coding:m.platformId==='antigravity'?(this.ag.records[m.id]?.enabled||!this.coding.records[m.id]?.enabled?this.ag:this.coding):m.platformId==='deepseek-harness'?this.dsh:null; }
   async status(memberId, member) {
     const m=member||await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
-    if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:{...SESSION_CAPABILITIES['claude-code'],linkCurrent:true}};}
+    if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:{...SESSION_CAPABILITIES['claude-code'],...r.capabilities,linkCurrent:true}};}
     if(manager){const remote=await this.owner('/v2/native-runtime?memberId='+memberId);if(remote.remote)return{...remote,capabilities:{...remote.capabilities,linkCurrent:remote.record.form!=='gemini-cli'},assignments:remote.record.assignments};}
     const capabilities={...(SESSION_CAPABILITIES[m.platformId]||{kind:'fixed'})};if(manager===this.coding)Object.assign(capabilities,{kind:'sessions',existing:true,create:true,label:m.platformId==='codex'?'Codex 工作会话':'Gemini 后台会话'});
     capabilities.linkCurrent=!!r?.enabled&&(manager===this.coding?['codex','antigravity-cli'].includes(r.engine):manager===this.ag||manager===this.dsh&&manager.hostFor(memberId).kind==='desktop');
@@ -102,7 +102,14 @@ export class ChatSessions {
       if(command.status==='failed')throw Error(command.message);
       throw Error('原环境还在处理这次选择，请刷新列表查看结果；不要重复新建对话。原绑定仍保留。');
     }
-    const manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{...input,requestId:input.requestId||randomUUID()});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
+    const manager=this.manager(m);if(m.platformId==='claude-code'){
+      let result=await this.owner('/v2/native-sessions',{...input,requestId:input.requestId||randomUUID()});
+      const deadline=Date.now()+150000;
+      while(result.status==='pending'&&Date.now()<deadline){await new Promise(r=>setTimeout(r,1000));result=await this.owner('/v2/native-sessions?'+new URLSearchParams({memberId:input.memberId,commandId:result.id}));}
+      if(result.status==='failed')throw Error(result.message);
+      if(result.status==='pending')throw Error('Claude 仍在原环境准备新对话，请稍后刷新；没有重复创建，原对话保留。');
+      return result;
+    }if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
     if(Object.hasOwn(input,'expectedPreviousBinding')&&JSON.stringify(manager.records[input.memberId]?.chatBindings?.[input.channelId]||null)!==JSON.stringify(input.expectedPreviousBinding))throw Error('聊天刚刚选择了其他对话，旧配对说明没有覆盖它');
     if(input.mode==='new'&&manager!==this.coding&&SESSION_CAPABILITIES[m.platformId]?.create!==true)throw Error(SESSION_CAPABILITIES[m.platformId]?.createHint||'此平台尚未支持在 Hub 新建会话');
     const title=channels.find(c=>c.id===input.channelId).name;

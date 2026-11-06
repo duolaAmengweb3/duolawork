@@ -28,6 +28,22 @@ test('local native connector rejects unauthenticated and cross-origin requests w
  }finally{await f.cleanup();}
 });
 
+test('addressed DSH claims use the common session guard without querying work first',async()=>{
+ const f=await fixture();try{
+  const client=f.options.clientFactory();client.tools=async()=>[{name:'claim_work',inputSchema:{type:'object'}}];
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['own']});
+  const tool=f.registered[0].def,args={requestId:'direct-one',stepId:'turn_one',channelId:'own'};
+  await tool.execute(args,{agent:f.agent});
+  assert.deepEqual(f.calls,[{name:'claim_work',args:{...args,expectedSessionId:f.agent.id,contextMode:'incremental'}}]);
+  await assert.rejects(()=>tool.execute({...args,channelId:'other'},{agent:f.agent}),/其他聊天/);
+  assert.equal(f.calls.length,1,'foreign group is not forwarded');
+  await tool.execute({requestId:'next',stepId:'inbox:after:turn_one',channelId:'own'},{agent:f.agent});
+  assert.equal(f.calls.length,2);assert.equal(f.calls[1].args.expectedSessionId,f.agent.id);
+  f.setWork([{stepId:'turn_next',channelId:'own',status:'ready'}]);await f.connector.poll();
+  assert.ok(f.prompts[0].content[0].text.includes('"channelId":"own"'));assert.ok(!f.prompts[0].content[0].text.includes('hub_list_work'));
+ }finally{await f.cleanup();}
+});
+
 test('binding requires the exact existing native session and canonical project before registering tools',async()=>{
  const f=await fixture();try{
   await assert.rejects(f.connector.bind({sessionId:'missing',workspace:f.project,grantFile:f.grantFile}),/does not exist/);

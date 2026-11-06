@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-06T17:23:42.448Z",
+  "kind": "controlled comparison on authorized real message sample, no live claims or mutations",
+  "source": "channel_4ef452e331904b758d7d3c375215cb48",
+  "messageCount": 50,
+  "firstDeliveryFull": true,
+  "fullMessageContextBytes": 183646,
+  "incrementalMessageContextBytes": 13787,
+  "reductionPercent": 92.5,
+  "userMessagesPreserved": 4,
+  "unchangedAgentReferences": 45,
+  "allSourceMessagesRetained": true,
+  "limitations": "Message portion only, excludes tools/skills/memory; not token billing, model speed, or p95"
+}
