@@ -234,7 +234,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     hops: message.hops || 0,
     status: deferred ? "limited" : available || nativePending ? "ready" : "unavailable",
     createdAt: tx.now,
-    ...(message.meetingId ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
+    ...(message.meetingId && !message.meetingChat ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
     reason: deferred
       ? "达到本群连续唤醒上限，消息已保留，可继续讨论"
       : available
@@ -718,8 +718,6 @@ export async function conversationCommand(
           channel.status = "active";
           tx.put("channel", channel);
         }
-        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs }, channel, meetingHelpers);
-        if (meeting?.handled) return meeting.result;
         const mentions = listIds(
           !actor.owner && cmd.mentions === undefined
             ? textMentions(body, channel, identity)
@@ -731,6 +729,9 @@ export async function conversationCommand(
         if (cmd.mentionAll !== undefined && typeof cmd.mentionAll !== 'boolean')
           fail('invalid_input', '@全员选项无效');
         const mentionAll = cmd.mentionAll === true;
+        // Resolve addressing before meeting routing: a meeting must not swallow @ recipients.
+        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs, mentions, mentionAll }, channel, meetingHelpers);
+        if (meeting?.handled) return meeting.result;
         const targets = messageRecipients(channel, { ...actor, mentions, mentionAll });
         if (actor.owner && channel.memberIds.length > 0 && !targets.length)
           fail('recipient_required', '请选择群负责人，或 @ 一位成员、@全员后发送');
@@ -768,7 +769,7 @@ export async function conversationCommand(
             409,
           );
         const message = await channelMessage(tx, channel, actor, body, {
-          ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion } : {}),
+          ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion, ...(meeting.chat ? { meetingChat: true } : {}) } : {}),
           requestId:cmd.requestId,
           mentions,
           mentionAll,

@@ -72,7 +72,7 @@ export default function MeetingPanel({ initialId, channel, members, connections,
   const notice=notifications.find(n=>n.stepId===waitingTurn?.id);
   const waitingLabel=waitingTurn?.status==='active'?'负责人已接单，正在整理':notice?.httpStatus===200||notice?.status==='accepted'?'原平台已收到，等待负责人接单':'消息已保存，等待负责人接收';
   return <aside className={'meeting-panel'+(ended?' is-result':'')+(expanded?' is-expanded':'')} aria-label={title}>
-    <header className="meeting-panel-header"><span className="meeting-header-mark"><Video size={19}/></span><div><h2>{title}</h2><p>{preparing?'先聊需求，再确认这一场要解决什么':ended?'负责人交付 · 原始讨论随时可查':status(m)}</p></div><button aria-label={expanded?'收起阅读区':'展开阅读区'} onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button><button aria-label="关闭会议面板" onClick={onClose}><X size={19}/></button></header>
+    <header className="meeting-panel-header"><span className="meeting-header-mark"><Video size={19}/></span><div><h2>{title}</h2><p>{preparing?'负责人理解需求后组织讨论，完成后交付结果':ended?'负责人交付 · 原始讨论随时可查':status(m)}</p></div><button aria-label={expanded?'收起阅读区':'展开阅读区'} onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button><button aria-label="关闭会议面板" onClick={onClose}><X size={19}/></button></header>
     {error&&<div role="alert" className="meeting-inline-error">{error}<button onClick={()=>setError('')} aria-label="关闭会议错误"><X size={13}/></button></div>}
     {syncError&&<p role="status" className="meeting-sync">连接正在恢复，草稿和已收到的记录会保留。</p>}
     {m?.revisionStatus==='requested'&&Date.parse(m.revisionExpiresAt)>clock&&<p role="status" className="meeting-sync">已请负责人重新解释。当前结果保留，新稿完成后会在这里更新。</p>}
@@ -99,7 +99,7 @@ export default function MeetingPanel({ initialId, channel, members, connections,
           </section>:<div className="meeting-welcome"><FileText size={25}/><h3>先和负责人聊聊</h3><p>明确本场问题和交付后，负责人会把安排放在这里。</p><Button variant="outline" onClick={()=>setPrepView('chat')}>返回沟通</Button></div>}
         </TabsContent>
       </Tabs>
-      {m?.version>0&&<div className="meeting-ready-bar"><div><strong>{planCurrent?'本场安排已整理':'正在按你的补充调整'}</strong><small>{planCurrent?'确认这一场要解决什么，就可以开始':'新的安排形成前不会召集大家'}</small></div>{prepView==='plan'?<Button disabled={busy||!planCurrent} onClick={()=>act('start',{expectedVersion:m.version}).catch(()=>{})}><Video size={15}/>开始会议</Button>:<Button variant="outline" onClick={()=>setPrepView('plan')}>查看本场安排</Button>}</div>}
+      {m?.version>0&&<div className="meeting-ready-bar"><div><strong>{planCurrent?'本场安排已整理':'正在按你的补充调整'}</strong><small>{planCurrent?'负责人将直接组织讨论，你可随时补充或停止':'负责人正在理解最新要求'}</small></div>{prepView!=='plan'&&<Button variant="outline" onClick={()=>setPrepView('plan')}>查看本场安排</Button>}</div>}
       {id&&onChat?<div className="meeting-prep-composer"><p>补充想法或调整安排，直接在群里告诉负责人。</p><Button onClick={onChat}><ArrowUp size={15}/>回到群聊继续沟通</Button></div>:(<form className="meeting-prep-composer" onSubmit={send}><Textarea aria-label="与会议负责人沟通" placeholder="说说你的想法，或继续补充要求…" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send(e);}}}/><div><small>Enter发送 · 关闭后草稿保留</small><Button size="icon" type="submit" aria-label="发送给会议负责人" disabled={busy||!draft.trim()||(!id&&!coordinator)}><ArrowUp size={18}/></Button></div></form>)}
 
     </>:<div className="meeting-record-scroll">

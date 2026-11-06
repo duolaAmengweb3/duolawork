@@ -16,18 +16,20 @@ async function setup(t,mode='crosscheck') {
  const plan=async()=>{const c=await claim('grok');const p=await meet('plan',{title:'产品机会',goal:'澄清用户价值',deliverable:'候选方向与验证办法',mode,body:'先分别判断，再核查关键依据。',agenda:[{title:'需求是否成立'}]},actor('grok'));return p;};
  return {...f,send,meet,claim,plan,channel,prepare,now};
 }
-test('自然确认不要求固定口令；负责人引用最新用户原话，旧消息和成员代确认无效',async t=>{
- const f=await setup(t);await f.plan();
- let msg=await f.meet('say',{body:'就这么开吧'});
- let started=await f.meet('start',{},actor('grok'));assert.equal(started.status,'running');
- const g=await setup(t);await g.plan();
- const first=await g.meet('say',{body:'这个安排可以，大家现在开始讨论。'});
- await assert.rejects(g.meet('start',{ownerMessageId:first.id,confirmationQuote:'伪造用户确认'},actor('grok')),e=>e.code==='start_not_confirmed');
- await assert.rejects(g.meet('start',{ownerMessageId:first.id,confirmationQuote:first.body},actor('check')),e=>e.code==='forbidden');
- started=await g.meet('start',{ownerMessageId:first.id,confirmationQuote:first.body},actor('grok'));
- assert.equal(started.status,'running');assert.equal(started.startConfirmation.messageId,first.id);
- const h=await setup(t);await h.plan();const old=await h.meet('say',{body:'这个安排可以，大家现在开始讨论。'});await h.meet('say',{body:'等一下，我再补充一些要求。'});
- await assert.rejects(h.meet('start',{ownerMessageId:old.id,confirmationQuote:old.body},actor('grok')),e=>e.code==='start_not_confirmed');
+test('负责人理解需求后直接开始和交付结束，无需用户确认；仍须处理最新补充',async t=>{
+ const f=await setup(t);await f.claim('grok');
+ await assert.rejects(f.meet('start',{},actor('grok')),e=>e.code==='plan_required');
+ await f.plan();
+ await assert.rejects(f.meet('start',{},actor('check')),e=>e.code==='forbidden');
+ let m=await f.meet('start',{},actor('grok'));assert.equal(m.status,'running');assert.equal(m.startMode,'coordinator');
+ const source=await f.meet('opinion',{body:'现有需求不足以确认市场，需要访问真实用户。',round:m.round,sourceVersion:m.version},actor('grok'));
+ m=await f.meet('finish',{sourceVersion:m.version,round:m.round,summary:'先访谈真实用户，验证重复出现的困难，再决定产品方向。',answers:m.agenda.map(a=>({agendaId:a.id,body:'缺少真实用户访谈，暂不能确认需求成立。',status:'unresolved'}))},actor('grok'));
+ assert.equal(m.status,'ended');assert.equal(m.endReason,'completed');assert.match(m.summary,/访谈真实用户/);
+ assert.equal((await f.repo.list('meeting_preparation',{parent:m.id})).filter(x=>x.authorId==='owner').length,1,'用户只提出初始需求，不需要第二次说开始或结束');
+ const h=await setup(t);await h.plan();const newer=await h.meet('say',{body:'等一下，我再补充一些要求。'});
+ await assert.rejects(h.meet('start',{ownerMessageId:h.prepare.lastOwnerMessageId,confirmationQuote:'开始'},actor('grok')),e=>e.code==='new_owner_input');
+ const latest=await h.meet('plan',{ownerMessageId:newer.id,title:'按最新要求讨论',goal:'先理解补充',deliverable:'经过调整的建议',mode:'crosscheck',body:'回应新要求后组织',agenda:[{title:'新要求是什么'}]},actor('grok'));
+ assert.equal((await h.meet('start',{},actor('grok'))).status,'running');
 });
 test('原生完成状态统一且不能绕过依据检查；结构化金额原样保存',async t=>{
  for(const status of ['supported','done','resolved','confirmed','completed']){
@@ -128,9 +130,9 @@ test('负责人失联仍自动收尾到期归档；停止后新派发和迟到�
  await f.meet('finish',{sourceVersion:1,summary:'迟到总结',answers:m.agenda.map(a=>({agendaId:a.id,body:'迟到回答'}))},actor('grok'),'2026-11-03T05:11:00.000Z');
  assert.equal((await f.repo.get('meeting_result',m.id)).summary,'');
 });
-test('议题更新保留版本，旧回复标为迟到；跨群越权、未确认开会和伪造意见被拒',async t=>{
+test('议题更新保留版本，旧回复标为迟到；跨群越权、非负责人开会和伪造意见被拒',async t=>{
  const f=await setup(t);await f.plan();
- await assert.rejects(f.meet('start',{},actor('grok')),e=>e.code==='start_not_confirmed');
+ await assert.rejects(f.meet('start',{},actor('check')),e=>e.code==='forbidden');
  let m=await f.meet('start');const old=await f.claim('check');
  await f.meet('agenda',{expectedVersion:1,agenda:[{...m.agenda[0],title:'先研究教育需求'}],goal:'教育需求'},actor('grok'));
  const late=await f.meet('opinion',{sourceVersion:1,round:0,body:'旧方向的观点'},actor('check'));assert(late.late);
@@ -152,10 +154,11 @@ test('负责人已领取后用户又补充，旧计划不能冒充理解了最�
  await assert.rejects(f.meet('start'),e=>e.code==='new_owner_input');
 });
 
-test('筹备的明确开始指令沿用已确认版本；文章引用不会开始或停止',async t=>{
+test('人类文字不会自动开始会议；负责人处理最新消息后自主开会，用户仍可随时喊停',async t=>{
  const f=await setup(t);await f.plan();
- await f.meet('say',{body:'就这样开'});const c=await f.claim('grok');
- const m=await f.meet('start',{},actor('grok'));assert.equal(m.status,'running');
+ const latest=await f.meet('say',{body:'就这样开'});const c=await f.claim('grok');
+ assert.equal((await f.repo.get('channel_meeting',f.prepare.id)).status,'preparing');
+ const m=await f.meet('start',{ownerMessageId:latest.id},actor('grok'));assert.equal(m.status,'running');
  await f.send('channel.post',{channelId:f.channel.id,meetingId:m.id,body:'引用文章：“停止会议”。这个设计有参考价值吗？'});
  assert.equal((await f.repo.get('channel_meeting',m.id)).status,'running');
  await f.send('channel.post',{channelId:f.channel.id,meetingId:m.id,body:'结束这场会议'});
@@ -214,4 +217,44 @@ test('用户会议插话优先送给负责人，旧阶段推进不会丢掉新�
  const c=await f.claim('grok');const turn=await f.repo.get('channel_turn',c.turnId);assert.equal(turn.meetingPurpose,'user_update');
  await f.send('channel.post',{channelId:f.channel.id,turnId:c.turnId,body:'收到，我会先调整议题和目标。'},actor('grok'));
  const current=await f.repo.get('channel_meeting',m.id);assert.equal(current.latestOwnerDirectiveId,current.ackOwnerMessageId);
+});
+
+test('会议筹备中的用户 @ 保留对象，只投给指定成员；回复不误进筹备或意见流程', async t => {
+ const f=await setup(t);
+ const msg=await f.send('channel.post',{channelId:f.channel.id,meetingId:f.prepare.id,body:'你在吗',mentions:['check']});
+ assert.deepEqual(msg.mentions,['check']);assert.deepEqual(msg.recipientIds,['check']);assert.equal(msg.meetingChat,true);
+ const turns=(await f.repo.list('channel_turn')).filter(x=>x.messageId===msg.id);
+ assert.deepEqual(turns.map(x=>x.memberId),['check']);assert.equal(turns[0].meetingId,undefined);
+ const claimed=await f.claim('check');assert.equal(claimed.turnId,turns[0].id);
+ const context=await withConversationContext(f.repo,f.identity,actor('check'),claimed);assert.equal(context.input.meeting,undefined);
+ const reply=await f.send('channel.post',{channelId:f.channel.id,turnId:claimed.turnId,replyTo:msg.id,body:'在，可以正常交流',mentions:[]},actor('check'));
+ assert.equal(reply.type,'message');assert.equal(reply.meetingChat,true);
+ assert.equal((await f.repo.get('channel_turn',claimed.turnId)).status,'done');
+ assert.equal((await f.repo.list('meeting_opinion',{parent:f.prepare.id})).length,0);
+ assert.equal((await f.repo.get('channel_meeting',f.prepare.id)).lastOwnerMessageId,f.prepare.lastOwnerMessageId);
+});
+
+test('负责人筹备回复里的文字 @ 真正投递；显式空列表不误通知，非法成员仍拒绝', async t => {
+ const f=await setup(t);f.identity.members.find(x=>x.id==='check').name='核查员';
+ const claimed=await f.claim('grok');
+ const msg=await f.send('channel.post',{channelId:f.channel.id,turnId:claimed.turnId,body:'@核查员 请检查这个结论。'},actor('grok'));
+ assert.deepEqual(msg.mentions,['check']);assert.equal(msg.mentionsFromText,true);assert.equal(msg.meetingChat,true);
+ assert.equal((await f.repo.get('channel_turn',claimed.turnId)).status,'done');
+ assert.equal((await f.repo.list('channel_turn')).filter(x=>x.messageId===msg.id&&x.memberId==='check').length,1);
+ await assert.rejects(f.send('channel.post',{channelId:f.channel.id,meetingId:f.prepare.id,body:'错误对象',mentions:['outsider']}),e=>e.code==='invalid_mention');
+ const silent=await f.send('channel.post',{channelId:f.channel.id,replyTo:msg.id,body:'文中提到 @核查员 ，这次不通知。',mentions:[]},actor('grok'));
+ assert.deepEqual(silent.mentions,[]);assert.equal((await f.repo.list('channel_turn')).filter(x=>x.messageId===silent.id).length,0);
+});
+
+test('会议中 @全员及结束后的旧引用都按聊天投递，不生成过期会议通知', async t => {
+ const f=await setup(t);await f.plan();await f.meet('start');
+ const msg=await f.send('channel.post',{channelId:f.channel.id,meetingId:f.prepare.id,body:'全员确认收到',mentionAll:true});
+ assert.equal(msg.mentionAll,true);assert.deepEqual(msg.recipientIds,['grok','check']);
+ assert.equal((await f.repo.list('channel_turn')).filter(x=>x.messageId===msg.id&&x.meetingId).length,0);
+ await f.meet('stop');
+ const late=await f.send('channel.post',{channelId:f.channel.id,meetingId:f.prepare.id,body:'结束后的新问题'});
+ assert.equal(late.meetingChat,true);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===late.id);
+ assert.equal(turn.memberId,'grok');assert.equal(turn.meetingId,undefined);assert.equal(turn.status,'ready');
+ const linked=await f.send('channel.post',{channelId:f.channel.id,replyTo:msg.id,body:'关于刚才的问题',mentions:['check']});
+ assert.equal(linked.meetingChat,true);assert.deepEqual(linked.recipientIds,['check']);
 });

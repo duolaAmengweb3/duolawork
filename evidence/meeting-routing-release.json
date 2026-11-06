@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-06T05:05:23.896Z",
+  "origin": "https://hub.manyaitool.com",
+  "workerSHA256": "f26b027d9c7537dd4ad098a3735153f6b3dc2d2d711e4f4c41bd88dc155b32d0",
+  "remoteFilesMatch": true,
+  "services": [
+    "active",
+    "active",
+    "active"
+  ],
+  "desktopBuild": "4ea8f78d99543338",
+  "desktopAndLocalMatch": true,
+  "staleMeeting": {
+    "id": "meeting_7560d84fd614453fb9454b1eb0d04b3d",
+    "previousStatus": "preparing",
+    "status": "ended",
+    "endReason": "筹备取消",
+    "endedAt": "2026-11-06T05:03:49.050Z"
+  },
+  "validation": {
+    "unitTests": 349,
+    "interface": "meeting-addressing-ui.json",
+    "nativeModelMeetingTested": false
+  }
+}

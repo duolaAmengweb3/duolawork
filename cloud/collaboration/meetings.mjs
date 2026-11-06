@@ -11,7 +11,7 @@ export const MEETING_MODES = {
 const string = { type: 'string' };
 export const MEETING_TOOLS = [{
   name: 'meeting',
-  description: '真实会议工具。prepare筹备；say与负责人沟通；plan由负责人提出可修改的目标和交付；start按用户已确认安排开会；read读取本场；opinion提交本阶段独立意见；review登记具体核验；agenda调整议题；advance推进；finish由负责人写给用户可直接阅读的完整结果，answers写具体发现而非完成状态；stop停止。不要用普通群消息泄漏未公开意见。',
+  description: '真实会议工具。prepare筹备；say与负责人沟通；plan由负责人提出可修改的目标和交付；start由负责人在理解最新需求后直接开会，无需用户再次确认；read读取本场；opinion提交本阶段独立意见；review登记具体核验；agenda调整议题；advance推进；finish由负责人自主收尾，交付给用户可直接阅读的完整结果并结束会议，answers写具体发现而非完成状态；stop停止。不要用普通群消息泄漏未公开意见。',
   inputSchema: { type: 'object', additionalProperties: false,
     properties: {
       requestId: string, channelId: string, meetingId: string, action: string,
@@ -20,7 +20,7 @@ export const MEETING_TOOLS = [{
       memberIds: { type: 'array', items: string, maxItems: 30 },
       durationSeconds: { type: 'integer', minimum: 60, maximum: 7200 },
       expectedVersion: { type: 'integer' }, round: { type: 'integer' },
-      sourceVersion: { type: 'integer' }, ownerMessageId: string, confirmationQuote: {type:'string',description:'负责人理解用户已明确同意按当前安排开始时，逐字引用最新用户筹备消息；与ownerMessageId一起记录确认来源，不得引用成员意见或旧消息。'},
+      sourceVersion: { type: 'integer' }, ownerMessageId: string, confirmationQuote: {type:'string',description:'旧客户端兼容字段，不再要求用户确认或提供确认口令。'},
       closure: { type: 'string', enum: ['coordinator', 'deadline'] },
       agenda: { type: 'array', maxItems: 20, items: { type: 'object', properties: { id: string, title: string, expected: string, status: string, replaces: { type: 'array', items: string } }, required: ['title'] } },
       answers: { type: 'array', maxItems: 20, items: { type: 'object', properties: { agendaId: string, body: string, status: {type:'string',description:'supported=有本场依据的结论；partial=部分回答；unresolved=尚未解决；disputed=仍有分歧。done/resolved/confirmed兼容为supported，同样必须附本场evidenceIds。'}, evidenceIds: { type: 'array', items: string }, dissent: string }, required: ['agendaId', 'body'] } },
@@ -49,7 +49,6 @@ export function publicMeeting(m, actor = { owner: true }) {
   if (m.status === 'preparing' && !actor.owner && actor.memberId !== m.coordinatorId && actor.memberId !== m.createdBy) return null;
   return m;
 }
-const ownerStart = body => /^(就这样开(?:吧)?|就这么开(?:吧)?|按这个开(?:吧)?|按这个开始(?:吧)?|开始|开始吧|开始会议|开始开会|开会吧|就这样开始(?:吧)?)[。！!\s]*$/u.test(body.trim());
 const ownerStop = body => /^(停止本场会议|结束这场会议|停止会议|结束会议|这场会议先停|立刻停止本场会议|停止全部调用)[。！!\s]*$/u.test(body.trim());
 
 async function release(tx, actor, cmd, helpers, channel) {
@@ -213,19 +212,10 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     return next;
   }
   if (action === 'start') {
-    let semanticConfirmation=false;
-    if(!actor.owner){
-      host(m,actor);
-      if(cmd.confirmationQuote&&cmd.ownerMessageId===m.lastOwnerMessageId){
-        const confirmation=await tx.get('meeting_preparation',cmd.ownerMessageId);
-        semanticConfirmation=confirmation.authorId==='owner'&&confirmation.parentId===m.id&&confirmation.body===cmd.confirmationQuote&&confirmation.createdAt>=m.plannedAt&&m.basedOnOwnerMessageId!==confirmation.id;
-        if(semanticConfirmation)m.startConfirmation={messageId:confirmation.id,quote:confirmation.body,interpretedBy:actor.memberId,planVersion:m.version};
-      }
-      if(!semanticConfirmation&&(!m.startAuthorizedVersion||m.startAuthorizedVersion!==m.version))fail('start_not_confirmed','请先与用户确认本场安排；明确同意后引用最新用户原话作为确认来源，或由用户点击开始');
-    }
+    host(m, actor);
     if (m.status !== 'preparing') { if (active(m)) return m; fail('meeting_ended', '会议已结束，请保留原记录后另开'); }
     if (!m.version || !m.goal || !m.deliverable) fail('plan_required', '负责人尚未提交本场目标、交付和组织安排，请继续沟通');
-    if(!semanticConfirmation&&m.basedOnOwnerMessageId!==m.lastOwnerMessageId&&!ownerStart((await tx.get('meeting_preparation',m.lastOwnerMessageId)).body))fail('new_owner_input','负责人正在处理你的新补充，请等最新安排形成后再开始',409);
+    if(m.basedOnOwnerMessageId!==m.lastOwnerMessageId && cmd.ownerMessageId!==m.lastOwnerMessageId)fail('new_owner_input','用户有新补充，请负责人先读取并处理，确认目标和交付仍合适后携带最新 ownerMessageId 开始',409);
     if (cmd.expectedVersion !== undefined && cmd.expectedVersion !== m.version) fail('version_conflict', '筹备安排已变化，请查看最新安排后开始', 409);
     const available = [];
     for (const mid of m.memberIds) if (liveMember(identity, mid) && (await tx.get('connection', mid, false))?.status === 'verified') available.push(mid);
@@ -233,7 +223,8 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if (available.length < 2) fail('participants_required', '多人会议至少需要两位已连接成员，现有筹备记录保留');
     m.unavailableMembers = m.memberIds.filter(mid => !available.includes(mid)); m.memberIds = available;
     m.status = 'running'; m.startedAt = tx.now; m.startedBy = actor.memberId || 'owner';
-    m.startAuthorization = cmd.ownerMessageId || m.lastOwnerMessageId || 'owner-button';
+    m.startedFromOwnerMessageId = cmd.ownerMessageId || m.lastOwnerMessageId;
+    m.startMode = actor.owner ? 'owner' : 'coordinator';
     m.deadlineAt = new Date(Date.parse(tx.now) + m.durationSeconds * 1000).toISOString();
     m.closingAt = new Date(Date.parse(m.deadlineAt) - Math.min(120, m.durationSeconds * .2) * 1000).toISOString();
     m.maxWakeups = 3 * available.length + 2; m.phase = MEETING_MODES[m.mode].stages[0];
@@ -416,8 +407,7 @@ async function preparationPost(tx, identity, actor, cmd, channel, m, helpers) {
     m.lastOwnerMessageId = message.id;
     if (ownerStop(body)) { m.status = 'ended'; m.endReason = '筹备取消'; m.endedAt = tx.now; await cancelPending(tx, m, '筹备已取消'); }
     else {
-      if (ownerStart(body)) m.startAuthorizedVersion = m.version;
-      await wake(tx, identity, channel, m, [m.coordinatorId], '用户在筹备对话中提出新要求。请与用户必要地多轮明确本场目标和交付，不为了讨论而讨论；每次只问最影响结果的一两项缺失信息。成员、时长和组织方法已有默认或由你安排，不让用户再分工或选择专业模式；交付形式由你提出建议，不抛一张问卷给用户。信息充分时调用meeting(action="plan")保存真实安排，并用人话回应。用户明确开始后可调用start；口语确认可传ownerMessageId和confirmationQuote逐字引用最新用户同意原话，不需要固定口令；不确定是否同意时简短确认，不提前通知全体。', helpers, { preparation: true });
+      await wake(tx, identity, channel, m, [m.coordinatorId], '用户在筹备对话中提出新要求。请与用户必要地多轮明确本场目标和交付，不为了讨论而讨论；每次只问最影响结果的一两项缺失信息。成员、时长和组织方法已有默认或由你安排，不让用户再分工或选择专业模式；交付形式由你提出建议，不抛一张问卷给用户。信息充分时调用meeting(action="plan")保存真实安排，接着调用meeting(action="start")直接组织讨论，不要求用户再次确认或说开始。若用户刚有补充，先理解并处理，start带最新ownerMessageId。用户说暂缓或不要开始时应遵从；不要为了走流程反复追问。讨论足够后由你调用finish提交完整结果并结束，不能只在聊天中口头宣布完成。', helpers, { preparation: true });
     }
     stamp(tx, m);
   } else await release(tx, actor, { ...cmd, meetingId: m.id }, helpers, channel);
@@ -428,10 +418,21 @@ export async function meetingPost(tx, identity, actor, cmd, channel, helpers) {
   let turn = cmd.turnId ? await tx.get('channel_turn', cmd.turnId, false) : null;
   if (!turn && actor.memberId) turn = (await tx.list('channel_turn', { scope: channel.id, parent: actor.memberId, status: 'active' }))[0];
   let meetingId = cmd.meetingId || turn?.meetingId;
-  if (!meetingId && cmd.replyTo) meetingId = (await tx.get('channel_message', cmd.replyTo, false))?.meetingId;
+  const parent = cmd.replyTo ? await tx.get('channel_message', cmd.replyTo, false) : null;
+  if (!meetingId) meetingId = parent?.meetingId;
   if (!meetingId) return null;
   const m = await tx.get('channel_meeting', meetingId);
   if (m.scopeId !== channel.id) fail('forbidden', '会议不属于本群', 403);
+  // Explicit @ is ordinary conversation, even during preparation or a formal
+  // round. Retain the meeting reference without enrolling recipients into its
+  // scheduler or consuming their messages as private opinions.
+  if (cmd.mentions?.length || cmd.mentionAll || parent?.meetingChat ||
+      (['ended','closed'].includes(m.status) && turn?.meetingPurpose !== 'result_revision')) {
+    if (actor.memberId && turn?.meetingPurpose === 'user_update' && turn.ownerMessageId === m.latestOwnerDirectiveId) {
+      m.ackOwnerMessageId = turn.ownerMessageId; stamp(tx, m);
+    }
+    return { handled: false, meetingId, sourceVersion: m.version, chat: true };
+  }
   if (m.status === 'preparing') return { handled: true, result: await preparationPost(tx, identity, actor, { ...cmd, meetingId }, channel, m, helpers) };
   if (actor.owner && ownerStop(cmd.body)) return { handled: true, result: await end(tx, channel, m, helpers, 'stopped') };
   if(actor.owner&&active(m)){
@@ -484,7 +485,7 @@ export async function meetingTurnContext(repo, identity, actor, turn) {
       :turn.meetingPurpose==='user_update'
       ? '用户在会议中有新补充或决定。优先阅读群消息里对应owner原文；必要时调用meeting(action="agenda",expectedVersion,agenda,goal,deliverable)更新议题，再post_message回应。不要把这条用户补充当作待独立提交的普通意见；本工具上下文含userUpdateMessageId。结束总结必须处理最新要求。'
       : m.status === 'preparing'
-      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用户没有要求时，不自行加400字等篇幅限制或固定交付模板；以把问题讲清楚为准。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,mode,body,agenda:[{title}],requestId)保存安排，界面会展示安排卡，聊天只简短说明新发现或待确认的问题，不重复抄一遍卡片。用户确认后才start。'
+      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用户没有要求时，不自行加400字等篇幅限制或固定交付模板；以把问题讲清楚为准。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,mode,body,agenda:[{title}],requestId)保存安排，界面会展示安排卡，聊天只简短说明新发现或待确认的问题，不重复抄一遍卡片。需求明确后在同一轮直接调用meeting(action="start",meetingId,channelId,ownerMessageId=最新用户消息ID,requestId)，不等用户再确认或说开始；用户要求暂缓时遵从。讨论足够后自行调用finish交付结果并结束；自然语言说“完成”不替代真实动作。'
       : m.status === 'closing'
         ? '负责人请对照用户最初的问题和本场交付约定，亲自写一份用户可以直接读懂的完整正文。summary是主要交付，先回答问题，再用自然段、小标题或列表解释具体发现和理由；只在相关时写建议、待决或未知，不套固定模板，不堆API/代码名和缩略词，必要术语用日常语言解释。answers逐项填写实际内容，不用“双方一致、已覆盖、无分歧、已合并”等状态句代替答案，不让用户翻过程才能知道结论。不自行压缩成关键词提纲。提交meeting(action="finish",meetingId,channelId,round=本场currentRound,sourceVersion,ownerMessageId=最新已处理用户补充ID（如有）,summary,answers:[{agendaId,body,status,evidenceIds,dissent}],requestId)。status使用supported/partial/unresolved/disputed；supported须关联本场真实意见、核验或本群资料。若接口要求修正参数，只修参数并保留完整正文。未知说明缺口，不伪造共识。必要补查用meeting(action="investigate",body=具体缺口,memberIds=本场核验者)请求，仍受剩余时间与调用预算约束。'
         : '按当前阶段执行。共同输入是records中authorId="owner"的用户原始资料及本场目标，负责人筹备推导不提前公开；不要因读不到价格等事实就猜测。资料更多时用meeting(action="read",cursor=nextCursor)分页。先独立提交意见；后续阶段核验关键依据并用meeting(action="review",claim,method,finding,sources,requestId)登记真实检查，再调用meeting(action="opinion",meetingId,channelId,round,sourceVersion,body,sources,changeReason,requestId)。未公开初稿不写到群或文档。每轮直接回应，不空转。',

@@ -334,7 +334,7 @@ export default function App() {
   };
   const channel = snapshot?.channel,
     activeMeetings=(snapshot?.meetings||[]).filter(m=>['preparing','running','closing'].includes(m.status)),
-    scopedMeeting=Object.hasOwn(meetingScopes,current)?activeMeetings.find(m=>m.id===meetingScopes[current]):(activeMeetings.length===1?activeMeetings[0]:activeMeetings.find(m=>m.id===meetingPanel?.id)),
+    scopedMeeting=activeMeetings.find(m=>m.id===meetingScopes[current]),
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
     ),
@@ -348,9 +348,9 @@ export default function App() {
   const pendingActivity = pendingMemberActivity(snapshot?.activity, snapshot?.notifications, codingStatus.members);
   const availability=(member,channelId=current)=>memberAvailability(member,workspace.connections.find(c=>c.id===member.id),codingStatus.members.find(m=>m.memberId===member.id),channelId,(channelId===current?snapshot:viewCache.current.get(channelId))?.activity||[]);
   const mentionQuery = (draft.match(/@([^\s@]*)$/)?.[1] || '').toLowerCase();
-  const recipientHint = scopedMeeting ? `发给会议负责人 ${name(scopedMeeting.coordinatorId)}`
-    : allSelected ? `通知全员 · ${groupMembers.length} 位成员`
+  const recipientHint = allSelected ? `通知全员 · ${groupMembers.length} 位成员`
     : addressedMembers.length ? `发给 ${addressedMembers.map(name).join('、')}`
+    : scopedMeeting ? `发给会议负责人 ${name(scopedMeeting.coordinatorId)}`
     : channel?.memberIds.length === 1 ? `发给 ${name(channel.memberIds[0])}`
     : channel?.coordinatorId ? `默认发给负责人 ${name(channel.coordinatorId)}` : '选择负责人，或 @ 成员';
   function chooseMention(memberId) {
@@ -373,7 +373,7 @@ export default function App() {
     e?.preventDefault();
     if (!draft.trim() || !channel) return;
     if (!scopedMeeting && !recipients.length) { setError('请选择群负责人，或 @ 一位成员、@全员后发送'); return; }
-    const targetIds = scopedMeeting ? [scopedMeeting.coordinatorId] : recipients;
+    const targetIds = scopedMeeting && !allSelected && !addressedMembers.length ? [scopedMeeting.coordinatorId] : recipients;
     const targetMembers=groupMembers.filter(m=>targetIds.includes(m.id));
     const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);return !r?.assignments?.some(b=>b.channelId===current)&&!r?.sessionId;});
     if(missing){setModal({type:'session',member:missing,channelId:current});return;}
@@ -700,7 +700,7 @@ export default function App() {
                 </Button>
               </div>
             </header>
-            {(snapshot.meetings||[]).length>0&&<div className="meeting-status-strip" aria-label="本群会议状态">{(activeMeetings.length?activeMeetings:[snapshot.meetings[0]]).slice(0,3).map(m=><div key={m.id}><button onClick={()=>setMeetingPanel({id:m.id,channelId:current})}><Video size={15}/><span className={'meeting-state '+m.status}>{{preparing:'筹备中',running:'进行中',closing:'整理结论',ended:'已结束',closed:'已结束'}[m.status]||'会议记录'}</span><strong>{m.title}</strong></button>{m.status==='preparing'&&<Button size="sm" variant="outline" disabled={!m.plannedAt} onClick={()=>act('channel.meeting',{action:'start',meetingId:m.id,expectedVersion:m.version})}>{m.plannedAt?'按此安排开始':'负责人正在整理安排'}</Button>}{['running','closing'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>act('channel.meeting',{action:'stop',meetingId:m.id})}>结束会议</Button>}{['ended','closed'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>setMeetingPanel({id:m.id,channelId:current})}>查看记录与总结</Button>}</div>)}</div>}
+            {(snapshot.meetings||[]).length>0&&<div className="meeting-status-strip" aria-label="本群会议状态">{(activeMeetings.length?activeMeetings:[snapshot.meetings[0]]).slice(0,3).map(m=><div key={m.id}><button onClick={()=>setMeetingPanel({id:m.id,channelId:current})}><Video size={15}/><span className={'meeting-state '+m.status}>{{preparing:'筹备中',running:'进行中',closing:'整理结论',ended:'已结束',closed:'已结束'}[m.status]||'会议记录'}</span><strong>{m.title}</strong></button>{m.status==='preparing'&&<Button size="sm" variant="outline" onClick={()=>setMeetingPanel({id:m.id,channelId:current})}>{m.plannedAt?'查看安排':'负责人正在组织'}</Button>}{m.status==='preparing'&&<Button size="sm" variant="ghost" onClick={()=>act('channel.meeting',{action:'stop',meetingId:m.id})}>结束筹备</Button>}{['running','closing'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>act('channel.meeting',{action:'stop',meetingId:m.id})}>结束会议</Button>}{['ended','closed'].includes(m.status)&&<Button size="sm" variant="ghost" onClick={()=>setMeetingPanel({id:m.id,channelId:current})}>查看记录与总结</Button>}</div>)}</div>}
             <div className="comm-body">
               <section className="conversation-column">
                 <div
@@ -766,7 +766,7 @@ export default function App() {
                 <div className="chat-session-chips" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" className={!b?'session-unbound-chip':''} title={!b?'先选择工作对话，这位成员才能回应本聊天的消息。':'更换本聊天使用的工作对话'} onMouseEnter={()=>void sessionPickerStore.load(m.id,current)} onFocus={()=>void sessionPickerStore.load(m.id,current)} onClick={()=>setModal({type:'session',member:m,channelId:current})}><span className={'session-dot '+(b?'connected':'unbound')}/>{m.name} · {b?.title&&!/^(?:channel_|原工作会话|新会话|独立工作会话)/.test(b.title)?b.title:b?'更换工作对话':'尚未选择工作对话'}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
                   {!!references[current]?.length&&<div className="composer-references">{references[current].map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject} onRemove={()=>setReferences(old=>({...old,[current]:(old[current]||[]).filter(v=>v.id!==r.id||v.kind!==r.kind)}))}/>)}</div>}
-                  {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
+                  {scopedMeeting&&!reply&&<div className="composing-reply">{{preparing:'筹备会议',running:'正在参与会议',closing:'会议收尾'}[scopedMeeting.status]}：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
                   {reply && (
                     <div className="composing-reply">
                       回复 {name(reply.authorId)}：{reply.body.slice(0, 60)}
