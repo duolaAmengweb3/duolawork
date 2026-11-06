@@ -18,15 +18,21 @@ function Source({id,channelId,messages,onSource,label='相关消息'}){
 export default function MessageActivity({snapshot,messages,members,nativeMembers,onBack,onSource,onResolve,onConnect,onDiscuss,onSelectSession}){
  const view=deliveryView(snapshot,members,nativeMembers),[working,setWorking]=useState(null),[error,setError]=useState('');
  const name=id=>members.find(m=>m.id===id)?.name||'成员';
+ const resolutionLabel=i=>{
+  const rows=(snapshot.activity||[]).filter(t=>i.turnIds?.includes(t.id)),kinds=[...new Set(rows.map(t=>t.resolution||t.status))];
+  const result=i.resolution||(rows.length===i.turnIds?.length&&kinds.length===1?kinds[0]:null);
+  return {covered:'旧通知已被后续回复覆盖',dismiss:'不再通知',mixed:'通知已分别处理'}[result]||'通知处理记录';
+ };
  const act=async(issue,action)=>{setWorking(issue.id);setError('');try{await onResolve(issue,action);}catch(e){setError(e.message);}finally{setWorking(null);}};
  const issueCard=(issue,attention=false)=><article className={'delivery-case '+(attention?'attention':'')} key={issue.id}>
-  <header><span className="delivery-case-icon">{attention?<Clock3 size={16}/>:<ShieldCheck size={16}/>}</span><strong>{attention?'需要你处理':issue.status==='recovering'?'正在恢复投递':'已交给负责人核对'}</strong></header>
+  <header><span className="delivery-case-icon">{attention?<Clock3 size={16}/>:<ShieldCheck size={16}/>}</span><strong>{attention?'需要你处理':issue.action==='review_incomplete'?'负责人核对未完成':issue.status==='recovering'?'正在恢复投递':'已交给负责人核对'}</strong></header>
   <p className="delivery-impact">{issue.summary||issue.impact}</p>
+  {issue.cause==='automatic_burst'&&issue.summary&&issue.summary!==issue.impact&&<p className="delivery-next">{issue.impact}</p>}
   {issue.nextAction?<p className="delivery-next">{issue.nextAction}</p>:<p className="delivery-next">{issue.status==='recovering'?'等待实际回执，无需重复发送。':'无需操作。负责人会核对已有结果，再决定是否继续通知。'}</p>}
   <Source id={issue.rootId||issue.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="相关需求"/>
-  <footer><span>{issue.memberIds.map(name).join('、')}</span>{issue.reviewerId&&<span>由 {name(issue.reviewerId)} 跟进</span>}</footer>
+  <footer><span>{issue.memberIds.map(name).join('、')}</span>{issue.reviewerId&&<span>由 {name(issue.reviewerId)} 跟进</span>}{issue.reviewCheckedAt&&<span>最近核对 {time(issue.reviewCheckedAt)}</span>}</footer>
   {attention&&<div className="delivery-case-actions">
-   {issue.action==='select_session'?<button onClick={()=>onSelectSession(issue.memberIds[0])}>选择工作对话</button>:issue.action==='connect'?issue.memberIds.filter(id=>issue.local||snapshot.activity.some(t=>issue.turnIds.includes(t.id)&&t.memberId===id&&t.status==='unavailable')).map(id=><button key={id} onClick={()=>onConnect(id)}>连接 {name(id)}</button>):issue.action==='coordinator'&&snapshot.channel.coordinatorId?<button onClick={()=>onConnect(snapshot.channel.coordinatorId)}>连接负责人</button>:null}
+   {issue.action==='select_session'?<button onClick={()=>onSelectSession(issue.memberIds[0])}>选择工作对话</button>:issue.action==='connect'?issue.memberIds.filter(id=>issue.local||snapshot.activity.some(t=>issue.turnIds.includes(t.id)&&t.memberId===id&&t.status==='unavailable')).map(id=><button key={id} onClick={()=>onConnect(id)}>连接 {name(id)}</button>):['coordinator','reviewer_unreachable'].includes(issue.action)&&snapshot.channel.coordinatorId?<button onClick={()=>onConnect(snapshot.channel.coordinatorId)}>连接负责人</button>:null}
    <button onClick={()=>onDiscuss(issue)}>和负责人沟通</button>
    {issue.cause==='not_received'&&<button disabled={!!working} onClick={()=>act(issue,'retry')}>{working===issue.id?'正在通知…':'再次通知'}</button>}
    {!issue.local&&<button disabled={!!working} className="quiet" onClick={()=>act(issue,'dismiss')}>不再需要</button>}
@@ -37,6 +43,13 @@ export default function MessageActivity({snapshot,messages,members,nativeMembers
   {error&&<p role="alert" className="delivery-error">{error}</p>}
   <section aria-label="需要你处理"><h4>需要你处理 <span>{view.attention.length||''}</span></h4>{view.attention.length?view.attention.map(i=>issueCard(i,true)):<div className="delivery-clear"><CheckCircle2 size={18}/><span>暂时没有需要你操作的事情</span></div>}</section>
   {(view.waiting.length>0||view.recovering.length>0)&&<section className="delivery-auto"><h4>自动处理中</h4>{view.recovering.map(i=>issueCard(i))}{view.waiting.map(group=><article className="delivery-case" key={group.id}><Source id={group.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{group.turns.map(t=>{const m=members.find(m=>m.id===t.memberId);return <div className="delivery-recipient" key={t.id}><AgentAvatar small name={m?.name} platformId={m?.platformId}/><strong>{name(t.memberId)}</strong><span>{activityLabel(t,turnNotification(t,snapshot.notifications),nativeMembers.find(m=>m.memberId===t.memberId))}</span></div>;})}<p className="delivery-next">消息已保存；正在处理时收到的补充会排队，无需重发。</p></article>)}</section>}
-  <details className="delivery-history"><summary>已处理记录 · {view.history.length+view.resolved.length}</summary>{view.resolved.map(i=><article key={i.id} className="delivery-case"><strong>已收尾</strong><p className="delivery-impact">{i.summary}</p><small>{time(i.resolvedAt)}</small></article>)}{view.history.map(t=><article className="delivery-entry" key={t.id}><header><strong>{name(t.memberId)}</strong><span className="delivery-state">{activityLabel(t)}</span></header><Source id={t.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{t.reason&&<p className="delivery-next">{t.reason}</p>}<footer>{time(t.completedAt||t.createdAt)}</footer></article>)}</details>
+  <details className="delivery-history"><summary>已处理记录 · {view.history.length+view.resolved.length}</summary>{view.resolved.map(i=><article key={i.id} className="delivery-case">
+   <strong>{resolutionLabel(i)}</strong><p className="delivery-impact">{i.summary}</p>
+   <Source id={i.rootId||i.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="原需求"/>
+   {i.rootId&&i.messageId!==i.rootId&&<Source id={i.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="原通知"/>}
+   {i.evidenceMessageIds?.map(id=><Source key={id} id={id} channelId={snapshot.channel.id} messages={messages} onSource={onSource} label="核对依据"/>)}
+   <footer>{i.reviewedBy&&<span>处理：{i.reviewedBy==='owner'?'我':name(i.reviewedBy)}</span>}<span>{time(i.resolvedAt)}</span></footer>
+   <button className="quiet" onClick={()=>onDiscuss(i)}>对结果有疑问</button>
+  </article>)}{view.history.map(t=><article className="delivery-entry" key={t.id}><header><strong>{name(t.memberId)}</strong><span className="delivery-state">{activityLabel(t)}</span></header><Source id={t.messageId} channelId={snapshot.channel.id} messages={messages} onSource={onSource}/>{t.reason&&<p className="delivery-next">{t.reason}</p>}<footer>{time(t.completedAt||t.createdAt)}</footer></article>)}</details>
  </div></aside>;
 }

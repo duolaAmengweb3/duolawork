@@ -53,8 +53,21 @@ test('覆盖结论需要成员真实回复；后来的无关消息不会自动�
  await assert.rejects(f.resolve('covered'),e=>e.code==='evidence_required');
  const evidence=[];for(const mid of ['check','write'])evidence.push((await f.send('channel.post',{channelId:f.channel.id,replyTo:f.root.id,body:mid+' 已完成对应章节核对并交付',mentions:[]},mid)).id);
  const issue=await f.resolve('covered',{evidenceMessageIds:evidence});assert.equal(issue.status,'resolved');
+ assert.equal(issue.resolution,'covered');
  assert.equal((await f.turns()).filter(t=>t.resolution==='covered').length,2);
  assert.equal((await f.turns()).filter(t=>t.resolution==='covered'&&t.status==='done').length,0,'覆盖旧通知不伪造成功执行');
+});
+test('覆盖依据逐条校验时间，同成员较早的回复不能覆盖后来的通知',async t=>{
+ const f=await setup(t);await f.hold();await f.maintain();
+ const early=await f.send('channel.post',{channelId:f.channel.id,replyTo:f.root.id,body:'以前交付过的章节'},'check');
+ const valid=await f.send('channel.post',{channelId:f.channel.id,replyTo:f.root.id,body:'当前写作交付'},'write');
+ await f.repo.transact('earlier-evidence',{},async tx=>tx.put('channel_message',{...await tx.get('channel_message',early.id),createdAt:'2026-11-06T07:59:59.999Z'}));
+ await assert.rejects(f.resolve('covered',{evidenceMessageIds:[early.id,valid.id]}),e=>e.code==='evidence_required');
+ assert.equal((await f.issues())[0].status,'reviewing');assert.equal((await f.turns()).filter(t=>t.status==='limited').length,2);
+ await f.repo.transact('invalid-evidence-date',{},async tx=>tx.put('channel_message',{...await tx.get('channel_message',early.id),createdAt:'invalid'}));
+ await assert.rejects(f.resolve('covered',{evidenceMessageIds:[early.id,valid.id]}),e=>e.code==='evidence_required');
+ await f.repo.transact('later-evidence',{},async tx=>tx.put('channel_message',{...await tx.get('channel_message',early.id),createdAt:'2026-11-06T08:00:00.001Z'}));
+ assert.equal((await f.resolve('covered',{evidenceMessageIds:[early.id,valid.id]})).status,'resolved','新回复和同一毫秒回复都可作时间有效的依据');
 });
 test('安全重试只通知未开始的原消息；实际回执到达才自动收尾',async t=>{
  const f=await setup(t);await f.hold('stalled');await f.maintain();await f.resolve('retry');
@@ -94,12 +107,23 @@ test('负责人回复收到但不处理异常不能算完成，也不会循环�
  const f=await setup(t);await f.hold();await f.maintain();const issue=(await f.issues())[0];
  const claim=await claimConversation(f.repo,f.identity,{memberId:'grok'},{requestId:'review-unhandled',stepId:issue.reviewTurnId},f.now);
  await f.send('channel.post',{channelId:f.channel.id,turnId:claim.turnId,body:'收到'},'grok');await f.maintain();await f.maintain('2026-11-06T08:01:00.000Z');
- assert.equal((await f.issues())[0].status,'needs_user');assert.equal((await f.turns()).filter(t=>t.deliveryReview).length,1);
+ assert.equal((await f.issues())[0].status,'reviewing');assert.equal((await f.issues())[0].action,'review_incomplete');assert.equal((await f.turns()).filter(t=>t.deliveryReview).length,1);
  const snapshot=await readChannel(f.repo,f.identity,{owner:true},{channelId:f.channel.id}),reply=snapshot.messages.find(m=>m.body==='收到');
+ assert.equal(deliveryView(snapshot).attention.length,0);assert.equal(deliveryView(snapshot).recovering.length,1);assert.ok(snapshot.deliveryIssues[0].reviewCheckedAt);
  assert.equal(reply.replyTo,f.root.id);assert.equal(reply.replySnapshot.authorId,'owner','核对结果引用原消息，不泄漏隐藏提示为会议记录');
  await f.repo.transact('legacy-review-quote',{},async tx=>tx.put('channel_message',{...await tx.get('channel_message',reply.id),replyTo:claim.input.triggerMessageIds[0],replySnapshot:{authorId:'system',body:'内部提示'}}));
  const legacy=(await readChannel(f.repo,f.identity,{owner:true},{channelId:f.channel.id})).messages.find(m=>m.id===reply.id);
  assert.equal(legacy.replyTo,f.root.id);assert.equal(legacy.replySnapshot.authorId,'owner');
+});
+test('旧的核对未完成记录回到负责人名下，真正的人类决定仍保留',async t=>{
+ const f=await setup(t);await f.hold();await f.maintain();const issue=(await f.issues())[0];
+ await f.repo.transact('legacy-escalation',{},async tx=>{
+  tx.put('channel_turn',{...await tx.get('channel_turn',issue.reviewTurnId),status:'silent',completedAt:f.now});
+  tx.put('channel_delivery_issue',{...await tx.get('channel_delivery_issue',issue.id),status:'needs_user',action:'discuss'});
+ });
+ await f.maintain();assert.equal((await f.issues())[0].action,'review_incomplete');assert.equal(deliveryView(await readChannel(f.repo,f.identity,{owner:true},{channelId:f.channel.id})).attention.length,0);
+ await f.resolve('needs_user',{nextAction:'请确定白皮书面向业务还是技术读者。'});await f.maintain();
+ assert.equal((await f.issues())[0].action,'decision');assert.equal((await f.issues())[0].status,'needs_user');
 });
 test('合并领取的原通知只在实际处理结束后收尾',async t=>{
  const f=await setup(t);await f.hold();await f.maintain();await f.resolve('retry');
@@ -121,6 +145,7 @@ test('异常自动消息风暴只暂停本分支，用户及其他需求仍可�
  const f=await setup(t);let p=f.root;
  for(let i=0;i<61;i++)p=await f.send('channel.post',{channelId:f.channel.id,replyTo:p.id,body:'过密自动消息 '+i,mentions:['check']},'grok');
  assert.equal((await f.turns()).find(t=>t.messageId===p.id).holdReason,'automatic_burst');
+ await f.maintain();const issue=(await f.issues())[0];assert.match(issue.impact,/流量保护/);assert.match(issue.impact,/60 条/);assert.match(issue.impact,/不代表已经确认发生循环/);
  const next=await f.send('channel.post',{channelId:f.channel.id,body:'现在检查另一件事',mentions:['check']});assert.equal((await f.turns()).find(t=>t.messageId===next.id).status,'ready');
 });
 test('未选工作对话与断开原环境会显示具体操作，正常忙碌仍是自动排队',()=>{

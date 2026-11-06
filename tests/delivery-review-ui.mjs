@@ -25,7 +25,15 @@ try{
  assert.equal(await page.locator('.delivery-auto .delivery-case').count(),1);assert.equal(await page.getByText('连续回应已暂停',{exact:true}).count(),0);
  assert.ok((await page.locator('.delivery-case').first().innerText()).includes('白皮书章节互审'));checks.push('同一消息两位成员合为一件，显示原需求，不计入人类待办');
  await page.screenshot({path:'evidence/delivery-review-auto.png'});
- const issue=(await repo.list('channel_delivery_issue',{scope:group.id}))[0];
+ let issue=(await repo.list('channel_delivery_issue',{scope:group.id}))[0];
+ const claim=await coordinator.call('claim_work',{requestId:'ui-claim-review',stepId:issue.reviewTurnId});
+ await coordinator.call('post_message',{requestId:'ui-receipt-only',channelId:group.id,turnId:claim.turnId,body:'收到，正在核对。'});
+ await conversationMaintenance(repo,identity);
+ await page.getByText('负责人核对未完成',{exact:true}).waitFor();assert.equal(await page.locator('.delivery-case.attention').count(),0);checks.push('只回复收到仍由负责人跟进，显示最近核对时间，不成为人类待办');
+ await repo.transact('ui-burst-cause',{},async tx=>tx.put('channel_delivery_issue',{...await tx.get('channel_delivery_issue',issue.id),cause:'automatic_burst',impact:'旧的流量提示',summary:'负责人还在核对后续结果。'}));
+ await conversationMaintenance(repo,identity);
+ await page.locator('.delivery-auto .delivery-case > .delivery-next').filter({hasText:'流量保护暂缓通知'}).waitFor();checks.push('流量保护原因在有负责人摘要时仍可见，不把过密认定成循环');
+ issue=await repo.get('channel_delivery_issue',issue.id);
  await coordinator.call('resolve_delivery',{requestId:'ui-decision',channelId:group.id,issueId:issue.id,expectedVersion:issue.version,action:'needs_user',summary:'白皮书需要确定面向技术读者还是业务读者，影响章节表达。',nextAction:'请告诉负责人优先面向哪类读者，已有草稿保留。'});
  await page.getByText('请告诉负责人优先面向哪类读者，已有草稿保留。',{exact:true}).waitFor();
  assert.equal(await page.locator('.delivery-case.attention').count(),1);checks.push('真正的决策显示影响、具体问题和沟通入口');
@@ -38,5 +46,20 @@ try{
  await page.getByRole('button',{name:'不再需要',exact:true}).click();await page.getByText('暂时没有需要你操作的事情',{exact:true}).waitFor();
  const closed=await repo.get('channel_delivery_issue',issue.id);assert.equal(closed.status,'resolved');
  assert.equal((await repo.list('channel_turn',{scope:group.id})).filter(t=>!t.deliveryReview&&t.status==='ready').length,0);checks.push('用户明确不再需要后收进历史，不重发旧任务');
+ await page.locator('.delivery-history > summary').click();
+ await page.locator('.delivery-history .delivery-case > strong').filter({hasText:'不再通知'}).waitFor();
+ const history=page.locator('.delivery-history .delivery-case').first();assert.ok((await history.innerText()).includes('白皮书章节互审'));assert.ok((await history.innerText()).includes('处理：我'));
+ await history.getByRole('button',{name:'对结果有疑问',exact:true}).click();assert.equal(await page.getByRole('textbox',{name:'群消息'}).inputValue(),'已有草稿不能被覆盖');checks.push('不再通知与业务完成区分，历史保留原需求、处理人和质疑入口且不覆盖草稿');
+ const coveredMessage=await h.command('channel.post',{channelId:group.id,body:'核对第二章修订结果。',mentions:[a.id,b.id]});
+ await repo.transact('ui-second-hold',{},async tx=>{for(const t of await tx.list('channel_turn',{scope:group.id}))if(t.messageId===coveredMessage.id)tx.put('channel_turn',{...t,status:'limited'});});
+ await conversationMaintenance(repo,identity);
+ const coveredIssue=(await repo.list('channel_delivery_issue',{scope:group.id})).find(i=>i.messageId===coveredMessage.id),evidence=[];
+ for(const m of [a,b])evidence.push((await m.call('post_message',{requestId:'ui-evidence-'+m.id,channelId:group.id,replyTo:coveredMessage.id,body:'已核对第二章修订内容。'})).id);
+ await coordinator.call('resolve_delivery',{requestId:'ui-cover',channelId:group.id,issueId:coveredIssue.id,expectedVersion:coveredIssue.version,action:'covered',summary:'第二章的两份核对回复已覆盖旧通知。',evidenceMessageIds:evidence});
+ await page.getByText('旧通知已被后续回复覆盖',{exact:true}).waitFor();
+ const coveredCard=page.locator('.delivery-history .delivery-case').filter({hasText:'旧通知已被后续回复覆盖'});
+ assert.equal(await coveredCard.getByRole('button',{name:/核对依据/}).count(),2);assert.ok((await coveredCard.innerText()).includes('处理：负责人'));
+ assert.ok(await page.locator('.delivery-list').evaluate(el=>el.scrollWidth<=el.clientWidth+1));checks.push('覆盖记录可查看两位成员的依据消息，窄窗口保持可读');
+ await page.screenshot({path:'evidence/delivery-review-history.png'});
  assert.deepEqual(errors,[]);await fs.writeFile('evidence/delivery-review-ui.json',JSON.stringify({at:new Date().toISOString(),scope:'isolated UI and HTTP; not native Agent execution',checks,errors},null,2));console.log(JSON.stringify({checks}));
 }finally{await browser?.close();await local?.close();await h.stop();}

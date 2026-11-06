@@ -29,7 +29,7 @@ async function effectiveTurn(tx,turn){
 }
 const issueKey=t=>'delivery_'+t.scopeId+'_'+(t.holdReason?(t.rootId||t.messageId)+':'+t.holdReason:t.messageId);
 const causeOf=t=>t.holdReason||({limited:'legacy_hold',stalled:t.claimedAt?'execution_unknown':'not_received',unavailable:'connection'}[t.status]);
-const impact={legacy_hold:'旧的次数限制留下了未送达通知，需要核对后续工作是否已覆盖。',repeated_request:'同一分支短时间重复发送了相同请求，已暂缓重复通知。',automatic_burst:'同一分支短时间产生大量自动消息，已暂缓后续通知。',execution_unknown:'原会话曾开始处理，但尚无完成回执；先核对，避免重复执行。',not_received:'多次通知后仍未收到成员领取回执。',connection:'成员连接尚未就绪，消息已保存。'};
+const impact={legacy_hold:'旧的次数限制留下了未送达通知，需要核对后续工作是否已覆盖。',repeated_request:'同一分支短时间重复发送了相同请求，已暂缓重复通知。',automatic_burst:'流量保护暂缓通知：同一分支 5 分钟内已产生 60 条自动消息。消息已保存，不代表已经确认发生循环。',execution_unknown:'原会话曾开始处理，但尚无完成回执；先核对，避免重复执行。',not_received:'多次通知后仍未收到成员领取回执。',connection:'成员连接尚未就绪，消息已保存。'};
 
 export async function reconcileDeliveryIssue(tx,issueId){
  const issue=await tx.get('channel_delivery_issue',issueId,false);if(!issue||issue.status==='resolved')return;
@@ -47,7 +47,7 @@ export async function deliveryIssueDetail(tx,channel,issue){
  const turns=(await Promise.all(issue.turnIds.map(id=>tx.get('channel_turn',id,false)))).filter(Boolean);
  const receipts=await Promise.all(turns.map(async t=>{const current=await effectiveTurn(tx,t);return {id:t.id,memberId:t.memberId,messageId:t.messageId,status:current?.status||t.status,claimedAt:current?.claimedAt||null,reason:t.reason};}));
  const sources=(await Promise.all(unique(turns.map(t=>t.messageId)).map(id=>tx.get('channel_message',id,false)))).filter(Boolean);
- return {...issue,receipts,messages:sources,request:issue.rootId?await tx.get('channel_message',issue.rootId,false):null,tool:'resolve_delivery',instruction:'先核对原要求和实际后续结果；有具体未完成工作才继续通知。客套回复不需重发。covered 必须给出实际成员回复；不能用新消息出现、沉默、同意或其他工作的回执推断本件已完成。summary 用人话说明哪件事、实际影响和下一步。只更新本异常后，再回复通知即可。回群只用一两句话说明处理结果；不要输出工具名、内部状态码或排查步骤，不为同步结果再次 @ 全员。'};
+ return {...issue,receipts,messages:sources,request:issue.rootId?await tx.get('channel_message',issue.rootId,false):null,tool:'resolve_delivery',instruction:'先逐项对照原要求与实际后续结果；有具体未完成工作才继续通知。客套回复不需重发。covered 必须给出对应成员在原通知之后的实际回复，说明哪些要求由哪份结果覆盖；只完成部分要求时不能把整条通知收尾。时间及作者校验不代表内容相关或业务完成，不能用新消息出现、沉默、同意或其他工作的回执代替核对。dismiss 只表示无需再通知，不表示任务完成。summary 用人话说明哪件事、实际影响、剩余要求和下一步。只有明确需要本人决定或操作才用 needs_user；你尚未核对完不属于人类待办。只更新本异常后，再回复通知即可。回群只用一两句话说明处理结果；不要输出工具名、内部状态码或排查步骤，不为同步结果再次 @ 全员。'};
 }
 
 export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helpers){
@@ -65,10 +65,10 @@ export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helper
  if(!Array.isArray(cmd.evidenceMessageIds||[])||(cmd.evidenceMessageIds||[]).length>100||(cmd.evidenceMessageIds||[]).some(id=>typeof id!=='string'))fail('invalid_input','依据消息列表无效');
  const evidence=await Promise.all((cmd.evidenceMessageIds||[]).map(id=>tx.get('channel_message',id)));
  if(evidence.some(m=>m.scopeId!==channel.id||m.hidden))fail('forbidden','依据必须是本群可见消息',403);
- if(cmd.action==='covered'&&turns.some(t=>!evidence.some(m=>m.authorId===t.memberId&&m.type==='message'&&m.id!==t.messageId)))fail('evidence_required','请为每位成员引用其实际回复，不用负责人自己的结论代替',409);
+ if(cmd.action==='covered'&&turns.some(t=>!evidence.some(m=>m.authorId===t.memberId&&m.type==='message'&&m.id!==t.messageId&&Date.parse(m.createdAt)>=Date.parse(t.createdAt))))fail('evidence_required','请为每条通知引用对应成员在该通知发出后的实际回复；较早的回复不能作为后续工作已覆盖的依据',409);
  if(cmd.action==='needs_user'){
   const nextAction=required(cmd.nextAction,'需要用户做的具体决定或操作',1500);
-  return tx.put('channel_delivery_issue',{...issue,status:'needs_user',summary,nextAction,version:issue.version+1,reviewedBy:actor.memberId||'owner'});
+  return tx.put('channel_delivery_issue',{...issue,status:'needs_user',action:'decision',summary,nextAction,version:issue.version+1,reviewedBy:actor.memberId||'owner'});
  }
  for(const t of turns){
   if(!held.has(t.status))continue;
@@ -86,7 +86,8 @@ export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helper
  }
  const remaining=await Promise.all(issue.turnIds.map(id=>tx.get('channel_turn',id,false)));
  const resolved=remaining.every(t=>t&&terminal.has(t.status));
- return tx.put('channel_delivery_issue',{...issue,status:resolved?'resolved':remaining.some(t=>t&&held.has(t.status))?'reviewing':'recovering',summary,nextAction:null,version:issue.version+1,reviewedBy:actor.memberId||'owner',evidenceMessageIds:unique([...(issue.evidenceMessageIds||[]),...evidence.map(m=>m.id)]),...(resolved?{resolvedAt:tx.now}:{})});
+ const resolutions=unique(remaining.filter(Boolean).map(t=>t.resolution||t.status));
+ return tx.put('channel_delivery_issue',{...issue,status:resolved?'resolved':remaining.some(t=>t&&held.has(t.status))?'reviewing':'recovering',action:null,summary,nextAction:null,version:issue.version+1,reviewedBy:actor.memberId||'owner',evidenceMessageIds:unique([...(issue.evidenceMessageIds||[]),...evidence.map(m=>m.id)]),...(resolved?{resolvedAt:tx.now,resolution:resolutions.length===1?resolutions[0]:'mixed'}:{})});
 }
 
 export async function deliveryReviewMaintenance(repo,identity,helpers,now){
@@ -110,9 +111,10 @@ export async function deliveryReviewMaintenance(repo,identity,helpers,now){
   const reviewerReceipts=observedChannel?.coordinatorId?await repo.list('channel_turn',{scope:row.scopeId,parent:observedChannel.coordinatorId,status:'done',order:'recent',limit:1}):[];
   const connections=await Promise.all(unique([...row.memberIds,observedChannel?.coordinatorId].filter(Boolean)).map(id=>repo.get('connection',id,false)));
   const members=identity.members.filter(m=>row.memberIds.includes(m.id)||m.id===observedChannel?.coordinatorId).map(m=>[m.id,m.paused,m.status]);
-  const event=await digest(JSON.stringify([row.id,row.revision,observedChannel?.coordinatorId,observedChannel?.status,observedTurns.map(t=>[t?.id,t?.revision]),observedEffective.map(t=>[t?.id,t?.revision]),reviewerReceipts.map(t=>[t.id,t.revision]),connections.map(c=>[c?.id,c?.status,c?.configVersion]),members]));
+  const event=await digest(JSON.stringify(['review-classification-v2',row.id,row.revision,observedChannel?.coordinatorId,observedChannel?.status,observedTurns.map(t=>[t?.id,t?.revision]),observedEffective.map(t=>[t?.id,t?.revision]),reviewerReceipts.map(t=>[t.id,t.revision]),connections.map(c=>[c?.id,c?.status,c?.configVersion]),members]));
   await repo.transact('delivery-review:'+event,{id:row.id,event},async tx=>{
-  const issue=await tx.get('channel_delivery_issue',row.id),channel=await tx.get('channel',issue.scopeId,false);if(!channel||issue.status==='resolved')return {};
+  let issue=await tx.get('channel_delivery_issue',row.id);const channel=await tx.get('channel',issue.scopeId,false);if(!channel||issue.status==='resolved')return {};
+  if(issue.cause==='automatic_burst'&&issue.impact!==impact.automatic_burst)issue=tx.put('channel_delivery_issue',{...issue,impact:impact.automatic_burst,version:issue.version+1});
   const turns=(await Promise.all(issue.turnIds.map(id=>tx.get('channel_turn',id,false)))).filter(Boolean);
   const effective=await Promise.all(turns.map(t=>effectiveTurn(tx,t)));
   if(turns.length&&effective.every(t=>t&&terminal.has(t.status)))return tx.put('channel_delivery_issue',{...issue,status:'resolved',summary:issue.summary||'相关通知已有明确处理回执。',resolvedAt:now,version:issue.version+1});
@@ -134,7 +136,13 @@ export async function deliveryReviewMaintenance(repo,identity,helpers,now){
   if(failedReviewer.length&&!failedReviewer.every(t=>lastReply?.completedAt>(t.updatedAt||t.createdAt)))return issue.status==='needs_user'&&issue.action==='reviewer_unreachable'?{}:tx.put('channel_delivery_issue',{...issue,status:'needs_user',action:'reviewer_unreachable',summary:issue.impact,nextAction:'负责人自己的消息也未能处理，已停止重复通知。请检查原 Agent，恢复后可继续原消息。',version:issue.version+1});
   const previous=issue.reviewTurnId&&await tx.get('channel_turn',issue.reviewTurnId,false);
   if(issue.reviewerId===coordinator.id&&previous){
-   if(['done','silent','stalled','removed'].includes(previous.status)&&['reviewing','recovering'].includes(issue.status))return tx.put('channel_delivery_issue',{...issue,status:'needs_user',action:'discuss',summary:issue.summary||issue.impact,nextAction:'负责人尚未完成这件事的核对；可以直接询问负责人，已有工作保留。',version:issue.version+1});
+   // A receipt without a resolution is unfinished coordinator work, not a
+   // decision only the human can make. Also repair the old automatic escalation.
+   if(['done','silent','removed'].includes(previous.status)&&(['reviewing','recovering'].includes(issue.status)||(issue.status==='needs_user'&&issue.action==='discuss'))){
+    if(issue.action==='review_incomplete')return {};
+    return tx.put('channel_delivery_issue',{...issue,status:'reviewing',action:'review_incomplete',summary:issue.summary||issue.impact,nextAction:'负责人尚未完成核对，已有工作和消息保留。',reviewCheckedAt:previous.completedAt||previous.updatedAt||now,version:issue.version+1});
+   }
+   if(previous.status==='stalled'&&['reviewing','recovering'].includes(issue.status))return tx.put('channel_delivery_issue',{...issue,status:'needs_user',action:'reviewer_unreachable',summary:issue.summary||issue.impact,nextAction:'核对通知未能完成。请检查负责人的原环境，已有工作保留。',version:issue.version+1});
    return {};
   }
   if(previous&&['ready','limited','unavailable','stalled'].includes(previous.status))tx.put('channel_turn',{...previous,status:'removed',reason:'已交给当前负责人核对'});
