@@ -104,7 +104,7 @@ export const TOOLS = [
   {
     name: "receive_messages",
     description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
-    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string,
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, expectedSessionId: string,
       waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
   },
   {
@@ -124,7 +124,7 @@ export const TOOLS = [
     name: "claim_work",
     description:
       "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整上下文。群聊 stepId=inbox 一次接收；回应后 stepId=inbox:after:<turnId> 有限等待一次。不改变真实步骤 ID 的原领取语义。",
-    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string }, ["requestId", "stepId"]),
+    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string, channelId: string, expectedSessionId: string }, ["requestId", "stepId"]),
   },
   {
     name: "report_progress",
@@ -360,6 +360,8 @@ export async function callTool(repo, identity, actor, name, args, env, options =
   if (name === "claim_work" && (args.stepId === "inbox" || args.stepId?.startsWith("inbox:after:")))
     return receiveMessages(repo, identity, actor, {
       requestId: args.requestId,
+      ...(args.channelId?{channelId:args.channelId}:{}),
+      ...(args.expectedSessionId?{expectedSessionId:args.expectedSessionId}:{}),
       ...(args.stepId === "inbox" ? {} : { afterTurnId: args.stepId.slice(12), waitSeconds: MAX_MESSAGE_WAIT_SECONDS }),
     }, options);
   if (name === "list_work")

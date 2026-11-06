@@ -74,6 +74,18 @@ test('安全重试只通知未开始的原消息；实际回执到达才自动�
  for(const mid of ['check','write']){const turn=(await f.turns()).find(t=>t.memberId===mid);assert.equal(turn.status,'ready');const c=await claimConversation(f.repo,f.identity,{memberId:mid},{requestId:'recover-'+mid,stepId:turn.id},f.now);await f.send('channel.post',{channelId:f.channel.id,body:'已核对并交付',turnId:c.turnId},mid);}
  await f.maintain();assert.equal((await f.issues())[0].status,'resolved');
 });
+test('既有成果可通过成员的新核对回复引用原版本，不复制文档或重做原任务',async t=>{
+ const f=await setup(t),channelId=f.channel.id;
+ const doc=await conversationCommand(f.repo,f.identity,{owner:true},{requestId:'existing-artifact',type:'channel.doc.create',channelId,title:'已交付章节',body:'原有章节内容'},'2026-11-05T08:00:00.000Z');
+ await f.hold();await f.maintain();const evidence=[];
+ for(const memberId of ['check','write']){
+  const read=await conversationTool(f.repo,f.identity,{memberId},'read_space_object',{channelId,kind:'document',id:doc.id,version:1});assert.equal(read.body,doc.body);
+  const result=await f.send('channel.post',{channelId,replyTo:f.root.id,body:'已对照本次要求核对原文档第 1 版，当前章节要求均满足，无剩余缺口。',refs:[{kind:'document',id:doc.id,version:1}]},memberId);evidence.push(result.id);
+ }
+ const issue=await f.resolve('covered',{evidenceMessageIds:evidence});assert.equal(issue.status,'resolved');
+ const snapshot=await readChannel(f.repo,f.identity,{owner:true},{channelId});assert.equal(snapshot.documents.length,1);assert.equal(snapshot.documents[0].version,1);
+ assert.ok(snapshot.messages.filter(m=>evidence.includes(m.id)).every(m=>m.refs[0].id===doc.id&&m.refs[0].version===1));
+});
 test('已开始但结果未知的工作不允许盲目重试，连接恢复也不重复执行',async t=>{
  const f=await setup(t);await f.hold('stalled',{claimedAt:f.now,lease:'existing-execution'});await f.maintain();
  await assert.rejects(f.resolve('retry'),e=>e.code==='execution_unknown');

@@ -7,7 +7,7 @@ import {editMessage} from './chat-experience.mjs';
 import {COORDINATION_TOOLS,trackCoordination,relatedCoordination,registerFeedback,objectFeedback,coordinationCommand,transferCoordination} from './coordination.mjs';
 import {FOLDER_TOOLS,folderCommand,allFolders,allPlacements,placeMaterial} from './material-folders.mjs';
 import { SPACE_TOOLS, referenceSchema, spaceCommand, validateRefs, publicMemory, readSpaceObject } from './workspace-objects.mjs';
-import { fail, id, required } from "./repository.mjs";
+import { fail, id, required, digest } from "./repository.mjs";
 import { messageRecipients, namedMentions, hasAllMention, hasOwnerMention } from '../../shared/chat-routing.mjs';
 import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
 
@@ -412,6 +412,7 @@ export async function claimConversation(
       )
         fail("unavailable", "成员或群当前不可执行", 409);
       const resourceKey=await executionResource(tx,c,channel.id);
+      if(args.expectedSessionId&&resourceKey!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);
       const legacyResource=await tx.get("resource",c.resourceKey,false);
       if(resourceKey!==c.resourceKey&&legacyResource?.status==='busy')fail('resource_busy','旧版接收的工作正在结束，消息已保留',409);
       const resource = await tx.get("resource", resourceKey, false);

@@ -83,6 +83,7 @@ export async function receiveMessages(repo, identity, actor, args, options = {})
   const clock = options.clock || Date.now, sleep = options.sleep || pause;
   const selection = { requestId: args.requestId, receiveNext: true,
     ...(args.channelId ? { channelId: args.channelId } : {}),
+    ...(args.expectedSessionId ? { expectedSessionId: required(args.expectedSessionId,'原工作会话',200) } : {}),
     ...(args.afterTurnId ? { afterTurnId: args.afterTurnId } : {}), waitSeconds: seconds };
   let prior;
   if (args.afterTurnId) {

@@ -47,7 +47,8 @@ export async function deliveryIssueDetail(tx,channel,issue){
  const turns=(await Promise.all(issue.turnIds.map(id=>tx.get('channel_turn',id,false)))).filter(Boolean);
  const receipts=await Promise.all(turns.map(async t=>{const current=await effectiveTurn(tx,t);return {id:t.id,memberId:t.memberId,messageId:t.messageId,status:current?.status||t.status,claimedAt:current?.claimedAt||null,reason:t.reason};}));
  const sources=(await Promise.all(unique(turns.map(t=>t.messageId)).map(id=>tx.get('channel_message',id,false)))).filter(Boolean);
- return {...issue,receipts,messages:sources,request:issue.rootId?await tx.get('channel_message',issue.rootId,false):null,tool:'resolve_delivery',instruction:'先逐项对照原要求与实际后续结果；有具体未完成工作才继续通知。客套回复不需重发。covered 必须给出对应成员在原通知之后的实际回复，说明哪些要求由哪份结果覆盖；只完成部分要求时不能把整条通知收尾。时间及作者校验不代表内容相关或业务完成，不能用新消息出现、沉默、同意或其他工作的回执代替核对。dismiss 只表示无需再通知，不表示任务完成。summary 用人话说明哪件事、实际影响、剩余要求和下一步。只有明确需要本人决定或操作才用 needs_user；你尚未核对完不属于人类待办。只更新本异常后，再回复通知即可。回群只用一两句话说明处理结果；不要输出工具名、内部状态码或排查步骤，不为同步结果再次 @ 全员。'};
+ const existingArtifactInstruction='已有产物可能满足后来提出的要求：由对应成员实际读取原产物版本，对照这次要求，在本群回复覆盖了哪些要求、还剩什么，并用 refs 引用原版本。负责人引用这条新的核对回复作为 covered 依据；不要复制文档、改旧消息时间或重新执行原任务来凑证据。缺少核对或仍有未完成要求时保持未收尾，dismiss 也不能冒充业务完成。';
+ return {...issue,receipts,messages:sources,existingArtifactInstruction,request:issue.rootId?await tx.get('channel_message',issue.rootId,false):null,tool:'resolve_delivery',instruction:'先逐项对照原要求与实际后续结果；有具体未完成工作才继续通知。客套回复不需重发。covered 必须给出对应成员在原通知之后的实际回复，说明哪些要求由哪份结果覆盖；只完成部分要求时不能把整条通知收尾。时间及作者校验不代表内容相关或业务完成，不能用新消息出现、沉默、同意或其他工作的回执代替核对。dismiss 只表示无需再通知，不表示任务完成。summary 用人话说明哪件事、实际影响、剩余要求和下一步。只有明确需要本人决定或操作才用 needs_user；你尚未核对完不属于人类待办。只更新本异常后，再回复通知即可。回群只用一两句话说明处理结果；不要输出工具名、内部状态码或排查步骤，不为同步结果再次 @ 全员。'};
 }
 
 export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helpers){

@@ -36,8 +36,10 @@ export class ClaudeChannel {
   tick(){return this.pending??=(async()=>{
     const work=await this.work(),current=new Set(work.map(w=>w.stepId));
     for(const key of Object.keys(this.sent))if(!current.has(key))delete this.sent[key];
-    // Only one outstanding notification at a time; SDK writes are not receipts.
-    const w=work.find(w=>w.status!=='ready')||work.find(w=>w.status==='ready');if(!w)return;
+    // A real claim is the receipt. Do not remind an executing conversation or
+    // interrupt it with another wake; queued work remains on the server.
+    if(work.some(w=>['claimed','active','running','needs_review'].includes(w.status)))return;
+    const w=work.find(w=>w.status==='ready');if(!w)return;
     const prior=this.sent[w.stepId];if(prior&&(Date.now()-prior.at<120000||prior.count>=3))return;
     this.sent[w.stepId]={at:Date.now(),count:(prior?.count||0)+1};await this.save();
     try{await this.notify({method:'notifications/claude/channel',params:{content:`Hub 有一条发给你的消息。调用 list_work，然后 claim_work 领取 stepId=${w.stepId}，按领取结果回复原聊天。验证工作按原指令提交。用你当前会话的原生工具完成工作；不要把回复只留在终端。`,meta:{step_id:w.stepId,session_id:this.session.sessionId}}});}
@@ -51,12 +53,29 @@ export class ClaudeChannel {
     if(args.channelId&&r.bindings[args.channelId]?.sessionId!==this.session.sessionId)throw Error('这个聊天未分配给当前 Claude 会话');
     if(name==='list_work')return{work:await this.work()};
     if(name==='claim_work'){
-      if(!(await this.work()).some(w=>w.stepId===args.stepId))throw Error('此工作未分配给当前会话');
-      const result=await this.client.tool(name,args);this.claims[result.attemptId||result.turnId]={attemptId:result.attemptId,turnId:result.turnId};await this.save();return result;
+      let channelId;
+      if(args.stepId?.startsWith('inbox:after:')){
+        const prior=Object.values(this.claims).find(c=>c.turnId===args.stepId.slice(12));
+        if(!prior)throw Error('当前会话没有领取此续接的原消息');
+        if(args.channelId&&prior.channelId&&args.channelId!==prior.channelId)throw Error('续接不能切换原聊天');
+        channelId=prior.channelId||args.channelId;
+        if(!channelId||r.bindings[channelId]?.sessionId!==this.session.sessionId)throw Error('原聊天已不属于当前会话，未领取后续消息');
+      }else{
+        const work=(await this.work()).find(w=>w.stepId===args.stepId);
+        if(!work)throw Error('此工作未分配给当前会话');
+        channelId=work.channelId;
+      }
+      const result=await this.client.tool(name,{...args,...(channelId?{channelId,expectedSessionId:this.session.sessionId}:{})});
+      const key=result.attemptId||result.turnId;
+      if(key){this.claims[key]={attemptId:result.attemptId,turnId:result.turnId,channelId:result.channelId||channelId};await this.save();}
+      return result;
     }
     if(args.attemptId&&!this.claims[args.attemptId])throw Error('当前会话没有领取此工作');
     if(args.turnId&&!Object.values(this.claims).some(c=>c.turnId===args.turnId))throw Error('当前会话没有领取这条消息');
-    return this.client.tool(name,args);
+    const result=await this.client.tool(name,args);
+    // Upgrade old stored claims when this session sends its actual reply.
+    if(args.turnId&&args.channelId){const prior=Object.values(this.claims).find(c=>c.turnId===args.turnId);if(prior&&!prior.channelId){prior.channelId=args.channelId;await this.save();}}
+    return result;
   }
 }
 

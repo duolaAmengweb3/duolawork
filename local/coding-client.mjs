@@ -27,5 +27,9 @@ export class CodingMemberClient{
   catch(e){if(e.status!==401&&e.statusCode!==401)throw e;d=await this.refresh(d);return this.request(d.endpoint+route,{method,body,token:d.access_token,timeout});}
  }
  async tools(){const response=await this.api('/v2/mcp',{method:'POST',body:{jsonrpc:'2.0',id:randomUUID(),method:'tools/list',params:{}}});if(response.error)throw new Error(response.error.message);return [...response.result.tools,...LOCAL_FILE_TOOLS];}
- async tool(name,args={}){if(LOCAL_FILE_TOOLS.some(t=>t.name===name))return localFileTool(this,name,args);return this.api('/v2/tools/'+encodeURIComponent(name),{method:'POST',body:args});}
+ async tool(name,args={}){
+  if(LOCAL_FILE_TOOLS.some(t=>t.name===name))return localFileTool(this,name,args);
+  const waiting=name==='claim_work'&&args.stepId?.startsWith('inbox:after:')||name==='receive_messages'&&args.waitSeconds>0;
+  return this.api('/v2/tools/'+encodeURIComponent(name),{method:'POST',body:args,...(waiting?{timeout:55000}:{})});
+ }
 }

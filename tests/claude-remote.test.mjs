@@ -62,6 +62,9 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  const listing=await sdk.listTools();assert.ok(listing.tools.some(x=>x.name==='post_message'));assert.ok(!listing.tools.some(x=>/shell|terminal|exec|receive_messages/.test(x.name)));
  assert.ok(listing.tools.some(x=>x.name==='link_current_conversation'));assert.ok(listing.tools.some(x=>x.name==='confirm_current_conversation'));
  const cc=await call('claim_work',{requestId:randomUUID(),stepId:foreign.stepId});await call('post_message',{requestId:randomUUID(),channelId:b.id,turnId:cc.turnId,body:'App protocol fixture'});
+ await h.command('channel.post',{channelId:b.id,body:'next message for this same native session'});
+ const continued=await call('claim_work',{requestId:randomUUID(),stepId:cc.input.continuation.stepId});assert.equal(continued.status,'claimed');assert.equal(continued.channelId,b.id);assert.notEqual(continued.turnId,cc.turnId);
+ await call('post_message',{requestId:randomUUID(),channelId:b.id,turnId:continued.turnId,body:'bundled MCP continuation receipt'});
  await sdk.close();const records=await h.request('/v2/native-sessions?memberId='+member.id);assert.equal(records.bindings[b.id].sessionId,two.sessionId);
  await h.request('/admin/action',{type:'member.disconnect',memberId:member.id});
  await assert.rejects(()=>client.api('/v2/self/native-sessions'));
