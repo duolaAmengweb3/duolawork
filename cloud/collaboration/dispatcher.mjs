@@ -117,6 +117,12 @@ export async function dispatchOne(
         step_id: row.stepId,
         run_id: row.parentId,
         generation: row.generation,
+        ...(row.conversation ? {
+          kind: 'conversation',
+          channel_id: row.scopeId,
+          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive', channelId: row.scopeId } },
+          instruction: 'This is a new wake for the specified channel. Call receive.tool with receive.arguments using your existing member credential. Do not reuse another channel or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. Notification acceptance is not completion. If busy or empty, stop this invocation.',
+        } : { kind: 'work' }),
       });
       const headers = credentials.token.startsWith("whsec_")
         ? await signedHeaders(

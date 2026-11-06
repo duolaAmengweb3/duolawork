@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { fixture } from "./collaboration-helper.mjs";
 import { conversationCommand, readChannel } from "../cloud/collaboration/conversation.mjs";
 import { callTool, TOOLS } from "../cloud/collaboration/api.mjs";
-import { dispatchOne } from "../cloud/collaboration/dispatcher.mjs";
+import { dispatchOne, maintenance } from "../cloud/collaboration/dispatcher.mjs";
 import { seal } from "../cloud/collaboration/security.mjs";
 
 const actor = { memberId: "grok" }, secret = "isolated-inbox-secret";
@@ -24,6 +24,34 @@ async function setup(t) {
   });
   return { ...f, command, group, send, receive, reply };
 }
+
+test('平台晚到的接收器仍取得未领取消息，合并新补充；已执行超时不会自动重做', async t => {
+  const f=await setup(t); const message=await f.send('迟到通知中的原要求');
+  const notice=(await f.repo.list('outbox',{scope:f.group.id,status:'pending'}))[0];
+  const now=Date.now();
+  await dispatchOne(f.repo,f.identity,notice.id,{ADMIN_KEY:secret},async(_url,options)=>{
+    const payload=JSON.parse(options.body);
+    assert.equal(payload.channel_id,f.group.id);
+    assert.equal(payload.receive.arguments.channelId,f.group.id);
+    assert.equal(payload.receive.arguments.afterTurnId,undefined);
+    return new Response('{}',{status:202});
+  },new Date(now).toISOString());
+  await maintenance(f.repo,f.identity,{ADMIN_KEY:secret},async()=>new Response('{}',{status:202}),new Date(now+16*60000).toISOString());
+  assert.equal((await f.repo.get('channel_turn',notice.stepId)).status,'stalled');
+  const work=await callTool(f.repo,f.identity,actor,'list_work',{},{});
+  assert.ok(work.work.some(w=>w.stepId===notice.stepId&&w.status==='ready'));
+  const extra=await f.send('这是连续补充');
+  const claim=await f.receive({requestId:'late-receiver',channelId:f.group.id});
+  assert.equal(claim.status,'claimed');
+  assert.deepEqual(new Set(claim.input.triggerMessageIds),new Set([message.id,extra.id]));
+  assert.equal((await f.repo.get('outbox',notice.id)).status,'claimed');
+  assert.equal((await f.receive({requestId:'late-receiver',channelId:f.group.id})).lease,claim.lease);
+  await maintenance(f.repo,f.identity,{ADMIN_KEY:secret},async()=>new Response('{}',{status:202}),new Date(now+32*60000).toISOString());
+  assert.equal((await f.repo.get('channel_turn',claim.turnId)).status,'stalled');
+  assert.equal((await f.receive({requestId:'must-not-restart-execution'})).status,'empty');
+  assert.ok(!(await callTool(f.repo,f.identity,actor,'list_work',{},{})).work.some(w=>w.stepId===claim.turnId));
+  await assert.rejects(()=>callTool(f.repo,f.identity,actor,'claim_work',{requestId:'explicit-expired-claim',stepId:claim.turnId},{}),e=>e.code==='turn_unavailable');
+});
 
 test("一次接收直接返回群上下文，重复请求不重复领取；仍可自主交流和使用共享文档", async t => {
   const f = await setup(t), runs = (await f.repo.list("run")).length;

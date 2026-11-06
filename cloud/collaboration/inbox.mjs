@@ -133,7 +133,8 @@ export async function receiveMessages(repo, identity, actor, args, options = {})
         (SELECT r.body FROM hub_v2_records r WHERE r.workspace_id=c.workspace_id AND r.kind='resource' AND r.id=json_extract(c.body,'$.resourceKey')) AS resource_json,
         (SELECT g.body FROM hub_v2_records g WHERE g.workspace_id=c.workspace_id AND g.kind='channel' AND g.id=?) AS group_json,
         EXISTS(SELECT 1 FROM hub_v2_records t JOIN hub_v2_records g ON g.workspace_id=t.workspace_id AND g.kind='channel' AND g.id=t.scope_id
-          WHERE t.workspace_id=c.workspace_id AND t.kind='channel_turn' AND t.parent_id=? AND t.status='ready'
+          WHERE t.workspace_id=c.workspace_id AND t.kind='channel_turn' AND t.parent_id=?
+          AND (t.status='ready' OR (t.status='stalled' AND json_extract(t.body,'$.claimedAt') IS NULL AND json_extract(t.body,'$.lease') IS NULL))
           AND (?='' OR t.scope_id=?) AND g.status='active'
           AND EXISTS(SELECT 1 FROM json_each(g.body,'$.memberIds') m WHERE m.value=t.parent_id)) AS has_ready
         FROM hub_v2_records c WHERE c.workspace_id=? AND c.kind='connection' AND c.id=?`)

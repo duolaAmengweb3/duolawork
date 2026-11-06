@@ -289,17 +289,26 @@ async function finishTurn(tx, actor, turnId, status, reason) {
     tx.put("resource", { ...r, status: "idle", turnId: null });
 }
 
+// A notification timeout is not a consumed message. Late native receivers may
+// claim unstarted work; an expired execution always requires explicit recovery.
+export const receivableTurn = turn => turn.status === 'ready' ||
+  (turn.status === 'stalled' && !turn.claimedAt && !turn.lease);
+async function pendingConversationTurns(tx, options) {
+  return (await Promise.all(['ready', 'stalled'].map(status =>
+    tx.list('channel_turn', { ...options, status })))).flat().filter(receivableTurn);
+}
 export async function conversationWork(repo, identity, memberId) {
   const connection=await repo.get("connection", memberId, false);if(connection?.status!=="verified")return [];
   const turns = (
     await Promise.all(
-      ["ready", "active"].map((status) =>
+      ["ready", "active", "stalled"].map((status) =>
         repo.list("channel_turn", { parent: memberId, status, limit: 500 }),
       ),
     )
   ).flat();
   const result = [];
   for (const turn of turns) {
+    if (turn.status !== 'active' && !receivableTurn(turn)) continue;
     const channel = await repo.get("channel", turn.scopeId, false);
     if (!channel?.memberIds.includes(memberId) || channel.status !== "active")
       continue;
@@ -310,7 +319,7 @@ export async function conversationWork(repo, identity, memberId) {
       channelId: channel.id,
       projectId: channel.id,
       title: channel.name,
-      status: turn.status === "ready" ? "ready" : "claimed",
+      status: receivableTurn(turn) ? "ready" : "claimed",
       kind: "conversation",
       messageId: turn.messageId,
       instruction:
@@ -344,9 +353,8 @@ export async function claimConversation(
         }
         const resource = await tx.get("resource", connection.resourceKey, false);
         if (resource?.status === "busy") return { status: "busy" };
-        const pending = (await tx.list("channel_turn", {
+        const pending = (await pendingConversationTurns(tx, {
           parent: actor.memberId,
-          status: "ready",
           ...(args.channelId ? { scope: args.channelId } : {}),
           limit: 500,
         })).sort((a, b) => Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -367,7 +375,7 @@ export async function claimConversation(
       await scoped(channel, actor,tx);
       if (turn.memberId !== actor.memberId)
         fail("forbidden", "通知不属于此成员", 403);
-      if (turn.status !== "ready")
+      if (!receivableTurn(turn))
         fail("turn_unavailable", "通知已处理或尚不可领取", 409);
       if (!await meetingTurnAllowed(tx, turn)) fail('meeting_changed', '会议阶段已变化或结束，原消息保留', 409);
       const member = activeMember(identity, actor.memberId),
@@ -386,10 +394,9 @@ export async function claimConversation(
       if (resource?.status === "busy")
         fail("resource_busy", "原 Agent 正在处理另一条通知，稍后再读", 409);
       tx.guardLegacyIdle(member.accountId);
-      const pending = (await tx.list("channel_turn", {
+      const pending = (await pendingConversationTurns(tx, {
         scope: channel.id,
         parent: actor.memberId,
-        status: "ready",
       })).filter(t => (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
       const lease = id("lease");
       for (const other of pending)
@@ -409,6 +416,7 @@ export async function claimConversation(
         lease,
         resourceKey,
         claimedAt: tx.now,
+        reason: null,
         ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
         expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),
         mergedMessageIds: pending.map((t) => t.messageId),
