@@ -56,3 +56,30 @@ test('automatic reattachment skips managed sessions and approves only the exact 
  assert.equal((await cliHook(dir,{...input,toolCall:{name:'run_command',args:{CommandLine:command+'; echo extra'}}},{env})).decision,'allow');
  assert.deepEqual(await cliHook(dir,{...input,transcriptPath:path.join(dir,'desktop/brain',id,'transcript.jsonl')},{env}),{});
 });
+
+test('managed background tools retain full Hub permission only for their exact live dispatch',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-managed-background-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',file=path.join(dir,'brain',id,'.system_generated/logs/transcript.jsonl');await fs.mkdir(path.dirname(file),{recursive:true});
+ const input={conversationId:id,transcriptPath:file,toolCall:{name:'run_command',args:{CommandLine:'node hub-helper.mjs call post_message'}}},env={ANTIGRAVITY_APP_DATA_DIR:dir,DUOLAWORK_MANAGED_CLI:'1'};
+ const member={memberId:'member_one',engine:'antigravity-cli',enabled:true,permissionMode:'full',executions:{[id]:{inFlight:{stepId:'turn_abc',key:'channel_one'},managedNativePid:process.pid,managedNativeSessionIds:[id]}}};
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:member}));
+ await fs.writeFile(file,JSON.stringify({type:'USER_INPUT',content:'<USER_REQUEST>\n你是 Agent Hub 成员 member_one，使用原工具。本轮只处理 stepId=turn_abc，channelId=channel_one。\n</USER_REQUEST>'})+'\n'+JSON.stringify({type:'SYSTEM_MESSAGE',content:'native background task completed'})+'\n');
+ assert.equal((await cliHook(dir,input,{env})).decision,'auto_approve');
+ assert.equal((await cliHook(dir,input,{env:{ANTIGRAVITY_APP_DATA_DIR:dir}})).decision,'allow');
+ member.executions[id].inFlight.stepId='other';await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:member}));assert.equal((await cliHook(dir,input,{env})).decision,'allow');
+ member.executions[id].inFlight.stepId='turn_abc';await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:member}));
+ await fs.appendFile(file,JSON.stringify({type:'USER_INPUT',content:'my own work now'})+'\n');assert.equal((await cliHook(dir,input,{env})).decision,'allow');
+});
+
+test('official Stop records background and fully-idle completion for the exact managed dispatch only',async t=>{
+ const {readNativeCompletion}=await import('../local/native-completion.mjs');
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-native-stop-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',file=path.join(dir,'brain',id,'.system_generated/logs/transcript.jsonl');await fs.mkdir(path.dirname(file),{recursive:true});
+ const input={conversationId:id,transcriptPath:file,fullyIdle:false,terminationReason:'model_stop'},env={ANTIGRAVITY_APP_DATA_DIR:dir,DUOLAWORK_MANAGED_CLI:'1'};
+ await fs.writeFile(path.join(dir,'native-coding.json'),JSON.stringify({member_one:{memberId:'member_one',engine:'antigravity-cli',enabled:true,executions:{[id]:{inFlight:{stepId:'turn_stop',key:'channel_one'},managedNativePid:process.pid,managedNativeSessionIds:[id]}}}}));
+ await fs.writeFile(file,JSON.stringify({type:'USER_INPUT',content:'<USER_REQUEST>\n你是 Agent Hub 成员 member_one，使用原工具。本轮只处理 stepId=turn_stop，channelId=channel_one。\n</USER_REQUEST>'})+'\n');
+ assert.deepEqual(await cliHook(dir,input,{env}),{});assert.equal((await readNativeCompletion(dir,'member_one',id,'turn_stop')).fullyIdle,false);
+ assert.equal(await readNativeCompletion(dir,'member_one',id,'another-turn'),null);
+ await cliHook(dir,{...input,fullyIdle:true},{env});assert.equal((await readNativeCompletion(dir,'member_one',id,'turn_stop')).fullyIdle,true);
+ await fs.appendFile(file,JSON.stringify({type:'USER_INPUT',content:'my own work'})+'\n');await cliHook(dir,input,{env});assert.equal((await readNativeCompletion(dir,'member_one',id,'turn_stop')).fullyIdle,true);
+});

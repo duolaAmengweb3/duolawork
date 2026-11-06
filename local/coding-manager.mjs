@@ -13,6 +13,7 @@ import {CodexWorkingHost} from './codex-working-host.mjs';
 import {AntigravityDesktopHost} from './antigravity-host.mjs';
 import {GeminiCliProjects} from './gemini-cli-projects.mjs';
 import {AntigravityCliHost} from './antigravity-cli-bridge.mjs';
+import {readNativeCompletion} from './native-completion.mjs';
 import {publicAssignments} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const exec=promisify(execFile);
@@ -25,7 +26,7 @@ export function rememberAccount(record,auth){
 }
 export class CodingManager{
  constructor({config,dataDir,maintenance=false,request=requestJson,agentFactory,runtime,interval=5000}){
-  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.sessionOperations=new Map();this.nativeUsedAt=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
+  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.sessionOperations=new Map();this.dispatchHolds=new Set();this.nativeUsedAt=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
  }
  async load(){try{this.records=JSON.parse(await fs.readFile(this.file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('本机接入记录无法读取，原文件保留');}
   for(const r of Object.values(this.records)){
@@ -105,6 +106,7 @@ export class CodingManager{
   const options={engine:r.engine,cwd:r.cwd,command:spec.command,extraArgs:r.engine==='antigravity'?spec.args:[],env,permissionMode:r.permissionMode||'full',
    toolCall:async(name,args)=>{const matches=w=>!r.manualAssignments||(w.channelId?r.inFlight?.key===w.channelId:r.inFlight?.stepId===w.stepId);
     if(name==='claim_work'&&r.manualAssignments){const {work}=await client.tool('list_work');if(!work.some(w=>w.stepId===args.stepId&&matches(w)))throw Error('工作属于其他聊天会话，未领取');}
+    if(name==='claim_work'){const sessionId=r.executionSessionId||r.chatBindings?.[r.inFlight?.key]?.sessionId;if(sessionId)args={...args,expectedSessionId:sessionId};}
     const result=await client.tool(name,args);if(name==='list_work'&&r.manualAssignments)result.work=result.work.filter(matches);if(['submit_work','post_message','stay_silent','ask_user'].includes(name)){r.lastReceiptAt=new Date().toISOString();await this.save();}return result;},
    onStopped:async()=>{if(processTemp)await fs.rm(processTemp,{recursive:true,force:true});},
    onApproval:request=>this.approve(r,request),onProgress:p=>{r.message='正在使用原生工具：'+safeError(p.name);},
@@ -127,15 +129,24 @@ export class CodingManager{
   await this.client(r).api('/v2/self/execution-bindings',{method:'POST',body:{requestId:randomUUID(),bindings}});
   r.executionBindingsFingerprint=fingerprint;await this.save();
  }
+ holdDispatch({memberId,channelId,sessionId}){
+  const old=this.records[memberId]?.chatBindings?.[channelId]?.sessionId;
+  const hold={memberId,channelId,sessions:new Set([old,sessionId].filter(Boolean))};this.dispatchHolds.add(hold);
+  return ()=>this.dispatchHolds.delete(hold);
+ }
+ dispatchBlocked(r){
+  if(!r.executionSessionId)return this.sessionOperations.has(r.memberId)||[...this.dispatchHolds].some(h=>h.memberId===r.memberId);
+  return [...this.dispatchHolds].some(h=>h.memberId===r.memberId&&(h.sessions.has(r.executionSessionId)||Object.hasOwn(r.chatBindings||{},h.channelId)));
+ }
  async tickExecutions(r){
-  if(r.inFlight||this.jobs.has(r.memberId)||this.sessionOperations.has(r.memberId))return;
+  if(r.inFlight||this.jobs.has(r.memberId))return;
   await this.syncExecutionBindings(r);
   const states=this.executionRecords(r);
   const {work}=await this.client(r).tool('list_work');
   const launched=[];
-  for(const state of states){const key=executionKey(state);if(this.jobs.has(key))continue;
+  for(const state of states){const key=executionKey(state);if(this.jobs.has(key)||this.dispatchBlocked(state))continue;
    if(state.inFlight){const job=this.reconcileOriginal(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);continue;}
-   if(state.status!=='idle'||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]))continue;
+   if(!['idle','needs_review'].includes(state.status)||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]&&(!state.lastFailure?.stepId||w.stepId!==state.lastFailure.stepId)))continue;
    const job=this.check(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);
   }
   await Promise.allSettled(launched);
@@ -151,7 +162,7 @@ export class CodingManager{
   if(this.stopped)return;
   for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)&&this.agents.has(r.memberId)&&Date.now()-(this.nativeUsedAt.get(r.memberId)||Date.parse(r.lastCompletedAt)||Date.now())>120000){const agent=this.agents.get(r.memberId);if(agent.busy||agent.rpc?.pending?.size)continue;this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
   for(const root of Object.values(this.records))for(const state of this.executionRecords(root)){const key=executionKey(state),agent=this.agents.get(key);if(agent&&state.status==='idle'&&!state.inFlight&&!this.jobs.has(key)&&Date.now()-(this.nativeUsedAt.get(key)||Date.now())>120000){this.agents.delete(key);await agent.stop().catch(()=>{});}}
-  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&((r.executionReady&&Object.keys(r.chatBindings||{}).length&&(r.status==='idle'||this.sessionOperations.has(r.memberId)))||(r.status==='idle'&&!this.dispatchBlocked(r)))).map(async r=>{
    // Original interactive receivers settle on a later tick. Checking readiness
    // only after check() returns kept those verified accounts in the legacy
    // account-wide queue forever. Upgrade before dispatching their next work.
@@ -169,6 +180,13 @@ export class CodingManager{
    catch(e){if(e.status!==404)throw e;r.status='needs_review';r.message='原通知记录暂不可核对，原工作保留，未重新执行';return false;}
    if(r.inFlight!==flight||this.stopped||!r.enabled)return false;
    if(['ready','active'].includes(state.status))return false;
+   if(['done','silent'].includes(state.status)&&r.nativeLifecycle==='stop-hook-v1'&&r.managedNativePid){
+    const sessionId=r.executionSessionId||r.chatBindings?.[flight.key]?.sessionId;
+    if(sessionId&&r.managedNativeSessionIds?.includes(sessionId)){
+     const native=await readNativeCompletion(this.dataDir,r.memberId,sessionId,flight.stepId);let alive=true;try{process.kill(r.managedNativePid,0);}catch{alive=false;}
+     if(alive&&!native?.fullyIdle){r.status='working';r.message='已回复，原会话正在收尾';return false;}
+    }
+   }
    if(['done','silent'].includes(state.status)){const setup=await client.api('/v2/self/status');if(r.inFlight!==flight||this.stopped||!r.enabled)return false;r.inFlight=null;r.lastReceiptAt=state.completedAt||new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.status=setup.complete?'idle':'needs_review';r.message=!setup.complete?'原消息已结束，账号接入尚待完成':state.status==='silent'?'原消息已读，暂无补充':'原消息已回复，继续接收消息';}
    else {r.inFlight=null;r.status=['merged','removed'].includes(state.status)?'idle':'needs_review';r.message=state.reason||'原通知已结束；未自动重做';}
    return true;
@@ -214,9 +232,9 @@ export class CodingManager{
  }
  async check(r,{recover=false}={}){
   try{
-   const client=this.client(r),signal=await client.api('/v2/signal',{timeout:15000});if(!r.enabled||this.stopped||this.sessionOperations.has(r.memberId)||(!signal.hasWork&&!recover))return;
-   const {work}=await client.tool('list_work'),first=recover?work.find(w=>w.stepId===r.inFlight?.stepId):work.find(w=>w.status==='ready'&&(!r.manualAssignments||(w.channelId?r.chatBindings?.[w.channelId]:r.verificationSessionId)));
-   if(this.sessionOperations.has(r.memberId))return;
+   const client=this.client(r),signal=await client.api('/v2/signal',{timeout:15000});if(!r.enabled||this.stopped||this.dispatchBlocked(r)||(!signal.hasWork&&!recover))return;
+   const {work}=await client.tool('list_work'),first=recover?work.find(w=>w.stepId===r.inFlight?.stepId):work.find(w=>w.status==='ready'&&(!r.lastFailure?.stepId||w.stepId!==r.lastFailure.stepId)&&(!r.manualAssignments||(w.channelId?r.chatBindings?.[w.channelId]:r.verificationSessionId)));
+   if(this.dispatchBlocked(r))return;
    if(!first){r.inFlight=null;r.status='idle';r.message='已检查原回执，继续接收消息';await this.save();return;}
    const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key};r.lastRunAt=r.inFlight.at;r.status='working';r.message='原生 Agent 正在处理消息';await this.save();
    if(r.engine==='antigravity-cli'&&binding){
@@ -239,25 +257,49 @@ export class CodingManager{
    const prompt=`你是 Agent Hub 成员 ${r.memberId}，使用你自己的原生工具、模型、规则和本会话记忆。Hub 工具来自${r.engine==='codex'?' hub_ 前缀动态工具':' MCP hub_'+r.memberId.slice(-16)}。直接调用已提供的工具，不需要先通过终端扫描工具目录。常用签名：list_work({})；claim_work({requestId,stepId})；post_message({requestId,channelId,turnId,body,mentions?})；submit_work({requestId,attemptId,lease,items:[{title,body}]} )。先用 list_work 读取真实工作，本轮只处理 stepId=${first.stepId}，channelId=${first.channelId||'无'}。${recover?'上次运行中断：检查原领取和已经完成的操作，沿用原 attemptId/lease 继续未完成部分，不要重做副作用；不清楚时回报具体问题。':'用 claim_work 领取并遵循完整指令。'}普通群消息直接沟通，不擅自建任务或文档。使用所需原生工具完成后，必须调用 post_message 或 submit_work 回到这个 Hub 会话；只在原生终端输出不算回群。验证任务严格提交要求的内容，不自称验证通过。不轮询空跑、不改提供方配置、不替其他成员领取、不回显凭证。${fallbackInstruction}`;
    if(r.engine==='antigravity-cli'){r.managedNativePid=agent.rpc.child?.pid;r.managedNativeSessionIds=[...agent.sessions.keys()];await this.save();}
    const result=await agent.run({session,prompt});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
-   const remaining=await client.tool('list_work');if(remaining.work.some(w=>w.stepId===first.stepId))throw new Error('原生运行结束，但 Hub 未收到该工作回复；原会话保留，请继续检查');
+   const remaining=await client.tool('list_work');
+   if(r.engine==='antigravity-cli'&&r.nativeLifecycle==='stop-hook-v1')await this.waitForNativeReceipt(r,client,first,agent,{sessionId:session.id});
+   else if(remaining.work.some(w=>w.stepId===first.stepId)){
+    // ACP may end the foreground turn while a native background command keeps
+    // running and resumes the same conversation later. Keep its process and MCP
+    // scope alive until the real Hub receipt; never start a second model turn.
+    if(r.engine==='antigravity-cli'&&remaining.work.some(w=>w.stepId===first.stepId&&w.status==='claimed'))await this.waitForNativeReceipt(r,client,first,agent);
+    else throw new Error('原生运行结束，但 Hub 未收到该工作回复；原会话保留，请继续检查');
+   }
    const status=await client.api('/v2/self/status');r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message=status.complete?'已接入，正在后台接收消息':'本轮已回传，连接验证仍待完成';await this.save();
-  }catch(e){r.message=safeError(e);if(e.code==='native_queued')r.status='syncing';else if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';
+  }catch(e){r.message=safeError(e);if(e.code!=='native_queued')r.lastFailure={stepId:r.inFlight?.stepId,message:r.message,at:new Date().toISOString()};if(e.code==='native_queued')r.status='syncing';else if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';
    // A managed native execution ending in error is not a successful reply.
    if(r.inFlight?.stepId.startsWith('turn_')&&!r.nativeDeliveries?.[r.inFlight.stepId]&&e.code!=='native_queued')try{await this.client(r).api('/v2/self/conversation-state',{method:'POST',body:{requestId:randomUUID(),turnId:r.inFlight.stepId,state:'unreachable'}});}catch{}
    await this.save();}
  }
+ async waitForNativeReceipt(r,client,first,agent,{interval=1500,timeout=20*60*1000,sessionId=r.executionSessionId,readCompletion=readNativeCompletion}={}){
+  const deadline=Date.parse(r.inFlight?.at||new Date().toISOString())+timeout;
+  r.message='原 Agent 仍在继续工作，等待实际回复';await this.save();
+  while(r.enabled&&Date.now()<deadline){
+   const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));
+   const replied=['done','silent'].includes(state.status),native=r.nativeLifecycle==='stop-hook-v1'?await readCompletion(this.dataDir,r.memberId,sessionId,first.stepId):null;
+   if(replied&&(r.nativeLifecycle!=='stop-hook-v1'||native?.fullyIdle))return;
+   if(replied&&r.message!=='已回复，原会话正在收尾'){r.message='已回复，原会话正在收尾';await this.save();}
+   if(!replied&&!['ready','active'].includes(state.status))throw Error(state.reason||'原通知尚未完成，执行记录保留');
+   if(!replied&&native?.fullyIdle)throw Error('原生执行已结束，但尚未回群；原结果保留，未自动重做');
+   if(agent.rpc?.closed)throw Error('原生进程已关闭，执行记录保留');
+   // Shutdown drains claimed native background work too. No new turn is started.
+   await new Promise(resolve=>setTimeout(resolve,interval));
+  }
+  throw Error('原 Agent 尚未回传结果，原会话与已执行工作保留');
+ }
  async assign(input){
-  const {memberId}=input,prior=this.sessionOperations.get(memberId)||Promise.resolve();
+  const {memberId}=input,release=this.holdDispatch(input),prior=this.sessionOperations.get(memberId)||Promise.resolve();
   // Reserve synchronously: empty polling and idle cleanup cannot race a UI choice.
   const operation=prior.catch(()=>{}).then(async()=>{
-   const r=this.records[memberId];if(r?.executions?.[r.chatBindings?.[input.channelId]?.sessionId]?.inFlight)throw Error('这段工作对话正在处理消息，请等它回复后再更换');if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
+   const r=this.records[memberId];for(const id of new Set([input.sessionId,r?.chatBindings?.[input.channelId]?.sessionId].filter(Boolean)))await this.jobs.get(memberId+':'+id);if([input.sessionId,r?.chatBindings?.[input.channelId]?.sessionId].some(id=>r?.executions?.[id]?.inFlight))throw Error('这段工作对话正在处理消息，请等它回复后再更换');if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
    await this.jobs.get(memberId);
    if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
    try{return await this.assignSession(input);}
    finally{this.nativeUsedAt.set(memberId,Date.now());if(r?.enabled&&r.sourceReady&&!r.inFlight){r.status='idle';r.message='账号已连接，继续接收消息';await this.save();}}
   });
   this.sessionOperations.set(memberId,operation);
-  try{return await operation;}finally{if(this.sessionOperations.get(memberId)===operation)this.sessionOperations.delete(memberId);}
+  try{return await operation;}finally{release();if(this.sessionOperations.get(memberId)===operation)this.sessionOperations.delete(memberId);}
  }
  async assignSession({memberId,channelId,sessionId,mode='new',workspace,title,prepareOnly=false}){
   const r=this.records[memberId];if(!r?.enabled||!r.sourceReady&&r.status!=='idle')throw Error('请先连接这个 Agent 的账号');

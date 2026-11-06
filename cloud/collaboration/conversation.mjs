@@ -229,7 +229,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     memberId,
     messageId: message.id,
     ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
-    ...(message.holdReason?{holdReason:message.holdReason}:{}),
+    ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
     ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1}:{}),
     wakeSource: message.authorId === "owner" ? "user" : "agent",
     number: message.number,
@@ -239,7 +239,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     createdAt: tx.now,
     ...(message.meetingId && !message.meetingChat ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
     reason: deferred
-      ? "暂缓重复自动通知，交由负责人核对；原消息与其他工作保留"
+      ? message.holdReason==='automatic_burst'?"消息较密，稍后自动继续投递":"暂缓重复自动通知，交由负责人核对；原消息与其他工作保留"
       : available
         ? null
         : "成员的自动接入尚未就绪，消息已保留",
@@ -330,8 +330,11 @@ export async function conversationWork(repo, identity, memberId) {
       ),
     )
   ).flat();
+  if(!turns.length)return [];
+  const selecting=new Set([...await repo.list('native-command',{parent:memberId,status:'pending',limit:501}),...await repo.list('native-command',{parent:memberId,status:'prepared',limit:501})].map(c=>c.channelId));
   const result = [];
   for (const turn of turns) {
+    if(turn.status!=='active'&&selecting.has(turn.scopeId))continue;
     if (turn.status !== 'active' && !receivableTurn(turn)) continue;
     const channel = await repo.get("channel", turn.scopeId, false);
     if (!channel?.memberIds.includes(memberId) || channel.status !== "active")
@@ -382,7 +385,9 @@ export async function claimConversation(
           ...(args.channelId ? { scope: args.channelId } : {}),
           limit: 500,
         })).sort((a, b) => Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+        const selecting=pending.length?new Set([...await tx.list('native-command',{parent:actor.memberId,status:'pending',limit:501}),...await tx.list('native-command',{parent:actor.memberId,status:'prepared',limit:501})].map(c=>c.channelId)):new Set();
         for (const candidate of pending) {
+          if(selecting.has(candidate.scopeId))continue;
           const group = await tx.get("channel", candidate.scopeId, false);
           if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
           const occupied=await tx.get('resource',await executionResource(tx,connection,group.id),false);if(occupied?.status==='busy')continue;
@@ -411,6 +416,8 @@ export async function claimConversation(
         channel.status !== "active"
       )
         fail("unavailable", "成员或群当前不可执行", 409);
+      const selecting=[...await tx.list('native-command',{parent:actor.memberId,status:'pending',limit:501}),...await tx.list('native-command',{parent:actor.memberId,status:'prepared',limit:501})].some(command=>command.channelId===channel.id);
+      if(selecting)fail('binding_pending','正在为这个聊天准备工作对话，消息已保存，准备完成后自动继续',409);
       const resourceKey=await executionResource(tx,c,channel.id);
       if(args.expectedSessionId&&resourceKey!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);
       const legacyResource=await tx.get("resource",c.resourceKey,false);

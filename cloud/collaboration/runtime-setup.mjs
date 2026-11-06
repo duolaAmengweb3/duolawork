@@ -17,5 +17,5 @@ export function runtimeSkill({origin,member,form,pairingCode}){
   return `请把我现有的 ${f.name} 账号接入 DuolaWork，备注「${member.name}」。请在你自己运行的电脑或服务器、原系统用户下操作，保留登录、模型、项目和已有会话。读取 ${origin}/v2/connectors/native/guide 并自动执行安装、校验和 setup，把下面参数以 JSON 标准输入传给 setup：${JSON.stringify({endpoint:origin,memberId:member.id,platformId:member.platformId,alias,form,code:pairingCode})}。配对码15分钟有效。不要让我逐项填技术参数，不访问我的其他机器，不打断当前工作，不启动替代 Agent，不改全局权限或原生登录。不兼容就明确报告原因。连接器上线后，DuolaWork 会显示原环境的项目和对话；真正完成原生回复验证前不要宣称接入全部完成。`;
 }
 export function runtimeUpdateSkill({origin,member,form}){
- return `请更新我现有的 DuolaWork 连接器（${member.name}）。在原 Agent 所在环境、原系统用户下读取 ${origin}/v2/connectors/native/guide，按其中 install 校验并安装当前版本，再把 ${JSON.stringify({endpoint:origin,memberId:member.id,platformId:member.platformId,alias:member.id,form})} 以 JSON 标准输入交给新版本 setup。复用原授权和已有会话，不创建成员，不重新配对或登录，不改模型、项目和其他服务。连接器会等待正在执行的工作结束后切换。若原授权不可复用，报告具体原因，别自行创建替代连接。更新结果以 DuolaWork 收到的新版本在线回执为准。`;
+ return `请更新我现有的 DuolaWork 连接器（${member.name}）。在原 Agent 所在环境、原系统用户下读取 ${origin}/v2/connectors/native/guide，按其中 install 校验并安装当前版本，再把 ${JSON.stringify({endpoint:origin,memberId:member.id,platformId:member.platformId,alias:member.id,form})} 以 JSON 标准输入交给新版本 setup。复用原授权和已有会话，不创建成员，不重新配对或登录，不改模型、项目和其他服务。安装成功后在原聊天简短报告安装版本及结果，然后结束本轮，不必通知其他成员。连接器会等待正在执行的工作结束后切换；不要在本轮等待自己的重启，以免阻塞切换。若原授权不可复用，报告具体原因，别自行创建替代连接。更新结果以 DuolaWork 收到的新版本在线回执为准。`;
 }

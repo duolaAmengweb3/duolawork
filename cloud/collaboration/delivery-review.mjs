@@ -18,7 +18,7 @@ export async function automationHold(tx, channel, message) {
  const recent=(await tx.list('channel_message',{scope:channel.id,order:'recent',limit:200})).filter(m=>m.id!==message.id&&!m.hidden&&m.type==='message'&&m.authorId!=='owner'&&(m.rootId||m.id)===root&&now-Date.parse(m.createdAt)<300000);
  const signature=m=>JSON.stringify([m.authorId,m.body.trim().replace(/\s+/g,' '),[...(m.recipientIds||[])].sort(),m.refs||[]]);
  if(recent.filter(m=>signature(m)===signature(message)).length>=2)return 'repeated_request';
- if(recent.length>=60)return 'automatic_burst';
+ if(recent.filter(m=>(m.recipientIds||[]).length&&now-Date.parse(m.createdAt)<10000).length>=20)return 'automatic_burst';
  return null;
 }
 
@@ -95,7 +95,24 @@ export async function deliveryReviewMaintenance(repo,identity,helpers,now){
  // Paginate all unresolved states so old records cannot starve current work.
  const candidates=[];
  for(const status of held){let after='';for(;;){const page=await repo.list('channel_turn',{status,after,limit:500});candidates.push(...page);if(page.length<500)break;after=page.at(-1).id;}}
- const groups=new Map();for(const t of candidates){if(t.deliveryReview||t.deliveryIssueId)continue;const key=issueKey(t);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t);}
+ // New short traffic backoffs are a durable queue, not a user/coordinator issue.
+ const cooling=candidates.filter(t=>t.status==='limited'&&t.holdReason==='automatic_burst'&&t.resumeAfter);
+ for(const row of cooling)if(row.resumeAfter<=now)await repo.transact('delivery-cooldown:'+row.id+':'+row.resumeAfter+':'+(await repo.get('channel',row.scopeId,false))?.revision+':'+identity.members.find(m=>m.id===row.memberId)?.paused,{},async tx=>{
+  const t=await tx.get('channel_turn',row.id);if(t.status!=='limited'||!t.resumeAfter||t.resumeAfter>now||t.claimedAt||t.lease)return {};
+  const channel=await tx.get('channel',t.scopeId,false),m=identity.members.find(m=>m.id===t.memberId),c=await tx.get('connection',t.memberId,false);
+  if(!channel||!channel.memberIds.includes(t.memberId)||!m||m.status==='disabled'||!await helpers.meetingTurnAllowed(tx,t))return tx.put('channel_turn',{...t,status:'removed',reason:'原通知已不再适用，未重新执行',completedAt:now});
+  if(channel.status!=='active'||m.paused)return {};
+  // Limit each release batch too; do not turn a restart into a second burst.
+  const gateId=t.scopeId+':'+t.rootId,gate=await tx.get('delivery_cooldown',gateId,false);
+  const fresh=!gate||Date.parse(now)-Date.parse(gate.windowAt)>=10000;
+  const messages=fresh?[]:gate.messageIds;
+  if(!messages.includes(t.messageId)&&messages.length>=20)return tx.put('channel_turn',{...t,resumeAfter:new Date(Date.parse(gate.windowAt)+10000).toISOString()});
+  if(!messages.includes(t.messageId))tx.put('delivery_cooldown',{id:gateId,scopeId:t.scopeId,windowAt:fresh?now:gate.windowAt,messageIds:[...messages,t.messageId]});
+  const next=tx.put('channel_turn',{...t,status:c?.status==='verified'?'ready':'unavailable',resumeAfter:null,reason:c?.status==='verified'?null:'等待恢复连接，消息已保留'});
+  if(next.status==='ready')await helpers.outbox(tx,channel,next,c);
+  return {};
+ },now);
+ const groups=new Map();for(const t of candidates){if(t.deliveryReview||t.deliveryIssueId||t.resumeAfter)continue;const key=issueKey(t);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(t);}
  for(const [key,rows] of groups)await repo.transact('delivery-discover:'+await digest(key+rows.map(t=>t.id+':'+t.revision).join(',')),{ids:rows.map(t=>t.id)},async tx=>{
   const channel=await tx.get('channel',rows[0].scopeId,false);if(!channel)return {};
   const prior=await tx.get('channel_delivery_issue',key,false),valid=[];

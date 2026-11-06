@@ -1,7 +1,8 @@
 import {executionResource} from './execution-bindings.mjs';
-import {fail,required,id} from './repository.mjs';
+import {fail,required,id,digest} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
 import {revision as currentRevision} from './runtime-download.mjs';
+import {conversationCommand} from './conversation.mjs';
 import {runtimeUpdateSkill} from './runtime-setup.mjs';
 
 const live=r=>!!r&&Date.now()-Date.parse(r.seenAt)<90000;
@@ -19,8 +20,23 @@ function publicRuntime(r,m){
 export async function runtimeOwner(repo,identity,actor,input={},write=false,origin=''){
   if(!actor.owner)fail('forbidden','只有用户可以选择工作对话',403);
   const m=member(identity,actor,input.memberId),r=await repo.get('remote-runtime',m.id,false);
-  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if(r){result.record.receiverRevision=r.receiverRevision||null;result.record.updateAvailable=r.receiverRevision!==currentRevision;if(origin&&result.record.updateAvailable)result.updateSkill=runtimeUpdateSkill({origin,member:m,form:r.form});}if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
+  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if(r){result.record.receiverRevision=r.receiverRevision||null;result.record.updateAvailable=r.receiverRevision!==currentRevision;if(origin&&result.record.updateAvailable){result.updateSkill=runtimeUpdateSkill({origin,member:m,form:r.form});result.record.canRequestUpdate=live(r)&&r.sourceReady&&Object.keys(r.bindings||{}).length>0;result.record.updateRequest=await repo.get('native-update',m.id,false);}}if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
   if((await repo.get('connection',m.id,false))?.status==='disconnected')fail('disconnected','请先重新连接这个账号',409);
+  if(input.action==='update'){
+    if(!r||!origin)fail('runtime_missing','请先连接原环境',409);
+    if(r.receiverRevision===currentRevision)return {status:'current'};
+    const previous=await repo.get('native-update',m.id,false);
+    if(previous?.targetRevision===currentRevision){
+      const turn=await repo.get('channel_turn','turn_'+previous.messageId+'_'+m.id,false);
+      if(previous.requestId===input.requestId||['ready','active'].includes(turn?.status)||Date.now()-Date.parse(previous.requestedAt)<120000)return previous;
+    }
+    const channels=(await repo.list('channel',{limit:501})).filter(c=>c.memberIds.includes(m.id)&&r.bindings?.[c.id]);
+    const channel=channels.find(c=>c.direct)||Object.keys(r.bindings).map(id=>channels.find(c=>c.id===id)).find(Boolean);if(!channel)fail('conversation_required','请先选择一段工作对话，或把更新说明发给原 Agent',409);
+    const requestId=required(input.requestId,'请求编号',120);
+    const notificationId='runtime-update:'+m.id+':'+currentRevision.slice(0,16)+':'+(previous?.messageId||'first');
+    const message=await conversationCommand(repo,identity,actor,{type:'channel.post',requestId:notificationId,channelId:channel.id,mentions:[m.id],body:runtimeUpdateSkill({origin,member:m,form:r.form})});
+    return repo.transact('update-record:'+message.id,{memberId:m.id,messageId:message.id},tx=>tx.put('native-update',{id:m.id,requestId,targetRevision:currentRevision,messageId:message.id,channelId:channel.id,requestedAt:tx.now,status:'requested'}));
+  }
   if(!live(r)||!r.sourceReady)fail('runtime_offline','Agent 所在的电脑或服务器暂未连接，原对话保留',409);
   if(!['existing','new'].includes(input.mode))fail('invalid_mode','请选择已有对话或新建对话');
   if(input.mode==='new'&&!r.create)fail('unsupported','请在原 Agent 中新建对话后选择');
@@ -74,7 +90,7 @@ export async function runtimeSelf(repo,identity,actor,input={},write=false){
           if(JSON.stringify(r.bindings[c.channelId]||null)!==JSON.stringify(c.previousBinding))fail('binding_changed','聊天已选择其他对话，未覆盖',409);
           const channel=await tx.get('channel',c.channelId);if(!channel.memberIds.includes(m.id))fail('forbidden','成员已离开该聊天',403);
           c.binding={sessionId:key(b.sessionId),title:required(b.title||c.title,'对话名称',200),workspace:required(b.workspace,'项目位置',1000),mode:b.mode==='native-existing'?'native-existing':'existing',runtimeId};
-          if(input.action==='activate'){r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';if(link){link.status='completed';link.binding=c.binding;link.completedAt=tx.now;tx.put('session-link',link);}}else c.status='prepared';
+          if(input.action==='activate'){const connection=await tx.get('connection',m.id),resource=await tx.get('resource',await executionResource(tx,connection,c.channelId),false);if(resource?.status==='busy')fail('resource_busy','原对话仍在工作，消息和原绑定保留',409);tx.put('execution_binding',{id:m.id+':'+c.channelId,parentId:m.id,scopeId:c.channelId,sessionKey:await digest(c.binding.sessionId),status:'active'});r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';if(link){link.status='completed';link.binding=c.binding;link.completedAt=tx.now;tx.put('session-link',link);}}else c.status='prepared';
         }c.completedAt=tx.now;tx.put('native-command',c);return{};
       });
     }else fail('invalid_action','无效的运行端操作');

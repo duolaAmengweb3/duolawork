@@ -21,13 +21,13 @@ export function nativeTurnDelivery(turn, native) {
 export function pendingMemberActivity(activity = [], notifications = [], nativeMembers = []) {
   const grouped = new Map();
   for (const turn of activity) {
-    if (!['ready', 'active'].includes(turn.status)) continue;
+    if (!['ready', 'active'].includes(turn.status)&&!(turn.status==='limited'&&turn.resumeAfter)) continue;
     if (!grouped.has(turn.memberId)) grouped.set(turn.memberId, []);
     grouped.get(turn.memberId).push(turn);
   }
   return [...grouped].map(([memberId, turns]) => {
     const active = turns.filter(t => t.status === 'active');
-    const ready = turns.filter(t => t.status === 'ready');
+    const ready = turns.filter(t => t.status === 'ready'||t.resumeAfter);
     const native = nativeMembers.find(m => m.memberId === memberId);
     const queued = ready.some(t => nativeTurnDelivery(t,native));
     const notices = ready.map(t => turnNotification(t, notifications));

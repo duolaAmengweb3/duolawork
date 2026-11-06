@@ -11,11 +11,14 @@ import {acceptsWork} from './session-routing.mjs';
 export const name='agent-hub-existing-session';
 export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry','permissionPresets'];
 const digest=value=>createHash('sha256').update(value).digest('hex');
+// Captured from the immutable installed directory when this module loads.
+// Updating files on disk is not proof that the original Host loaded the update.
+const receiverRevision=await fs.readFile(new URL('../complete.json',import.meta.url),'utf8').then(JSON.parse).then(v=>v.revision).catch(()=>null);
 
 export class DshConnector {
  constructor({ctx,stateFile,clientFactory=file=>new CodingMemberClient(file),pollMs=3000,allowProof=false}){
   Object.assign(this,{ctx,stateFile,clientFactory,pollMs,allowProof});
-  this.bindings=new Map();this.bindingJobs=new Map();this.removed=new Set();this.closed=false;this.busy=false;this.ready=false;this.dispatches=[];
+  this.bindings=new Map();this.bindingJobs=new Map();this.pollJobs=new Map();this.saveChain=Promise.resolve();this.removed=new Set();this.closed=false;this.busy=false;this.ready=false;this.dispatches=[];
  }
  async start(){
   this.state=JSON.parse(await fs.readFile(this.stateFile,'utf8'));
@@ -30,11 +33,11 @@ export class DshConnector {
   this.timer=setInterval(()=>this.poll().catch(error=>{this.lastError=safeError(error);}),this.pollMs);this.timer.unref();
   return this;
  }
- async save(){
+ save(){return this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{
   const records=new Map((this.state.bindings||[]).filter(b=>!this.removed.has(b.sessionId)).map(b=>[b.sessionId,b]));
   for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched]});
   this.state={...this.state,bindings:[...records.values()]};await privateJson(this.stateFile,this.state);
- }
+ });}
  async sessionInfo(id){
   const listed=await this.sessions();
   const item=listed.items.find(x=>x.sessionId===id);
@@ -92,19 +95,28 @@ export class DshConnector {
  }
  publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...b.dispatched],lastError:b.lastError};}
  async poll(){
-  if(this.closed||this.busy)return;this.busy=true;
-  try{
-   for(const b of this.bindings.values())try{
+  if(this.closed)return;
+  const launched=[];
+  for(const b of this.bindings.values()){
+   if(this.pollJobs.has(b.sessionId))continue;
+   const job=this.pollBinding(b).finally(()=>{this.pollJobs.delete(b.sessionId);this.busy=this.pollJobs.size>0;});
+   this.pollJobs.set(b.sessionId,job);launched.push(job);
+  }
+  this.busy=this.pollJobs.size>0;await Promise.allSettled(launched);
+ }
+ async pollBinding(b){
+   try{
     const signal=await b.client.api('/v2/signal',{timeout:15000});
-    if(!signal.hasWork){b.lastError=null;continue;}
+    if(!signal.hasWork){b.lastError=null;return;}
     const {work}=await b.client.tool('list_work');
-    if(this.closed||this.bindings.get(b.sessionId)!==b)continue;
-    if([...this.bindings.values()].some(other=>other.memberId===b.memberId&&work.some(w=>other.dispatched.has(w.stepId))))continue;
+    if(this.closed||this.bindings.get(b.sessionId)!==b)return;
+    // A native queue belongs to one original session, never to its whole account.
+    if(work.some(w=>b.dispatched.has(w.stepId)))return;
     const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(w.stepId));
-    if(!next)continue;
+    if(!next)return;
     await this.sessionInfo(b.sessionId);
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
-    if(this.closed||this.bindings.get(b.sessionId)!==b)continue;this.attachAgent(found.agent);
+    if(this.closed||this.bindings.get(b.sessionId)!==b)return;this.attachAgent(found.agent);
     const requestId=digest(b.memberId+':'+next.stepId);
     const text=`Hub 有一条发给你的真实工作。你仍是当前项目的同一个原生 Agent，保留模型、工具、规则和原会话记忆。使用 hub_list_work 读取；只处理 stepId=${next.stepId}，channelId=${next.channelId||''}。使用 hub_claim_work 领取，严格按领取结果的指令执行。普通聊天用 hub_post_message 回到同一群，使用领取返回的 turnId；验证或交付任务按要求用 hub_submit_work 提交 attemptId、lease 和 items。所有写调用提供 requestId。不要只在原生界面输出而不回传。普通聊天不擅自创建任务、文档或额外分工。不要读其他会话或登录资料；不输出凭证。`;
     await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId,content:[{type:'text',text}]},b.abort.signal);
@@ -112,7 +124,6 @@ export class DshConnector {
     this.dispatches.push({sessionId:b.sessionId,stepId:next.stepId,requestId,at:new Date().toISOString()});this.dispatches=this.dispatches.slice(-100);
     b.lastError=null;
    }catch(error){b.lastError=safeError(error);}
-  }finally{this.busy=false;}
  }
  async unbind(id){const b=this.bindings.get(id);this.removed.add(id);this.bindings.delete(id);if(b){b.abort.abort();for(const dispose of b.disposers)dispose();}await this.save();return{disconnected:true,nativeSessionRetained:true};}
  async handle(req,res){
@@ -123,7 +134,7 @@ export class DshConnector {
    const route=new URL(req.url,'http://127.0.0.1').pathname;
    if(req.method==='GET'&&route==='/health'){
     const p=this.ctx.get?.('profileContext'),profile=p?.dir?{name:p.name,dir:await fs.realpath(p.dir)}:undefined;
-    return send(200,{ready:this.ready,protocolVersion:7,profile,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
+    return send(200,{ready:this.ready,protocolVersion:7,receiverRevision,profile,provider:'deepseek-harness',bindings:[...this.bindings.values()].map(b=>this.publicBinding(b)),dispatches:this.dispatches,lastError:this.lastError});
    }
    if(req.method==='GET'&&route==='/sessions')return send(200,await this.sessions());
    if(req.method!=='POST')return send(404,{error:'Unknown connector route'});

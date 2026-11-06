@@ -4,7 +4,7 @@ export function deliveryView(snapshot={},members=[],nativeMembers=[]) {
  const issues=snapshot.deliveryIssues||[],tracked=new Set(issues.flatMap(i=>i.turnIds||[]));
  const waiting=new Map(),untracked=new Map(),local=new Map();
  for(const t of activity){
-  if(['ready','active'].includes(t.status)){
+  if(['ready','active'].includes(t.status)||t.status==='limited'&&t.resumeAfter){
    const member=members.find(m=>m.id===t.memberId),native=nativeMembers.find(m=>m.memberId===t.memberId);
    const coding=['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(member?.platformId);
    const offline=coding&&native&&(!native.enabled||['offline','disconnected','waiting_login'].includes(native.status));

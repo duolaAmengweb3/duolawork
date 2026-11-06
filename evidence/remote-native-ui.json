@@ -1,8 +1,9 @@
 {
-  "at": "2026-11-06T09:48:42.406Z",
+  "at": "2026-11-06T10:11:00.430Z",
   "fixtureOnly": true,
   "realNativeModelTested": false,
   "checks": [
+    "one click notifies the existing agent, shows waiting, and clears only on revision receipt",
     "update instruction reuses the existing grant; new revision receipt clears update prompt; syncing remains connected",
     "default copy instruction uses Antigravity CLI, not this Mac desktop",
     "clipboard contains complete ready-to-use member instruction",

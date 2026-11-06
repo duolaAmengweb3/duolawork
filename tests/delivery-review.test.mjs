@@ -153,12 +153,30 @@ test('异常只随当前负责人交接一次，旧负责人不能继续处置',
  const current=(await f.issues())[0];assert.equal(current.reviewerId,'check');assert.equal((await f.repo.get('channel_turn',original.reviewTurnId)).status,'removed');
  await assert.rejects(f.resolve('dismiss'),e=>e.code==='forbidden');await f.resolve('dismiss',{}, {memberId:'check'});assert.equal((await f.issues())[0].status,'resolved');
 });
-test('异常自动消息风暴只暂停本分支，用户及其他需求仍可达',async t=>{
+test('automatic bursts briefly queue and resume without a coordinator review; humans stay independent',async t=>{
  const f=await setup(t);let p=f.root;
  for(let i=0;i<61;i++)p=await f.send('channel.post',{channelId:f.channel.id,replyTo:p.id,body:'过密自动消息 '+i,mentions:['check']},'grok');
  assert.equal((await f.turns()).find(t=>t.messageId===p.id).holdReason,'automatic_burst');
- await f.maintain();const issue=(await f.issues())[0];assert.match(issue.impact,/流量保护/);assert.match(issue.impact,/60 条/);assert.match(issue.impact,/不代表已经确认发生循环/);
+ await f.maintain();assert.equal((await f.issues()).length,0);
+ const view=deliveryView(await readChannel(f.repo,f.identity,{owner:true},{channelId:f.channel.id}));assert.equal(view.attention.length,0);assert.equal(view.recovering.length,0);assert.ok(view.waiting.length);
  const next=await f.send('channel.post',{channelId:f.channel.id,body:'现在检查另一件事',mentions:['check']});assert.equal((await f.turns()).find(t=>t.messageId===next.id).status,'ready');
+ for(const sec of ['10','20','30']){await f.maintain('2026-11-06T08:00:'+sec+'.000Z');await f.maintain('2026-11-06T08:00:'+sec+'.000Z');}
+ assert.equal((await f.turns()).filter(t=>t.status==='limited').length,0);assert.equal((await f.issues()).length,0);
+ assert.equal((await f.repo.list('outbox',{scope:f.channel.id,limit:500})).length,(await f.turns()).length,'each preserved turn gets one notice');
+});
+test('many distinct progress updates across five minutes do not trigger a permanent capacity hold',async t=>{
+ const f=await setup(t);let p=f.root;
+ for(let i=0;i<70;i++)p=await conversationCommand(f.repo,f.identity,{memberId:'grok'},{type:'channel.post',requestId:'paced-'+i,channelId:f.channel.id,replyTo:p.id,body:'不同的交付进展 '+i,mentions:['check']},new Date(Date.parse(f.now)+i*4000).toISOString());
+ assert.equal((await f.turns()).filter(t=>t.status==='limited').length,0);
+});
+test('pending session selection holds only its chat, preserving unrelated claims',async t=>{
+ const f=await setup(t),other=await f.send('channel.create',{name:'其他工作',memberIds:['check']});
+ const msg=await f.send('channel.post',{channelId:other.id,body:'继续其他工作',mentions:['check']});
+ await f.repo.transact('select-session',{},tx=>tx.put('native-command',{id:'select-one',parentId:'check',channelId:f.channel.id,status:'prepared'}));
+ const affected=(await f.turns()).find(t=>t.memberId==='check');
+ await assert.rejects(claimConversation(f.repo,f.identity,{memberId:'check'},{requestId:'affected-claim',stepId:affected.id},f.now),e=>e.code==='binding_pending');
+ const claim=await claimConversation(f.repo,f.identity,{memberId:'check'},{requestId:'other-claim',stepId:'turn_'+msg.id+'_check'},f.now);assert.ok(claim.turnId);
+ assert.equal((await f.repo.get('channel_turn',affected.id)).status,'ready');
 });
 test('未选工作对话与断开原环境会显示具体操作，正常忙碌仍是自动排队',()=>{
  const snapshot={channel:{id:'c'},activity:[{id:'t',memberId:'a',messageId:'m',status:'ready'}]},members=[{id:'a',platformId:'codex',name:'Codex'}];

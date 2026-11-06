@@ -7,6 +7,7 @@ import {deliveryView} from '../../shared/delivery-view.mjs';
 export function activityLabel(turn,notification,native){
  if(turn.status==='active')return processingLabel(turn);
  if(turn.status==='ready')return nativeTurnDelivery(turn,native)?'等待原会话处理':waitingLabel(notification);
+ if(turn.status==='limited'&&turn.resumeAfter)return '消息较密，稍后自动继续';
  return {done:'已回复',silent:'已读，无需补充',merged:'已合并处理',removed:'已收尾',limited:'正在核对重复通知',stalled:turn.claimedAt?'正在核对原执行结果':'尚未收到领取回执',unavailable:'等待恢复连接'}[turn.status]||'等待更新';
 }
 function Source({id,channelId,messages,onSource,label='相关消息'}){

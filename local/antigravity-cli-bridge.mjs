@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes,createHash} from 'node:crypto';
 import {AntigravityNative,AntigravitySidecar} from './antigravity-sidecar.mjs';
 import {privateJson} from './storage.mjs';
+import {recordNativeCompletion} from './native-completion.mjs';
 
 const entry=fileURLToPath(import.meta.url),uuid=/^[a-f0-9-]{36}$/i;
 const execute=promisify(execFile);
@@ -74,7 +75,7 @@ export async function installCliAttachment(base,{home=os.homedir(),env=process.e
  await fs.mkdir(base,{recursive:true,mode:0o700});
   await fs.writeFile(loader,`import fs from 'node:fs/promises';import path from 'node:path';import {pathToFileURL} from 'node:url';const base=${JSON.stringify(base)};try{const p=JSON.parse(await fs.readFile(path.join(base,'program.json')));const m=await import(pathToFileURL(path.resolve(path.dirname(p.entry),'../../local/antigravity-cli-bridge.mjs')));await m.cliHookMain(base);}catch{console.log('{"decision":"allow"}');}\n`,{mode:0o600});
  const hook={type:'command',command,timeout:5};
- config[namespace]={SessionStart:[hook],PreInvocation:[hook],PreToolUse:[{matcher:'*',hooks:[hook]}]};
+ config[namespace]={SessionStart:[hook],PreInvocation:[hook],PreToolUse:[{matcher:'*',hooks:[hook]}],Stop:[hook]};
  if(JSON.stringify(config)!==JSON.stringify(before?JSON.parse(before):{})){
   await fs.mkdir(path.dirname(file),{recursive:true});if(before)await fs.writeFile(path.join(base,'native-hooks-before.json'),before,{mode:0o600});
   const current=await fs.readFile(file,'utf8').catch(e=>{if(e.code==='ENOENT')return null;throw e;});if(current!==before)throw Error('原生配置刚有变化，未覆盖，请重新执行同一接入说明');
@@ -95,6 +96,12 @@ export async function cliHook(base,input,{env=process.env}={}){
   if(!r.managedNativeSessionIds?.includes(input.conversationId)||!r.managedNativePid)return false;
   try{process.kill(r.managedNativePid,0);return true;}catch{return false;}
  });
+ if(managed&&env.DUOLAWORK_MANAGED_CLI==='1'&&typeof input.fullyIdle==='boolean'){
+  for(const r of executions)if(r.engine==='antigravity-cli'&&r.enabled&&r.inFlight?.stepId&&r.managedNativeSessionIds?.includes(input.conversationId)&&await nativeHubScope(input,r.inFlight.stepId,{ANTIGRAVITY_APP_DATA_DIR:nativeDir},{managedMemberId:r.memberId,channelId:r.inFlight.key})){
+   await recordNativeCompletion(base,{memberId:r.memberId,sessionId:input.conversationId,stepId:r.inFlight.stepId,fullyIdle:input.fullyIdle,terminationReason:input.terminationReason});break;
+  }
+  return {};
+ }
  if(!input.toolCall){
   if(managed||!await read(path.join(base,'runtime.json')).catch(()=>null))return{};
   if(await new AntigravityCliHost(base).attached(input.conversationId))return{};
@@ -115,6 +122,13 @@ export async function cliHook(base,input,{env=process.env}={}){
  // native conversation. A user's own turns retain their original policies.
  for(const r of executions){
   if(r.engine!=='antigravity-cli'||!r.enabled||r.permissionMode!=='full')continue;
+  // ACP background continuations can request terminal tools after prompt() has
+  // returned. Keep the already granted policy scoped to this managed Hub turn,
+  // including when the native foreground approval handler is no longer active.
+  if(env.DUOLAWORK_MANAGED_CLI==='1'&&r.inFlight?.stepId&&r.managedNativeSessionIds?.includes(input.conversationId)&&r.managedNativePid){
+   let alive=true;try{process.kill(r.managedNativePid,0);}catch{alive=false;}
+   if(alive&&await nativeHubScope(input,r.inFlight.stepId,{ANTIGRAVITY_APP_DATA_DIR:nativeDir},{managedMemberId:r.memberId,channelId:r.inFlight.key}))return{decision:'auto_approve',reason:'用户已授权的 DuolaWork 原生后台工作；保留原生显式拒绝规则'};
+  }
   // A cloud receipt can arrive before the native Agent finishes its final
   // read-back. Keep that same turn authorized through native completion; the
   // next human message immediately restores the original permission policy.
@@ -133,7 +147,7 @@ export async function cliHookMain(base){
  let raw='';for await(const c of process.stdin){raw+=c;if(raw.length>2000000)throw Error('Hook input too large');}
  console.log(JSON.stringify(await cliHook(base,JSON.parse(raw||'{}'))));
 }
-export async function nativeHubScope(input,stepId,env){
+export async function nativeHubScope(input,stepId,env,{managedMemberId,channelId}={}){
  // agentapi injects a SYSTEM message, not a user prompt, so lastUserInput is
  // intentionally unchanged. Inspect only the current conversation's official
  // hook transcript and only its ordering of user/Hub messages. Never expose or
@@ -150,7 +164,10 @@ export async function nativeHubScope(input,stepId,env){
   const lines=buffer.toString('utf8').split('\n');if(size>length)lines.shift();
   for(const line of lines.reverse()){
    let row;try{row=JSON.parse(line);}catch{continue;}
-   if(row.type==='USER_INPUT')return false;
+   if(row.type==='USER_INPUT'){
+    const content=String(row.content||'').replace(/^<USER_REQUEST>\s*/, '');
+    return !!managedMemberId&&content.startsWith('你是 Agent Hub 成员 '+managedMemberId+'，')&&content.includes('本轮只处理 stepId='+stepId+'，channelId='+channelId+'。');
+   }
    if(row.source==='SYSTEM'&&row.type==='SYSTEM_MESSAGE'&&/\[Message\].* content=DuolaWork collaboration /.test(row.content||''))return row.content.includes(' content=DuolaWork collaboration '+stepId+'\n');
   }
  }catch{return false;}finally{await file?.close();}

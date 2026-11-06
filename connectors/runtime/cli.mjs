@@ -62,12 +62,12 @@ export async function setup(input){
   config??={memberId,platformId,form,endpoint:u.origin,runtimeId:randomUUID(),label:os.hostname(),createdAt:new Date().toISOString()};
   await privateJson(configFile,config);
   const client=new CodingMemberClient(grantFile);await client.api('/v2/self/connection',{method:'POST',body:{requestId:randomUUID(),transport:'pull',pollSeconds:15}});
-  const service=await installService(alias,base);
   let attachment;
   if(f.engine==='antigravity-cli'){
     if(process.env.AGENT_HUB_CONNECTOR_TEST==='1')attachment=await attachCurrentCli(base);
-    else attachment=await installCliAttachment(base);
+    else {attachment=await installCliAttachment(base);config.nativeLifecycle='stop-hook-v1';await privateJson(configFile,config);}
   }
+  const service=await installService(alias,base);
   return{stage:'connecting',message:'原环境连接器已启动，项目和对话将在 DuolaWork 中自动出现。选定对话并收到 Agent 的真实回复后才表示协作可用。',service,...(attachment?{nativeAttachment:attachment}: {})};
 }
 
@@ -118,16 +118,17 @@ export async function run(alias,{interval=4000,managerFactory}={}){
   const record=manager.records[config.memberId];if(record)record.grantFile=grantFile;
   else if(f.manager==='coding')manager.records[config.memberId]={memberId:config.memberId,engine:f.engine,cwd:path.join(base,'workspace'),grantFile,sessions:{},chatBindings:{},manualAssignments:true,protocol:f.engine==='codex'?'app-server':'acp',permissionMode:'full'};
   else manager.records[config.memberId]={memberId:config.memberId,grantFile,hostKind:manager.host.kind||'desktop',chatBindings:{}};
+  if(f.engine==='antigravity-cli')manager.records[config.memberId].nativeLifecycle=config.nativeLifecycle||null;
   if(f.manager==='coding'){
     // An interrupted receiver is not a new connection. Reconcile its exact
     // native turn with cloud receipts before deciding what remains to do.
-    if(record?.inFlight){record.enabled=true;record.status='needs_review';}
+    if(record?.inFlight||Object.values(record?.executions||{}).some(state=>state.inFlight)){record.enabled=true;record.status=record.inFlight?'needs_review':'idle';}
     else await manager.connect({memberId:config.memberId,engine:f.engine,sourceOnly:true});
   }else await manager.connectSource({memberId:config.memberId});
   // Do not resume persisted work until this runtime owns a fresh heartbeat and
   // has reconciled the authoritative chat bindings (including a lost ACK).
   await manager.jobs.get(config.memberId);manager.stopped=true;
-  let stopped=false,pending=false,commandBusy=false,managerStarting=null,catalogJob=null,catalogAt=0,catalog={items:[],projects:[]};const linkJobs=new Map();
+  let stopped=false,pending=false,commandBusy=false,managerStarting=null,catalogJob=null,catalogAt=0,catalog={items:[],projects:[]};const linkJobs=new Map(),routingHolds=new Map();
   const reportError=e=>privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)}).catch(()=>{});
   const reconcile=async current=>{
     if(current.runtime?.runtimeId!==config.runtimeId)throw Error('原环境身份未确认，未派发消息');
@@ -143,7 +144,7 @@ export async function run(alias,{interval=4000,managerFactory}={}){
     const r=manager.records[config.memberId],s=f.manager==='coding'?manager.status().members.find(s=>s.memberId===config.memberId):manager.status().find(s=>s.memberId===config.memberId);
     if(r.sourceReady&&!catalogJob&&Date.now()-catalogAt>30000){catalogAt=Date.now();catalogJob=Promise.resolve().then(()=>f.manager==='coding'?manager.sessionOptions(config.memberId):manager.hostFor(config.memberId).sessions()).then(next=>{catalog=next;}).catch(reportError).finally(()=>{catalogJob=null;});}
     context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'heartbeat',receiverRevision,runtimeId:config.runtimeId,instanceId,form:config.form,label:config.label,sourceReady:!!r.sourceReady,status:s.status,message:s.message,executions:(s.assignments||[]).filter(b=>b.pendingStepId||b.nativeState).map(({channelId,sessionId,pendingStepId,deliveryState,workState,workMessage,nativeState,observedAt})=>({channelId,sessionId,pendingStepId,deliveryState,workState,workMessage,nativeState,observedAt})),items:catalog.items.map(s=>({...s,title:String(s.title||'未命名对话').slice(0,200)})),projects:catalog.projects||[]}});
-    if(!commandBusy){await reconcile(context);if(!stopped){if(!manager.timer&&!managerStarting)managerStarting=manager.start().catch(reportError).finally(()=>{managerStarting=null;});else manager.stopped=false;
+    if(!commandBusy){await reconcile(context);for(const [id,release] of routingHolds){release();routingHolds.delete(id);}if(!stopped){if(!manager.timer&&!managerStarting)managerStarting=manager.start().catch(reportError).finally(()=>{managerStarting=null;});else manager.stopped=false;
       if(f.manager==='coding'&&r.inFlight&&r.status==='needs_review'&&!manager.jobs.has(config.memberId))await manager.resume({memberId:config.memberId});
     }}
     const links=(await client.api('/v2/self/session-links')).items.filter(l=>l.executor==='runtime'&&l.runtimeId===config.runtimeId);
@@ -156,9 +157,10 @@ export async function run(alias,{interval=4000,managerFactory}={}){
     }
     const command=context.commands.find(c=>c.runtimeId===config.runtimeId);
     if(command&&!commandBusy&&!(command.linkIntentId&&(r.inFlight||manager.jobs.has(config.memberId)))){commandBusy=true;void (async()=>{
-      // Pause dispatch while the candidate is prepared and committed. A failed
-      // cloud CAS must never make this receiver send work to a different session.
-      manager.stopped=true;let routingConfirmed=false;
+      // Reserve only the affected native conversation through cloud activation.
+      // Other conversations continue; cloud claim guards also protect desktop hosts.
+      if(!routingHolds.has(command.id))routingHolds.set(command.id,manager.holdDispatch?.({...command,memberId:config.memberId})||(()=>{}));
+      let routingConfirmed=false;
       try{
         let outcome=journal[command.id];
         if(!outcome){
@@ -168,7 +170,6 @@ export async function run(alias,{interval=4000,managerFactory}={}){
         }else if(outcome.pending)outcome={error:'上次选择对话时连接器意外退出，原绑定保留。请刷新项目列表，核对后选择已有对话；未重复新建。'};
         context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'complete',runtimeId:config.runtimeId,instanceId,requestId:'prepare-'+command.id,commandId:command.id,...outcome}});
         if(outcome.error){await reconcile(context);routingConfirmed=true;return;}
-        await manager.commitBinding({memberId:config.memberId,channelId:command.channelId,binding:outcome.binding,verify:false});
         context=await client.api('/v2/self/runtime',{method:'POST',body:{action:'activate',runtimeId:config.runtimeId,instanceId,requestId:'activate-'+command.id,commandId:command.id}});
         await reconcile(context);routingConfirmed=true;
         await manager.commitBinding({memberId:config.memberId,channelId:command.channelId,binding:context.runtime.bindings[command.channelId]});
@@ -178,7 +179,7 @@ export async function run(alias,{interval=4000,managerFactory}={}){
         // blindly roll back. Read cloud truth; while offline keep dispatch held.
         try{context=await client.api('/v2/self/runtime');await reconcile(context);routingConfirmed=true;}catch{}
         throw e;
-      }finally{manager.stopped=stopped||!routingConfirmed;}
+      }finally{if(routingConfirmed){routingHolds.get(command.id)?.();routingHolds.delete(command.id);}if(stopped)manager.stopped=true;}
     })().catch(async e=>{await privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)});}).finally(()=>{commandBusy=false;});}
   }catch(e){
     if([401,403].includes(e.status)){

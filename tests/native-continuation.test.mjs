@@ -31,6 +31,24 @@ async function setup(t){
  return {...f,actor,directory,requestId,command,channel,scope,options,bind,client,bridge,notices,send,claim,reply,advance:ms=>{clock+=ms;}};
 }
 
+for(const count of [1,2,3,4,5,10,17])test(`Claude adapter: ${count} native monitors isolate busy work, deduplicate wakes and retain scoped claims after restart`,async t=>{
+ const f=await setup(t),channels=[f.channel];
+ for(let i=1;i<count;i++)channels.push(await f.command('channel.create',{name:`native ${i}`,memberIds:['grok']}));
+ const notices=[],bridges=[];
+ for(const [i,c] of channels.entries()){
+  const sessionId=`claude-native-${i}`;await f.bind(c.id,sessionId);
+  const b=new ClaudeChannel({client:f.client,session:{sessionId},stateFile:path.join(f.directory,`native-${i}.json`),notify:async n=>notices.push(n)});await b.load();bridges.push(b);await f.send(`Work ${i}`,c.id);
+ }
+ await Promise.all(bridges.flatMap(b=>[b.tick(),b.tick()]));assert.equal(notices.length,count);
+ const claims=await Promise.all(bridges.map(async b=>b.tool('claim_work',{requestId:f.requestId(),stepId:(await b.work()).find(w=>w.status==='ready').stepId})));
+ for(const c of channels)await f.send('Queued next instruction',c.id);
+ await Promise.all(bridges.map(b=>b.tick()));assert.equal(notices.length,count,'active native work is not interrupted');
+ const first=bridges[0],claim=claims[0];await first.tool('post_message',{requestId:f.requestId(),channelId:claim.channelId,turnId:claim.turnId,body:'first native done'});
+ const restarted=new ClaudeChannel({client:f.client,session:first.session,stateFile:first.stateFile,notify:async n=>notices.push(n)});await restarted.load();await restarted.tick();assert.equal(notices.length,count+1,'other active sessions cannot block this next wake');
+ assert.ok(restarted.claims[claim.turnId]);
+ if(count>1)await assert.rejects(restarted.tool('post_message',{requestId:f.requestId(),channelId:claims[1].channelId,turnId:claims[1].turnId,body:'wrong context'}),/未分配/);
+});
+
 test('Claude continuation claims the next message in the same session and survives tool-process restart',async t=>{
  const f=await setup(t);await f.send('first');const first=await f.claim();await f.reply(first);await f.send('second');
  const restarted=new ClaudeChannel({client:f.client,session:f.bridge.session,stateFile:f.bridge.stateFile,notify:async()=>{}});await restarted.load();

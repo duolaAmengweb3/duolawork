@@ -48,14 +48,25 @@ test('remote account setup is reusable; native catalog, commands and routing sur
  owner=await h.request('/v2/native-runtime?memberId='+member.id);
  assert.equal(owner.record.assignments.find(b=>b.channelId===channel.id).pendingStepId,'turn_one');assert.equal(owner.record.assignments.find(b=>b.channelId===other.id).pendingStepId,'turn_two');assert.equal(owner.record.assignments.length,2);
  await post(heartbeat);assert.ok((await h.request('/v2/native-runtime?memberId='+member.id)).record.assignments.every(b=>!b.pendingStepId),'Finished work must not leave stale running indicators');
+ // In-product update sends one ordinary scoped request and waits for real revision.
+ const update=await h.request('/v2/native-runtime',{memberId:member.id,action:'update',requestId:'owner-update'});
+ assert.equal(update.status,'requested');assert.equal(update.channelId,channel.id);
+ const repeated=await h.request('/v2/native-runtime',{memberId:member.id,action:'update',requestId:'owner-update-again'});assert.equal(repeated.messageId,update.messageId);
+ const updateView=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(updateView.record.updateAvailable,true);assert.equal(updateView.record.canRequestUpdate,true);
+ await post({...heartbeat,receiverRevision:currentRevision});assert.equal((await h.request('/v2/native-runtime?memberId='+member.id)).record.updateAvailable,false);
+ await assert.rejects(()=>client.api('/v2/self/execution-bindings',{method:'POST',body:{requestId:'stale-routing',bindings:[{channelId:channel.id,sessionId:'stale-session'}]}}),/最新绑定/);
+ const legacy=await create(other.id,'native-one');await post({action:'complete',commandId:legacy.id,requestId:randomUUID(),binding:{sessionId:'native-one',workspace:'/srv/site'}});
+ await client.api('/v2/self/execution-bindings',{method:'POST',body:{requestId:'legacy-prepare-sync',bindings:[{channelId:other.id,sessionId:'native-one'}]}});
+ assert.equal((await h.request('/v2/native-runtime?memberId='+member.id)).bindings[other.id].sessionId,'native-two','older receiver staging cannot publish before activation');
+ await post({action:'activate',commandId:legacy.id,requestId:randomUUID()});
  const failed=await create(channel.id,'native-two');await post({action:'complete',commandId:failed.id,requestId:randomUUID(),error:'原对话仍在工作'});owner=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(owner.bindings[channel.id].sessionId,'native-one');
  await assert.rejects(()=>client.api('/v2/native-runtime?memberId='+member.id),/用户/);
  const self=await client.api('/v2/self/runtime');assert.equal(self.member.id,member.id);assert.ok(self.channels.every(c=>c.memberIds.length===1));
  // A long first native turn or slow project inventory must not stop heartbeats.
  await post({action:'release'});
  let finishNative,finishCatalog;const nativeGate=new Promise(r=>finishNative=r),catalogGate=new Promise(r=>finishCatalog=r);
- const fake={records:{[member.id]:{memberId:member.id,enabled:true,sourceReady:true,status:'idle',chatBindings:{}}},jobs:new Map(),stopped:true,beats:0,starts:0,
-  async load(){},async connect(){},async save(){},async stop(){this.timer=null;},
+ const fake={records:{[member.id]:{memberId:member.id,enabled:true,sourceReady:true,status:'idle',chatBindings:{},executions:{'native-one':{inFlight:{stepId:'previous-delivery',key:channel.id}}}}},jobs:new Map(),stopped:true,beats:0,starts:0,
+  async load(){},async connect(){throw Error('must reconcile saved child delivery without reconnecting');},async save(){},async stop(){this.timer=null;},
   status(){this.beats++;return{members:[{memberId:member.id,status:'working',message:'Heartbeat '+this.beats,assignments:[]}]};},
   async sessionOptions(){await catalogGate;return{items:heartbeat.items,projects:[]};},
   async start(){this.starts++;this.timer=true;await nativeGate;}};

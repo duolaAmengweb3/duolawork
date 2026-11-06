@@ -27,8 +27,9 @@ test('Desktop bridge does not open another instance in a background restore when
 });
 test('Desktop old plugin cannot claim the new current-conversation route is ready',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-desktop-version-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const d=new DshDesktopHost(dir);await fs.mkdir(d.root,{recursive:true});await fs.writeFile(d.stateFile,JSON.stringify({pid:123}));
- d.discover=async()=>({installed:true,supported:true,running:true,pid:123,profile:'/fixture'});d.deploy=async()=>{};d.call=async()=>({ready:true,protocolVersion:6});
- await assert.rejects(d.start({launch:false}),/重新加载/);d.call=async()=>({ready:true,protocolVersion:7});assert.equal((await d.start({launch:false})).protocolVersion,7);
+ d.discover=async()=>({installed:true,supported:true,running:true,pid:123,profile:'/fixture'});d.deploy=async()=> 'installed-revision';d.call=async()=>({ready:true,protocolVersion:6});
+ await assert.rejects(d.start({launch:false}),/旧接收器/);d.call=async()=>({ready:true,protocolVersion:7,receiverRevision:'old-revision'});await assert.rejects(d.start({launch:false}),/旧接收器/);
+ d.call=async()=>({ready:true,protocolVersion:7,receiverRevision:'installed-revision'});assert.equal((await d.start({launch:false})).receiverRevision,'installed-revision');
 });
 test('new members use Desktop while pre-existing managed DSH sessions keep their exact original runtime',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-desktop-routing-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));

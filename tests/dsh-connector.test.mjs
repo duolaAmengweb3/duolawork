@@ -122,3 +122,27 @@ test('two native contexts for one Hub member are routed by chat; completion rele
   await f.restart();assert.deepEqual(f.connector.bindings.get(second.id).channelIds,['channel_b']);await f.connector.poll();assert.equal(f.prompts.length,2);
  }finally{await f.cleanup();}
 });
+
+for(const count of [1,2,3,4,5,10,17])test(`DSH: ${count} contexts of one account dispatch together and preserve exact request identities after restart`,async()=>{
+ const f=await fixture();try{
+  const agents=Array.from({length:count},(_,i)=>({...f.agent,id:`native-${i}`,session:{}}));
+  f.options.ctx.sessionController.list=async()=>({items:agents.map(a=>({sessionId:a.id,cwd:f.project}))});
+  f.options.ctx.sessionController.resolveAgent=async id=>({agent:agents.find(a=>a.id===id)});
+  for(const [i,a] of agents.entries())await f.connector.bind({sessionId:a.id,workspace:f.project,grantFile:f.grantFile,channelIds:[`channel-${i}`,`alias-${i}`],verification:false});
+  const work=agents.flatMap((a,i)=>[{stepId:`work-${i}`,channelId:`channel-${i}`,status:'ready'},{stepId:`alias-work-${i}`,channelId:`alias-${i}`,status:'ready'}]);
+  f.setWork(work);await Promise.all([f.connector.poll(),f.connector.poll()]);
+  assert.equal(f.prompts.length,count,'one busy native context must not serialize its account');assert.equal(new Set(f.prompts.map(p=>p.sessionId)).size,count);assert.ok(f.prompts.every(p=>p.mode==='queue'));
+  const requests=f.prompts.map(p=>p.requestId);await f.restart();await f.connector.poll();assert.deepEqual(f.prompts.map(p=>p.requestId),requests,'restart must not enqueue duplicates');
+  f.setWork(work.filter(w=>w.stepId.startsWith('alias-work')));await f.connector.poll();assert.equal(f.prompts.length,count*2);assert.equal(new Set(f.prompts.map(p=>p.requestId)).size,count*2);
+ }finally{await f.cleanup();}
+});
+
+test('a stalled DSH session poll cannot stop other sessions or their next message',async()=>{
+ const f=await fixture();let release;try{
+  const second={...f.agent,id:'independent'};f.options.ctx.sessionController.list=async()=>({items:[f.agent,second].map(a=>({sessionId:a.id,cwd:f.project}))});f.options.ctx.sessionController.resolveAgent=async id=>({agent:id===second.id?second:f.agent});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['slow']});await f.connector.bind({sessionId:second.id,workspace:f.project,grantFile:f.grantFile,channelIds:['fast']});
+  const slow=f.connector.bindings.get(f.agent.id);slow.client={...slow.client,api:()=>new Promise(r=>release=r)};
+  f.setWork([{channelId:'fast',stepId:'first',status:'ready'}]);const pending=f.connector.poll();while(!f.prompts.length)await new Promise(r=>setTimeout(r,2));
+  await f.connector.pollJobs.get(second.id);f.setWork([{channelId:'fast',stepId:'second',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts.length,2);release({hasWork:false});await pending;
+ }finally{release?.({hasWork:false});await f.cleanup();}
+});

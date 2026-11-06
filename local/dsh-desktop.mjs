@@ -79,10 +79,10 @@ export class DshDesktopHost {
    try{await fs.rename(stage,folder);}catch(e){if(!['EEXIST','ENOTEMPTY'].includes(e.code))throw e;await fs.rm(stage,{recursive:true,force:true});}
   }
   const patchFile=path.join(profile,'cordis.patch.yml'),before=await fs.readFile(patchFile,'utf8'),after=desktopPatch(before,{entry:path.join(folder,'local/dsh-connector.mjs'),stateFile:this.stateFile});
-  if(after===before)return;
+  if(after===before)return revision;
   const backup=path.join(this.root,'profile-backups',createHash('sha256').update(before).digest('hex')+'.yml');await fs.mkdir(path.dirname(backup),{recursive:true,mode:0o700});try{await fs.writeFile(backup,before,{flag:'wx',mode:0o600});}catch(e){if(e.code!=='EEXIST')throw e;}
   if(await fs.readFile(patchFile,'utf8')!==before)throw Error('桌面版插件配置刚有变化，未覆盖；请重新连接');
-  const temporary=patchFile+'.hub-'+randomUUID()+'.tmp';await fs.writeFile(temporary,after,{mode:0o600});await fs.rename(temporary,patchFile);
+  const temporary=patchFile+'.hub-'+randomUUID()+'.tmp';await fs.writeFile(temporary,after,{mode:0o600});await fs.rename(temporary,patchFile);return revision;
  }
  async start({launch=false}={}){
   if(this.starting)return this.starting;this.starting=this.startOnce({launch}).finally(()=>{this.starting=null;});return this.starting;
@@ -92,8 +92,8 @@ export class DshDesktopHost {
   if(!d.running){if(!launch)throw Error('官方桌面版已关闭，打开后会继续原会话');await this.deploy(d.profile);await this.open();for(let i=0;i<60;i++){d=await this.discover();if(d.running)break;await new Promise(r=>setTimeout(r,300));}if(!d.running)throw Error('请完成官方桌面版启动；没有另开本地 Web 版');}
   this.progress='正在连接已登录的官方桌面版';
   try{
-   await this.deploy(d.profile);
-   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready&&health.protocolVersion>=7)return health;if(state.pid===d.pid&&health.ready&&health.protocolVersion<7)throw Object.assign(Error('Hub 插件需要重新加载：请在 DeepSeek 当前工作结束后正常退出并重开一次，原登录、项目和会话保留，然后重新连接'),{reloadRequired:true});}catch(e){if(e.reloadRequired)throw e;}await new Promise(r=>setTimeout(r,300));}
+   const expectedRevision=await this.deploy(d.profile);
+   for(let i=0;i<100;i++){try{const state=await read(this.stateFile),health=await this.call('/health');if(state.pid===d.pid&&health.ready){if(health.protocolVersion>=7&&health.receiverRevision===expectedRevision)return health;throw Object.assign(Error('连接更新已准备好，DeepSeek 还在运行旧接收器；当前工作继续。请在工作结束后正常退出并重开 DeepSeek，原登录、项目和对话保留'),{reloadRequired:true});}}catch(e){if(e.reloadRequired)throw e;}await new Promise(r=>setTimeout(r,300));}
    throw Error('桌面版尚未加载 Hub 插件，原登录和会话保留；请在原生插件页查看具体原因');
   }finally{this.progress=null;}
  }
