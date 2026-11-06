@@ -1,3 +1,4 @@
+import {materialCommand} from './materials.mjs';
 import {folderAccess,placeMaterial} from './material-folders.mjs';
 import { fail, id, required, digest } from './repository.mjs';
 import { channelAccess, meetingHelpers, CHANNEL_TOOLS, conversationTool } from './conversation.mjs';
@@ -179,11 +180,12 @@ export async function sharedCommand(repo,identity,actor,args,env){
   if(args.action==='cancel')return repo.transact('cancel:'+required(args.requestId,'请求编号',100),{...args,actor},async tx=>{const u=await getUpload(tx,actor,args.uploadId);if(u.status!=='uploading')return u;const usage=await tx.get('shared_usage','bytes');tx.put('shared_usage',{...usage,reserved:usage.reserved-u.size});return tx.put('shared_upload',{...u,status:'canceled'});});
   if(['delete','restore'].includes(args.action))return repo.transact('file-action:'+required(args.requestId,'请求编号',100),{...args,actor},async tx=>{
     const file=await tx.get('shared_file',args.resourceId),channel=await channelAccess(tx,file.scopeId,actor);
-    if(!actor.owner)fail('forbidden','删除和恢复共享文件由用户操作',403);
+    if(args.action==='delete'||args.action==='restore'&&!args.version&&file.status==='deleted'&&await tx.get('material_trash','file:'+file.id,false))return publicFile(await materialCommand(tx,actor,{...args,kind:'file',id:file.id},channel,{identity,helpers:meetingHelpers}));
     if(file.version!==args.expectedVersion)fail('version_conflict','文件已更新，请重读后再操作',409);
     const previous=args.action==='restore'?await tx.get('shared_file_version',versionId(file.id,args.version)):file;
-    const next=tx.put('shared_file',{...file,...Object.fromEntries(['objectKey','storage','sha256','size','mime'].map(k=>[k,previous[k]])),version:file.version+1,status:args.action==='delete'?'deleted':'published',lastEditorId:'owner'});
-    tx.put('shared_file_version',{...next,id:versionId(file.id,next.version),parentId:file.id,createdAt:tx.now,authorId:'owner'});
+    const next=tx.put('shared_file',{...file,...Object.fromEntries(['objectKey','storage','sha256','size','mime'].map(k=>[k,previous[k]])),version:file.version+1,status:args.action==='delete'?'deleted':'published',lastEditorId:actor.memberId||'owner'});
+    tx.put('shared_file_version',{...next,id:versionId(file.id,next.version),parentId:file.id,createdAt:tx.now,authorId:actor.memberId||'owner'});
+    const trash=await tx.get('material_trash','file:'+file.id,false);if(trash&&args.action==='restore')tx.put('material_trash',{...trash,status:'restored',restoredAt:tx.now,restoredBy:actor.memberId||'owner'});
     await notify(tx,identity,channel,actor,`${args.action==='delete'?'移除':'恢复'}文件：${file.name}`,{type:'shared_file',resourceId:file.id,resourceVersion:next.version,fileName:file.name,fileSize:next.size,resourceAction:args.action},await readerIds(tx,file.id));return publicFile(next);
   });
   fail('unknown_command','未知共享操作',404);
@@ -205,7 +207,7 @@ export async function sharedToolEnvelope(repo,identity,actor,message,env){
   const channel=await channelAccess(repo,message.channelId,actor);
   let envelope;
   try{envelope=JSON.parse(message.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','共享工具请求必须是完整JSON');}
-  const workspaceNames=['board_task','remember','revise_memory','read_space_object','search_memory','read_memory','read_todo','manage_folder','move_material'];
+  const workspaceNames=['manage_material','coordinate','board_task','remember','revise_memory','read_space_object','search_memory','read_memory','read_todo','manage_folder','move_material'];
   const workspaceDefinition=envelope&&workspaceNames.includes(envelope.name)&&CHANNEL_TOOLS.find(t=>t.name===envelope.name);
   const definition=workspaceDefinition||envelope&&SHARED_TOOLS.find(t=>t.name===envelope.name);
   if(!definition)fail('unknown_tool','此兼容入口只接受已发布的共享工具',404);

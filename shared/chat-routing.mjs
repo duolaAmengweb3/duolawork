@@ -2,7 +2,7 @@
 // addressees. Reading the group and speaking never require coordinator approval.
 export function messageRecipients(channel, { owner = false, memberId, mentions = [], mentionAll = false } = {}) {
   if (mentionAll) return channel.memberIds.filter(id => id !== memberId);
-  if (mentions.length) return [...new Set(mentions)].filter(id => id !== memberId);
+  if (mentions.length) return [...new Set(mentions)].filter(id => id !== memberId && id !== 'owner');
   if (!owner) return [];
   if (channel.memberIds.length === 1) return channel.memberIds;
   return channel.memberIds.includes(channel.coordinatorId) ? [channel.coordinatorId] : [];
@@ -15,6 +15,10 @@ export function mentionableText(body) {
 
 export function hasAllMention(body) {
   return /(^|\s)@(?:全员|所有人)(?=$|[\s，。,:：?？!！;；])/u.test(mentionableText(body));
+}
+
+export function hasOwnerMention(body) {
+  return /(^|\s)@(?:用户|人类)(?=$|[\s，。,:：?？!！;；])/u.test(mentionableText(body));
 }
 
 export function namedMentions(body, members) {

@@ -23,8 +23,8 @@ const json = (data, status = 200) => Response.json(data, {
 const setupText = value => value.replace(/https?:\/\/\S+/g, "[地址]")
   .replace(/(?:Bearer\s+|ahv1_|ahr_|whsec_|crsr_|sk-)[A-Za-z0-9_+/=.-]+/g, "[凭证已隐藏]");
 
-export async function issueAgentSkill(repo, identity, memberId, origin) {
-  const pair = await startPairing(repo, identity, memberId, origin, "agent-skill");
+export async function issueAgentSkill(repo, identity, memberId, origin, options) {
+  const pair = await startPairing(repo, identity, memberId, origin, "agent-skill",options);
   const member = identity.members.find(m => m.id === memberId);
   return {
     expiresAt: pair.expiresAt,

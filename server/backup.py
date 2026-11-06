@@ -9,6 +9,14 @@ directory.mkdir(mode=0o700, exist_ok=True)
 object_root = pathlib.Path(config.get('objectDirectory', database.parent / 'objects'))
 object_backup = directory / 'objects'
 object_backup.mkdir(mode=0o700, exist_ok=True)
+# Deletion intent stays outside point-in-time database snapshots. Restoring an
+# old DB must retain the newest ledger, so deleted memories cannot reappear.
+ledger = database.parent / 'memory-forgotten.d'
+if ledger.exists():
+    target = directory / 'memory-forgotten.d'
+    target.mkdir(mode=0o700, exist_ok=True)
+    for entry in ledger.glob('*.json'):
+        if not (target / entry.name).exists(): shutil.copy2(entry, target / entry.name)
 stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
 with tempfile.TemporaryDirectory(dir=directory) as work:
     snapshot = pathlib.Path(work) / 'snapshot.sqlite'

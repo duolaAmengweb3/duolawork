@@ -5,7 +5,7 @@ import { command } from "../cloud/collaboration/engine.mjs";
 
 export function database() {
   const db = new DatabaseSync(":memory:");
-  for (const name of ["0001.sql", "0002_collaboration.sql"])
+  for (const name of ["0001.sql", "0002_collaboration.sql", "0003_human_read.sql"])
     db.exec(
       fs.readFileSync(
         new URL("../cloud/migrations/" + name, import.meta.url),

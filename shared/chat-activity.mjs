@@ -13,11 +13,9 @@ export function pendingMemberActivity(activity = [], notifications = [], nativeM
     const native = nativeMembers.find(m => m.memberId === memberId);
     const queued = ready.some(t => t.id === native?.pendingStepId && ['sent','queued'].includes(native.deliveryState));
     const accepted = ready.some(t => notifications.some(n => n.stepId === t.id && n.status === 'accepted'));
-    const responded = activity.some(t => t.memberId === memberId && t.status === 'done');
-    const prefix = responded && !active.length ? '已回复 · 另有 ' : '';
     const label = active.length
       ? `正在回复${ready.length ? ` · 另有 ${ready.length} 条待处理` : ''}`
-      : `${prefix}${ready.length} 条消息${queued ? '在原会话排队' : accepted ? '等待接收' : '待处理'}`;
+      : `${ready.length} 条消息${queued ? '在原会话排队' : accepted ? '等待接收' : '待处理'}`;
     return { memberId, label, working: active.length > 0, turnIds: turns.map(t => t.id) };
   });
 }

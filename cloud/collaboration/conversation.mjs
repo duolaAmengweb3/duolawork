@@ -1,7 +1,13 @@
+import {executionResource} from './execution-bindings.mjs';
+import {recordMemoryEvent,queueMemoryIndex} from './memory-context.mjs';
+import {workspaceGrant,requireManager} from './delegation.mjs';
+import {MATERIAL_TOOLS,materialCommand} from './materials.mjs';
+import {editMessage} from './chat-experience.mjs';
+import {COORDINATION_TOOLS,trackCoordination,relatedCoordination,registerFeedback,objectFeedback,coordinationCommand,transferCoordination} from './coordination.mjs';
 import {FOLDER_TOOLS,folderCommand,allFolders,allPlacements,placeMaterial} from './material-folders.mjs';
 import { SPACE_TOOLS, referenceSchema, spaceCommand, validateRefs, publicMemory, readSpaceObject } from './workspace-objects.mjs';
 import { fail, id, required } from "./repository.mjs";
-import { messageRecipients, namedMentions, hasAllMention } from '../../shared/chat-routing.mjs';
+import { messageRecipients, namedMentions, hasAllMention, hasOwnerMention } from '../../shared/chat-routing.mjs';
 import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
 
 // Communication is independent of the legacy run/step orchestration. A turn is
@@ -15,7 +21,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "post_message",
-    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，需要全员回应时设 mentionAll=true；不提及他人就不会唤醒其他成员。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
+    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；需要全员回应时设 mentionAll=true；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
     {
       requestId: "string",
       channelId: "string",
@@ -92,6 +98,7 @@ const BASIC_CHANNEL_TOOLS = [
       title: "string",
       body: "string",
       category: "string",
+      authority:"string",conditions:"string",memoryScope:"string",sourceMessageId:"string",sourceQuote:"string",
       refs: referenceSchema,
     },
     ["requestId", "channelId", "title", "body"],
@@ -146,7 +153,7 @@ const BASIC_CHANNEL_TOOLS = [
   },
 }));
 
-export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS];
+export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS, ...COORDINATION_TOOLS, ...MATERIAL_TOOLS];
 const activeMember = (identity, memberId) =>
   identity.members.find(
     (m) =>
@@ -157,11 +164,9 @@ const activeMember = (identity, memberId) =>
       ),
   );
 const unique = (values) => [...new Set(values)];
-const owner = (actor) => {
-  if (!actor.owner) fail("forbidden", "只有用户可以修改群设置", 403);
-};
-const scoped = (channel, actor) => {
-  if (!actor.owner && !channel.memberIds.includes(actor.memberId))
+const owner = (actor,repo) => requireManager(repo,actor);
+const scoped = async (channel, actor,repo) => {
+  if (!actor.owner && !channel.memberIds.includes(actor.memberId) && !await workspaceGrant(repo,actor))
     fail("forbidden", "你不在这个群内", 403);
 };
 const messageText = (value) => required(value, "消息", 24000);
@@ -169,7 +174,7 @@ const messageText = (value) => required(value, "消息", 24000);
 // ordinary message addressing, with the same membership authorization. Never
 // resolve global names, ambiguous names, quoted examples or code as recipients.
 function textMentions(body, channel, identity) {
-  return namedMentions(body, channel.memberIds.map(mid => activeMember(identity, mid)).filter(Boolean));
+  return [...namedMentions(body, channel.memberIds.map(mid => activeMember(identity, mid)).filter(Boolean)),...(hasOwnerMention(body)?['owner']:[])];
 }
 
 const listIds = (values, label = "成员") => {
@@ -184,7 +189,7 @@ const listIds = (values, label = "成员") => {
 
 export async function channelAccess(repo, channelId, actor) {
   const channel = await repo.get("channel", channelId);
-  scoped(channel, actor);
+  await scoped(channel, actor,repo);
   return channel;
 }
 async function channelMessage(tx, channel, actor, body, extra = {}) {
@@ -202,6 +207,7 @@ async function channelMessage(tx, channel, actor, body, extra = {}) {
   });
   if(!extra.hidden){channel.lastMessage = body.slice(0, 160);channel.lastMessageAt = tx.now;}
   tx.put("channel", channel);
+  if(actor.owner&&!extra.hidden)await recordMemoryEvent(tx,channel,message,'message');
   return message;
 }
 async function enqueue(tx, identity, channel, message, memberId) {
@@ -209,7 +215,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     connection = await tx.get("connection", memberId, false);
   if (!m) return;
   const turnId = `turn_${message.id}_${memberId}`;
-  const deferred = message.hops > channel.maxHops;
+  const deferred = message.hops > channel.maxHops && !message.coordinationFeedback;
   const available = !m.paused && connection?.status === "verified";
   // Native source setup and per-chat context selection are separate. Preserve
   // the first message while that context proves its round trip; only a verified
@@ -221,6 +227,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     parentId: memberId,
     memberId,
     messageId: message.id,
+    ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1}:{}),
     wakeSource: message.authorId === "owner" ? "user" : "agent",
     number: message.number,
     rootId: message.rootId || message.id,
@@ -331,7 +338,7 @@ export async function claimConversation(
           fail("unavailable", "成员当前不可接收消息", 409);
         if (args.channelId) {
           const selected = await tx.get("channel", args.channelId);
-          scoped(selected, actor);
+          await scoped(selected, actor,tx);
           if (selected.status !== "active")
             return { status: "empty", reason: "channel_inactive" };
         }
@@ -346,6 +353,7 @@ export async function claimConversation(
         for (const candidate of pending) {
           const group = await tx.get("channel", candidate.scopeId, false);
           if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
+          const occupied=await tx.get('resource',await executionResource(tx,connection,group.id),false);if(occupied?.status==='busy')continue;
           if (!await meetingTurnAllowed(tx, candidate)) { tx.put('channel_turn', { ...candidate, status: 'removed', reason: '会议阶段已经变化或结束' }); continue; }
           turn = candidate;
           channel = group;
@@ -356,7 +364,7 @@ export async function claimConversation(
         turn = await tx.get("channel_turn", args.stepId || args.turnId);
         channel = await tx.get("channel", turn.scopeId);
       }
-      scoped(channel, actor);
+      await scoped(channel, actor,tx);
       if (turn.memberId !== actor.memberId)
         fail("forbidden", "通知不属于此成员", 403);
       if (turn.status !== "ready")
@@ -371,7 +379,10 @@ export async function claimConversation(
         channel.status !== "active"
       )
         fail("unavailable", "成员或群当前不可执行", 409);
-      const resource = await tx.get("resource", c.resourceKey, false);
+      const resourceKey=await executionResource(tx,c,channel.id);
+      const legacyResource=await tx.get("resource",c.resourceKey,false);
+      if(resourceKey!==c.resourceKey&&legacyResource?.status==='busy')fail('resource_busy','旧版接收的工作正在结束，消息已保留',409);
+      const resource = await tx.get("resource", resourceKey, false);
       if (resource?.status === "busy")
         fail("resource_busy", "原 Agent 正在处理另一条通知，稍后再读", 409);
       tx.guardLegacyIdle(member.accountId);
@@ -396,7 +407,7 @@ export async function claimConversation(
         ...turn,
         status: "active",
         lease,
-        resourceKey: c.resourceKey,
+        resourceKey,
         claimedAt: tx.now,
         ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
         expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),
@@ -404,7 +415,7 @@ export async function claimConversation(
       });
       tx.put("resource", {
         ...resource,
-        id: c.resourceKey,
+        id: resourceKey,
         status: "busy",
         turnId: turn.id,
         memberId: actor.memberId,
@@ -430,13 +441,15 @@ export async function claimConversation(
           ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,
           coordinatorId: channel.coordinatorId,
+          ...(actor.memberId===channel.coordinatorId?{coordinatorInstruction:'你是用户指定的负责人。先理解本次目标和交付范围，核对本次所有 triggerMessageIds 与用户连续补充；有影响行动的歧义才追问。按需要组织成员核查，独立判断证据，避免互相点头。相关成员结果、文档和 Todo 反馈会送回你；请继续处理或向用户交付，不止说收到。能在已授权范围内推进就推进，确需用户决定时说清具体问题。讨论框架不等于授权全面写作；用户要求完成则不能只给计划。管好资料/Todo/会议/共享记忆，按需要用工具，不强制建任务。对正在协调的需求用 coordinate(read/update/close) 跟进，读取最新版本后再处理；回复消息只结束本次通知，不代表整件事完成。不要从无人反对、stay_silent 或一条回执推断验收通过。',coordination:await tx.list('channel_coordination',{scope:channel.id,limit:100})}:{}),
           members: channel.memberIds.map((memberId) => ({
             id: memberId,
             name: activeMember(identity, memberId)?.name || memberId,
           })),
           triggerMessageIds: pending.map((t) => t.messageId),
+          triggerMessages: await Promise.all(pending.map(t=>tx.get("channel_message",t.messageId))),
           instruction:
-            "群里有新消息。先调用 read_channel(channelId) 查看真实上下文。你是独立成员，可直接回复、@群内其他成员、追问、提出异议、共同写文档，或 stay_silent；用户指定的负责人可协调但不是唯一发言人。无新信息不要互相点头刷屏。post_message/stay_silent 带 turnId 结束本次通知。不要把普通聊天写成正式成果。若平台暂时只提供旧工具，submit_work 的正文会原样发到群里，不创建任务或成果；旧回传通道也能用“@本群唯一备注名”明确通知对方，引用和代码不通知。创建或修改文档等新能力需要刷新工具列表后调用，不能虚报已使用。不要声称未实际读取的资料或其他成员已回复。",
+            "群里有新消息。先调用 read_channel(channelId) 查看真实上下文。@用户 使用 mentions 中填 owner 或正文 @用户；不触发任何代理执行。明确交给你的工作需要回应结果或具体阻碍，不能只记静默。你是独立成员，可直接回复、@群内其他成员、追问、提出异议、共同写文档，或 stay_silent；用户指定的负责人可协调但不是唯一发言人。无新信息不要互相点头刷屏。post_message/stay_silent 带 turnId 结束本次通知。不要把普通聊天写成正式成果。若平台暂时只提供旧工具，submit_work 的正文会原样发到群里，不创建任务或成果；旧回传通道也能用“@本群唯一备注名”明确通知对方，引用和代码不通知。创建或修改文档等新能力需要刷新工具列表后调用，不能虚报已使用。不要声称未实际读取的资料或其他成员已回复。",
         },
       };
     },
@@ -479,7 +492,7 @@ export async function readChannel(repo, identity, actor, args) {
     })),
     messages: rows.slice(0, 50).reverse(),
     before: rows.length > 50 ? rows[49].number : null,
-    documents,
+    documents:documents.filter(d=>d.status!=="deleted"),
     files: (await repo.list("shared_file", {scope:channel.id,limit:100,order:"recent"})).filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
     handoffs: await repo.list("shared_handoff", {scope:channel.id,limit:100,order:"recent"}),
     decisions,
@@ -532,6 +545,7 @@ export async function readChannel(repo, identity, actor, args) {
           }),
         )
       : [],
+    coordination: await repo.list('channel_coordination',{scope:channel.id,order:'recent',limit:100}),
     activity: actor.owner
       ? turns.map(({ lease, resourceKey, ...t }) => t)
       : turns
@@ -555,7 +569,7 @@ export async function conversationCommand(
     { ...cmd, actor },
     async (tx) => {
       if (type === "channel.create" || type === "channel.import") {
-        owner(actor);
+        await owner(actor,tx);
         let prior;
         if (type === "channel.import")
           prior = await tx.get("project", cmd.projectId);
@@ -580,6 +594,7 @@ export async function conversationCommand(
         const channel = {
           id: channelId,
           name: required(cmd.name || prior?.name, "群名称", 100),
+          description:String(cmd.description||'').slice(0,600),createdBy:actor.memberId||'owner',
           memberIds,
           coordinatorId,
           status: "active",
@@ -604,12 +619,16 @@ export async function conversationCommand(
         channelId = turn.scopeId;
       }
       const channel = await tx.get("channel", channelId);
-      scoped(channel, actor);
+      await scoped(channel, actor,tx);
       if (['channel.folder','channel.material.move'].includes(type)) return folderCommand(tx,actor,cmd,channel);
       if (['channel.task','channel.remember','channel.memory.update','channel.memory.review','channel.link'].includes(type)) return spaceCommand(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);
+      if (type === "channel.coordination") return coordinationCommand(tx,channel,actor,cmd);
       if (type === "channel.update") {
-        owner(actor);
+        await owner(actor,tx);
+        const oldCoordinator=channel.coordinatorId;
+        channel.lastEditorId=actor.memberId||'owner';
+        if(cmd.description!==undefined)channel.description=String(cmd.description).slice(0,600);
         if (cmd.name !== undefined)
           channel.name = required(cmd.name, "群名称", 100);
         if (cmd.memberIds !== undefined) {
@@ -654,9 +673,13 @@ export async function conversationCommand(
             fail("invalid_status", "群状态无效");
           channel.status = cmd.status;
         }
+        if(oldCoordinator!==channel.coordinatorId){channel.coordinatorVersion=(channel.coordinatorVersion||1)+1;await transferCoordination(tx,identity,channel,meetingHelpers);}
         tx.put("channel", channel);
         return channel;
       }
+      if(type==='channel.material')return materialCommand(tx,actor,cmd,channel,{identity,helpers:meetingHelpers});
+      if(doc?.status==='deleted')fail('resource_deleted','这份资料已移入回收站，可恢复后继续编辑',410);
+      if (type === 'channel.message.edit') return editMessage(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === "channel.post") {
         const body = messageText(cmd.body);
         const refs = await validateRefs(tx, channel.id, cmd.refs||[]);
@@ -671,16 +694,16 @@ export async function conversationCommand(
         const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs }, channel, meetingHelpers);
         if (meeting?.handled) return meeting.result;
         const mentions = listIds(
-          cmd.mentions === undefined
+          !actor.owner && cmd.mentions === undefined
             ? textMentions(body, channel, identity)
-            : cmd.mentions,
+            : (cmd.mentions??[]),
           "提及",
         );
-        if (mentions.some((mid) => !channel.memberIds.includes(mid)))
+        if (mentions.some((mid) => mid!=='owner' && !channel.memberIds.includes(mid)))
           fail("invalid_mention", "只能 @ 本群成员");
         if (cmd.mentionAll !== undefined && typeof cmd.mentionAll !== 'boolean')
           fail('invalid_input', '@全员选项无效');
-        const mentionAll = cmd.mentionAll ?? (cmd.mentions === undefined && hasAllMention(body));
+        const mentionAll = cmd.mentionAll === true;
         const targets = messageRecipients(channel, { ...actor, mentions, mentionAll });
         if (actor.owner && channel.memberIds.length > 0 && !targets.length)
           fail('recipient_required', '请选择群负责人，或 @ 一位成员、@全员后发送');
@@ -711,7 +734,7 @@ export async function conversationCommand(
         }
         // A reply without explicit turnId still acknowledges this member's active
         // delivery. Omitting both references cannot reset the causal wake budget.
-        if (actor.memberId && !parent)
+        if (actor.memberId && !parent && !await workspaceGrant(tx,actor))
           fail(
             "context_required",
             "Agent 发言必须关联群内消息或已领取通知",
@@ -719,17 +742,26 @@ export async function conversationCommand(
           );
         const message = await channelMessage(tx, channel, actor, body, {
           ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion } : {}),
+          requestId:cmd.requestId,
           mentions,
           mentionAll,
           recipientIds: targets,
           refs,
           mentionsFromText: cmd.mentions === undefined && mentions.length > 0,
           replyTo: parent?.id || null,
+          ...(parent?{replySnapshot:{body:parent.body.slice(0,400),version:parent.version||1,authorId:parent.authorId}}:{}),
           rootId: actor.owner ? null : parent?.rootId || parent?.id,
           hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
         });
+        await trackCoordination(tx,channel,message,parent,targets);
+        const coordinated=await relatedCoordination(tx,channel,message,parent);
+        if(coordinated&&channel.coordinatorId&&await registerFeedback(tx,channel,coordinated,message)){
+          message.coordinationRootId=coordinated.sourceMessageId;message.coordinationFeedback=true;
+          if(!targets.includes(channel.coordinatorId))targets.push(channel.coordinatorId);
+          tx.put('channel_message',message);
+        }
         for (const mid of targets)
-          await enqueue(tx, identity, channel, message, mid);
+          await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
         await finishTurn(tx, actor, cmd.turnId || turn?.id, "done");
         return message;
       }
@@ -744,7 +776,7 @@ export async function conversationCommand(
         return { silent: true };
       }
       if (type === "channel.continue") {
-        owner(actor);
+        await owner(actor,tx);
         for (const turn of (
           await Promise.all(
             ["limited", "unavailable", "stalled"].map((status) =>
@@ -832,6 +864,7 @@ export async function conversationCommand(
         const targets=readers.map(r=>r.memberId).filter(mid=>mid!==actor.memberId&&channel.memberIds.includes(mid));
         const update=await channelMessage(tx,channel,actor,`更新文档：${doc.title} · v${doc.version}`,{type:'document',documentId:doc.id,resourceVersion:doc.version,hops:0});
         for(const mid of new Set(targets))await enqueue(tx,identity,channel,update,mid);
+        await objectFeedback(tx,identity,channel,actor,{kind:'document',id:doc.id,version:doc.version},update,meetingHelpers);
         return doc;
       }
       if (type === "channel.doc.suggest")
@@ -921,7 +954,7 @@ export async function conversationCommand(
         return question;
       }
       if (type === "channel.answer") {
-        owner(actor);
+        await owner(actor,tx);
         const q = await tx.get("channel_question", cmd.questionId);
         if (q.scopeId !== channel.id || q.status !== "pending")
           fail("question_closed", "这个问题已处理或不属于本群", 409);
@@ -943,7 +976,7 @@ export async function conversationCommand(
         return message;
       }
       if (type === "channel.suggestion.review") {
-        owner(actor);
+        await owner(actor,tx);
         const suggestion = await tx.get("channel_suggestion", cmd.suggestionId),
           d = await tx.get("channel_doc", suggestion.documentId);
         if (
@@ -1012,6 +1045,8 @@ export async function conversationCommand(
 }
 
 const toolCommands = {
+  coordinate: "channel.coordination",
+  manage_material: "channel.material",
   post_message: "channel.post",
   stay_silent: "channel.silent",
   create_doc: "channel.doc.create",
@@ -1033,6 +1068,7 @@ export async function conversationTool(repo, identity, actor, name, args) {
   if (name === "read_doc") {
     const doc = await repo.get("channel_doc", args.documentId);
     await channelAccess(repo, doc.scopeId, actor);
+    if(doc.status==='deleted')fail('resource_deleted','这份资料已移入回收站',410);
     if(actor.memberId) await repo.transact(id('doc-read'),{documentId:doc.id,actor},tx=>tx.put('shared_read',{id:doc.id+':'+actor.memberId,parentId:doc.id,scopeId:doc.scopeId,memberId:actor.memberId,version:doc.version,createdAt:tx.now}));
     return {
       ...doc,
@@ -1080,4 +1116,4 @@ export async function conversationMaintenance(
       );
 }
 
-export const meetingHelpers = { channelMessage, enqueue, finishTurn };
+export const meetingHelpers = { channelMessage, enqueue, finishTurn, objectFeedback };

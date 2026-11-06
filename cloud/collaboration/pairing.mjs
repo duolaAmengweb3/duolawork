@@ -63,11 +63,12 @@ export async function grant(tx, memberId, clientId, now) {
     scope: "hub:member",
   };
 }
-export async function startPairing(repo, identity, memberId, origin, purpose = "oauth") {
+export async function startPairing(repo, identity, memberId, origin, purpose = "oauth", options = {}) {
   const member = identity.members.find(
     (m) => m.id === memberId && m.status !== "disabled",
   );
   if (!member) fail("member_missing", "成员不存在", 404);
+  await options.authorize?.(repo);
   const old = await repo.get("connection", memberId, false);
   if (!old)
     await repo.transact(id("connection-draft"), { memberId }, (tx) =>
@@ -89,17 +90,18 @@ export async function startPairing(repo, identity, memberId, origin, purpose = "
     .join("")
     .toUpperCase();
   const key = await digest(code);
-  const result = await repo.transact(id("pair"), { memberId }, (tx) =>
-    tx.put("pairing", {
+  const result = await repo.transact(options.requestId||id("pair"), { memberId,purpose }, async (tx) => {
+    await options.authorize?.(tx);
+    const pairing=tx.put("pairing", {
       id: key,
       memberId,
       purpose,
       status: "pending",
       expiresAt: new Date(Date.parse(tx.now) + 15 * 60000).toISOString(),
-    }),
-  );
+    });return {...pairing,code};
+  });
   return {
-    code,
+    code:result.code,
     expiresAt: result.expiresAt,
     mcpUrl: origin + "/v2/mcp",
     instructions:

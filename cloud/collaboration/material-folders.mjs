@@ -1,3 +1,4 @@
+import {materialCommand} from './materials.mjs';
 import {fail,id,required} from './repository.mjs';
 const materialKinds={document:'channel_doc',file:'shared_file',link:'channel_link'};
 const string={type:'string'};
@@ -24,10 +25,9 @@ export async function folderCommand(tx,actor,cmd,channel){
  if(old&&cmd.expectedVersion!==undefined&&cmd.expectedVersion!==old.version)fail('version_conflict','文件夹已变化，请刷新后再操作',409);
  const folders=await allFolders(tx,channel.id);
  if(cmd.action==='delete'){
-  if(!actor.owner)fail('forbidden','移除文件夹请由用户确认',403);
   if(folders.some(f=>f.parentFolderId===old.id))fail('folder_not_empty','文件夹内还有子文件夹，请先移动内容');
   for(const item of await allPlacements(tx,channel.id)){if(item.folderId!==old.id)continue;const doc=await tx.get(materialKinds[item.objectKind],item.objectId,false);if(doc&&doc.status!=='deleted')fail('folder_not_empty','文件夹内还有资料，请先移出，资料不会被删除');}
-  return tx.put('channel_folder',{...old,status:'deleted',version:old.version+1});
+  return materialCommand(tx,actor,{action:'delete',kind:'folder',id:old.id,expectedVersion:old.version},channel);
  }
  const parentFolderId=cmd.parentFolderId===undefined?(old?.parentFolderId||null):(cmd.parentFolderId||null);
  await folderAccess(tx,channel.id,parentFolderId);

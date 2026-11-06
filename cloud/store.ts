@@ -39,14 +39,16 @@ export async function mutate(env: Env, action: Record<string, unknown>) {
     const next = reduce(before, action);
     const claimAccount = action.type === 'step.claim' ? next.result.accountId : null;
     const disconnectMember = action.type === 'member.disconnect' ? String(action.memberId) : null;
+    const delegationGuard = action.delegationVersion ? " AND EXISTS (SELECT 1 FROM hub_v2_records WHERE workspace_id=? AND kind='workspace_secretary' AND id='current' AND status='active' AND json_extract(body,'$.memberId')=? AND json_extract(body,'$.version')=?)" : '';
     const nativeGuard = (claimAccount ? " AND NOT EXISTS (SELECT 1 FROM hub_v2_records WHERE workspace_id=? AND kind='connection' AND json_extract(body,'$.resourceKey')=?)" : '') + (disconnectMember ? ` AND NOT EXISTS (${memberBusySQL})` : '');
     const nativeParams = [...(claimAccount ? [env.WORKSPACE_ID, claimAccount] : []), ...(disconnectMember ? [env.WORKSPACE_ID,disconnectMember,disconnectMember] : [])];
     const serialized = JSON.stringify(next.state);
+    if(action.delegationVersion){nativeParams.push(env.WORKSPACE_ID,String(action.actorMemberId),action.delegationVersion);}
     if (new TextEncoder().encode(serialized).length > 1_500_000) throw new HubError('storage_limit', '工作区元数据达到本版容量边界；请导出并归档任务，未删除任何数据', 413);
     const mutationId = crypto.randomUUID();
     const first = revision === -1
       ? env.DB.prepare('INSERT OR IGNORE INTO hub_workspace (id, revision, mutation_id, body, updated_at) VALUES (?, ?, ?, ?, ?)').bind(env.WORKSPACE_ID, 0, mutationId, serialized, new Date().toISOString())
-      : env.DB.prepare('UPDATE hub_workspace SET revision = ?, mutation_id = ?, body = ?, updated_at = ? WHERE id = ? AND revision = ?' + nativeGuard).bind(revision + 1, mutationId, serialized, new Date().toISOString(), env.WORKSPACE_ID, revision, ...nativeParams);
+      : env.DB.prepare('UPDATE hub_workspace SET revision = ?, mutation_id = ?, body = ?, updated_at = ? WHERE id = ? AND revision = ?' + nativeGuard + delegationGuard).bind(revision + 1, mutationId, serialized, new Date().toISOString(), env.WORKSPACE_ID, revision, ...nativeParams);
     const statements = [first,
       ...next.events.map((event: { id: string; at: string }) => env.DB.prepare('INSERT OR IGNORE INTO hub_events (id, workspace_id, at, body) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM hub_workspace WHERE id = ? AND mutation_id = ?)').bind(event.id, env.WORKSPACE_ID, event.at, JSON.stringify(event), env.WORKSPACE_ID, mutationId)),
       ...next.blobs.map((blob: { id: string; body: string }) => env.DB.prepare('INSERT OR IGNORE INTO hub_artifacts (id, workspace_id, body, created_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM hub_workspace WHERE id = ? AND mutation_id = ?)').bind(blob.id, env.WORKSPACE_ID, blob.body, new Date().toISOString(), env.WORKSPACE_ID, mutationId)),

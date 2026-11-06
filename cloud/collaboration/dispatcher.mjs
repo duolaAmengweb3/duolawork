@@ -1,3 +1,4 @@
+import {executionResource} from './execution-bindings.mjs';
 import { signedHeaders } from "./security.mjs";
 import { fail, id } from "./repository.mjs";
 import { platformURL, unseal } from "./security.mjs";
@@ -67,7 +68,7 @@ export async function dispatchOne(
         });
         return null;
       }
-      const resource = await tx.get("resource", c.resourceKey, false);
+      const resource = await tx.get("resource", channel?await executionResource(tx,c,channel.id):c.resourceKey, false);
       if (resource?.status === "busy") return null;
       if(channel){
         const waiter=await tx.get("channel_wait",`${channel.id}:${row.memberId}`,false);

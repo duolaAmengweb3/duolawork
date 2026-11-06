@@ -80,7 +80,7 @@ export default {
       const relayed = await relayRequest(request, env);
       if (relayed) return relayed;
       const url = new URL(request.url);
-      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, env, ctx, (await load(env)).state);
+      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, {...env,PUBLIC_ORIGIN:url.origin,manageIdentity:async(action:Record<string,unknown>)=>(await mutate(env,action)).result}, ctx, (await load(env)).state);
       if (url.pathname === '/health') return response({ ok: true, service: 'agent-hub-local', version: '0.1.0', time: new Date().toISOString() });
       if (url.pathname === '/openapi.json' && request.method === 'GET') return response(openApi(url.origin));
       if (url.pathname.startsWith('/mcp')) {

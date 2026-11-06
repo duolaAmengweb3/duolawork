@@ -1,3 +1,4 @@
+import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id} from './repository.mjs';
 
 const live=s=>s?.status==='online'&&Date.now()-Date.parse(s.seenAt)<90000;
@@ -35,7 +36,7 @@ export async function assignRemoteSession(repo,identity,actor,input){
   return repo.transact(required(input.requestId,'请求编号',120),input,async tx=>{
     const c=await tx.get('connection',input.memberId,false);if(c?.status==='disconnected')fail('disconnected','此成员已解除连接',403);
     const channel=await tx.get('channel',input.channelId);if(!channel.memberIds.includes(input.memberId))fail('forbidden','先将成员加入此聊天',403);
-    const resource=await tx.get('resource',c?.resourceKey||'',false);if(resource?.status==='busy')fail('resource_busy','这位成员正在处理消息，结束后再切换会话',409);
+    const resource=await tx.get('resource',c?await executionResource(tx,c,input.channelId):'',false);if(resource?.status==='busy')fail('resource_busy','这位成员正在处理消息，结束后再切换会话',409);
     const r=await tx.get('native-source',input.memberId),s=r.sessions[input.sessionId];if(!live(s))fail('session_offline','请先在原来的环境打开这个 Claude 会话',409);
     const binding={sessionId:s.id,title:s.title,workspace:s.workspace};r.bindings[input.channelId]=binding;tx.put('native-source',r);return{binding};
   });

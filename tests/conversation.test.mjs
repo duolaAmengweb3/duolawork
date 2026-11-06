@@ -372,6 +372,7 @@ test("wake budget defers instead of discarding and explicit resume retains origi
   for (const [n, mid, target] of [
     [1, "grok", "check"],
     [2, "check", "grok"],
+    [3, "grok", "check"],
   ]) {
     const w = (await conversationWork(f.repo, f.identity, mid)).find(
         (w) => w.status === "ready",
@@ -629,4 +630,37 @@ test("explicit document delivery completes the active notification so the next q
   );
   assert.equal((await f.repo.get("channel_turn", c.turnId)).status, "done");
   assert.equal((await f.repo.get("resource", "check")).status, "idle");
+});
+
+test('coordinator receives related replies without another mention; quiet unrelated chat does not wake it',async t=>{
+ const f=await setup(t);
+ const userMessage=await f.send('channel.post',{channelId:f.c.id,body:'讨论框架，给我汇总'});
+ const c=await claimConversation(f.repo,f.identity,agent('grok'),{requestId:'coord-claim',stepId:`turn_${userMessage.id}_grok`});
+ const request=await f.send('channel.post',{channelId:f.c.id,body:'请核对来源边界',turnId:c.turnId,mentions:['check']},agent('grok'));
+ const worker=await claimConversation(f.repo,f.identity,agent('check'),{requestId:'worker-claim',stepId:`turn_${request.id}_check`});
+ const result=await f.send('channel.post',{channelId:f.c.id,body:'这里有一个未证实的假设，需要删掉',turnId:worker.turnId,mentions:[]},agent('check'));
+ assert.ok((await f.repo.list('channel_turn')).some(x=>x.messageId===result.id&&x.memberId==='grok'&&x.status==='ready'));
+ const record=(await f.repo.list('channel_coordination'))[0];assert.equal(record.sourceMessageId,userMessage.id);
+ const noRelation=await f.send('channel.post',{channelId:f.c.id,body:'另一个独立问题',mentions:['check']});
+ const unrelated=await f.send('channel.post',{channelId:f.c.id,replyTo:noRelation.id,body:'独立回答',mentions:[]},agent('check'));
+ assert.equal((await f.repo.list('channel_turn')).some(x=>x.messageId===unrelated.id&&x.memberId==='grok'),false);
+ const reply=await claimConversation(f.repo,f.identity,agent('grok'),{requestId:'coord-result',stepId:`turn_${result.id}_grok`});
+ assert.match(reply.input.coordinatorInstruction,/讨论框架不等于/);
+ await f.send('channel.post',{channelId:f.c.id,turnId:reply.turnId,body:'框架已修订，仍需确认受众',mentions:[]},agent('grok'));
+ assert.notEqual((await f.repo.get('channel_coordination',record.id)).status,'completed','delivery receipt is not work completion');
+ await assert.rejects(()=>f.send('channel.coordination',{channelId:f.c.id,sourceMessageId:userMessage.id,action:'close',expectedVersion:1,summary:'完成'},agent('grok')),e=>e.code==='version_conflict');
+ const current=await f.repo.get('channel_coordination',record.id);
+ await f.send('channel.coordination',{channelId:f.c.id,sourceMessageId:userMessage.id,action:'close',expectedVersion:current.version,summary:'交付已修订框架，未擅自开始整篇'},agent('grok'));
+ assert.equal((await f.repo.get('channel_coordination',record.id)).status,'completed');
+});
+
+test('replacement coordinator receives pending feedback once without reassigning original worker',async t=>{
+ const f=await setup(t);const original=await f.send('channel.post',{channelId:f.c.id,body:'组织讨论'});
+ const request=await f.send('channel.post',{channelId:f.c.id,replyTo:original.id,body:'请检查',mentions:['check']},agent('grok'));
+ const result=await f.send('channel.post',{channelId:f.c.id,replyTo:request.id,body:'发现问题',mentions:[]},agent('check'));
+ await f.send('channel.update',{channelId:f.c.id,coordinatorId:'check'});
+ const feedback=(await f.repo.list('channel_turn')).filter(x=>x.coordinationFeedback&&x.status==='ready');
+ assert.deepEqual(feedback.map(x=>x.memberId),['check']);
+ assert.equal((await f.repo.list('channel_coordination'))[0].coordinatorId,'check');
+ assert.ok((await f.repo.list('channel_message')).find(m=>m.id===result.id),'preserve returned work');
 });

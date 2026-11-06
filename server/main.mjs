@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {memoryClient} from './memory-client.mjs';
+import {forgottenLedger,scrubMemoryReceipts} from './memory-ledger.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -18,8 +20,11 @@ if (!config.adminKey || !config.publicOrigin || !config.workspaceId) throw new E
 const origins = new Set([config.publicOrigin, ...(config.compatibleOrigins || [])]);
 for (const origin of origins) if (new URL(origin).origin !== origin || !origin.startsWith('https://')) throw new Error('Expected HTTPS public origin');
 const DB = openDatabase(config.database, path.join(directory, 'migrations'));
+for(const entry of await forgottenLedger(DB,config.workspaceId,config.database,{restore:true}))await scrubMemoryReceipts(DB,config.workspaceId,entry.id);
 const limits = new Map();
 const env = {
+  PERSIST_MEMORY_FORGET:async id=>{await forgottenLedger(DB,config.workspaceId,config.database);await scrubMemoryReceipts(DB,config.workspaceId,id);},
+  MEMORY:config.memory?memoryClient('http://127.0.0.1:'+(config.memory.port||8791)):undefined,
   DB, ADMIN_KEY: config.adminKey, WORKSPACE_ID: config.workspaceId, FILE_STORAGE: 'd1',
   SHARED_FILE_STORAGE: 'disk', SHARED_FILES: diskObjects(config.objectDirectory || path.join(path.dirname(config.database),'objects')),
   SHARED_FILE_LIMIT: config.fileLimit || 128*1024*1024, SHARED_SPACE_QUOTA: config.spaceQuota || 2*1024*1024*1024,

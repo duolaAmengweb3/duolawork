@@ -67,13 +67,17 @@ export class DshManager {
   return this.commitBinding({memberId,channelId,binding});
  }
  async commitBinding({memberId,channelId,binding,verify=true}){
-  const r=this.records[memberId];r.chatBindings[channelId]={...binding};if(!Object.values(r.chatBindings).some(b=>b.sessionId===r.verificationSessionId))r.verificationSessionId=binding.sessionId;
+  const r=this.records[memberId],next={...r.chatBindings,[channelId]:{...binding}};await this.registerBindings(r,next);r.chatBindings=next;if(!Object.values(r.chatBindings).some(b=>b.sessionId===r.verificationSessionId))r.verificationSessionId=binding.sessionId;
   r.sourceReady=true;r.status='idle';await this.save();await this.syncBindings(r);
   if(verify){const current=await this.client(r).api('/v2/self/status');if(!r.proofRunId){r.verified=false;const proof=await this.client(r).api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;}}
   await this.save();return r.chatBindings[channelId];
  }
+ async registerBindings(r,chatBindings=r.chatBindings){
+  const bindings=Object.entries(chatBindings||{}).map(([channelId,b])=>({channelId,sessionId:b.sessionId})),fingerprint=JSON.stringify(bindings);if(bindings.length&&r.executionBindingsFingerprint!==fingerprint){await this.client(r).api('/v2/self/execution-bindings',{method:'POST',body:{requestId:randomUUID(),bindings}});r.executionBindingsFingerprint=fingerprint;}
+ }
  async syncBindings(r){
   const host=this.recordHost(r),wanted=nativeBindings(r),health=await host.call('/health');
+  await this.registerBindings(r);
   for(const b of wanted){const prior=health.bindings?.find(p=>p.sessionId===b.sessionId&&p.memberId===r.memberId);if(!prior||JSON.stringify(prior.channelIds)!==JSON.stringify(b.channelIds)||prior.verification!==b.verification)await host.call('/bind',{...b,grantFile:r.grantFile});}
   for(const b of health.bindings||[])if(b.memberId===r.memberId&&!wanted.some(n=>n.sessionId===b.sessionId))await host.call('/unbind',{sessionId:b.sessionId});
  }
@@ -110,7 +114,7 @@ export class DshManager {
   let health;try{health=await host.call('/health');}catch{for(const r of active){r.status='offline';r.message='原生运行端已关闭；打开原桌面版后继续原会话';}return;}
   if(health.ready===false){for(const r of active){r.status='connecting';r.message='正在恢复原生工作会话，原登录和历史保留';}return;}
   for(const r of active)try{
-   if(r.chatBindings){await this.syncBindings(r);const entries=nativeBindings(r);r.sourceReady=true;if(!entries.length){r.status='idle';r.message='运行端已连接，请在聊天中选择工作会话';continue;}const items=(await host.sessions()).items,missing=entries.some(b=>!items.some(s=>s.id===b.sessionId));if(missing){r.status='offline';r.message='某个工作会话暂不可用，原绑定保留';continue;}const status=await this.client(r).api('/v2/self/status');r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);r.status=entries.some(b=>items.find(s=>s.id===b.sessionId)?.running)?'working':'idle';r.message='运行端已连接，各聊天使用各自的工作会话';continue;}
+   if(r.chatBindings){await this.syncBindings(r);const entries=nativeBindings(r);r.sourceReady=true;if(!entries.length){r.status='idle';r.message='运行端已连接，请在聊天中选择工作会话';continue;}const items=(await host.sessions()).items,missing=entries.some(b=>!items.some(s=>s.id===b.sessionId));if(missing){r.status='offline';r.message='某个工作会话暂不可用，原绑定保留';continue;}const status=await this.client(r).api('/v2/self/status');r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);for(const b of Object.values(r.chatBindings)){const s=items.find(s=>s.id===b.sessionId);b.nativeState=s?.running===true?'running':s?.running===false?'idle':'unknown';b.observedAt=new Date().toISOString();}r.status=entries.some(b=>items.find(s=>s.id===b.sessionId)?.running)?'working':'idle';r.message='运行端已连接，各聊天使用各自的工作会话';continue;}
    if(!health.bindings.some(b=>b.sessionId===r.sessionId&&b.memberId===r.memberId))await host.call('/bind',{sessionId:r.sessionId,workspace:r.cwd,grantFile:r.grantFile});
    const status=await this.client(r).api('/v2/self/status'),s=(await host.sessions()).items.find(s=>s.id===r.sessionId);
    if(!s){r.status='offline';r.message='原会话暂不可用，未新建替代会话';continue;}

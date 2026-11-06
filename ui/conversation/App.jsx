@@ -1,8 +1,12 @@
+import WorkspaceServices from './WorkspaceServices.jsx';
+import MessageActivity from './MessageActivity.jsx';
 import CollaborationSpace,{ReferenceChip,refOf,MeetingStart} from './CollaborationSpace.jsx';
 import {SharedFiles,UploadFiles,FileCard,FileDialog,HandoffCard,HandoffDialog} from './SharedSpace.jsx';
 import React, {
   useCallback,
+  useMemo,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   Suspense,
@@ -10,6 +14,9 @@ import React, {
 } from "react";
 import {
   Layers,
+  Headset,
+  Plug,
+  Sparkles,
   Hash,
   Plus,
   MessageSquare,
@@ -54,9 +61,11 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { messageRecipients, hasAllMention, namedMentions } from '../../shared/chat-routing.mjs';
 import { pendingMemberActivity } from '../../shared/chat-activity.mjs';
+import {memberAvailability} from '../../shared/member-availability.mjs';
 import BUILD from "../../shared/build-info.json";
 import "./styles.css";
-import ChatSessionPicker from './ChatSessionPicker.jsx';
+import ChatSessionPicker,{sessionPickerStore} from './ChatSessionPicker.jsx';
+import useMessageOutbox from './useMessageOutbox.jsx';
 import AgentAvatar from './AgentAvatar.jsx';
 import MeetingPanel, { MeetingCard } from './MeetingPanel.jsx';
 const ConnectWizard = lazy(() =>
@@ -73,7 +82,15 @@ const statusText = {
   stalled: "尚未收到回应",
   removed: "已移出群",
 };
-const markdown = (body) => DOMPurify.sanitize(marked.parse(body || ""));
+// Message bodies are immutable between revisions. Keep a bounded render cache
+// so typing or acknowledging another message does not parse the entire history.
+const markdownCache = new Map();
+const markdown = (body = '') => {
+  if(markdownCache.has(body)) return markdownCache.get(body);
+  const html=DOMPurify.sanitize(marked.parse(body));
+  if(markdownCache.size>=300)markdownCache.delete(markdownCache.keys().next().value);
+  markdownCache.set(body,html);return html;
+};
 const Face=AgentAvatar;
 
 function Modal({ title, description, children, error, onClose, sessionPicker=false }) {
@@ -111,11 +128,11 @@ export default function App() {
     [channels, setChannels] = useState([]),
     [current, setCurrent] = useState(saved.current.channelId || ""),
     [snapshot, setSnapshot] = useState(null),
-    [page, setPage] = useState(saved.current.page === "members" ? "members" : "chat"),
+    [page, setPage] = useState(["members","secretary","connectors","skills"].includes(saved.current.page) ? saved.current.page : "chat"),
     [tab, setTab] = useState(saved.current.spaceTab||"documents"),
     [spaceSelection,setSpaceSelection]=useState(null),[spaceEditor,setSpaceEditor]=useState(null),[meetingStart,setMeetingStart]=useState(false),
     [references,setReferences]=useState(saved.current.references||{}),
-    [side, setSide] = useState(true),
+    [side, setSide] = useState(()=>window.innerWidth>850),
     [modal, setModal] = useState(null),
     [error, setError] = useState(""),
     [syncError, setSyncError] = useState(""),
@@ -130,10 +147,10 @@ export default function App() {
     [showMentions, setShowMentions] = useState(false),
     [documentId, setDocumentId] = useState(null),
     [sharedFileId,setSharedFileId]=useState(null),[handoffId,setHandoffId]=useState(null),
-    [query, setQuery] = useState(""),
+    [query, setQuery] = useState(saved.current.tabViews?.[saved.current.chatKind||"group"]?.query||""),[chatKind,setChatKind]=useState(saved.current.chatKind||"group"),[readThrough,setReadThrough]=useState(saved.current.readThrough||{}),
     [older, setOlder] = useState([]),
     [moreCursor, setMoreCursor] = useState(null),
-    [lastSync, setLastSync] = useState(null);
+    [lastSync, setLastSync] = useState(null),[unread,setUnread]=useState({}),[editing,setEditing]=useState(null);
   const mentions = addressing[current]?.mentions || [];
   const mentionAll = addressing[current]?.mentionAll || false;
   const setMentions = value => setAddressing(old => ({...old,[current]: {...old[current],mentions: typeof value === 'function' ? value(old[current]?.mentions || []) : value}}));
@@ -145,7 +162,21 @@ export default function App() {
     pendingSend = useRef(null),
     lastMessage = useRef("");
   currentRef.current = current;
+  const viewCache=useRef(new Map()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
+  const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false);
+  const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
+  const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
+  readRef.current=readThrough;
+  const appendMessage=useCallback((message,channelId)=>{
+    const cached=viewCache.current.get(channelId);
+    if(cached) viewCache.current.set(channelId,{...cached,messages:[...cached.messages.filter(m=>m.id!==message.id),message]});
+    if(currentRef.current===channelId)setSnapshot(old=>old?{...old,messages:[...old.messages.filter(m=>m.id!==message.id),message]}:old);
+  },[]);
+  const outbox=useMessageOutbox(appendMessage);
+  const savePosition=()=>{const el=scroll.current;if(!el||el.dataset.channelId!==currentRef.current)return;const top=el.getBoundingClientRect().top;const first=[...el.querySelectorAll('.chat-message')].find(m=>m.getBoundingClientRect().bottom>top);positions.current[currentRef.current]={id:first?.id,offset:first?first.getBoundingClientRect().top-top:0,number:Number(first?.dataset.messageNumber)||null,top:el.scrollTop,bottom:nearBottom.current};};
+
   useEffect(()=>{let alive=true;const tick=()=>api('/local/coding/status').then(x=>{if(alive&&Array.isArray(x.members))setCodingStatus(x);}).catch(()=>{});tick();const timer=setInterval(tick,4000);return()=>{alive=false;clearInterval(timer);};},[]);
+  useEffect(()=>{const mq=window.matchMedia('(max-width:850px)');const changed=()=>{if(mq.matches)setSide(false);};mq.addEventListener('change',changed);return()=>mq.removeEventListener('change',changed);},[]);
   const name = (id) =>
     id === 'system' ? '会议记录' : id === "owner"
       ? "我"
@@ -160,12 +191,22 @@ export default function App() {
     const [w, c] = results.map(result => result.value);
     setWorkspace(w);
     setChannels(c.items);
+
     if (!currentRef.current && c.items[0]) setCurrent(c.items[0].id);
   }, []);
   const refresh = useCallback(async () => {
     const id = currentRef.current;
     if (!id) return;
     const data = await api("/v2/channel?id=" + id);
+    const first=!positions.current[id]&&unreadRef.current[id]?.firstNumber;
+    if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20)}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
+    const pos=positions.current[id];
+    if(pos?.number&&!data.messages.some(m=>m.id===pos.id)&&!olderCache.current.get(id)?.some(m=>m.id===pos.id)){
+      const window=await api('/v2/channel?'+new URLSearchParams({id,before:String(pos.number+20)}));
+      olderCache.current.set(id,window.messages);
+      if(currentRef.current===id){setOlder(window.messages);setMoreCursor(window.before);}
+    }
+    viewCache.current.set(id,data);
     if (currentRef.current === id) {
       setSnapshot(data);
       setLastSync(new Date().toISOString());
@@ -188,39 +229,47 @@ export default function App() {
       stop();
     };
   }, [refreshWorkspace, refresh]);
-  useEffect(() => {
-    setSnapshot(null);
+  useLayoutEffect(() => {
+    setSnapshot(viewCache.current.get(current)||null);restorePosition.current=true;firstUnread.current=!positions.current[current]?unreadRef.current[current]?.firstNumber:null;
     setSpaceSelection(null);setSpaceEditor(null);
-    setOlder([]);
+    setOlder(olderCache.current.get(current)||[]);
     setOlderMeetings([]);setMeetingCursor(undefined);
     setMoreCursor(undefined);
-    setReply(null);
+    setReply(null);setEditing(null);
     setDocumentId(null);
     setShowMentions(false);
     lastMessage.current = "";
-    nearBottom.current = true;
+    nearBottom.current = positions.current[current]?.bottom??!firstUnread.current;
     refresh().then(() => setSyncError("")).catch((e) => setSyncError(e.message));
   }, [current, refresh]);
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current, drafts, addressing, references,spaceTab:tab,meetingPanel, meetingScopes,page: page === "members" ? "members" : "chat" }),
+      JSON.stringify({ channelId: current,chatKind,readThrough,positions:positions.current,tabViews:{...tabViews.current,[chatKind]:{query,channelId:current,top:listScroll.current?.scrollTop||0}}, drafts, addressing, references,spaceTab:tab,meetingPanel, meetingScopes,page }),
     );
-  }, [current, drafts, addressing,references,tab, page, meetingPanel,meetingScopes]);
+  }, [current,chatKind,query,readThrough, drafts, addressing,references,tab, page, meetingPanel,meetingScopes]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(t);
   }, [notice]);
-  useEffect(() => {
-    const last = snapshot?.messages.at(-1)?.id;
-    if (last && last !== lastMessage.current && nearBottom.current)
-      scroll.current?.scrollTo({
-        top: scroll.current.scrollHeight,
-        behavior: "smooth",
-      });
-    lastMessage.current = last;
-  }, [snapshot]);
+  useLayoutEffect(()=>{
+    const el=scroll.current;if(!el||!snapshot||snapshot.channel.id!==current)return;
+    if(oldHeight.current){el.scrollTop+=el.scrollHeight-oldHeight.current;oldHeight.current=null;}
+    else if(restorePosition.current){const pos=positions.current[current];const anchor=pos?.id&&document.getElementById(pos.id);const unreadAnchor=firstUnread.current&&el.querySelector('[data-message-number="'+firstUnread.current+'"]');if(firstUnread.current&&!pos&&!unreadAnchor)return;el.scrollTop=unreadAnchor&&!pos?el.scrollTop+unreadAnchor.getBoundingClientRect().top-el.getBoundingClientRect().top:pos?(anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top):el.scrollHeight;restorePosition.current=false;}
+    else if(nearBottom.current)el.scrollTop=el.scrollHeight;
+    else {const pos=positions.current[current],anchor=pos?.id&&document.getElementById(pos.id);if(anchor)el.scrollTop+=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;}
+    lastMessage.current=snapshot.messages.at(-1)?.id;
+  },[snapshot,older,outbox.items,current]);
+  useEffect(()=>{
+    const el=scroll.current;if(!el)return;
+    let frame;const mark=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(restorePosition.current||document.visibilityState!=='visible'||!document.hasFocus()||page!=='chat')return;const box=el.getBoundingClientRect();const visible=[...el.querySelectorAll('[data-message-number]')].filter(m=>{const b=m.getBoundingClientRect();return b.top<box.bottom&&b.bottom>box.top;});const n=Math.max(0,...visible.map(m=>Number(m.dataset.messageNumber)));if(n)setReadThrough(old=>n>(old[current]||0)?{...old,[current]:n}:old);savePosition();});};
+    el.addEventListener('scroll',mark,{passive:true});document.addEventListener('visibilitychange',mark);window.addEventListener('focus',mark);mark();
+    return()=>{cancelAnimationFrame(frame);el.removeEventListener('scroll',mark);document.removeEventListener('visibilitychange',mark);window.removeEventListener('focus',mark);};
+  },[current,snapshot,page]);
+  useEffect(()=>{const save=()=>{savePosition();try{const prior=JSON.parse(localStorage.getItem('hub-communication')||'{}');localStorage.setItem('hub-communication',JSON.stringify({...prior,positions:positions.current,tabViews:tabViews.current}));}catch{}};window.addEventListener('pagehide',save);return()=>window.removeEventListener('pagehide',save);},[]);
+  useEffect(()=>{let alive=true;const timer=setTimeout(()=>{const cursors={...readRef.current};api('/v2/channel-unread',{cursors}).then(x=>{if(alive){setUnread(Object.fromEntries(x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber).map(r=>[r.channelId,r])));setReadThrough(old=>{let changed=false;const next={...old};for(const [id,n]of Object.entries(x.cursors||{}))if(next[id]===undefined||n>next[id]){next[id]=n;changed=true;}return changed?next:old;});}}).catch(()=>{});},250);return()=>{alive=false;clearTimeout(timer);};},[readThrough,channels]);
+  useEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current)return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
   const perform = async (fn) => {
     setBusy(true);
     setError("");
@@ -246,7 +295,7 @@ export default function App() {
     const directChannels = channels.filter(c => c.direct && c.memberIds.length === 1 && c.memberIds[0] === member.id);
     let dm = directChannels.find(c => c.status !== "archived") || directChannels[0];
     if (!dm) dm = await perform(() => command("channel.create", { name: member.name, memberIds: [member.id], coordinatorId: null, direct: true }));
-    setCurrent(dm.id); setPage("chat"); setModal(null);
+    savePosition();setCurrent(dm.id);setChatKind("direct"); setPage("chat"); setModal(null);
   };
   const channel = snapshot?.channel,
     activeMeetings=(snapshot?.meetings||[]).filter(m=>['preparing','running','closing'].includes(m.status)),
@@ -254,14 +303,15 @@ export default function App() {
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
     ),
-    messages = [...older, ...(snapshot?.messages || [])]
+    messages = [...older, ...(snapshot?.messages || []),...outbox.items.filter(x=>x.input.channelId===current&&!snapshot?.messages.some(m=>m.requestId===x.input.requestId)).map(x=>({id:'pending_'+x.input.requestId,requestId:x.input.requestId,body:x.input.body,authorId:'owner',type:'message',createdAt:x.createdAt,number:Number.MAX_SAFE_INTEGER,refs:x.input.refs,mentions:x.input.mentions,pendingStatus:x.status,pendingError:x.error}))]
       .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
-  const allSelected = mentionAll || hasAllMention(draft);
-  const addressedMembers = [...new Set([...mentions, ...namedMentions(draft, groupMembers)])];
+  const allSelected = mentionAll;
+  const addressedMembers = mentions;
   const recipients = channel ? messageRecipients(channel, { owner: true, mentions: addressedMembers, mentionAll: allSelected }) : [];
   const pendingActivity = pendingMemberActivity(snapshot?.activity, snapshot?.notifications, codingStatus.members);
+  const availability=(member,channelId=current)=>memberAvailability(member,workspace.connections.find(c=>c.id===member.id),codingStatus.members.find(m=>m.memberId===member.id),channelId,(channelId===current?snapshot:viewCache.current.get(channelId))?.activity||[]);
   const mentionQuery = (draft.match(/@([^\s@]*)$/)?.[1] || '').toLowerCase();
   const recipientHint = scopedMeeting ? `发给会议负责人 ${name(scopedMeeting.coordinatorId)}`
     : allSelected ? `通知全员 · ${groupMembers.length} 位成员`
@@ -278,6 +328,7 @@ export default function App() {
   function quoteObject(ref){setReferences(old=>({...old,[current]:[...(old[current]||[]).filter(r=>r.kind!==ref.kind||r.id!==ref.id),ref]}));document.querySelector('[aria-label="群消息"]')?.focus();}
   function openObject(ref){if(ref.kind==='meeting'){setMeetingPanel({id:ref.id,channelId:current});return;}if(ref.kind==='message'){jumpToSource(ref.id);return;}setMeetingPanel(null);setSide(true);setTab(ref.kind==='task'?'tasks':ref.kind==='memory'?'memory':'documents');setSpaceSelection({kind:ref.kind,id:ref.id,...(ref.version?{version:ref.version}:{})});}
   async function jumpToSource(id){
+    savePosition();readingReturn.current={channelId:current,...positions.current[current]};setCanReturn(true);
     let el=document.getElementById(id);
     if(!el){try{const m=await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id}));const d=await api('/v2/channel?'+new URLSearchParams({id:current,before:String(m.number+1)}));setOlder(old=>[...old,...d.messages]);setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'center'}),100);}catch(e){setError(e.message);}return;}
     el.scrollIntoView({behavior:'smooth',block:'center'});el.animate([{background:'#e8efff'},{background:'transparent'}],{duration:1800});
@@ -285,12 +336,12 @@ export default function App() {
   function createFromMessage(kind,m){setMeetingPanel(null);setSide(true);setTab(kind==='task'?'tasks':'memory');setSpaceEditor({kind,prefill:{title:m.body.slice(0,70),body:m.body,refs:[refOf('message',m)],...(kind==='task'?{sourceMessageId:m.id,meetingIds:m.meetingId?[m.meetingId]:[]}: {})}});}
   async function send(e) {
     e?.preventDefault();
-    if (!draft.trim() || busy || !channel) return;
+    if (!draft.trim() || !channel) return;
     if (!scopedMeeting && !recipients.length) { setError('请选择群负责人，或 @ 一位成员、@全员后发送'); return; }
     const targetIds = scopedMeeting ? [scopedMeeting.coordinatorId] : recipients;
     const targetMembers=groupMembers.filter(m=>targetIds.includes(m.id));
-    const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);if(m.platformId==='claude-code')return !r?.assignments?.some(b=>b.channelId===current);return r?.enabled&&(r.manualAssignments||r.assignments?.length===0&&!r.sessionId&&r.sourceReady)&&!r.assignments?.some(b=>b.channelId===current);});
-    if(missing){setModal({type:'session',member:missing});return;}
+    const missing=targetMembers.find(m=>{if(!['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId))return false;const r=codingStatus.members.find(r=>r.memberId===m.id);return !r?.assignments?.some(b=>b.channelId===current)&&!r?.sessionId;});
+    if(missing){setModal({type:'session',member:missing,channelId:current});return;}
     const input = {
       channelId: current,
       body: draft,
@@ -300,256 +351,42 @@ export default function App() {
       replyTo: reply?.id,
       ...(scopedMeeting?{meetingId:scopedMeeting.id}:{}),
     };
-    const key = JSON.stringify(input);
-    if (pendingSend.current?.key !== key)
-      pendingSend.current = { key, requestId: crypto.randomUUID() };
     try {
-      await perform(() =>
-        api("/v2/commands", {
-          type: "channel.post",
-          requestId: pendingSend.current.requestId,
-          ...input,
-        }),
-      );
-      setDrafts((d) => ({ ...d, [current]: "" }));
-      setReferences(r=>({...r,[current]:[]}));
-      setReply(null);
-      setMentions([]);
-      setMentionAll(false);
-      pendingSend.current = null;
-      nearBottom.current = true;
-    } catch {}
+      outbox.enqueue(input);
+      setDrafts(d=>({...d,[current]:''}));setReferences(r=>({...r,[current]:[]}));
+      setReply(null);setMentions([]);setMentionAll(false);nearBottom.current=true;
+    } catch(e){setError('消息尚未保存，请保留草稿后重试：'+e.message);}
   }
+
   async function loadOlder() {
     try {
       const data = await api(
         "/v2/channel?" +
           new URLSearchParams({ id: current, before: String(moreCursor) }),
       );
-      setOlder((old) => [...data.messages, ...old]);
+      oldHeight.current=scroll.current?.scrollHeight;
+      setOlder((old) => {const next=[...data.messages,...old];olderCache.current.set(current,next);return next;});
       setMoreCursor(data.before);
     } catch (e) {
       setError(e.message);
     }
   }
-  return (
-    <div className="communication" data-build-id={BUILD.id}>
-      <aside className="comm-sidebar">
-        <div className="comm-brand">
-          <span>
-            <Layers size={20} />
-          </span>
-          <strong>
-            DuolaWork<small>一起沟通，一起完成</small>
-          </strong>
-        </div>
-        <div className="comm-search">
-          <Search size={15} />
-          <input
-            aria-label="搜索群聊"
-            placeholder="搜索群聊"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-        <button
-          className={"nav-home " + (page === "members" ? "selected" : "")}
-          onClick={() => setPage("members")}
-        >
-          <Users size={17} />
-          成员与连接<span>{workspace.members.length}</span>
-        </button>
-        <div className="sidebar-caption">
-          单聊与群聊
-          <button
-            aria-label="新建群聊"
-            onClick={() => setModal({ type: "create" })}
-          >
-            <Plus size={17} />
-          </button>
-        </div>
-        <div className="channel-list">
-          {channels
-            .filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
-            .map((c) => (
-              <button
-                key={c.id}
-                className={
-                  page === "chat" && current === c.id ? "selected" : ""
-                }
-                onClick={() => {
-                  setCurrent(c.id);
-                  setPage("chat");
-                }}
-              >
-                {c.direct ? <MessageSquare size={17} /> : <Hash size={17} />}
-                <span>
-                  {c.name}
-                  <small>{c.lastMessage || "开始一段对话"}</small>
-                </span>
-              </button>
-            ))}
-          {!channels.length && (
-            <p className="sidebar-empty">建个群，把你和 Agent 们放在一起。</p>
-          )}
-        </div>
-        <button
-          className="sidebar-new"
-          onClick={() => setModal({ type: "create" })}
-        >
-          <Plus size={16} />
-          新建群聊
-        </button>
-        <div className="sidebar-footer">
-          <button onClick={() => setModal({ type: "history" })}>
-            历史工作区 <ExternalLink size={12} />
-          </button>
-          <div>
-            <i /> 本机工作区<span title={BUILD.id}>本地版</span>
-          </div>
-        </div>
-      </aside>
-      <main onDragOver={e=>{if(e.dataTransfer.types.includes("Files"))e.preventDefault();}} onDrop={e=>{if(e.dataTransfer.files.length&&current){e.preventDefault();window.dispatchEvent(new CustomEvent("duolawork-files",{detail:{channelId:current,files:[...e.dataTransfer.files]}}));}}} className="comm-main">
-        {codingStatus.members.filter(m=>workspace.members.some(x=>x.id===m.memberId)&&(['needs_review','waiting_login'].includes(m.status)||codingStatus.approvals.some(a=>a.memberId===m.memberId))).map(m=><div className="comm-sync-status" role="status" key={m.memberId}>{name(m.memberId)}：{codingStatus.approvals.some(a=>a.memberId===m.memberId)?'有操作等待你确认':m.message}<Button size="sm" variant="outline" onClick={()=>{const member=workspace.members.find(x=>x.id===m.memberId);if(member)setModal({type:'connect',member});}}>查看</Button></div>)}
-        {syncError && (
-          <div className="comm-sync-status" role="status" aria-live="polite">
-            {syncError} 正在恢复同步，连接恢复后此提示会自动消失。
-          </div>
-        )}
-        {error && (
-          <div className="comm-error" role="alert">
-            {error}
-            <button aria-label="关闭错误" onClick={() => setError("")}>
-              <X size={15} />
-            </button>
-          </div>
-        )}
-        {notice && (
-          <div className="comm-toast" role="status">
-            <Check size={15} />
-            {notice}
-          </div>
-        )}
-        {page === "members" ? (
-          <Members
-            workspace={workspace}
-            coding={codingStatus}
-            refresh={refreshWorkspace}
-            perform={perform}
-            setModal={setModal}
-            onChat={openDirect}
-            name={name}
-          />
-        ) : !channel ? (
-          <div className="comm-welcome">
-            <div className="welcome-icon">
-              <MessageSquare size={32} />
-            </div>
-            <small>YOUR AGENT WORKSPACE</small>
-            <h1>从一段对话开始</h1>
-            <p>
-              把 Agent 加进群，直接交流、互相提问。
-              <br />
-              需要时，再一起写文档、开会或跟进事项。
-            </p>
-            <Button onClick={() => setModal({ type: "create" })}>
-              <Plus size={16} />
-              新建群聊
-            </Button>
-            <button onClick={() => setModal({ type: "import" })}>
-              接着聊以前的项目 <ArrowUp size={13} />
-            </button>
-          </div>
-        ) : (
-          <>
-            <header className="comm-header">
-              <div>
-                <span className="header-hash">
-                  {channel.direct ? <MessageSquare size={23} /> : <Hash size={23} />}
-                </span>
-                <div>
-                  <h1>{channel.name}</h1>
-                  <p>
-                    {channel.direct ? "单聊 · 只有你和这位 Agent" : <>{groupMembers.length} 位 Agent ·{" "}
-                    {channel.coordinatorId
-                      ? `${name(channel.coordinatorId)} 负责协调`
-                      : "尚未指定负责人"}</>}
-                  </p>
-                </div>
-              </div>
-              <div>
-                {!channel.direct&&<Button className="meeting-open-button" variant="ghost" onClick={()=>{const m=snapshot.meetings.find(m=>m.status==='preparing');if(m)setMeetingPanel({id:m.id,channelId:current});else setMeetingStart(true);}}><Video size={15}/>开会</Button>}
-                {!channel.direct && <><button
-                  className="member-stack"
-                  aria-label="管理群成员"
-                  onClick={() => setModal({ type: "group" })}
-                >
-                  {groupMembers.slice(0, 4).map((m) => (
-                    <Face key={m.id} id={m.id} name={m.name} platformId={m.platformId} small />
-                  ))}
-                  <Plus size={15} />
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="群设置"
-                  onClick={() => setModal({ type: "group" })}
-                >
-                  <Settings2 size={18} />
-                </Button></>}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={side ? "收起协作空间" : "展开协作空间"}
-                  onClick={() => setSide(!side)}
-                >
-                  {side ? (
-                    <PanelRightClose size={19} />
-                  ) : (
-                    <PanelRightOpen size={19} />
-                  )}
-                </Button>
-              </div>
-            </header>
-            <div className="comm-body">
-              <section className="conversation-column">
-                <div
-                  className="messages-scroll"
-                  ref={scroll}
-                  onScroll={(e) => {
-                    nearBottom.current =
-                      e.currentTarget.scrollHeight -
-                        e.currentTarget.scrollTop -
-                        e.currentTarget.clientHeight <
-                      100;
-                  }}
-                >
-                  {moreCursor && (
-                    <Button
-                      variant="ghost"
-                      className="load-older"
-                      onClick={loadOlder}
-                    >
-                      查看更早消息
-                    </Button>
-                  )}
-                  {!messages.length && (
-                    <div className="channel-intro">
-                      <span>
-                        <Hash size={28} />
-                      </span>
-                      <h2>{channel.name}</h2>
-                      <p>
-                        {channel.direct?'直接提问、讨论，或让这位 Agent 帮你处理事情。':<>这是你们的群聊。直接提问、讨论或 @ 某位成员。<br/>负责人可以协调，所有人都能自由发言。</>}
-                      </p>
-                    </div>
-                  )}
-                  {messages.map((m) => (
+  const silentReaders=useMemo(()=>{
+    const result=new Map();for(const t of snapshot?.activity||[]){if(t.status!=='silent')continue;
+      for(const messageId of new Set([t.messageId,...(t.mergedMessageIds||[])])){
+        if(messages.some(m=>m.authorId===t.memberId&&m.replyTo===messageId&&m.createdAt>(t.completedAt||t.updatedAt||t.createdAt)))continue;
+        const readers=result.get(messageId)||new Map();readers.set(t.memberId,t);result.set(messageId,readers);
+      }
+    }return result;
+  },[snapshot,older,outbox.items]);
+  // Draft changes do not change the message feed or its menu bindings.
+  const messageNodes=useMemo(()=>channel ? (messages.map((m) => (
                     <article
                       className={
                         "chat-message " +
-                        (m.authorId === "owner" ? "owner-message" : "")
+                        (m.authorId === "owner" ? "owner-message" : "")+(m.authorId!=="owner"&&(m.mentionAll||m.mentions?.includes("owner"))?" mentioned-owner":"")
                       }
+                      data-message-number={m.pendingStatus?undefined:m.number}
                       id={m.id}
                       key={m.id}
                     >
@@ -560,7 +397,7 @@ export default function App() {
                           {m.authorId === channel.coordinatorId && (
                             <span className="coordinator-tag">负责人</span>
                           )}
-                          <time>{time(m.createdAt)}</time>
+                          <time>{time(m.createdAt)}</time>{m.editedAt&&<span className="message-edited" title="原版本保留；已执行的操作不会因编辑撤销">已编辑</span>}{m.pendingStatus&&<span className="message-send-status">{['queued','sending'].includes(m.pendingStatus)?'发送中…':<button onClick={()=>outbox.retry(m.requestId)} title={m.pendingError}>{m.pendingStatus==='waiting'?'等待网络 · 重试':'发送失败 · 重试'}</button>}</span>}{m.pendingStatus==='failed'&&<span className="failed-message-actions"><button onClick={()=>{const input=outbox.remove(m.requestId);if(input)setDrafts(old=>({...old,[current]:[old[current],input.body].filter(Boolean).join('\n')}));}}>修改</button><button onClick={()=>outbox.remove(m.requestId)}>取消发送</button></span>}
                           <button
                             aria-label={"回复 " + name(m.authorId)}
                             title="回复"
@@ -575,7 +412,7 @@ export default function App() {
                           >
                             <Reply size={15} />
                           </button>
-                          <DropdownMenu><DropdownMenuTrigger asChild><button aria-label="消息更多操作"><MoreHorizontal size={15}/></button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onSelect={()=>createFromMessage('task',m)}>留下 Todo</DropdownMenuItem><DropdownMenuItem onSelect={()=>createFromMessage('memory',m)}>记住这条</DropdownMenuItem><DropdownMenuItem onSelect={()=>quoteObject(refOf('message',m))}>引用到聊天</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                          <DropdownMenu><DropdownMenuTrigger asChild><button aria-label="消息更多操作"><MoreHorizontal size={15}/></button></DropdownMenuTrigger><DropdownMenuContent>{m.authorId==='owner'&&m.type==='message'&&!m.pendingStatus&&<DropdownMenuItem onSelect={()=>setEditing({id:m.id,body:m.body,version:m.version||1})}>编辑消息</DropdownMenuItem>}<DropdownMenuItem onSelect={()=>createFromMessage('task',m)}>留下 Todo</DropdownMenuItem><DropdownMenuItem onSelect={()=>createFromMessage('memory',m)}>记住这条</DropdownMenuItem><DropdownMenuItem onSelect={()=>quoteObject(refOf('message',m))}>引用到聊天</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                         </header>
                         {m.replyTo && (
                           <button
@@ -591,13 +428,11 @@ export default function App() {
                           >
                             回复{" "}
                             {name(
-                              messages.find((p) => p.id === m.replyTo)
+                              m.replySnapshot?.authorId||messages.find((p) => p.id === m.replyTo)
                                 ?.authorId,
                             )}
                             ：
-                            {messages
-                              .find((p) => p.id === m.replyTo)
-                              ?.body.slice(0, 75) || "较早的消息"}
+                            {(m.replySnapshot?.body||messages.find((p) => p.id === m.replyTo)?.body)?.slice(0,75)||"较早的消息"}
                           </button>
                         )}
                         {(m.mentionAll || m.mentions?.length > 0) && (
@@ -609,7 +444,7 @@ export default function App() {
                         )}
                         {!!m.refs?.length&&<div className="message-references">{m.refs.map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject}/>)}</div>}
                         {m.meetingId&&m.type==='message'&&<button className="message-meeting-link" onClick={()=>setMeetingPanel({id:m.meetingId,channelId:current})}><Video size={12}/>会议：{snapshot.meetings.find(x=>x.id===m.meetingId)?.title||'查看记录'}</button>}
-                        {m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
+                        {editing?.id===m.id?<div className="message-editor"><Textarea aria-label="修改消息" value={editing.body} onChange={e=>setEditing({...editing,body:e.target.value})}/><div><Button size="sm" disabled={!editing.body.trim()||busy} onClick={async()=>{try{await perform(()=>command('channel.message.edit',{channelId:current,messageId:m.id,expectedVersion:editing.version,body:editing.body}));setEditing(null);}catch{}}}>保存修改</Button><Button size="sm" variant="ghost" onClick={()=>setEditing(null)}>取消</Button></div></div>:m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
                           <button
                             className="shared-document-card"
                             onClick={() => setDocumentId(m.documentId)}
@@ -653,10 +488,221 @@ export default function App() {
                             }}
                           />
                         )}
+                      {silentReaders.get(m.id)?.size>0&&<details className="silent-note"><summary>{[...silentReaders.get(m.id).keys()].map(name).join('、')} 看过了，没有补充</summary>{[...silentReaders.get(m.id).values()].map(t=><p key={t.memberId}>{name(t.memberId)}：{t.reason||'本次没有新的信息。'}</p>)}</details>}
                       </div>
                     </article>
-                  ))}
+                  ))) : null,
+    [snapshot,older,outbox.items,current,workspace,editing,busy]);
+  return (
+    <div className="communication" data-build-id={BUILD.id}>
+      <aside className="comm-sidebar">
+        <div className="comm-brand">
+          <span>
+            <Layers size={20} />
+          </span>
+          <strong>
+            DuolaWork<small>一起沟通，一起完成</small>
+          </strong>
+        </div>
+        <div className="comm-search">
+          <Search size={15} />
+          <input
+            aria-label={chatKind==='direct'?'搜索单聊':'搜索群聊'}
+            placeholder={chatKind==='direct'?'搜索单聊':'搜索群聊'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <button
+          className={"nav-home " + (page === "members" ? "selected" : "")}
+          onClick={() => setPage("members")}
+        >
+          <Users size={17} />
+          成员与连接<span>{workspace.members.length}</span>
+        </button>
+        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} className={"nav-home "+(page===key?"selected":"")} onClick={()=>setPage(key)}><Icon size={17}/>{label}</button>)}
+        <div className="sidebar-caption">
+          <div className="chat-kind-tabs" role="group" aria-label="聊天类型">{[['direct','单聊'],['group','群聊']].map(([kind,label])=><button key={kind} aria-pressed={chatKind===kind} onClick={()=>switchChatKind(kind)}>{label}{channels.some(c=>!!c.direct===(kind==='direct')&&!!unread[c.id]?.count)&&<i/>}</button>)}</div>
+          <button
+            aria-label={chatKind==='direct'?"发起单聊":"新建群聊"}
+            onClick={() => chatKind==='direct'?setPage("members"):setModal({type:"create"})}
+          >
+            <Plus size={17} />
+          </button>
+        </div>
+        <div className="channel-list" ref={listScroll}>
+          {channels
+            .filter((c) => !!c.direct===(chatKind==='direct')&&c.name.toLowerCase().includes(query.toLowerCase()))
+            .map((c) => (
+              <button
+                key={c.id}
+                className={
+                  page === "chat" && current === c.id ? "selected" : ""
+                }
+                onClick={() => {
+                  savePosition();setCurrent(c.id);
+                  setPage("chat");
+                }}
+              >
+                {c.direct ? (()=>{const m=workspace.members.find(m=>m.id===c.memberIds[0]);const s=m?availability(m,c.id):null;return <span className="avatar-availability" title={s?`${s.label} · ${s.detail}`:''}><Face small name={c.name} platformId={m?.platformId}/>{s&&<i className={s.state} aria-label={s.label}/>}</span>;})() : <Hash size={17} />}
+                <span>
+                  {c.name}
+                  <small>{c.lastMessage || "开始一段对话"}</small>
+                </span>
+                {!!unread[c.id]?.count&&<b className="chat-unread" aria-label="未读消息">{unread[c.id].mentioned?'@我':unread[c.id].count>99?'99+':unread[c.id].count}</b>}
+              </button>
+            ))}
+          {!channels.length && (
+            <p className="sidebar-empty">建个群，把你和 Agent 们放在一起。</p>
+          )}
+        </div>
+        <div className="sidebar-footer">
+          <button onClick={() => setModal({ type: "history" })}>
+            历史工作区 <ExternalLink size={12} />
+          </button>
+          <div>
+            <i /> 本机工作区<span title={BUILD.id}>本地版</span>
+          </div>
+        </div>
+      </aside>
+      <main onDragOver={e=>{if(e.dataTransfer.types.includes("Files"))e.preventDefault();}} onDrop={e=>{if(e.dataTransfer.files.length&&current){e.preventDefault();window.dispatchEvent(new CustomEvent("duolawork-files",{detail:{channelId:current,files:[...e.dataTransfer.files]}}));}}} className="comm-main">
+        {codingStatus.members.filter(m=>workspace.members.some(x=>x.id===m.memberId)&&(['needs_review','waiting_login'].includes(m.status)||codingStatus.approvals.some(a=>a.memberId===m.memberId))).map(m=><div className="comm-sync-status" role="status" key={m.memberId}>{name(m.memberId)}：{codingStatus.approvals.some(a=>a.memberId===m.memberId)?'有操作等待你确认':m.message}<Button size="sm" variant="outline" onClick={()=>{const member=workspace.members.find(x=>x.id===m.memberId);if(member)setModal({type:'connect',member});}}>查看</Button></div>)}
+        {syncError && (
+          <div className="comm-sync-status" role="status" aria-live="polite">
+            {syncError} 正在恢复同步，连接恢复后此提示会自动消失。
+          </div>
+        )}
+        {error && (
+          <div className="comm-error" role="alert">
+            {error}
+            <button aria-label="关闭错误" onClick={() => setError("")}>
+              <X size={15} />
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div className="comm-toast" role="status">
+            <Check size={15} />
+            {notice}
+          </div>
+        )}
+        {["secretary","connectors","skills"].includes(page)?<WorkspaceServices key={page} page={page} workspace={workspace} channels={channels} onChat={openDirect} onChannel={id=>{savePosition();setCurrent(id);setChatKind(channels.find(c=>c.id===id)?.direct?"direct":"group");setPage("chat");}}/>:page === "members" ? (
+          <Members
+            workspace={workspace}
+            coding={codingStatus}
+            refresh={refreshWorkspace}
+            perform={perform}
+            setModal={setModal}
+            onChat={openDirect}
+            name={name}
+          />
+        ) : !channel ? (
+          <div className="comm-welcome">
+            <div className="welcome-icon">
+              <MessageSquare size={32} />
+            </div>
+            <small>YOUR AGENT WORKSPACE</small>
+            <h1>从一段对话开始</h1>
+            <p>
+              把 Agent 加进群，直接交流、互相提问。
+              <br />
+              需要时，再一起写文档、开会或跟进事项。
+            </p>
+            <Button onClick={() => setModal({ type: "create" })}>
+              <Plus size={16} />
+              新建群聊
+            </Button>
+            <button onClick={() => setModal({ type: "import" })}>
+              接着聊以前的项目 <ArrowUp size={13} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <header className="comm-header">
+              <div>
+                <span className="header-hash">
+                  {channel.direct ? <Face small name={channel.name} platformId={groupMembers[0]?.platformId}/> : <Hash size={23} />}
+                </span>
+                <div>
+                  <h1>{channel.name}</h1>
+                  <p>
+                    {channel.direct ? <>单聊{groupMembers[0]&&<span className={'inline-availability '+availability(groupMembers[0]).state} title={availability(groupMembers[0]).detail}>{availability(groupMembers[0]).label}</span>}</> : <>{groupMembers.length} 位 Agent ·{" "}
+                    {channel.coordinatorId
+                      ? `${name(channel.coordinatorId)} 负责协调`
+                      : "尚未指定负责人"}</>}
+                  </p>
                 </div>
+              </div>
+              <div>
+                {!channel.direct&&<Button className="meeting-open-button" variant="ghost" onClick={()=>{const m=snapshot.meetings.find(m=>m.status==='preparing');if(m)setMeetingPanel({id:m.id,channelId:current});else setMeetingStart(true);}}><Video size={15}/>开会</Button>}
+                {!channel.direct && <><button
+                  className="member-stack"
+                  aria-label="管理群成员"
+                  onClick={() => setModal({ type: "group" })}
+                >
+                  {groupMembers.slice(0, 4).map((m) => (
+                    <span className="avatar-availability" key={m.id} title={`${m.name} · ${availability(m).label}`}><Face id={m.id} name={m.name} platformId={m.platformId} small/><i className={availability(m).state} aria-label={availability(m).label}/></span>
+                  ))}
+                  <Plus size={15} />
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="群设置"
+                  onClick={() => setModal({ type: "group" })}
+                >
+                  <Settings2 size={18} />
+                </Button></>}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={side ? "收起协作空间" : "展开协作空间"}
+                  onClick={() => setSide(!side)}
+                >
+                  {side ? (
+                    <PanelRightClose size={19} />
+                  ) : (
+                    <PanelRightOpen size={19} />
+                  )}
+                </Button>
+              </div>
+            </header>
+            <div className="comm-body">
+              <section className="conversation-column">
+                <div
+                  className="messages-scroll" data-channel-id={snapshot.channel.id} key={current}
+                  ref={scroll}
+                  onScroll={(e) => {
+                    nearBottom.current =
+                      e.currentTarget.scrollHeight -
+                        e.currentTarget.scrollTop -
+                        e.currentTarget.clientHeight <
+                      100;
+                  }}
+                >
+                  {moreCursor && (
+                    <Button
+                      variant="ghost"
+                      className="load-older"
+                      onClick={loadOlder}
+                    >
+                      查看更早消息
+                    </Button>
+                  )}
+                  {!messages.length && (
+                    <div className="channel-intro">
+                      <span>
+                        <Hash size={28} />
+                      </span>
+                      <h2>{channel.name}</h2>
+                      <p>
+                        {channel.direct?'直接提问、讨论，或让这位 Agent 帮你处理事情。':<>这是你们的群聊。直接提问、讨论或 @ 某位成员。<br/>负责人可以协调，所有人都能自由发言。</>}
+                      </p>
+                    </div>
+                  )}
+                  {messageNodes}
+                </div>
+                {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
                 {snapshot.activity.some((t) =>
                   [
                     "ready",
@@ -673,7 +719,8 @@ export default function App() {
                         {name(item.memberId)} {item.label}
                       </button>
                     ))}
-                    {snapshot.activity.some((t) =>
+                    {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
+                {snapshot.activity.some((t) =>
                       ["limited", "stalled", "unavailable"].includes(t.status),
                     ) && (
                       <button
@@ -687,7 +734,8 @@ export default function App() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 px-5 pt-2" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" onClick={()=>setModal({type:'session',member:m})}>{m.name} · {b?.title&&!/^(?:channel_|原工作会话|新会话|独立工作会话)/.test(b.title)?b.title:b?'更换项目与对话':'选择项目与对话'}</Button>;})}</div>
+
+                <div className="chat-session-chips" aria-label="当前聊天的工作会话">{groupMembers.filter(m=>['codex','gemini-cli','antigravity','deepseek-harness','claude-code'].includes(m.platformId)).map(m=>{const local=codingStatus.members.find(r=>r.memberId===m.id),b=local?.assignments?.find(b=>b.channelId===current);return <Button key={m.id} size="sm" variant="outline" className={!b?'session-unbound-chip':''} title={!b?'先选择工作对话，这位成员才能回应本聊天的消息。':'更换本聊天使用的工作对话'} onMouseEnter={()=>void sessionPickerStore.load(m.id,current)} onFocus={()=>void sessionPickerStore.load(m.id,current)} onClick={()=>setModal({type:'session',member:m,channelId:current})}><span className={'session-dot '+(b?'connected':'unbound')}/>{m.name} · {b?.title&&!/^(?:channel_|原工作会话|新会话|独立工作会话)/.test(b.title)?b.title:b?'更换工作对话':'尚未选择工作对话'}</Button>;})}</div>
                 <form className="chat-composer" onSubmit={send}>
                   {!!references[current]?.length&&<div className="composer-references">{references[current].map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject} onRemove={()=>setReferences(old=>({...old,[current]:(old[current]||[]).filter(v=>v.id!==r.id||v.kind!==r.kind)}))}/>)}</div>}
                   {scopedMeeting&&!reply&&<div className="composing-reply">正在参与会议：{scopedMeeting.title}<button type="button" aria-label="切回普通群聊" onClick={()=>setMeetingScopes(s=>({...s,[current]:null}))}><X size={13}/></button></div>}
@@ -800,7 +848,7 @@ export default function App() {
                       aria-label="发送消息"
                       type="submit"
                       disabled={
-                        busy || !draft.trim()
+                        !draft.trim()
                       }
                     >
                       <ArrowUp size={19} />
@@ -815,7 +863,7 @@ export default function App() {
                 </footer>
               </section>
               {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} activity={snapshot.activity} notifications={snapshot.notifications} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})} onChat={()=>{setMeetingScopes(old=>({...old,[current]:meetingPanel.id}));setMeetingPanel(null);document.querySelector('[aria-label="群消息"]')?.focus();}} onTodo={m=>{setMeetingPanel(null);setSide(true);setTab('tasks');setSpaceEditor({kind:'task',prefill:{meetingIds:[m.id],refs:[refOf('meeting',m)]}});}} tasks={snapshot.tasks} onTask={t=>openObject(refOf('task',t))}/> : side && (
-                tab==='activity'?<aside className="collaboration-space space-redesign"><div className="space-title"><h3>消息处理记录</h3><button onClick={()=>setTab('documents')}>返回</button></div><div className="space-content">{snapshot.activity.map(t=><div className="activity-entry" key={t.id}><strong>{name(t.memberId)}</strong><p>{statusText[t.status]||t.status}</p><small>{t.reason||time(t.completedAt||t.createdAt)}</small><button className="activity-source" onClick={()=>jumpToSource(t.messageId)}>{messages.find(m=>m.id===t.messageId)?.body.slice(0,100)||'查看对应消息'}</button></div>)}{snapshot.activity.some(t=>['stalled','unavailable'].includes(t.status))&&<Button variant="outline" disabled={busy} onClick={()=>act('channel.continue')}>重试未回应的成员</Button>}</div></aside>:
+                tab==='activity'?<MessageActivity snapshot={snapshot} messages={messages} members={workspace.members} nativeMembers={codingStatus.members} onBack={()=>setTab('documents')} onSource={jumpToSource} onRetry={()=>act('channel.continue')}/>:
                 <CollaborationSpace key={current} channel={channel} snapshot={{...snapshot,meetings:[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i)}} tab={tab==='members'?'documents':tab} setTab={setTab} name={name} members={groupMembers} onChanged={refresh} onQuote={quoteObject} onOpenDoc={setDocumentId} onOpenFile={setSharedFileId} onCreateDoc={folderId=>setModal({type:'doc',folderId})} onMeeting={id=>setMeetingPanel({id,channelId:current})} onNewMeeting={()=>setMeetingStart(true)} selection={spaceSelection} setSelection={setSpaceSelection} editor={spaceEditor} setEditor={setSpaceEditor} onSource={jumpToSource} onClose={()=>setSide(false)} onActivity={()=>setTab('activity')} moreMeetings={meetingCursor} loadMeetings={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}/>
 
               )}
@@ -887,13 +935,20 @@ export default function App() {
                       },
                     ),
                   );
-                  setCurrent(c.id);
+                  savePosition();setCurrent(c.id);
                   setPage("chat");
                   setModal(null);
                 } catch {}
               }}
             />
-          ) : modal.type === "session" ? <ChatSessionPicker member={modal.member} channel={channel} onConnect={()=>setModal({type:'connect',member:modal.member})} onSaved={async()=>{setCodingStatus(await api('/local/coding/status'));await refreshWorkspace();setModal(null);}}/> : modal.type === "connect" ? (
+          ) : modal.type === "session" ? <ChatSessionPicker key={modal.member.id+':'+channel.id} member={modal.member} channel={channel} onConnect={()=>setModal({type:'connect',member:modal.member})} onSaved={binding=>{
+            const memberId=modal.member.id,channelId=channel.id;
+            if(binding)setCodingStatus(old=>({...old,members:[...old.members.filter(r=>r.memberId!==memberId),{...old.members.find(r=>r.memberId===memberId),memberId,enabled:true,assignments:[...(old.members.find(r=>r.memberId===memberId)?.assignments||[]).filter(b=>b.channelId!==channelId),{...binding,channelId}]}]}));
+            setModal(open=>open?.type==='session'&&open.member.id===memberId&&open.channelId===channelId?null:open);
+            setNotice(`${modal.member.name} 已关联工作对话`);
+            // Binding success is not held hostage by a full workspace refresh.
+            if(!binding)void api('/local/coding/status').then(setCodingStatus).catch(()=>{});
+          }}/> : modal.type === "connect" ? (
             <Suspense fallback="正在打开接入设置…">
               <ConnectWizard
                 member={modal.member}
@@ -1022,7 +1077,7 @@ function Question({ question: q, busy, onAnswer }) {
 function GroupForm({ channel, workspace, busy, onSave }) {
   const [name, setName] = useState(channel?.name || ""),
     [ids, setIds] = useState(channel?.memberIds || []),
-    [lead, setLead] = useState(channel?.coordinatorId || "");
+    [lead, setLead] = useState(channel?.coordinatorId || ""),[description,setDescription]=useState(channel?.description||"");
   return (
     <form
       className="comm-form"
@@ -1031,7 +1086,7 @@ function GroupForm({ channel, workspace, busy, onSave }) {
         onSave({
           name,
           memberIds: ids,
-          coordinatorId: lead || null,
+          coordinatorId: lead || null,description,
         });
       }}
     >
@@ -1044,6 +1099,7 @@ function GroupForm({ channel, workspace, busy, onSave }) {
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+      <label>群说明（可选）<Textarea value={description} maxLength={600} onChange={e=>setDescription(e.target.value)} placeholder="这个群主要聊什么…" rows={2}/></label>
       <fieldset>
         <legend>群成员</legend>
         {workspace.members.map((m) => (

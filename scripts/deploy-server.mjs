@@ -20,19 +20,29 @@ await run(process.execPath, ['tests/server-http.mjs']);
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hub-server-release-'));
 const archive = path.join(directory, 'release.tar.gz');
 const control = process.env.HUB_SSH_CONTROL ? ['-o', 'ControlPath=' + process.env.HUB_SSH_CONTROL] : [];
+if(target.identityFile)control.push('-i',target.identityFile);
+if(target.directSSH)control.push('-o','ProxyCommand=none');
 try {
   await run('tar', ['-czf', archive, '-C', 'release/server', '.']);
   await run('scp', [...control, archive, target.ssh + ':/var/lib/agent-hub/release-upload.tar.gz']);
+  const finalActive=await requestJson(target.origin+'/v2/active-work',{token:config.adminKey});
+  if(finalActive.active)throw Error('上传期间有成员开始工作，未重启服务；安装包已保留，稍后重试。');
   await run('ssh', [...control, target.ssh, 'bash -s'], `set -euo pipefail
 tar -tzf /var/lib/agent-hub/release-upload.tar.gz >/dev/null
 tar -czf /var/backups/agent-hub-repurpose/previous-server-release.tar.gz -C /opt/agent-hub-server .
+memory=0
+if systemctl is-active --quiet duolawork-memory; then memory=1; systemctl stop duolawork-memory; fi
 systemctl stop agent-hub
+rollback() { tar -xzf /var/backups/agent-hub-repurpose/previous-server-release.tar.gz -C /opt/agent-hub-server; systemctl start agent-hub; if [ "$memory" = 1 ]; then systemctl start duolawork-memory; fi; }
+trap rollback ERR
 tar -xzf /var/lib/agent-hub/release-upload.tar.gz -C /opt/agent-hub-server
 chown -R root:root /opt/agent-hub-server
 systemctl start agent-hub
+if [ "$memory" = 1 ]; then systemctl start duolawork-memory; fi
 sleep 2
 systemctl is-active --quiet agent-hub
 curl -fsS http://127.0.0.1:8787/health
+trap - ERR
 `);
   const health = await requestJson(target.origin + '/health');
   const state = await requestJson(target.origin + '/admin/state', { token: config.adminKey });

@@ -1,4 +1,5 @@
 import { fail, id, required, digest } from './repository.mjs';
+import {recordMemoryEvent} from './memory-context.mjs';
 
 export const MEETING_MODES = {
   crosscheck: { name: '赛马互证', stages: ['独立判断', '交叉核验'] },
@@ -103,6 +104,7 @@ async function end(tx, channel, m, helpers, reason, summary) {
     agenda: m.agenda, answers: m.answers || [], summary: m.summary || '', sourceVersion: m.version,
     status: m.summary ? 'provided' : 'missing', createdAt: tx.now });
   stamp(tx, m);
+  if(m.summary)await recordMemoryEvent(tx,channel,m,'meeting');
   await event(tx, channel, m, `会议结束：${m.title}\n${m.summary || '讨论记录已保存，负责人纪要尚未完成。'}\n结束原因：${{ deadline: '达到时限', stopped: '用户停止', completed: '负责人已交付', budget: '达到自动调用预算' }[reason] || reason}`, helpers, 'meeting_end');
   return m;
 }
@@ -358,6 +360,7 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
       if(latest)tx.put('meeting_result',{...latest,id:id('prior_result'),status:'superseded',supersededAt:tx.now});
       tx.put('meeting_result',{id:m.id,scopeId:channel.id,parentId:m.id,summary,answers,quality,authorId:actor.memberId||'owner',sourceVersion:m.version,status:'provided',createdAt:tx.now,revisionOf:latest?.id||null});
       m.summary=summary;m.answers=answers;m.quality=quality;m.revisionStatus='completed';m.summaryRevisedAt=tx.now;stamp(tx,m);
+      await recordMemoryEvent(tx,channel,m,'meeting');
       const continuation=await release(tx,actor,cmd,helpers,channel);
       await event(tx,channel,m,'负责人已按你的要求重新解释结果，原版和讨论记录均已保留。',helpers,'meeting_result_update');
       return {...m,continuation};

@@ -37,7 +37,7 @@ export async function startHarness({outboundService,node=process.execPath} = {})
   );
   const base = String(await mf.ready).replace(/\/$/, "");
   const db = await mf.getD1Database("DB");
-  for (const name of ["0001.sql", "0002_collaboration.sql"])
+  for (const name of ["0001.sql", "0002_collaboration.sql", "0003_human_read.sql"])
     for (const sql of (await fs.readFile("cloud/migrations/" + name, "utf8"))
       .split(";")
       .filter((s) => s.trim()))

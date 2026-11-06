@@ -16,6 +16,7 @@ import {AntigravityCliHost} from './antigravity-cli-bridge.mjs';
 import {publicAssignments} from './session-routing.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const exec=promisify(execFile);
+const executionKey=r=>r.executionSessionId?r.memberId+':'+r.executionSessionId:r.memberId;
 const nativeLabel=r=>r.engine==='codex'?'Codex':'Gemini';
 export function rememberAccount(record,auth){
  if(record.engine!=='codex'||!auth)return;
@@ -31,6 +32,7 @@ export class CodingManager{
    r.permissionMode??='full';
    if(!r.chatBindings){r.chatBindings=Object.fromEntries(Object.entries(r.sessions||{}).filter(([key])=>key.startsWith('channel_')).map(([channelId,sessionId])=>[channelId,{sessionId,workspace:r.cwd,title:'原工作会话',mode:'existing',migrated:true}]));r.manualAssignments=true;r.verificationSessionId=r.sessions?.verification||Object.entries(r.sessions||{}).find(([key])=>key.startsWith('probe_'))?.[1]||Object.values(r.chatBindings)[0]?.sessionId;r.sourceReady=['idle','working'].includes(r.status);}
    delete r.authorizationUrl;
+   for(const state of Object.values(r.executions||{}))if(state.inFlight){state.status=state.nativeDeliveries?.[state.inFlight.stepId]?'syncing':'needs_review';state.message='正在核对原会话的工作回执';}
    if(r.engine==='antigravity'&&r.protocol!=='acp'){
     r.legacyReceiver={protocol:'cli-headless',sessions:r.sessions,inFlight:r.inFlight};r.sessions={};r.protocol='acp';r.inFlight=null;r.status='disconnected';r.message='官方接入已准备好，点击连接完成首次登录';r.enabled=false;
    }else if(r.inFlight){
@@ -44,8 +46,12 @@ export class CodingManager{
  }
  workingHostFor(r){return r.engine==='antigravity-cli'?(this.antigravityCliHost??=new AntigravityCliHost(this.dataDir)):r.engine==='gemini-cli'?(this.geminiProjects??=new GeminiCliProjects()):r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
  async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
- get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status));}
- status(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight,nativeDeliveries})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,pendingStepId:inFlight?.stepId||null,deliveryState:inFlight?nativeDeliveries?.[inFlight.stepId]?.status||null:null,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
+ get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status)||Object.values(r.executions||{}).some(s=>s.inFlight&&s.status==='working'));}
+ rawStatus(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight,nativeDeliveries})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,pendingStepId:inFlight?.stepId||null,deliveryState:inFlight?nativeDeliveries?.[inFlight.stepId]?.status||null:null,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
+ status(){const result=this.rawStatus();for(const item of result.members){const r=this.records[item.memberId],slots=Object.values(r.executions||{}),flight=slots.filter(s=>s.inFlight);
+   item.assignments=item.assignments.map(b=>{const s=r.executions?.[b.sessionId];return {...b,...(s?.inFlight?{pendingStepId:s.inFlight.stepId,deliveryState:s.nativeDeliveries?.[s.inFlight.stepId]?.status||'working',workState:s.status,workMessage:s.message}:{})};});
+   if(flight.length){item.pendingReply=true;item.status=flight.some(s=>s.status==='working')?'working':flight.some(s=>s.status==='needs_review')?'needs_review':'syncing';item.message=flight.length+' 段工作对话有消息正在处理';}
+  }return result;}
  async owner(route,body){return this.request(this.config.endpoint+route,{token:this.config.adminKey,...(body===undefined?{}:{method:'POST',body})});}
  async start(){this.stopped=false;if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(()=>{}),this.interval);this.timer.unref();await this.tick();}
  launch(r,fn){if(this.jobs.has(r.memberId))return;const job=Promise.resolve().then(fn).catch(async e=>{if(r.enabled){r.status='needs_review';r.message=safeError(e);}delete r.authorizationUrl;await this.save();}).finally(()=>this.jobs.delete(r.memberId));this.jobs.set(r.memberId,job);}
@@ -56,7 +62,7 @@ export class CodingManager{
   if(!member||!([engine,...(['antigravity','gemini-cli','antigravity-cli'].includes(engine)?['gemini-cli','antigravity']:[])].includes(member.platformId)))throw new Error('成员与原生运行环境不匹配');
   const base=path.join(this.dataDir,'coding',memberId);await fs.mkdir(base,{recursive:true,mode:0o700});let r=this.records[memberId];
   if(r?.engine&&r.engine!==engine)throw new Error('已有会话属于其他运行环境，未覆盖');
-  if(r?.inFlight)throw new Error('上次工作尚未确认，请使用“继续原会话”');
+  if(r?.inFlight||Object.values(r?.executions||{}).some(s=>s.inFlight))throw new Error('上次工作尚未确认，请使用“继续原会话”');
   r??={memberId,engine,cwd:path.join(base,'workspace'),grantFile:path.join(base,'grant.json'),sessions:{},protocol:engine==='codex'?'app-server':'acp',permissionMode:'full'};
   if(sourceOnly){r.manualAssignments=true;r.chatBindings??=Object.fromEntries(Object.entries(r.sessions||{}).filter(([key])=>key!=='verification').map(([channelId,sessionId])=>[channelId,{sessionId,workspace:r.cwd,title:'原工作会话',mode:'existing',migrated:true}]));}this.records[memberId]=r;r.status='connecting';r.enabled=true;r.hubToolsAuthorized=true;r.message='正在准备官方连接';await this.save();this.launch(r,()=>this.setup(r));return this.status();
  }
@@ -73,8 +79,8 @@ export class CodingManager{
  }
  client(r){return new CodingMemberClient(r.grantFile,{request:this.request});}
  async prepareNative(r,client,{preserveStatus=false}={}){
-  this.nativeUsedAt.set(r.memberId,Date.now());
-  let agent=this.agents.get(r.memberId);if(agent&&!agent.rpc?.closed&&!agent.rpc?.closing){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
+  this.nativeUsedAt.set(executionKey(r),Date.now());
+  let agent=this.agents.get(executionKey(r));if(agent&&!agent.rpc?.closed&&!agent.rpc?.closing){rememberAccount(r,agent.readAccount?await agent.readAccount():agent.auth);return agent;}
   const spec=['gemini-cli','antigravity-cli'].includes(r.engine)?{command:await findExecutable(r.engine==='gemini-cli'?'gemini':'agy'),args:[]}:await this.runtime.ensure(r.engine,p=>{Object.assign(r,p,{status:p.phase==='installing'?'installing':'connecting'});});
   if(!spec.command)throw Error('这个环境尚未安装对应的原生 CLI，请在原 Agent 所在的环境执行接入说明');
   if(r.engine==='antigravity-cli'){
@@ -86,7 +92,7 @@ export class CodingManager{
   const env={...process.env,PATH:[path.dirname(spec.command),path.dirname(node),process.env.PATH||''].join(path.delimiter)};
   if(r.engine==='antigravity-cli')env.DUOLAWORK_MANAGED_CLI='1';
   let processTemp;
-  if(['gemini-cli','antigravity-cli'].includes(r.engine))r.mcpServers=[{name:'hub_'+r.memberId.slice(-16),command:node,args:[path.join(here,'coding-mcp.mjs'),r.grantFile,this.file,r.memberId],env:[]}];
+  if(['gemini-cli','antigravity-cli'].includes(r.engine))r.mcpServers=[{name:'hub_'+r.memberId.slice(-16),command:node,args:[path.join(here,'coding-mcp.mjs'),r.grantFile,this.file,r.memberId,r.executionSessionId||''],env:[]}];
   if(r.engine==='antigravity'){
    const provider=path.join(this.dataDir,'coding',r.memberId,'google'),temp=path.join(provider,'runtime-temp');await fs.mkdir(temp,{recursive:true,mode:0o700});processTemp=await fs.mkdtemp(path.join(temp,'run-'));
    const settings=path.join(provider,'antigravity-acp/settings.json');try{await fs.access(settings);}catch(e){if(e.code!=='ENOENT')throw e;await privateJson(settings,{auth:{type:'oauth-personal'}});}
@@ -104,8 +110,35 @@ export class CodingManager{
    onApproval:request=>this.approve(r,request),onProgress:p=>{r.message='正在使用原生工具：'+safeError(p.name);},
    onAuthorization:url=>{if(!['https://accounts.google.com','https://auth.openai.com','https://auth0.openai.com'].includes(new URL(url).origin))return;r.status='waiting_login';r.authorizationUrl=url;r.message='请点击官方登录按钮完成这一次登录；后续自动复用';}
   };
-  agent=this.agentFactory?this.agentFactory(options):new NativeAgent(options);this.agents.set(r.memberId,agent);
-  try{rememberAccount(r,await agent.initialize());delete r.authorizationUrl;if(!preserveStatus)r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(r.memberId);throw e;}
+  agent=this.agentFactory?this.agentFactory(options):new NativeAgent(options);this.agents.set(executionKey(r),agent);
+  try{rememberAccount(r,await agent.initialize());delete r.authorizationUrl;if(!preserveStatus)r.status=r.inFlight?'working':'connecting';return agent;}catch(e){await agent.stop().catch(()=>{});this.agents.delete(executionKey(r));throw e;}
+ }
+ executionRecords(r){
+  r.executions??={};const grouped=new Map();
+  for(const [channelId,b] of Object.entries(r.chatBindings||{})){if(!grouped.has(b.sessionId))grouped.set(b.sessionId,{});grouped.get(b.sessionId)[channelId]=b;}
+  return [...grouped].map(([sessionId,bindings])=>{
+   const state=r.executions[sessionId]??={executionSessionId:sessionId,status:'idle',sessions:{},inFlight:null};
+   Object.setPrototypeOf(state,r);state.chatBindings=bindings;state.verificationSessionId=null;return state;
+  });
+ }
+ async syncExecutionBindings(r,chatBindings=r.chatBindings){
+  const bindings=Object.entries(chatBindings||{}).map(([channelId,b])=>({channelId,sessionId:b.sessionId}));const fingerprint=JSON.stringify(bindings);
+  if(!bindings.length||r.executionBindingsFingerprint===fingerprint)return;
+  await this.client(r).api('/v2/self/execution-bindings',{method:'POST',body:{requestId:randomUUID(),bindings}});
+  r.executionBindingsFingerprint=fingerprint;await this.save();
+ }
+ async tickExecutions(r){
+  if(r.inFlight||this.jobs.has(r.memberId)||this.sessionOperations.has(r.memberId))return;
+  await this.syncExecutionBindings(r);
+  const states=this.executionRecords(r),active=states.filter(s=>this.jobs.has(executionKey(s))).length;
+  const {work}=await this.client(r).tool('list_work');
+  let capacity=Math.max(0,2-active);const launched=[];
+  for(const state of states){const key=executionKey(state);if(this.jobs.has(key))continue;
+   if(state.inFlight&&state.nativeDeliveries?.[state.inFlight.stepId]){const job=this.reconcileOriginal(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);continue;}
+   if(state.status!=='idle'||!capacity||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]))continue;capacity--;
+   const job=this.check(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);
+  }
+  await Promise.allSettled(launched);
  }
  async tick(){
   if(this.stopped)return;
@@ -117,7 +150,8 @@ export class CodingManager{
   }));
   if(this.stopped)return;
   for(const r of Object.values(this.records))if(r.status==='idle'&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)&&this.agents.has(r.memberId)&&Date.now()-(this.nativeUsedAt.get(r.memberId)||Date.parse(r.lastCompletedAt)||Date.now())>120000){const agent=this.agents.get(r.memberId);if(agent.busy||agent.rpc?.pending?.size)continue;this.agents.delete(r.memberId);await agent.stop().catch(()=>{});}
-  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}}));
+  for(const root of Object.values(this.records))for(const state of this.executionRecords(root)){const key=executionKey(state),agent=this.agents.get(key);if(agent&&state.status==='idle'&&!state.inFlight&&!this.jobs.has(key)&&Date.now()-(this.nativeUsedAt.get(key)||Date.now())>120000){this.agents.delete(key);await agent.stop().catch(()=>{});}}
+  await Promise.all(Object.values(this.records).filter(r=>r.enabled&&r.status==='idle'&&!reconciled.has(r.memberId)&&!this.jobs.has(r.memberId)&&!this.sessionOperations.has(r.memberId)).map(async r=>{if(r.executionReady&&Object.keys(r.chatBindings||{}).length){await this.tickExecutions(r);return;}const job=this.check(r);this.jobs.set(r.memberId,job);try{await job;}finally{this.jobs.delete(r.memberId);}if(!r.inFlight&&r.status==='idle'&&r.sourceReady){const status=await this.client(r).api('/v2/self/status').catch(()=>null);if(status?.complete){r.executionReady=true;await this.save();}}}));
  }
  async reconcileOriginal(r){
   const flight=r.inFlight;
@@ -152,7 +186,7 @@ export class CodingManager{
     if(await host.attached(binding.sessionId)){
      // The original interactive process is authoritative. Discard our idle
      // cache before using its queue, so no second context can overwrite it.
-     await this.agents.get(r.memberId)?.stop();this.agents.delete(r.memberId);
+     await this.agents.get(executionKey(r))?.stop();this.agents.delete(executionKey(r));
      await this.runExisting(r,first,binding,client);return;
     }
     await host.assertAvailable(binding.workspace);
@@ -175,7 +209,7 @@ export class CodingManager{
   const {memberId}=input,prior=this.sessionOperations.get(memberId)||Promise.resolve();
   // Reserve synchronously: empty polling and idle cleanup cannot race a UI choice.
   const operation=prior.catch(()=>{}).then(async()=>{
-   const r=this.records[memberId];if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
+   const r=this.records[memberId];if(r?.executions?.[r.chatBindings?.[input.channelId]?.sessionId]?.inFlight)throw Error('这段工作对话正在处理消息，请等它回复后再更换');if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
    await this.jobs.get(memberId);
    if(r?.inFlight)throw Error('这个 Agent 正在处理消息，请等它回复后再更换对话。已有工作会继续。');
    try{return await this.assignSession(input);}
@@ -206,7 +240,8 @@ export class CodingManager{
  }
  async commitBinding({memberId,channelId,binding:selected,verify=true}){
   const r=this.records[memberId],client=this.client(r);
-  r.manualAssignments=true;r.sourceReady=true;r.chatBindings[channelId]={...selected};r.sessions[channelId]=selected.sessionId;r.verificationSessionId??=selected.sessionId;await this.save();
+  const next={...r.chatBindings,[channelId]:{...selected}};await this.syncExecutionBindings(r,next);
+  r.manualAssignments=true;r.sourceReady=true;r.chatBindings=next;r.sessions[channelId]=selected.sessionId;r.verificationSessionId??=selected.sessionId;await this.save();
   if(verify){const status=await client.api('/v2/self/status');if(!status.complete&&!r.proofRunId){const proof=await client.api('/v2/self/check',{method:'POST',body:{requestId:randomUUID()}});r.proofRunId=proof.runId||proof.result?.runId;await this.save();}}
   return r.chatBindings[channelId];
  }
@@ -281,9 +316,9 @@ export class CodingManager{
   else result={decision:allow?'accept':'decline'};
   clearTimeout(item.timer);this.approvals.delete(id);item.resolve(result);return{accepted:true};
  }
- async pause({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整');if(r.inFlight||this.jobs.has(memberId))throw new Error('成员还在处理请求，请等本轮结束');r.enabled=false;r.status='paused';r.message='后台接收已暂停，登录与会话保留';await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
- async disconnect(memberId){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再解除连接');const r=this.records[memberId];if(!r)return;r.enabled=false;r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';delete r.authorizationUrl;for(const [id,a] of this.approvals)if(a.memberId===memberId){clearTimeout(a.timer);a.reject(new Error('Hub 连接已解除'));this.approvals.delete(id);}await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.jobs.get(memberId);r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';await this.save();}
- async permissions({memberId,mode}){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整权限');const r=this.records[memberId];if(!r||!['full','ask'].includes(mode))throw new Error('权限选项不正确');if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');await this.jobs.get(memberId);if(r.inFlight)throw new Error('本轮工作结束后即可调整权限');r.permissionMode=mode;await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
- async resume({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.jobs.has(memberId))return this.status();r.enabled=true;if(r.inFlight){this.launch(r,()=>this.check(r,{recover:true}));}else if(['disconnected','needs_review'].includes(r.status)){return this.connect({memberId,engine:r.engine});}else{r.status='idle';r.message='继续接收消息';await this.save();}return this.status();}
+ async pause({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整');if(r.inFlight||this.jobs.has(memberId)||Object.values(r.executions||{}).some(s=>s.inFlight))throw new Error('成员还在处理请求，请等本轮结束');r.enabled=false;r.status='paused';r.message='后台接收已暂停，登录与会话保留';await this.agents.get(memberId)?.stop();this.agents.delete(memberId);await this.save();return this.status();}
+ async disconnect(memberId){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再解除连接');const r=this.records[memberId];if(!r)return;r.enabled=false;r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';delete r.authorizationUrl;for(const [id,a] of this.approvals)if(a.memberId===memberId){clearTimeout(a.timer);a.reject(new Error('Hub 连接已解除'));this.approvals.delete(id);}await this.agents.get(memberId)?.stop();this.agents.delete(memberId);for(const [key,agent]of this.agents)if(key.startsWith(memberId+':')){await agent.stop();this.agents.delete(key);}await Promise.allSettled([...this.jobs].filter(([key])=>key===memberId||key.startsWith(memberId+':')).map(([,job])=>job));r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';await this.save();}
+ async permissions({memberId,mode}){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整权限');const r=this.records[memberId];if(!r||!['full','ask'].includes(mode))throw new Error('权限选项不正确');if(r.inFlight||Object.values(r.executions||{}).some(s=>s.inFlight))throw new Error('本轮工作结束后即可调整权限');await this.jobs.get(memberId);if(r.inFlight||Object.values(r.executions||{}).some(s=>s.inFlight))throw new Error('本轮工作结束后即可调整权限');r.permissionMode=mode;for(const [key,agent]of this.agents)if(key===memberId||key.startsWith(memberId+':')){await agent.stop();this.agents.delete(key);}await this.save();return this.status();}
+ async resume({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.jobs.has(memberId))return this.status();r.enabled=true;for(const state of this.executionRecords(r))if(state.inFlight&&state.status==='needs_review'&&!this.jobs.has(executionKey(state))){const key=executionKey(state),job=this.check(state,{recover:true}).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);}if(r.inFlight){this.launch(r,()=>this.check(r,{recover:true}));}else if(['disconnected','needs_review'].includes(r.status)){return this.connect({memberId,engine:r.engine});}else{r.status='idle';r.message='继续接收消息';await this.save();}return this.status();}
  async stop(){this.stopped=true;clearInterval(this.timer);this.timer=null;for(const a of this.approvals.values()){clearTimeout(a.timer);a.reject(new Error('本机执行端停止，未批准操作'));}this.approvals.clear();await Promise.allSettled([...this.agents.values()].map(a=>a.stop()));this.agents.clear();await Promise.allSettled([...this.jobs.values()]);await this.save();}
 }

@@ -1,3 +1,9 @@
+import {registerExecutionBindings} from './execution-bindings.mjs';
+import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
+import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
+import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
+import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
+import {channelUnread} from './chat-experience.mjs';
 import {SHARED_TOOLS, SHARED_TOOL_ENVELOPE, sharedToolEnvelope, sharedTool, sharedCommand, listSharedFiles, fileDetails, fileBytes, uploadStatus, readHandoff} from './shared-space.mjs';
 import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
 import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
@@ -74,6 +80,9 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 });
 export const TOOLS = [
   ...CHANNEL_TOOLS,
+  ...MANAGEMENT_TOOLS,
+  ...MEMORY_TOOLS,...SKILL_TOOLS,
+  ...CONNECTOR_TOOLS,
   ...SHARED_TOOLS,
   {
     name: "report_setup_status",
@@ -319,9 +328,22 @@ export async function callTool(repo, identity, actor, name, args, env, options =
       "原生工具必须使用成员身份，不能用管理凭证冒充",
       403,
     );
+  if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
+  if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
+  if(name==='github')return connectorTool(repo,actor,args,env);
+  if(SKILL_TOOLS.some(t=>t.name===name))return skillTool(repo,actor,name,args);
+  if(name==='manage_workspace')return manageWorkspace(repo,identity,actor,args,env);
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
-  if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE))
+  if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
+    let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
+    if(['manage_workspace','github','search_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+      const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
+      if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
+      if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
+      return callTool(repo,identity,actor,envelope.name,{...a,requestId:args.requestId},env,options);
+    }
     return sharedToolEnvelope(repo,identity,actor,args,env);
+  }
   if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
   if (name === "setup_connection") return selfConnection(repo, identity, actor, args, env.ADMIN_KEY);
   if (name === "report_setup_status") return reportSetup(repo, actor, args);
@@ -538,6 +560,7 @@ async function mcp(repo, identity, actor, request, env, kick = () => {}) {
 export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
+  repo.memoryService=env.MEMORY;repo.persistMemoryForget=env.PERSIST_MEMORY_FORGET;
   if(url.pathname==='/v2/connectors/claude/guide'&&request.method==='GET')return json(claudeRecipe(url.origin,claudeSHA));
   if(url.pathname==='/v2/connectors/native/guide'&&request.method==='GET')return json(runtimeRecipe(url.origin,runtimeSHA));
   if(url.pathname==='/v2/connectors/native/download'&&request.method==='GET'){
@@ -619,6 +642,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     const members=[];for(const m of identity.members.filter(m=>m.platformId==='claude-code'&&m.status!=='disabled')){const c=await repo.get('connection',m.id,false);if(c?.status!=='disconnected')members.push((await remoteSessions(repo,identity,actor,{memberId:m.id})).record);}
     return json({members:[...members,...await remoteRuntimeMembers(repo,identity)]});
   }
+  if(url.pathname==='/v2/self/execution-bindings'&&request.method==='POST')return json(await registerExecutionBindings(repo,identity,actor,await readJSON(request)));
   if (url.pathname === "/v2/self/connection" && request.method === "POST") {
     const result = await selfConnection(repo, identity, actor, await readJSON(request), env.ADMIN_KEY);
     return json(result);
@@ -709,6 +733,13 @@ export async function v2Fetch(request, env, ctx, identity) {
     const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
     return json({active:r.total});
   }
+  if(url.pathname==='/v2/skills')return json(await skillSettings(repo,identity,actor,request.method==='GET'?(url.searchParams.has('skillId')?{action:'read',skillId:url.searchParams.get('skillId')}:{action:'list'}):await readJSON(request)));
+  if(url.pathname==='/v2/connectors')return json(await connectorSettings(repo,identity,actor,request.method==='GET'?{action:'list'}:await readJSON(request),env));
+  if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});
+  if(url.pathname==='/v2/memory-forget'&&request.method==='POST')return json(await memoryTool(repo,actor,'forget_memory',await readJSON(request),identity));
+  if(url.pathname==='/v2/memory-search'&&request.method==='GET')return json(await recallMemory(repo,actor,Object.fromEntries(url.searchParams),env.MEMORY));
+  if(url.pathname==='/v2/management')return json(request.method==='GET'?await workspaceOverview(repo,identity,actor):await managementSettings(repo,identity,actor,await readJSON(request)));
+  if(url.pathname==='/v2/channel-unread'&&request.method==='POST')return json(await channelUnread(repo,(await readJSON(request)).cursors));
   if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await repo.list("channel",{order:"recent",limit:500})});
   if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
   if(url.pathname==='/v2/meeting'&&request.method==='GET') return json(await meetingDetail(repo,identity,actor,{meetingId:url.searchParams.get('id'),cursor:url.searchParams.get('cursor')||undefined}));

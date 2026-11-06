@@ -5,14 +5,15 @@ import {CodingMemberClient} from './coding-client.mjs';
 import {safeError} from './native-agent.mjs';
 const file=process.argv[2];if(!file)throw new Error('缺少成员私有配置路径');
 const client=new CodingMemberClient(file);
-const recordsFile=process.argv[3],memberId=process.argv[4];
+const recordsFile=process.argv[3],memberId=process.argv[4],executionSessionId=process.argv[5];
 async function callTool(params){
  const {name,arguments:args={}}=params;
  let record,matches;
  if(recordsFile&&memberId){
   record=JSON.parse(await fs.readFile(recordsFile,'utf8'))[memberId];
   if(!record?.enabled)throw Error('这位成员的连接已解除');
-  const active=record.inFlight,expected=active&&(record.sessions?.[active.key]||record.verificationSessionId),actual=params._meta?.['antigravity.google/root_conversation_id'];
+  const actual=params._meta?.['antigravity.google/root_conversation_id'];
+  const execution=record.executions?.[executionSessionId||actual],active=execution?.inFlight||(!executionSessionId?record.inFlight:null),expected=active&&(execution?.executionSessionId||record.sessions?.[active.key]||record.verificationSessionId);
   if(record.engine==='antigravity-cli'&&(!actual||actual!==expected))throw Error('工具调用不是当前接收消息的原对话，未执行');
   matches=w=>!!active&&(w.channelId?active.key===w.channelId:active.stepId===w.stepId);
   if(name==='claim_work'){

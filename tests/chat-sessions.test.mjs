@@ -38,7 +38,7 @@ test('one account supports concurrent Codex members; connect uses no model; chat
  await h.command('channel.post',{channelId:group.id,body:'First message while native context verifies',mentions:members.map(m=>m.id)});for(const m of members){const {work}=await manager.client(manager.records[m.id]).tool('list_work');assert.equal(work.some(w=>w.kind==='conversation'),false,'An unverified native agent must not claim queued chat before its probe');}
  await manager.tick();await manager.tick();for(const r of Object.values(manager.records))assert.equal(r.status,'idle',r.message);assert.equal(peak,2); // different identities execute concurrently
  const r=manager.records[members[0].id];assert.notEqual(r.chatBindings[group.id].sessionId,r.chatBindings[other.id].sessionId);assert.equal(r.chatBindings[group.id].workspace,await fs.realpath(project));assert.equal(await fs.readFile(path.join(project,'notes.txt'),'utf8'),'preserve');
- await h.command('channel.post',{channelId:group.id,body:'各自回复',mentions:members.map(m=>m.id)});await h.command('channel.post',{channelId:other.id,body:'单独回复'});await manager.tick();await manager.tick();
+ peak=0;await h.command('channel.post',{channelId:group.id,body:'各自回复',mentions:members.map(m=>m.id)});await h.command('channel.post',{channelId:other.id,body:'单独回复'});await manager.tick();await manager.tick();assert.equal(peak,3,'two native conversations of the same member must run independently');
  const replies=(await h.request('/v2/channel?id='+group.id)).messages.filter(m=>m.authorId!=='owner');assert.ok(replies.some(m=>m.authorId===members[0].id&&m.body.includes(r.chatBindings[group.id].sessionId)));assert.ok(replies.some(m=>m.authorId===members[1].id));
  const second=(await h.request('/v2/channel?id='+other.id)).messages.find(m=>m.authorId===members[0].id);assert.ok(second.body.includes(r.chatBindings[other.id].sessionId));
  const restarted=new CodingManager({dataDir:manager.dataDir,config:manager.config});await restarted.load();assert.deepEqual(restarted.records[members[0].id].chatBindings,r.chatBindings);
@@ -57,4 +57,13 @@ test('desktop member migration preserves existing chats; a new chat never inheri
  await manager.assign({memberId:member.id,channelId:next.id,mode:'new',channels:[old,next]});assert.equal(creates,1);const proof=manager.records[member.id].proofRunId;await manager.assign({memberId:member.id,channelId:old.id,mode:'existing',sessionId:'original',channels:[old,next]});assert.equal(manager.records[member.id].proofRunId,proof);
  assert.deepEqual(bound.get('original').channelIds,[old.id]);assert.deepEqual(bound.get('new-context').channelIds,[next.id]);
  assert.equal(manager.records[member.id].chatBindings[old.id].sessionId,'original');await manager.disconnect(member.id);assert.equal(bound.size,0);assert.equal((await host.sessions()).items.length,2);
+});
+
+// Failed remote registration must leave the user's chosen project untouched.
+test('a rejected binding preserves the prior local conversation for coding and desktop adapters',async()=>{
+ const original={sessionId:'original',workspace:'/project',title:'Existing'};
+ for(const Manager of [CodingManager,DshManager]){
+  const manager=Object.create(Manager.prototype);manager.records={m:{memberId:'m',chatBindings:{c:original},sessions:{c:'original'}}};manager.save=async()=>{};manager.client=()=>({api:async()=>{throw Error('busy');}});
+  await assert.rejects(manager.commitBinding({memberId:'m',channelId:'c',binding:{sessionId:'new'},verify:false}),/busy/);assert.equal(manager.records.m.chatBindings.c,original);
+ }
 });

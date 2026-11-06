@@ -1,3 +1,4 @@
+import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
 
@@ -24,6 +25,7 @@ export async function runtimeOwner(repo,identity,actor,input={},write=false){
   const channel=await repo.get('channel',key(input.channelId));if(!channel.memberIds.includes(m.id))fail('forbidden','先将成员加入聊天',403);
   if(input.mode==='existing'&&!r.items.some(s=>s.id===input.sessionId))fail('invalid_session','这段对话不在已连接的原环境中');
   return repo.transact(required(input.requestId,'请求编号',120),input,async tx=>{
+    const connection=await tx.get('connection',m.id),resource=await tx.get('resource',await executionResource(tx,connection,channel.id),false);if(resource?.status==='busy')fail('resource_busy','这段工作对话正在处理消息，原绑定保留',409);
     const pending=[...await tx.list('native-command',{parent:m.id,status:'pending',limit:501}),...await tx.list('native-command',{parent:m.id,status:'prepared',limit:501})].find(c=>c.channelId===channel.id);if(pending)return pending;
     const fresh=await tx.get('remote-runtime',m.id),command={id:id('nativecmd'),parentId:m.id,memberId:m.id,runtimeId:fresh.runtimeId,channelId:channel.id,mode:input.mode,sessionId:input.sessionId||null,workspace:typeof input.workspace==='string'?input.workspace.slice(0,1000):'',title:channel.name,status:'pending',createdAt:tx.now,previousBinding:fresh.bindings?.[channel.id]||null};tx.put('native-command',command);return command;
   });

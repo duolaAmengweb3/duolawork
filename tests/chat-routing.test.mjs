@@ -35,9 +35,9 @@ test('all-members is explicit, scoped, deduplicated and excludes the sending Age
   await assert.rejects(f.send('channel.post',{channelId,body:'外人不应收到',mentions:['write'],mentionAll:true}),e=>e.code==='invalid_mention');
 });
 
-test('text all-members works but quoted examples and code never wake everyone', async t => {
+test('text alone never broadcasts; all-members requires the explicit action', async t => {
   const f = await setup(t),channelId=f.channel.id;
-  assert.deepEqual(await f.recipients(await f.send('channel.post',{channelId,body:'@全员 请提出意见'})),['check','grok']);
+  assert.deepEqual(await f.recipients(await f.send('channel.post',{channelId,body:'@全员 请提出意见'})),['grok']);
   for (const body of ['`@全员` 是示例','> @全员 请注意','```\n@全员\n```','@全员名单不是提及'])
     assert.deepEqual(await f.recipients(await f.send('channel.post',{channelId,body})),['grok']);
 });
@@ -57,9 +57,9 @@ test('a completed reply is not pending; a later queued message remains visible a
   const done={id:'old',memberId:'codex',status:'done'},next={id:'new',memberId:'codex',status:'ready'};
   assert.deepEqual(pendingMemberActivity([done],[{stepId:'old',status:'accepted'}]),[]);
   let rows=pendingMemberActivity([done,next],[{stepId:'old',status:'accepted'}],[{memberId:'codex',pendingStepId:'other-channel',deliveryState:'sent'}]);
-  assert.equal(rows[0].label,'已回复 · 另有 1 条消息待处理');
+  assert.equal(rows[0].label,'1 条消息待处理');
   rows=pendingMemberActivity([done,next],[],[{memberId:'codex',pendingStepId:'new',deliveryState:'sent'}]);
-  assert.equal(rows[0].label,'已回复 · 另有 1 条消息在原会话排队');
+  assert.equal(rows[0].label,'1 条消息在原会话排队');
   assert.deepEqual(rows[0].turnIds,['new']);
   assert.match(pendingMemberActivity([done,{...next,status:'active'}])[0].label,/正在回复/);
 });

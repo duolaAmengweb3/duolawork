@@ -12,8 +12,8 @@ export class ChatSessions {
     if(!m)throw Error('成员已移出工作区');return m;
   }
   manager(m) { return m.platformId==='codex'||m.platformId==='gemini-cli'?this.coding:m.platformId==='antigravity'?(this.ag.records[m.id]?.enabled||!this.coding.records[m.id]?.enabled?this.ag:this.coding):m.platformId==='deepseek-harness'?this.dsh:null; }
-  async status(memberId) {
-    const m=await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
+  async status(memberId, member) {
+    const m=member||await this.member(memberId),manager=this.manager(m),r=manager?.records[memberId];
     if(m.platformId==='claude-code'){const r=await this.owner('/v2/native-sessions?memberId='+memberId);return{...r,assignments:r.record.assignments,capabilities:{...SESSION_CAPABILITIES['claude-code'],linkCurrent:true}};}
     if(manager){const remote=await this.owner('/v2/native-runtime?memberId='+memberId);if(remote.remote)return{...remote,capabilities:{...remote.capabilities,linkCurrent:remote.record.form!=='gemini-cli'},assignments:remote.record.assignments};}
     const capabilities={...(SESSION_CAPABILITIES[m.platformId]||{kind:'fixed'})};if(manager===this.coding)Object.assign(capabilities,{kind:'sessions',existing:true,create:true,label:m.platformId==='codex'?'Codex 工作会话':'Gemini 后台会话'});
@@ -68,8 +68,8 @@ export class ChatSessions {
     }finally{this.linkTicking=false;}
   }
   async options({memberId,channelId}) {
-    const m=await this.member(memberId),manager=this.manager(m),status=await this.status(memberId);
-    const channels=channelId?await this.channel(memberId,channelId):[];
+    const [m,channels]=await Promise.all([this.member(memberId),channelId?this.channel(memberId,channelId):[]]);
+    const manager=this.manager(m),status=await this.status(memberId,m);
     if(status.capabilities?.remote){const items=presentSessions(status.items,{bindings:status.bindings,channels,platform:m.platformId==='claude-code'?'Claude':m.name});const binding=status.bindings[channelId];return{...status,items,projects:sessionProjects(items,status.projects),binding:binding?{...binding,...items.find(s=>s.id===binding.sessionId)}:null};}
     if(!manager)return {...status,items:[]};
     const r=manager.records[memberId];if(!r?.enabled)return {...status,items:[]};
@@ -88,10 +88,12 @@ export class ChatSessions {
     if(this.jobs.has(key))return this.jobs.get(key);
     // Lock before any native creation. A double click cannot create two sessions.
     const prior=this.locks.get(memberId)||Promise.resolve(),job=prior.catch(()=>{}).then(()=>this.assignOnce(input));this.locks.set(memberId,job);this.jobs.set(key,job);
-    try{return await job;}finally{this.jobs.delete(key);}
+    try{return await job;}finally{this.jobs.delete(key);if(this.locks.get(memberId)===job)this.locks.delete(memberId);}
   }
   async assignOnce(input) {
-    const status=await this.status(input.memberId);
+    // Validate membership freshly for every write; only display inventories may be cached.
+    const [m,channels]=await Promise.all([this.member(input.memberId),this.channel(input.memberId,input.channelId)]);
+    const status=await this.status(input.memberId,m);
     if(status.remote){
       let command=await this.owner('/v2/native-runtime',{...input,requestId:input.requestId||randomUUID()});
       const deadline=Date.now()+150000;
@@ -100,8 +102,7 @@ export class ChatSessions {
       if(command.status==='failed')throw Error(command.message);
       throw Error('原环境还在处理这次选择，请刷新列表查看结果；不要重复新建对话。原绑定仍保留。');
     }
-    const m=await this.member(input.memberId),manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{...input,requestId:randomUUID()});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
-    const channels=await this.channel(input.memberId,input.channelId);
+    const manager=this.manager(m);if(m.platformId==='claude-code')return this.owner('/v2/native-sessions',{...input,requestId:input.requestId||randomUUID()});if(!manager)throw Error('这个 Agent 的原身份固定，不需要选择会话');
     if(Object.hasOwn(input,'expectedPreviousBinding')&&JSON.stringify(manager.records[input.memberId]?.chatBindings?.[input.channelId]||null)!==JSON.stringify(input.expectedPreviousBinding))throw Error('聊天刚刚选择了其他对话，旧配对说明没有覆盖它');
     if(input.mode==='new'&&manager!==this.coding&&SESSION_CAPABILITIES[m.platformId]?.create!==true)throw Error(SESSION_CAPABILITIES[m.platformId]?.createHint||'此平台尚未支持在 Hub 新建会话');
     const title=channels.find(c=>c.id===input.channelId).name;
