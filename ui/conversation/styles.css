@@ -78,11 +78,21 @@
   align-items: center;
   gap: 9px;
   text-align: left;
-  padding: 12px 10px;
+  padding: 8px 10px;
+  min-height: 36px;
   border-radius: 7px;
-  margin-top: 16px;
+  margin-top: 2px;
   color: #68778e;
   font-size: 13px;
+}
+.comm-search + .nav-home {
+  margin-top: 12px;
+}
+.nav-home > svg,
+.nav-home > .brand-mark {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 .nav-home span {
   margin-left: auto;
@@ -93,7 +103,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 25px 10px 10px;
+  margin: 18px 10px 10px;
   color: #919cb0;
   font-size: 11px;
   letter-spacing: 0.6px;
