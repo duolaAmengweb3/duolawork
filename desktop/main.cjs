@@ -11,6 +11,10 @@ if(process.env.AGENT_HUB_TEST_MODE==='1'){
 if(!app.requestSingleInstanceLock()){app.quit();}else{
 app.setName('Agent Hub');app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus();}});
 app.whenReady().then(async()=>{
+ const applicationIcon=path.join(__dirname,'assets/DuolaWork.png');
+ // The installed bundle can retain Electron's cached Dock image after an update.
+ // Set the running app image explicitly without changing its keychain identity.
+ if(process.platform==='darwin')app.dock.setIcon(applicationIcon);
  const dir=process.env.AGENT_HUB_DATA_DIR||path.join(os.homedir(),'.config','agent-hub');await fs.mkdir(dir,{recursive:true,mode:0o700});
  let keyPromise;
  const resolveVaultKey=()=>keyPromise??=(async()=>{
@@ -31,10 +35,10 @@ app.whenReady().then(async()=>{
  };
  uiSession.setPermissionCheckHandler((contents,permission,origin,details)=>allowCopy(contents,permission,origin,details));
  uiSession.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowCopy(contents,permission,details.requestingUrl,details)));
- win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1'||process.env.AGENT_HUB_TEST_VISIBLE==='1',title:'DuolaWork · 你的 AI 团队',backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+ win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1'||process.env.AGENT_HUB_TEST_VISIBLE==='1',title:'DuolaWork · 你的 AI 团队',icon:applicationIcon,backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return{action:'deny'};});
  win.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==runtime.url){event.preventDefault();if(/^https:\/\//.test(url))shell.openExternal(url);}});
- app.setAboutPanelOptions({applicationName:'DuolaWork'});
+ app.setAboutPanelOptions({applicationName:'DuolaWork',iconPath:applicationIcon});
  // Keep app.setName above stable for existing keychain/profile identity; menu
  // labels are explicit so Electron does not reuse that legacy internal name.
  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'DuolaWork',submenu:[{role:'about',label:'关于 DuolaWork'},{type:'separator'},{role:'hide',label:'隐藏 DuolaWork'},{role:'quit',label:'退出 DuolaWork'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'视图',submenu:[{role:'reload'},{role:'togglefullscreen'},{role:'resetzoom'},{role:'zoomin'},{role:'zoomout'}]},{role:'windowMenu'}]));

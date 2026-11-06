@@ -57,6 +57,9 @@ execFileSync("/usr/libexec/PlistBuddy", [
   plist,
 ]);
 await fs.copyFile(path.join(root,'desktop/assets/DuolaWork.icns'),path.join(out,'Contents/Resources/DuolaWork.icns'));
+// Older macOS icon cache entries may still point to Electron's original filename.
+// Keep that bundled fallback branded too; do not reset the user's system caches.
+await fs.copyFile(path.join(root,'desktop/assets/DuolaWork.icns'),path.join(out,'Contents/Resources/electron.icns'));
 execFileSync('/usr/libexec/PlistBuddy',['-c','Set :CFBundleIconFile DuolaWork.icns',plist]);
 execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", out]);
 console.log("本机可运行构建：" + out + "（本机签名，尚无 Developer ID 公证）");
