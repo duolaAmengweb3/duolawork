@@ -9,6 +9,52 @@ import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
 const sameDeliveryScope=(a,b)=>(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
+const claimWaitMs = 2 * 60000;
+const maxUnclaimedWakes = 3;
+
+// Only retry the doorbell before an execution lease exists. A platform HTTP
+// receipt says nothing about whether its Agent actually called receive_messages.
+async function recoverUnclaimedWakes(repo, now) {
+  for (const row of await repo.list('outbox', { status: 'accepted', limit: 100 })) {
+    if (!row.conversation || row.transport !== 'grok-webhook' ||
+        Date.parse(row.completedAt) + claimWaitMs > Date.parse(now)) continue;
+    await repo.transact(`unclaimed-wake:${row.id}:${row.revision}:${now}`, { id: row.id, revision: row.revision }, async tx => {
+      const current = await tx.get('outbox', row.id);
+      if (current.status !== 'accepted' || current.revision !== row.revision) return {};
+      const turn = await tx.get('channel_turn', row.stepId);
+      // Already-stalled historical work is not silently restarted on upgrade.
+      if (turn.status !== 'ready' || turn.claimedAt || turn.lease) return {};
+      const channel = await tx.get('channel', row.scopeId);
+      const connection = await tx.get('connection', row.memberId);
+      if (channel.status !== 'active' || !channel.memberIds.includes(row.memberId) ||
+          connection.status !== 'verified' || connection.configVersion !== row.configVersion) return {};
+      const resource = await tx.get('resource', await executionResource(tx, connection, channel.id), false);
+      if (resource?.status === 'busy') return {};
+      if (current.attempts < maxUnclaimedWakes) {
+        tx.put('outbox', { ...current, status: 'retry', dueAt: now,
+          unclaimedRetry: true, reason: '平台已受理，但成员尚未接收；正在重新通知' });
+      } else {
+        await stallUnclaimedBatch(tx, current, '已多次通知原平台，但成员仍未接收；消息已保留，可重试或查看原 Agent。');
+      }
+      return {};
+    }, now);
+  }
+}
+
+async function stallUnclaimedBatch(tx, notice, reason) {
+  const turns = await tx.list('channel_turn', { scope: notice.scopeId, parent: notice.memberId, status: 'ready' });
+  for (const turn of turns) {
+    if (turn.claimedAt || turn.lease) continue;
+    const child = await tx.get('outbox', `notice_${turn.id}`, false);
+    if (child?.id !== notice.id && child?.coalescedInto !== notice.id) continue;
+    tx.put('channel_turn', { ...turn, status: 'stalled', reason });
+    tx.put('outbox', { ...child, status: 'unclaimed', reason });
+  }
+  // Drain historical accepted rows too, so they cannot starve newer receipts.
+  const current = await tx.get('outbox', notice.id);
+  if (['accepted','unknown','needs_review'].includes(current.status))
+    tx.put('outbox', { ...current, status: 'unclaimed', reason });
+}
 
 export async function dispatchOne(
   repo,
@@ -121,7 +167,7 @@ export async function dispatchOne(
         ...(row.conversation ? {
           kind: 'conversation',
           channel_id: row.scopeId,
-          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive', channelId: row.scopeId } },
+          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive' + (row.attempts > 1 ? ':' + row.attempts : ''), channelId: row.scopeId } },
           instruction: 'This is a new wake for the specified channel. Call receive.tool with receive.arguments using your existing member credential. Do not reuse another channel or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. Notification acceptance is not completion. If busy or empty, stop this invocation.',
         } : { kind: 'work' }),
       });
@@ -299,6 +345,7 @@ export async function maintenance(
 ) {
   await conversationMaintenance(repo,identity,now);
   await secretaryMaintenance(repo,identity,now);
+  await recoverUnclaimedWakes(repo, now);
   const beganAt = Date.now();
   // Deliver current conversation work before schedule scans and recovery work.
   const summary = { ...(await dispatchPending(repo,identity,env,fetcher,now)), schedules:0,recovered:0 };
@@ -351,12 +398,13 @@ export async function maintenance(
       )
         continue;
       await repo.transact(
-        `notice-stalled:${row.id}`,
-        { id: row.id },
+        `notice-stalled:${row.id}:${row.revision}`,
+        { id: row.id, revision: row.revision },
         async (tx) => {
           if(row.conversation){
-            const turn=await tx.get("channel_turn",row.stepId);
-            if(turn.status==="ready")tx.put("channel_turn",{...turn,status:"stalled",reason:"平台已接收通知，但尚无真实回应；消息保留，可继续"});
+            const current=await tx.get('outbox',row.id);
+            if(current.status!==row.status||current.revision!==row.revision)return {};
+            await stallUnclaimedBatch(tx,current,'尚未确认成员接收；消息已保留，可重试或查看原 Agent。');
             return {};
           }
           const step = await tx.get("step", row.stepId),

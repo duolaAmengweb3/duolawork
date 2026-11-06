@@ -41,7 +41,7 @@ try{
  const state=JSON.parse(await fs.readFile(manager.file,'utf8'))[member.id];
  assert.equal(state.inFlight,null);assert.equal(state.status,'needs_review');
  evidence.elapsedToStalledMs=Date.now()-started;
- await p.locator('.delivery-state').filter({hasText:'等待状态更新'}).waitFor({timeout:20000});
+ await p.locator('.delivery-state').filter({hasText:'处理已中断，尚未回传'}).waitFor({timeout:20000});
  await p.locator('.delivery-entry details summary').first().click();
  await p.getByText('原对话已结束，但这条消息尚未回传；请在原环境检查。',{exact:true}).waitFor();
  assert.equal(await p.locator('.pending-member').count(),0);

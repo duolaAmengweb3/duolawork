@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-06T05:31:33.906Z",
+  "candidateBuild": "0fb161066c8c553c",
+  "installedBuild": "4ea8f78d99543338",
+  "activeWork": 3,
+  "unitTests": 355,
+  "typecheckPassed": true,
+  "serverHttpPassed": true,
+  "uiProtocolPassed": true,
+  "nativeDesktopIsolatedPassed": true,
+  "packaged": true,
+  "backendDeployed": false,
+  "desktopActivated": false,
+  "blockedReason": "Existing Agents are executing; deployment and activation guards rejected a restart.",
+  "realGrokRecoveryVerified": false
+}

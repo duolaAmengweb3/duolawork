@@ -215,7 +215,10 @@ async function enqueue(tx, identity, channel, message, memberId) {
     connection = await tx.get("connection", memberId, false);
   if (!m) return;
   const turnId = `turn_${message.id}_${memberId}`;
-  const deferred = message.hops > channel.maxHops && !message.coordinationFeedback;
+  // A long discussion is not evidence of a loop. Explicit addressing must
+  // still reach its recipient, including a review requested late in a thread.
+  const addressed = message.mentionAll || message.mentions?.includes(memberId);
+  const deferred = !addressed && message.hops > channel.maxHops && !message.coordinationFeedback;
   const available = !m.paused && connection?.status === "verified";
   // Native source setup and per-chat context selection are separate. Preserve
   // the first message while that context proves its round trip; only a verified
@@ -554,6 +557,8 @@ export async function readChannel(repo, identity, actor, args) {
             platformRespondedAt,
             dispatchElapsedMs,
             attemptFinishedAt,
+            coalescedInto,
+            unclaimedRetry,
           }) => ({
             id,
             stepId,
@@ -569,6 +574,8 @@ export async function readChannel(repo, identity, actor, args) {
             platformRespondedAt,
             dispatchElapsedMs,
             attemptFinishedAt,
+            coalescedInto,
+            unclaimedRetry,
           }),
         )
       : [],
@@ -812,6 +819,7 @@ export async function conversationCommand(
             ),
           )
         ).flat()) {
+          if (cmd.turnId && turn.id !== cmd.turnId) continue;
           const c = await tx.get("connection", turn.memberId, false),
             m = activeMember(identity, turn.memberId);
           if (

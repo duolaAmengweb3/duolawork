@@ -361,7 +361,7 @@ test("native legacy envelope keeps ordinary replies as chat, with actual scoped 
   );
   assert.equal((await f.repo.list("channel_doc")).length, 0);
 });
-test("wake budget defers instead of discarding and explicit resume retains original messages", async (t) => {
+test("explicit @ handoffs and @all survive a long discussion; old held work is not silently restarted", async (t) => {
   const f = await setup(t);
   await f.send("channel.update", { channelId: f.c.id, maxHops: 1 });
   let p = await f.send("channel.post", {
@@ -392,12 +392,16 @@ test("wake budget defers instead of discarding and explicit resume retains origi
       agent(mid),
     );
   }
-  const limited = (await f.repo.list("channel_turn", { status: "limited" }))[0];
-  assert.ok(limited);
-  assert.equal(
-    (await f.repo.get("channel_message", limited.messageId)).id,
-    p.id,
-  );
+  assert.equal((await f.repo.list('channel_turn',{status:'limited'})).length,0);
+  const late=(await conversationWork(f.repo,f.identity,'check')).find(w=>w.messageId===p.id);
+  assert.ok(late,'explicit review remains receivable beyond the former hop cap');
+  const claim=await claimConversation(f.repo,f.identity,agent('check'),{requestId:'late-all',stepId:late.stepId});
+  const all=await f.send('channel.post',{channelId:f.c.id,turnId:claim.turnId,body:'请全员核对',mentionAll:true},agent('check'));
+  const allTurn=(await f.repo.list('channel_turn')).find(t=>t.messageId===all.id);
+  assert.equal(allTurn.status,'ready');assert.ok(allTurn.hops>1);
+  // Migration never replays historical requests merely because the policy changed.
+  await f.repo.transact('old-limited-fixture',{},async tx=>tx.put('channel_turn',{...allTurn,status:'limited'}));
+  const limited=await f.repo.get('channel_turn',allTurn.id);
   const next = await f.send("channel.post", { channelId: f.c.id, body: "我继续问一句", mentions: ["grok"] });
   const nextTurn = (await f.repo.list("channel_turn", { status: "ready" })).find(turn => turn.messageId === next.id);
   assert.ok(nextTurn, "普通新消息直接产生可处理通知，无需点击继续或调整跳数");

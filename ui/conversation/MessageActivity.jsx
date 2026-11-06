@@ -2,12 +2,12 @@ import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ArrowUpRight,ChevronDown} from 'lucide-react';
 import {api,time} from '../v1/api.mjs';
 import AgentAvatar from './AgentAvatar.jsx';
-import {processingLabel} from '../../shared/chat-activity.mjs';
+import {processingLabel,turnNotification,waitingLabel} from '../../shared/chat-activity.mjs';
 const pending=new Set(['ready','active','stalled','unavailable','limited']);
 export function activityLabel(turn,notification,native){
  if(turn.status==='active')return processingLabel(turn);
- if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'排队中 · 已进入原会话':notification?.status==='accepted'?'排队中 · 已送达':'排队中';
- return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:'等待状态更新',unavailable:'等待成员连接'}[turn.status]||'等待更新';
+ if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'排队中 · 已进入原会话':waitingLabel(notification);
+ return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:turn.claimedAt?'处理已中断，尚未回传':'成员尚未接收',unavailable:'等待成员连接'}[turn.status]||'等待更新';
 }
 function Entry({turn,message,member,notification,native,onSource}){
  const [source,setSource]=useState(message);
@@ -17,6 +17,6 @@ function Entry({turn,message,member,notification,native,onSource}){
 export default function MessageActivity({snapshot,messages,members,nativeMembers,onBack,onSource,onRetry}){
  const current=snapshot.activity.filter(t=>pending.has(t.status)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
  const history=snapshot.activity.filter(t=>!pending.has(t.status)&&t.status!=='merged').sort((a,b)=>(b.completedAt||b.createdAt).localeCompare(a.completedAt||a.createdAt));
- const row=t=><Entry key={t.id} turn={t} message={messages.find(m=>m.id===t.messageId)} member={members.find(m=>m.id===t.memberId)} notification={snapshot.notifications.find(n=>n.stepId===t.id)} native={nativeMembers.find(m=>m.memberId===t.memberId)} onSource={onSource}/>;
+ const row=t=><Entry key={t.id} turn={t} message={messages.find(m=>m.id===t.messageId)} member={members.find(m=>m.id===t.memberId)} notification={turnNotification(t,snapshot.notifications)} native={nativeMembers.find(m=>m.memberId===t.memberId)} onSource={onSource}/>;
  return <aside className="collaboration-space space-redesign"><div className="space-title"><button className="space-back" onClick={onBack}><ArrowLeft size={16}/>返回</button><h3>消息进度</h3></div><div className="space-content delivery-list"><h4>待处理 <span>{current.length}</span></h4>{current.length?current.map(row):<p className="space-empty">当前没有待处理的消息。</p>}{current.some(t=>['stalled','unavailable','limited'].includes(t.status))&&<button className="delivery-retry" onClick={onRetry}>重新通知未回应的成员</button>}<details className="delivery-history"><summary><ChevronDown size={15}/>已处理记录 · {history.length}</summary>{history.map(row)}</details></div></aside>;
 }

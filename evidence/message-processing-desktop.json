@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-06T02:51:16.466Z",
+  "at": "2026-11-06T05:29:03.765Z",
   "isolated": true,
   "nativeAgentSimulated": true,
   "realElectron": true,
@@ -9,12 +9,12 @@
     "After 61 real seconds of observed idle without receipt, cloud becomes stalled and pending indicator clears",
     "Real isolated native-coding.json records inFlight=null and needs_review, not a fake completed reply"
   ],
-  "elapsedToStalledMs": 61018,
+  "elapsedToStalledMs": 61014,
   "build": {
-    "id": "be8b366b2c25bebc",
+    "id": "5550c819b11c0b88",
     "version": "0.1.0",
-    "builtAt": "2026-11-06T02:50:08.016Z"
+    "builtAt": "2026-11-06T05:27:36.756Z"
   },
-  "desktopBuild": "be8b366b2c25bebc",
+  "desktopBuild": "5550c819b11c0b88",
   "passed": true
 }

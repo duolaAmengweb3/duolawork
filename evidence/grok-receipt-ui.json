@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-06T05:28:27.471Z",
+  "isolated": true,
+  "realChrome": true,
+  "commercialGrokTested": false,
+  "checks": [
+    "Both the original message and coalesced supplement show waiting for Agent receipt, never delivered",
+    "Automatic recovery state reaches both chat indicator and exact-message detail",
+    "Failed receipt displays a concrete reason next to the original message, with retry available",
+    "Late authenticated receipt merges both requests and actual post_message clears pending state"
+  ],
+  "errors": []
+}

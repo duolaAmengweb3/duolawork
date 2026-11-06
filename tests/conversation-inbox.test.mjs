@@ -36,7 +36,7 @@ test('平台晚到的接收器仍取得未领取消息，合并新补充；已�
     assert.equal(payload.receive.arguments.afterTurnId,undefined);
     return new Response('{}',{status:202});
   },new Date(now).toISOString());
-  await maintenance(f.repo,f.identity,{ADMIN_KEY:secret},async()=>new Response('{}',{status:202}),new Date(now+16*60000).toISOString());
+  for(const minutes of [2,4,6,16])await maintenance(f.repo,f.identity,{ADMIN_KEY:secret},async()=>new Response('{}',{status:202}),new Date(now+minutes*60000).toISOString());
   assert.equal((await f.repo.get('channel_turn',notice.stepId)).status,'stalled');
   const work=await callTool(f.repo,f.identity,actor,'list_work',{},{});
   assert.ok(work.work.some(w=>w.stepId===notice.stepId&&w.status==='ready'));
