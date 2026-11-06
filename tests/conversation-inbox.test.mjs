@@ -25,6 +25,25 @@ async function setup(t) {
   return { ...f, command, group, send, receive, reply };
 }
 
+for (const platform of ['grok-bot','codex','antigravity','deepseek-harness','claude-code','dots']) {
+  test(`${platform}: shared login cannot consume a wake addressed to another identity in the same group`, async t => {
+    const f = await setup(t);
+    for (const member of f.identity.members) member.platformId = platform;
+    const message = await f.command('channel.post', {channelId:f.group.id,body:'各自核验',mentions:['grok','check']});
+    const args = {requestId:'same-platform-wake',channelId:f.group.id,expectedMemberId:'grok'};
+    await assert.rejects(() => callTool(f.repo,f.identity,{memberId:'check'},'receive_messages',args,{}), e => e.code === 'receiver_identity_mismatch');
+    await assert.rejects(() => callTool(f.repo,f.identity,{memberId:'check'},'claim_work',{requestId:'wrong-compat',stepId:'inbox',expectedMemberId:'grok'},{}), e => e.code === 'receiver_identity_mismatch');
+    for (const memberId of ['grok','check']) assert.equal((await f.repo.get('channel_turn',`turn_${message.id}_${memberId}`)).status,'ready');
+    const received = await f.receive(args);
+    assert.equal(received.turnId,`turn_${message.id}_grok`);
+    assert.equal((await f.repo.get('channel_turn',`turn_${message.id}_check`)).status,'ready');
+    assert.equal((await f.receive(args)).lease,received.lease);
+    // Older clients may omit the new field; existing member authorization stays intact.
+    const other = await callTool(f.repo,f.identity,{memberId:'check'},'receive_messages',{requestId:'legacy-own-inbox',channelId:f.group.id},{});
+    assert.equal(other.turnId,`turn_${message.id}_check`);
+  });
+}
+
 test('平台晚到的接收器仍取得未领取消息，合并新补充；已执行超时不会自动重做', async t => {
   const f=await setup(t); const message=await f.send('迟到通知中的原要求');
   const notice=(await f.repo.list('outbox',{scope:f.group.id,status:'pending'}))[0];
@@ -33,6 +52,7 @@ test('平台晚到的接收器仍取得未领取消息，合并新补充；已�
     const payload=JSON.parse(options.body);
     assert.equal(payload.channel_id,f.group.id);
     assert.equal(payload.receive.arguments.channelId,f.group.id);
+    assert.equal(payload.receive.arguments.expectedMemberId,'grok');
     assert.equal(payload.receive.arguments.afterTurnId,undefined);
     return new Response('{}',{status:202});
   },new Date(now).toISOString());

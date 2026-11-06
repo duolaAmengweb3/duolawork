@@ -104,7 +104,7 @@ export const TOOLS = [
   {
     name: "receive_messages",
     description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
-    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string,
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string,
       waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
   },
   {
@@ -124,7 +124,7 @@ export const TOOLS = [
     name: "claim_work",
     description:
       "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整上下文。群聊 stepId=inbox 一次接收；回应后 stepId=inbox:after:<turnId> 有限等待一次。不改变真实步骤 ID 的原领取语义。",
-    inputSchema: schema({ requestId: string, stepId: string }),
+    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string }, ["requestId", "stepId"]),
   },
   {
     name: "report_progress",
@@ -330,6 +330,10 @@ export async function callTool(repo, identity, actor, name, args, env, options =
       "原生工具必须使用成员身份，不能用管理凭证冒充",
       403,
     );
+  // A host can share one MCP login across several Bots. Check the intended
+  // recipient before reading an idempotency receipt or claiming any work.
+  if (args.expectedMemberId !== undefined && args.expectedMemberId !== actor.memberId)
+    fail("receiver_identity_mismatch", "当前工具连接属于另一位成员。请使用接收器绑定的本成员凭证调用 REST；不要重配共享 MCP 或领取其他成员的消息。", 403);
   if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
   if(name==='github')return connectorTool(repo,actor,args,env);

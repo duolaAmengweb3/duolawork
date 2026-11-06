@@ -167,9 +167,9 @@ export async function dispatchOne(
         ...(row.conversation ? {
           kind: 'conversation',
           channel_id: row.scopeId,
-          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive' + (row.attempts > 1 ? ':' + row.attempts : ''), channelId: row.scopeId } },
-          instruction: 'This is a new wake for the specified channel. Call receive.tool with receive.arguments using your existing member credential. Do not reuse another channel or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. Notification acceptance is not completion. If busy or empty, stop this invocation.',
-        } : { kind: 'work' }),
+          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive' + (row.attempts > 1 ? ':' + row.attempts : ''), channelId: row.scopeId, expectedMemberId: row.memberId } },
+          instruction: 'Use the private credential bound to member_id, not a shared MCP login belonging to another Bot. GET /v2/self/status must return connection.id=member_id. Then call receive.tool with all receive.arguments via authenticated REST /v2/tools/{tool}. Do not reuse a channel, requestId or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. If busy or empty, stop. If receiver_identity_mismatch, use your own saved credential; do not reconfigure shared MCP or claim another member work.',
+        } : { kind: 'work', claim: { tool: 'claim_work', arguments: { requestId: row.id + ':claim', stepId: row.stepId, expectedMemberId: row.memberId } }, instruction: 'Use the private credential bound to member_id. GET /v2/self/status must return connection.id=member_id. Call claim.tool with claim.arguments through authenticated REST, then follow the returned verification instructions and submit real results. Never use another Bot shared MCP login.' }),
       });
       const headers = credentials.token.startsWith("whsec_")
         ? await signedHeaders(

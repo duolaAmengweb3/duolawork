@@ -1,16 +1,31 @@
 {
-  "at": "2026-11-06T05:31:33.906Z",
-  "candidateBuild": "0fb161066c8c553c",
-  "installedBuild": "4ea8f78d99543338",
-  "activeWork": 3,
-  "unitTests": 355,
+  "at": "2026-11-06T06:11:55.594Z",
+  "candidateBuild": "0e97d9522e1273e4",
+  "installedBuild": "0e97d9522e1273e4",
+  "unitTests": 361,
   "typecheckPassed": true,
   "serverHttpPassed": true,
   "uiProtocolPassed": true,
   "nativeDesktopIsolatedPassed": true,
   "packaged": true,
-  "backendDeployed": false,
-  "desktopActivated": false,
-  "blockedReason": "Existing Agents are executing; deployment and activation guards rejected a restart.",
-  "realGrokRecoveryVerified": false
+  "backendDeployed": true,
+  "serverSha256": "3caf36fb4cde7e5c3ed74b32262ae230c0db5766606619466c0fce9292a8c288",
+  "serverArtifactMatches": true,
+  "desktopActivated": true,
+  "cloudOnline": true,
+  "protectedLocalDataUnchanged": true,
+  "workspaceDataUnchanged": true,
+  "realGrokRecoveryVerified": true,
+  "realGrokBots": [
+    "grok2",
+    "grok3",
+    "grok4"
+  ],
+  "newBotOnboardingVerified": true,
+  "otherPlatformsScope": "shared protocol identity-isolation fixtures only; not a fresh six-vendor commercial-client round trip",
+  "evidence": [
+    "grok-identity-roundtrip.json",
+    "grok-multi-bot-roundtrip.json",
+    "activation.json"
+  ]
 }

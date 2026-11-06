@@ -1305,7 +1305,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
           添加成员
         </Button>
       </header>
-      <Dialog open={adding} onOpenChange={value=>{if(!saving)setAdding(value);}}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>添加成员</DialogTitle><DialogDescription>连接一个你正在使用的 Agent 账号，给它起个容易辨认的备注。</DialogDescription></DialogHeader>
+      <Dialog open={adding} onOpenChange={value=>{if(!saving)setAdding(value);}}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>添加成员</DialogTitle><DialogDescription>把你正在使用的 Agent 加入团队，给它起个容易辨认的备注。</DialogDescription></DialogHeader>
         <form
           className="comm-form member-add"
           onSubmit={async (e) => {
@@ -1366,7 +1366,7 @@ function Members({ workspace, coding, perform, refresh, setModal, onChat }) {
               ))}
             </select>
           </label>
-          <p className="text-sm leading-6 text-muted-foreground">添加的是你正在使用的账号。同一账号的不同项目，在聊天里选择工作会话即可，无需重复添加。</p>
+          <p className="text-sm leading-6 text-muted-foreground">{platform==='grok-bot'?'每个 Grok Bot 是一位独立成员。同一 Grok 账号里的多个 Bot，可以分别加入；请把接入说明发给对应的 Bot。':['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(platform)?'添加的是你正在使用的账号。同一账号的不同项目，在聊天里选择工作会话即可，无需重复添加。':'连接你正在使用的那位 Agent；它保留自己的工具、记忆和工作环境。'}</p>
           {formError&&<p role="alert" className="text-sm text-destructive">{formError}</p>}
           <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={()=>setAdding(false)}>取消</Button><Button disabled={saving||!title.trim()}>{saving?'正在添加…':'添加并连接'}</Button></div>
         </form>

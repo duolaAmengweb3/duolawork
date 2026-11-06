@@ -129,7 +129,7 @@ export function setupInstructions(connection, memberId, origin) {
   if (connection.transport === "muse-poll")
     return `${common}\n连接 OpenAPI：${origin}/v2/openapi.json。定时或轻量 hook 先 GET ${origin}/v2/signal，只在 hasWork=true 时执行；不把轮询结果当成已领取。建议间隔 ${connection.pollSeconds} 秒，实际取决于原平台支持，不承诺即时。`;
   if (connection.transport === "grok-webhook")
-    return `${common}\n为该原 Bot 建一个专用 Routine，收到 webhook 时只处理本成员工作。把官方 POST URL 和 key 填入 Hub 接入设置。通知只是门铃，完整任务从 Hub 工具读取。`;
+    return `${common}\n本接收器固定成员 ${memberId}。同平台多个 Bot 可能共享 MCP 登录；Routine 必须写明本成员的私有凭证路径，使用该凭证调用 REST，不沿用共享 MCP。每次先 GET ${origin}/v2/self/status 核对 connection.id=${memberId}；不一致时停止并报告，不重配共享登录。通知 member_id 必须匹配本成员；kind=conversation 时按本次 receive.tool/receive.arguments 完整调用 REST /v2/tools/{工具名}，保留 expectedMemberId，不复用历史群或 afterTurnId；kind=work 时按本次 claim 或 step_id 领取并真实回传。为该原 Bot 复用一个专用 Routine；官方 POST URL/key 属于此 Routine。通知只是门铃，不代替实际领取。`;
   if (connection.transport === "dots-events")
     return `${common}\n在原 Dot 连接插件并订阅 work.ready，arguments.member_id=${memberId}。有事件时读取自己待办，按领取和交付协议执行。`;
   return "使用官方 Perplexity OAuth 入口完成授权；Hub 调用原 Computer MCP，保留其线程、工具与额度。任务发送与状态读取分开，超时不自动另发一条任务。";
