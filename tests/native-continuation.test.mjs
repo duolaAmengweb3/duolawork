@@ -110,3 +110,15 @@ test('native client deadline exceeds the bounded 45 second receive, while ordina
  await client.tool('claim_work',{requestId:'one',stepId:'inbox:after:turn_fixture'});await client.tool('receive_messages',{requestId:'two',waitSeconds:45});await client.tool('list_work');
  assert.deepEqual(timeouts,[55000,55000,30000]);
 });
+
+test('addressed native claim needs one request and atomically rejects another group or changed binding',async t=>{
+ const f=await setup(t),record={memberId:'grok',chatBindings:{[f.channel.id]:{sessionId:'session-one'}}};let requests=0;
+ const client={tool:(name,args)=>{requests++;assert.equal(name,'claim_work');return f.client.tool(name,args);}};
+ const run=stepId=>sessionTool({record,channelId:f.channel.id,operation:'claim_step',name:stepId,client});
+ const m=await f.send(),claim=await run(`turn_${m.id}_grok`);assert.equal(requests,1);assert.equal(claim.turnId,`turn_${m.id}_grok`);
+ await f.command('channel.post',{channelId:f.channel.id,turnId:claim.turnId,body:'done'},f.actor);
+ const other=await f.command('channel.create',{name:'other',memberIds:['grok']});await f.bind(other.id,'session-one');
+ const foreign=await f.send('other group',other.id);await assert.rejects(()=>run(`turn_${foreign.id}_grok`),e=>e.code==='forbidden');
+ const next=await f.send('new binding');await f.bind(f.channel.id,'session-two');
+ await assert.rejects(()=>run(`turn_${next.id}_grok`),e=>e.code==='session_changed');
+});

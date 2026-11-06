@@ -206,6 +206,18 @@ export class CodingManager{
   if(state==='running'){
    if(!previous?.reportedAt||now-previous.reportedAt>=60000){await client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:randomUUID(),turnId:flight.stepId,state:'running'}});observation.reportedAt=now;}else observation.reportedAt=previous.reportedAt;
   }else if(['idle','unreachable'].includes(state)&&now-observation.since>=60000){
+   if(state==='idle'&&binding?.workspace&&host.queue&&!flight.receiptRecovery){
+    // Repair the receipt once in the same original session, without replaying
+    // work. Persist before sending so a restart cannot create a retry loop.
+    if(await this.settleOriginal(r,client))return;
+    const q=v=>"'"+v.replaceAll("'","'\"'\"'")+"'";
+    const helper=[process.execPath,path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,flight.key].map(q).join(' ');
+    flight.receiptRecovery={attemptedAt:now,status:'sending'};await this.save();
+    const prompt='DuolaWork collaboration '+flight.stepId+'\n本轮回执核对：原会话已空闲，但这条已领取消息还没有正式回传。不要重新执行已做的操作，不要领取其他工作。使用原 Hub 工具 '+helper+' 加 claim_step '+flight.stepId+' 核对本轮真实要求与已有结果。若已完成，用 post_message 携带这个正确 turnId 回传实际结果；若已在群内回复，用 stay_silent 携带这个 turnId 说明对应消息依据；若无法完成，直接回复具体阻塞。不要声称未验证的工作已完成。仅核对并收尾此条，后续消息由连接器继续投递。';
+    try{await host.queue({sessionId,workspace:binding.workspace,prompt});flight.receiptRecovery.status='sent';r.message='正在自动核对上一条回复，后续消息已保留';}
+    catch(e){flight.receiptRecovery.status='uncertain';r.message=safeError(e);}
+    observation.since=now;await this.save();return;
+   }
    await client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:randomUUID(),turnId:flight.stepId,state:state==='idle'?'ended':'unreachable'}});
    await this.settleOriginal(r,client);
   }

@@ -31,7 +31,11 @@ export async function withConversationContext(repo, identity, actor, claim) {
       members: context.members,
       messages: context.messages,
       earlierMessagesBefore: context.before,
-      documents: context.documents,
+      // Documents are versioned references, not instructions to re-ingest the
+      // entire library on every message. User requests, corrections, task state
+      // and recalled constraints remain intact; read the exact body on demand.
+      documents: context.documents.map(({id,title,version,status,updatedAt,authorId,lastEditorId})=>({id,title,version,status,updatedAt,authorId,lastEditorId,contentIncluded:false,read:{tool:'read_space_object',arguments:{channelId:claim.channelId,kind:'document',id,version}}})),
+      documentInstruction:'documents 是本次提供的资料索引，正文没有随每次消息重复传输。与本次要求相关的文档必须用条目中的 read 调用读取指定版本；不能凭标题、旧记忆或没有看到正文就声称已读。用户明确要求阅读的文档不可跳过。',
       files: context.files,
       handoffs: context.handoffs,
       sharedSpaceInstruction: "消息中的 refs 使用 read_space_object(channelId,kind,id,version) 读取实际引用版本；不要从标题猜内容。文件用 read_shared_file 分页或原环境 download_shared_file 下载；只有读取到的真实字节才可作为依据。工作交接用 read_handoff/respond_handoff，按具体资料版本继续；需要对方接手时可用 handoff，普通聊天无需交接。",

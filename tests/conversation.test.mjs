@@ -668,3 +668,19 @@ test('replacement coordinator receives pending feedback once without reassigning
  assert.equal((await f.repo.list('channel_coordination'))[0].coordinatorId,'check');
  assert.ok((await f.repo.list('channel_message')).find(m=>m.id===result.id),'preserve returned work');
 });
+
+test('stale reply or silence cannot leave a newer claimed message busy; exact retries remain idempotent', async t => {
+  const f=await setup(t),who=agent('grok');
+  await f.send('channel.post',{channelId:f.c.id,body:'first'});
+  const first=await claimConversation(f.repo,f.identity,who,{requestId:'claim-first',receiveNext:true,channelId:f.c.id});
+  const args={type:'channel.post',requestId:'reply-first',channelId:f.c.id,turnId:first.turnId,body:'first result'};
+  const posted=await command(f.repo,f.identity,who,args);
+  await f.send('channel.post',{channelId:f.c.id,body:'second'});
+  const second=await claimConversation(f.repo,f.identity,who,{requestId:'claim-second',receiveNext:true,channelId:f.c.id});
+  assert.equal((await command(f.repo,f.identity,who,args)).id,posted.id,'lost acknowledgement retries the receipt, not a new reply');
+  for(const type of ['channel.post','channel.silent'])await assert.rejects(()=>f.send(type,{channelId:f.c.id,turnId:first.turnId,body:'wrong old reply',reason:'wrong old silence'},who),e=>e.code==='stale_turn'&&e.message.includes(second.turnId));
+  assert.equal((await f.repo.get('channel_turn',second.turnId)).status,'active');
+  assert.equal((await f.repo.list('channel_message',{scope:f.c.id})).length,3);
+  await f.send('channel.post',{channelId:f.c.id,turnId:second.turnId,body:'second result'},who);
+  assert.equal((await f.repo.get('channel_turn',second.turnId)).status,'done');
+});

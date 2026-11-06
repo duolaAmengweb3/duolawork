@@ -47,6 +47,13 @@ export class AntigravityCliHost {
   return{items:rows.flat()};
  }
  async attached(id){try{return!!(await bridgeCall(this.file(id),'/health')).ready;}catch{return false;}}
+ async executionState({sessionId}){
+  const session=(await bridgeCall(this.file(sessionId),'/sessions')).items.find(s=>s.id===sessionId);
+  if(!session)return{state:'unreachable'};
+  // Missing status and permission waits are not proof that native work ended.
+  if(session.nativeStatus==='CASCADE_RUN_STATUS_IDLE'&&session.running===false)return{state:'idle'};
+  return{state:session.running===true?'running':'unknown'};
+ }
  async assertAvailable(workspace){
   const {stdout}=await execute('ps',['-ax','-o','pid=,args=']);
   for(const line of stdout.split('\n')){

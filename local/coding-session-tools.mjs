@@ -7,11 +7,11 @@ export async function sessionTool({record,channelId,operation,name,args={},clien
   if(operation==='list_tools')return{tools:await client.tools()};
   if(operation==='claim_step'||name==='claim_work'){
     const stepId=operation==='claim_step'?name:args.stepId,requestId=args.requestId||createHash('sha256').update(record.memberId+':claim:'+stepId).digest('hex');
-    if(stepId?.startsWith('inbox:after:')){
+    if(stepId?.startsWith('inbox:after:')||stepId?.startsWith('turn_')){
       const sessionId=record.chatBindings?.[channelId]?.sessionId;
       if(!sessionId||args.channelId&&args.channelId!==channelId)throw Error('续接不属于当前工作会话');
-      // Virtual continuations are absent from list_work. The server validates
-      // the original receipt, fixed channel and binding atomically when claiming.
+      // The addressed conversation is validated atomically by the server. Do
+      // not add another list_work network round trip before every real claim.
       return client.tool('claim_work',{requestId,stepId,channelId,expectedSessionId:sessionId});
     }
     const {work}=await client.tool('list_work'),workItem=work.find(w=>w.stepId===stepId&&allowed(w));

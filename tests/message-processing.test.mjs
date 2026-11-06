@@ -57,3 +57,14 @@ test('healthy long runs remain active; sustained native idle or unavailable stat
  native='idle';await manager.observeOriginal(r,client,2015000);await manager.observeOriginal(r,client,2060000);assert.equal(status,'active');await manager.observeOriginal(r,client,2075000);assert.equal(status,'stalled');assert.equal(r.inFlight,null);assert.equal(reports.at(-1).state,'ended');
  status='active';r.inFlight={stepId:'turn_other',key:'c'};native='unreachable';await manager.observeOriginal(r,client,3000000);await manager.observeOriginal(r,client,3060000);assert.equal(reports.at(-1).state,'unreachable');assert.equal(r.inFlight,null);
 });
+
+test('idle original session gets one receipt repair, restart cannot repeat it, later user work is unblocked without false success',async()=>{
+ const manager=new CodingManager({config:{},dataDir:'/unused'});manager.save=async()=>{};let status='active',sends=0;
+ const r={memberId:'a',engine:'codex',enabled:true,inFlight:{stepId:'turn_real',key:'c'},chatBindings:{c:{sessionId:'original',workspace:'/original'}}};
+ const client={api:async(p,opts)=>{if(opts)status='stalled';return{status,reason:'未回传'};}};
+ manager.workingHost={executionState:async()=>({state:'idle'}),queue:async args=>{sends++;assert.equal(args.sessionId,'original');assert.equal(args.workspace,'/original');assert.match(args.prompt,/不要重新执行/);assert.match(args.prompt,/turn_real/);}};
+ await manager.observeOriginal(r,client,100000);await manager.observeOriginal(r,client,160000);
+ assert.equal(sends,1);assert.equal(status,'active');assert.equal(r.inFlight.receiptRecovery.status,'sent');
+ const restored=JSON.parse(JSON.stringify(r));await manager.observeOriginal(restored,client,220000);
+ assert.equal(sends,1);assert.equal(status,'stalled');assert.equal(restored.inFlight,null);assert.equal(restored.lastReceiptAt,undefined);
+});

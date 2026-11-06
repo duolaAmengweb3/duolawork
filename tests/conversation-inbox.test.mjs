@@ -218,3 +218,21 @@ test("HTTP 回执时间是真实完成时刻；领取先于 HTTP 返回时不回
   assert.ok(Date.parse(row.platformRespondedAt) >= before);
   assert.equal(row.status, "claimed"); assert.ok(row.dispatchElapsedMs >= 0);
 });
+
+test('handoff sends versioned document references instead of the whole library; user corrections and exact bodies remain available',async t=>{
+ const f=await setup(t),bodies=new Map();
+ for(let i=0;i<9;i++){
+  const body=`第${i}份原件\n`+'保留完整细节，不能当作已经阅读。'.repeat(300);
+  const doc=await callTool(f.repo,f.identity,actor,'create_doc',{requestId:'large-doc-'+i,channelId:f.group.id,title:'资料'+i,body},{});bodies.set(doc.id,body);
+ }
+ await f.send('保持原环境，不要修改任何代码。');await f.send('补充：只讨论速度问题，不能承诺未验证的提速比例。');
+ const c=await f.receive({requestId:'lean-document-context'});
+ assert.equal(c.input.documents.length,9);assert.match(c.input.messages.at(-1).body,/不能承诺/);
+ assert.ok(c.input.triggerMessages.some(m=>m.body.includes('不要修改任何代码')));
+ const doc=c.input.documents[0];assert.equal(doc.body,undefined);assert.equal(doc.contentIncluded,false);
+ const read=await callTool(f.repo,f.identity,actor,doc.read.tool,doc.read.arguments,{});
+ assert.equal(read.body||read.object?.body,bodies.get(doc.id));
+ const originalLibraryBytes=Buffer.byteLength(JSON.stringify([...bodies.values()])),indexBytes=Buffer.byteLength(JSON.stringify(c.input.documents));
+ assert.ok(indexBytes<originalLibraryBytes/10,`${indexBytes} vs ${originalLibraryBytes}`);
+ assert.match(c.input.documentInstruction,/必须/);
+});

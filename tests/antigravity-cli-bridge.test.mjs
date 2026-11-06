@@ -83,3 +83,15 @@ test('official Stop records background and fully-idle completion for the exact m
  await cliHook(dir,{...input,fullyIdle:true},{env});assert.equal((await readNativeCompletion(dir,'member_one',id,'turn_stop')).fullyIdle,true);
  await fs.appendFile(file,JSON.stringify({type:'USER_INPUT',content:'my own work'})+'\n');await cliHook(dir,input,{env});assert.equal((await readNativeCompletion(dir,'member_one',id,'turn_stop')).fullyIdle,true);
 });
+
+test('original CLI execution observation distinguishes idle from unknown, permission waiting and missing sessions',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'dw-original-status-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',root=path.join(dir,'native-bridges/antigravity-cli');await fs.mkdir(root,{recursive:true});
+ let items=[{id,running:false,nativeStatus:'CASCADE_RUN_STATUS_IDLE'}];
+ const server=http.createServer((req,res)=>{assert.equal(req.headers.authorization,'Bearer fixture');res.setHeader('Content-Type','application/json');res.end(JSON.stringify({items}));});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
+ await fs.writeFile(path.join(root,id+'.json'),JSON.stringify({controlUrl:'http://127.0.0.1:'+server.address().port,controlToken:'fixture'}));
+ const host=new AntigravityCliHost(dir),state=async()=>(await host.executionState({sessionId:id})).state;
+ assert.equal(await state(),'idle');items=[{id,running:true,nativeStatus:'WAITING_FOR_PERMISSION'}];assert.equal(await state(),'running');
+ items=[{id,running:false}];assert.equal(await state(),'unknown');items=[];assert.equal(await state(),'unreachable');
+});

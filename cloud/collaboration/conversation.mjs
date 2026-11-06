@@ -279,12 +279,17 @@ async function outbox(tx, channel, turn, c) {
     dueAt,
   });
 }
+async function rejectStaleResponse(tx, actor, turn) {
+  if (turn.status === 'active') return;
+  const current = await tx.list('channel_turn', {scope: turn.scopeId, parent: actor.memberId, status: 'active'});
+  if (current.length) fail('stale_turn', `这条通知已结束，未发布或确认本次回复。当前实际领取：${current.map(t=>t.id).join('、')}。请核对当前要求后使用正确的 turnId；不要重做已完成的工作。`, 409);
+}
 async function finishTurn(tx, actor, turnId, status, reason) {
   if (!turnId) return;
   const turn = await tx.get("channel_turn", turnId);
   if (turn.memberId !== actor.memberId)
     fail("forbidden", "不能处理其他成员的通知", 403);
-  if (["done", "silent", "merged", "removed"].includes(turn.status)) return;
+  if (["done", "silent", "merged", "removed"].includes(turn.status)) { await rejectStaleResponse(tx, actor, turn); return; }
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
   tx.put("channel_turn", { ...turn, status, reason, completedAt: tx.now });
@@ -399,6 +404,8 @@ export async function claimConversation(
         if (!turn) return { status: "empty" };
       } else {
         turn = await tx.get("channel_turn", args.stepId || args.turnId);
+        if (args.channelId && turn.scopeId !== args.channelId)
+          fail('forbidden', '通知不属于当前聊天', 403);
         channel = await tx.get("channel", turn.scopeId);
       }
       await scoped(channel, actor,tx);
@@ -756,6 +763,14 @@ export async function conversationCommand(
         if (cmd.mentionAll !== undefined && typeof cmd.mentionAll !== 'boolean')
           fail('invalid_input', '@全员选项无效');
         const mentionAll = cmd.mentionAll === true;
+        // Validate before meeting routing too: a cached old turn must not
+        // publish a reply while leaving the actual current claim busy.
+        if (cmd.turnId) {
+          const responseTurn = await tx.get('channel_turn', cmd.turnId);
+          if (responseTurn.memberId !== actor.memberId || responseTurn.scopeId !== channel.id)
+            fail('forbidden', '通知与当前成员或群不符', 403);
+          await rejectStaleResponse(tx, actor, responseTurn);
+        }
         // Resolve addressing before meeting routing: a meeting must not swallow @ recipients.
         const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs, mentions, mentionAll }, channel, meetingHelpers);
         if (meeting?.handled) return meeting.result;

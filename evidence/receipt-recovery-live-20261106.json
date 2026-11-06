@@ -1,0 +1,227 @@
+{
+  "scope": "Gemini stuck receipt repair, Claude VPS connector upgrade, safe single-session overhead reduction",
+  "baselineCommit": "b63f04d",
+  "activation": {
+    "at": "2026-11-06T13:22:19.510Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "ba110400dfbbd714",
+    "processId": 87055,
+    "desktopBuildId": "ba110400dfbbd714",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "server": {
+    "deployedAt": "2026-11-06T13:31:07.884Z",
+    "workerSHA256": "e3c7586e0a47867ddf64cc9c432bccf85ae4b252f92d6ad9d53c24cf6e341cb8",
+    "remoteMatchesCandidate": true,
+    "authenticatedReadPassed": true
+  },
+  "tests": {
+    "fullRegression": {
+      "passed": 489,
+      "failed": 0
+    },
+    "afterIndexWordingChange": {
+      "passed": 16,
+      "failed": 0
+    }
+  },
+  "live": {
+    "checkedAt": "2026-11-06T13:32:34.368Z",
+    "gemini": {
+      "channelId": "channel_3da3fd272b314a14aa9f8513ae94872a",
+      "messages": [
+        {
+          "id": "chat_8b564e72caf34b6c89ab903e9d5c28d0",
+          "number": 17,
+          "authorId": "owner",
+          "body": "自动恢复验收 DW-RECOVERY-1106-A（用户已授权）：只核对消息回执，不改文件、不调用其他成员。请先正常领取本条，这一次有意不调用 post_message、stay_silent 或 submit_work，只在原终端回复 RECOVERY-ARMED 后结束当前推理。稍后连接器会自动发送本轮回执核对提示；收到那条提示后，核对本条并用其正确 turnId 回到这个单聊，回复 DW-RECOVERY-1106-A 自动核对完成。此条只模拟缺回执，不重复执行任何实际工作，不自行监听。",
+          "createdAt": "2026-11-06T13:23:44.296Z",
+          "replyTo": null
+        },
+        {
+          "id": "chat_ee4294db2e264ab9a5130a0b349b9500",
+          "number": 18,
+          "authorId": "member_ccdf940ba6d3426da01b9f65048909e2",
+          "body": "DW-RECOVERY-1106-A 自动核对完成",
+          "createdAt": "2026-11-06T13:25:41.142Z",
+          "replyTo": "chat_8b564e72caf34b6c89ab903e9d5c28d0"
+        },
+        {
+          "id": "chat_b6c625e976df49718ef57dbe7ec8d28f",
+          "number": 19,
+          "authorId": "owner",
+          "body": "恢复后续接验收 DW-RECOVERY-1106-B：正常领取并在本单聊只回复 DW-RECOVERY-1106-B 正常继续。无需查询资料、不改文件、不联系其他成员，不再模拟缺回执。",
+          "createdAt": "2026-11-06T13:27:04.101Z",
+          "replyTo": null
+        },
+        {
+          "id": "chat_7935f8d10e994856a87a011e2872b121",
+          "number": 20,
+          "authorId": "member_ccdf940ba6d3426da01b9f65048909e2",
+          "body": "DW-RECOVERY-1106-B 正常继续",
+          "createdAt": "2026-11-06T13:27:31.910Z",
+          "replyTo": "chat_b6c625e976df49718ef57dbe7ec8d28f"
+        }
+      ],
+      "turns": [
+        {
+          "id": "turn_chat_b6c625e976df49718ef57dbe7ec8d28f_member_ccdf940ba6d3426da01b9f65048909e2",
+          "messageId": "chat_b6c625e976df49718ef57dbe7ec8d28f",
+          "status": "done",
+          "createdAt": "2026-11-06T13:27:04.101Z",
+          "claimedAt": "2026-11-06T13:27:16.523Z",
+          "completedAt": "2026-11-06T13:27:31.910Z",
+          "nativeObservedAt": "2026-11-06T13:27:17.254Z"
+        },
+        {
+          "id": "turn_chat_8b564e72caf34b6c89ab903e9d5c28d0_member_ccdf940ba6d3426da01b9f65048909e2",
+          "messageId": "chat_8b564e72caf34b6c89ab903e9d5c28d0",
+          "status": "done",
+          "createdAt": "2026-11-06T13:23:44.296Z",
+          "claimedAt": "2026-11-06T13:23:58.314Z",
+          "completedAt": "2026-11-06T13:25:41.142Z",
+          "nativeObservedAt": "2026-11-06T13:25:30.895Z"
+        }
+      ]
+    },
+    "claude": {
+      "channelId": "channel_01fac83ae8334f64921e53ccc6e8a3d6",
+      "messages": [
+        {
+          "id": "chat_61e181ea9007406fb3752dd21dd581d5",
+          "number": 1,
+          "authorId": "owner",
+          "body": "连接器升级后的原对话验收 DW-CLAUDE-1106-A：请按本条实际 turnId 正常领取，并在本单聊只回复 DW-CLAUDE-1106-A 原对话继续接收。不查询其他资料、不改文件、不联系其他成员；回复后正常等待下一次通知。",
+          "createdAt": "2026-11-06T13:29:00.443Z",
+          "replyTo": null
+        },
+        {
+          "id": "chat_c1c7fbd320334a4bb67c8e13cab84cad",
+          "number": 2,
+          "authorId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "body": "DW-CLAUDE-1106-A 原对话继续接收",
+          "createdAt": "2026-11-06T13:29:19.756Z",
+          "replyTo": "chat_61e181ea9007406fb3752dd21dd581d5"
+        }
+      ],
+      "turns": [
+        {
+          "id": "turn_chat_61e181ea9007406fb3752dd21dd581d5_member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "messageId": "chat_61e181ea9007406fb3752dd21dd581d5",
+          "status": "done",
+          "createdAt": "2026-11-06T13:29:00.443Z",
+          "claimedAt": "2026-11-06T13:29:11.673Z",
+          "completedAt": "2026-11-06T13:29:19.756Z"
+        }
+      ]
+    },
+    "runtime": {
+      "revision": "b0af0f7418ee97083be5d5e4e94ef3428f643e1440f95f914d0728a97c8cc55c",
+      "updateAvailable": false,
+      "status": "idle"
+    },
+    "activeWork": {
+      "active": 0
+    }
+  },
+  "remote": {
+    "gemini": {
+      "bindingsSHA256": "65fd15b99791269a82c577dd296dd26d6701559110aac4ce9b8b86613e725039",
+      "executions": [
+        {
+          "sessionId": "b82af396-133e-4c75-a70b-e7929c8fb6e3",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "d5b48625-82c3-43e5-b434-9a5d0a14987d",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "5a63e05a-1fdb-4052-9cba-5f2e6cf2d152",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "b4ad5435-58fe-4d89-96e4-12c9b4d583dd",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+          "status": "idle",
+          "pending": false
+        },
+        {
+          "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+          "status": "idle",
+          "pending": false
+        }
+      ],
+      "beforeAfterBindingsSortedJSONSHA256": "9b94d06494015114ef1c61cec5c7cd1f4a76e37dc6e6828061c0f69eec14f90f",
+      "bindingComparison": "Python json.dumps(sort_keys=True), UTF-8, same before and after"
+    },
+    "claude": {
+      "monitors": [
+        {
+          "name": "messages",
+          "when": "always"
+        }
+      ],
+      "connectorSHA256": "286bc7ecac873b5f3b8cdad1a9bfdc1cdb66628a0bafdb6ea646596ae05ace48",
+      "nativeIdentity": {
+        "pid": 2346015,
+        "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+        "cwd": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs"
+      },
+      "originalPid": 112216,
+      "restartCommand": "claude respawn d581eb2c",
+      "nativeSessionPreserved": true,
+      "monitorPid": 2961643,
+      "mcpPid": 2961540,
+      "monitorTask": "b20xlki1d",
+      "temporaryMonitorRemoved": true,
+      "nativeRestartRequired": true
+    }
+  },
+  "receiptRecoveryObservation": {
+    "turnId": "turn_chat_8b564e72caf34b6c89ab903e9d5c28d0_member_ccdf940ba6d3426da01b9f65048909e2",
+    "idleSinceEpochMs": 1793971454067,
+    "attemptedAtEpochMs": 1793971514662,
+    "status": "sent",
+    "followupReturned": true,
+    "recoveryWasAutomatic": true,
+    "faultInjected": "Native agent claimed and intentionally ended without a Hub receipt; no business operation was executed"
+  },
+  "payloadComparison": {
+    "sameDocumentVersions": true,
+    "documents": 9,
+    "beforeBytes": 383068,
+    "afterBytes": 248499,
+    "documentIndexBytes": 4747,
+    "documentBodiesBytes": 139615,
+    "recentMessagesBytes": 182407,
+    "method": "reconstruct the old document-inline shape using the same saved claim and matching versions; not an end-to-end speed benchmark"
+  },
+  "limits": [
+    "Latency figures are single simple-message samples, not a p95 or improvement ratio.",
+    "Same original conversation shared by two groups remains serialized. No silent session copy.",
+    "Existing real parallel proofs: three Antigravity CLI sessions and two Codex sessions; protocol scale tests do not prove every provider client live.",
+    "Native Claude needed its own session respawn to replace a persistent plugin monitor. MCP reconnect alone was insufficient.",
+    "The remaining full recent-message context is not yet an incremental checkpoint design."
+  ]
+}
