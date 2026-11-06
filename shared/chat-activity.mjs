@@ -19,7 +19,7 @@ export function pendingMemberActivity(activity = [], notifications = [], nativeM
     const accepted = ready.some(t => notifications.some(n => n.stepId === t.id && n.status === 'accepted'));
     const label = active.length
       ? `${processingLabel(active.at(-1))}${ready.length ? ` · 另有 ${ready.length} 条待处理` : ''}`
-      : `${ready.length} 条消息${queued ? '在原会话排队' : accepted ? '等待接收' : '待处理'}`;
+      : `${ready.length} 条消息排队中${queued ? ' · 已进入原会话' : accepted ? ' · 已送达' : ''}`;
     return { memberId, label, working: active.length > 0, turnIds: turns.map(t => t.id) };
   });
 }

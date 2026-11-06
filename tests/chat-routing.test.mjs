@@ -57,9 +57,9 @@ test('a completed reply is not pending; a later queued message remains visible a
   const done={id:'old',memberId:'codex',status:'done'},next={id:'new',memberId:'codex',status:'ready'};
   assert.deepEqual(pendingMemberActivity([done],[{stepId:'old',status:'accepted'}]),[]);
   let rows=pendingMemberActivity([done,next],[{stepId:'old',status:'accepted'}],[{memberId:'codex',pendingStepId:'other-channel',deliveryState:'sent'}]);
-  assert.equal(rows[0].label,'1 条消息待处理');
+  assert.equal(rows[0].label,'1 条消息排队中');
   rows=pendingMemberActivity([done,next],[],[{memberId:'codex',pendingStepId:'new',deliveryState:'sent'}]);
-  assert.equal(rows[0].label,'1 条消息在原会话排队');
+  assert.equal(rows[0].label,'1 条消息排队中 · 已进入原会话');
   assert.deepEqual(rows[0].turnIds,['new']);
   assert.equal(pendingMemberActivity([done,{...next,status:'active',progress:'正在运行测试'}])[0].label,'处理中 · 正在运行测试');
 });

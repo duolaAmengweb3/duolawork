@@ -6,8 +6,8 @@ import {processingLabel} from '../../shared/chat-activity.mjs';
 const pending=new Set(['ready','active','stalled','unavailable','limited']);
 export function activityLabel(turn,notification,native){
  if(turn.status==='active')return processingLabel(turn);
- if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'原对话正在工作，已排队':notification?.status==='accepted'?'已送达，等待接收':'等待接收';
- return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:'尚未收到回复',unavailable:'等待成员连接'}[turn.status]||'等待更新';
+ if(turn.status==='ready')return native?.pendingStepId===turn.id&&['queued','sent'].includes(native.deliveryState)?'排队中 · 已进入原会话':notification?.status==='accepted'?'排队中 · 已送达':'排队中';
+ return {done:'已回复',silent:'已读，暂无补充',merged:'已合并处理',removed:'已取消后续通知',limited:'连续回应已暂停',stalled:'等待状态更新',unavailable:'等待成员连接'}[turn.status]||'等待更新';
 }
 function Entry({turn,message,member,notification,native,onSource}){
  const [source,setSource]=useState(message);

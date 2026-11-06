@@ -1,0 +1,61 @@
+{
+  "at": "2026-11-06T02:50:08.069Z",
+  "realElectron": true,
+  "isolated": true,
+  "commercialAgentTest": false,
+  "checks": [
+    "Six native platform logos load in the installed Mac app private-chat list; no fallback initials or broken images",
+    "Switch away and back: same visible message and offset before cache refresh and after a 900ms network delay"
+  ],
+  "brands": [
+    {
+      "alt": "Claude",
+      "loaded": true
+    },
+    {
+      "alt": "DeepSeek Harness",
+      "loaded": true
+    },
+    {
+      "alt": "Antigravity",
+      "loaded": true
+    },
+    {
+      "alt": "Codex",
+      "loaded": true
+    },
+    {
+      "alt": "ChatGPT Dot",
+      "loaded": true
+    },
+    {
+      "alt": "Grok Bot",
+      "loaded": true
+    }
+  ],
+  "readingPosition": {
+    "before": {
+      "id": "chat_9ad21f10f4b14ffe82b370fd73263069",
+      "offset": -60.5,
+      "scrollTop": 2368
+    },
+    "cached": {
+      "id": "chat_9ad21f10f4b14ffe82b370fd73263069",
+      "offset": -60.5,
+      "scrollTop": 2336.5
+    },
+    "refreshed": {
+      "id": "chat_9ad21f10f4b14ffe82b370fd73263069",
+      "offset": -60.5,
+      "scrollTop": 2368
+    },
+    "delayedReadMs": 900
+  },
+  "build": {
+    "id": "d08ee31dabdd444b",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T01:23:19.241Z"
+  },
+  "desktopBuild": "d08ee31dabdd444b",
+  "passed": true
+}
