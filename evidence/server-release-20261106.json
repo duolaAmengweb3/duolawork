@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-06T01:54:26.671Z",
+  "sourceCommit": "0624bba",
+  "origin": "https://hub.manyaitool.com",
+  "activeSince": "2026-11-06T01:51:52Z",
+  "services": {
+    "hub": "active",
+    "memory": "active",
+    "qdrant": "active"
+  },
+  "sha256": {
+    "worker": "80ebe9e9d9aee9dbc63b9d3021bd37f01b0e1eee238e9a92ad03098fd9cbda1e",
+    "memoryRuntime": "80763cfacc38159db20fe44cfe2403c874213c3122dc6965bff0f0b1c9e956c9",
+    "memoryLedger": "1bf94f6d32f4138624dee6d006435868308b37a10f01c0f170ad92eb51aeca46"
+  },
+  "remoteFilesMatch": true,
+  "authenticatedRead": true,
+  "memory": {
+    "configured": true,
+    "state": "ready",
+    "model": "@cf/baai/bge-m3",
+    "pending": 0,
+    "processed": 0,
+    "lastSuccess": "2026-11-06T01:53:08.388Z",
+    "lastFailure": null
+  },
+  "originalConfigAndDatabasePreserved": true
+}
