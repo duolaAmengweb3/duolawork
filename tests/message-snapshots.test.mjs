@@ -26,3 +26,11 @@ test('slow materials can finish after a fast chat update without erasing either 
  assert.equal(merged.messages[0].id,'sent');assert.equal(merged.activity[0].status,'active');assert.equal(merged.documents[0].version,3);
  assert.equal(cache.apply('one',{messages:[sent],activity:[{id:'turn',status:'done'}]},cache.beginRead('one')).documents[0].id,'doc');
 });
+
+test('unread availability requires the actual chat cache, including inactive and empty hidden-message pages',()=>{
+ const cache=new MessageSnapshots();assert.equal(cache.covers('one',2),false);
+ cache.apply('one',old,cache.beginRead('one'));assert.equal(cache.covers('one',2),false);
+ cache.apply('one',{...old,messages:[sent]},cache.beginRead('one'));assert.equal(cache.covers('one',2),true);
+ assert.equal(cache.covers('another',2),false);
+ cache.apply('hidden',{channel:{id:'hidden',messageSequence:3},messages:[]},cache.beginRead('hidden'));assert.equal(cache.covers('hidden',3),true);
+});

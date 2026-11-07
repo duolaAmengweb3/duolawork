@@ -1,0 +1,714 @@
+TAP version 13
+# Subtest: native metadata supplies the original workspace and treats unknown execution state as busy
+ok 1 - native metadata supplies the original workspace and treats unknown execution state as busy
+  ---
+  duration_ms: 0.805542
+  type: 'test'
+  ...
+# Subtest: official Sidecar config preserves all unrelated native settings and explicit disabling
+ok 2 - official Sidecar config preserves all unrelated native settings and explicit disabling
+  ---
+  duration_ms: 1.564208
+  type: 'test'
+  ...
+# Subtest: no Hub work does not start a model or read native conversation content
+ok 3 - no Hub work does not start a model or read native conversation content
+  ---
+  duration_ms: 111.654125
+  type: 'test'
+  ...
+# Subtest: an executing original conversation finishes first; the queued Hub message is sent once to the exact same conversation
+ok 4 - an executing original conversation finishes first; the queued Hub message is sent once to the exact same conversation
+  ---
+  duration_ms: 75.558542
+  type: 'test'
+  ...
+# Subtest: an ambiguous native send is never silently replayed, including after a Sidecar restart
+ok 5 - an ambiguous native send is never silently replayed, including after a Sidecar restart
+  ---
+  duration_ms: 87.11025
+  type: 'test'
+  ...
+# Subtest: disconnect removes only Hub access and never stops the original native Agent
+ok 6 - disconnect removes only Hub access and never stops the original native Agent
+  ---
+  duration_ms: 68.038583
+  type: 'test'
+  ...
+# Subtest: concurrent native binds cannot give one original conversation two Hub identities
+ok 7 - concurrent native binds cannot give one original conversation two Hub identities
+  ---
+  duration_ms: 40.716833
+  type: 'test'
+  ...
+# Subtest: the combined native claim command still performs the real member list and claim and cannot claim another message
+ok 8 - the combined native claim command still performs the real member list and claim and cannot claim another message
+  ---
+  duration_ms: 43.729625
+  type: 'test'
+  ...
+# Subtest: native agentapi uses the inherited official binary and keeps native secrets out of arguments
+ok 9 - native agentapi uses the inherited official binary and keeps native secrets out of arguments
+  ---
+  duration_ms: 0.230209
+  type: 'test'
+  ...
+# Subtest: one desktop source routes two chat contexts without claiming another context or losing bindings on restart
+ok 10 - one desktop source routes two chat contexts without claiming another context or losing bindings on restart
+  ---
+  duration_ms: 179.309375
+  type: 'test'
+  ...
+# Subtest: committed invalidations wake immediately, idempotent writes emit once, failed transactions emit nothing
+ok 11 - committed invalidations wake immediately, idempotent writes emit once, failed transactions emit nothing
+  ---
+  duration_ms: 16.863875
+  type: 'test'
+  ...
+# Subtest: member scopes, private auth records and revoked authorization stay isolated during a held request
+ok 12 - member scopes, private auth records and revoked authorization stay isolated during a held request
+  ---
+  duration_ms: 10.926625
+  type: 'test'
+  ...
+# Subtest: expired or future cursor resets, cancellation stops waits, multiple pages drain without dropping changes
+ok 13 - expired or future cursor resets, cancellation stops waits, multiple pages drain without dropping changes
+  ---
+  duration_ms: 45.493625
+  type: 'test'
+  ...
+# Subtest: consumer replays failed refreshes, advances only after success, and aborts its outstanding request
+ok 14 - consumer replays failed refreshes, advances only after success, and aborts its outstanding request
+  ---
+  duration_ms: 2.598375
+  type: 'test'
+  ...
+# Subtest: 100 protocol-only saves measure every receipt without a model or hidden warmup
+ok 15 - 100 protocol-only saves measure every receipt without a model or hidden warmup
+  ---
+  duration_ms: 160.800375
+  type: 'test'
+  ...
+# {"scope":"in-process SQLite commit to change notification, not remote native/model latency","count":100,"p50":0.4952090000000169,"p95":4.464708999999999,"max":30.635042}
+# Subtest: Claude owner creates independent native sessions, requires real registration and preserves newer choices
+ok 16 - Claude owner creates independent native sessions, requires real registration and preserves newer choices
+  ---
+  duration_ms: 6697.501167
+  type: 'test'
+  ...
+# Subtest: native creation journal survives timeout and restart without duplicate launch or provider changes
+ok 17 - native creation journal survives timeout and restart without duplicate launch or provider changes
+  ---
+  duration_ms: 7.154625
+  type: 'test'
+  ...
+# Subtest: first native trust waits for terminal readiness and confirms the rendered selection only in an owned empty folder
+ok 18 - first native trust waits for terminal readiness and confirms the rendered selection only in an owned empty folder
+  ---
+  duration_ms: 1640.993625
+  type: 'test'
+  ...
+# Subtest: monitor identifies only its actual native ancestor; never latest or unrelated session
+ok 19 - monitor identifies only its actual native ancestor; never latest or unrelated session
+  ---
+  duration_ms: 1.214583
+  type: 'test'
+  ...
+# Subtest: monitor and MCP processes share exact routing but preserve independent receipt state across restart
+ok 20 - monitor and MCP processes share exact routing but preserve independent receipt state across restart
+  ---
+  duration_ms: 5464.957917
+  type: 'test'
+  ...
+# Subtest: pasted association links an unselected original conversation without re-pairing the account
+ok 21 - pasted association links an unselected original conversation without re-pairing the account
+  ---
+  duration_ms: 4568.42075
+  type: 'test'
+  ...
+# Subtest: persistent plugin uses official Monitor and ordinary MCP without launcher, model or permission flags
+ok 22 - persistent plugin uses official Monitor and ordinary MCP without launcher, model or permission flags
+  ---
+  duration_ms: 2.502917
+  type: 'test'
+  ...
+# Subtest: unlinked native conversations stay inert; notifications and tool claims never share state files
+ok 23 - unlinked native conversations stay inert; notifications and tool claims never share state files
+  ---
+  duration_ms: 1.465917
+  type: 'test'
+  ...
+# Subtest: one-paste installer preserves existing login and account grant and requests only native plugin reload
+ok 24 - one-paste installer preserves existing login and account grant and requests only native plugin reload
+  ---
+  duration_ms: 5144.563291
+  type: 'test'
+  ...
+# Subtest: remote Claude pairing, two native sessions, routing, persistence, disconnect and bundled MCP Channel protocol
+ok 25 - remote Claude pairing, two native sessions, routing, persistence, disconnect and bundled MCP Channel protocol
+  ---
+  duration_ms: 6934.254083
+  type: 'test'
+  ...
+# Subtest: Claude current-conversation code uses the registered native channel, survives restart and rejects stale replacement
+ok 26 - Claude current-conversation code uses the registered native channel, survives restart and rejects stale replacement
+  ---
+  duration_ms: 4540.52225
+  type: 'test'
+  ...
+# Subtest: launcher adds per-launch plugin/MCP only and preserves official resume argument and metadata boundary
+ok 27 - launcher adds per-launch plugin/MCP only and preserves official resume argument and metadata boundary
+  ---
+  duration_ms: 191.23475
+  type: 'test'
+  ...
+# Subtest: verified original CLI receivers dispatch distinct sessions before any one session finishes
+ok 28 - verified original CLI receivers dispatch distinct sessions before any one session finishes
+  ---
+  duration_ms: 33.019625
+  type: 'test'
+  ...
+# Subtest: already migrated receivers have no fixed two-session ceiling and concurrent ticks cannot duplicate dispatch
+ok 29 - already migrated receivers have no fixed two-session ceiling and concurrent ticks cannot duplicate dispatch
+  ---
+  duration_ms: 64.823041
+  type: 'test'
+  ...
+# Subtest: unverified connections still complete their verification before parallel chat execution
+ok 30 - unverified connections still complete their verification before parallel chat execution
+  ---
+  duration_ms: 30.639583
+  type: 'test'
+  ...
+# Subtest: preparing one conversation holds only that native session, including its aliases
+ok 31 - preparing one conversation holds only that native session, including its aliases
+  ---
+  duration_ms: 39.295541
+  type: 'test'
+  ...
+# Subtest: remote routing hold survives preparation until cloud activation and releases on failure
+ok 32 - remote routing hold survives preparation until cloud activation and releases on failure
+  ---
+  duration_ms: 31.226709
+  type: 'test'
+  ...
+# Subtest: native background completion retains the process and claim through receiver shutdown without another model turn
+ok 33 - native background completion retains the process and claim through receiver shutdown without another model turn
+  ---
+  duration_ms: 9.558875
+  type: 'test'
+  ...
+# Subtest: new requests can continue a settled failed session without replaying the failed turn
+ok 34 - new requests can continue a settled failed session without replaying the failed turn
+  ---
+  duration_ms: 5.953542
+  type: 'test'
+  ...
+# Subtest: a Hub reply does not release the native session before its official fully-idle event
+ok 35 - a Hub reply does not release the native session before its official fully-idle event
+  ---
+  duration_ms: 5.361542
+  type: 'test'
+  ...
+# Subtest: receiver restart cannot release a replied native session whose background work is still alive
+ok 36 - receiver restart cannot release a replied native session whose background work is still alive
+  ---
+  duration_ms: 28.523875
+  type: 'test'
+  ...
+# Subtest: codex: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 37 - codex: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.316709
+  type: 'test'
+  ...
+# Subtest: codex: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 38 - codex: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.982042
+  type: 'test'
+  ...
+# Subtest: codex: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 39 - codex: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.833292
+  type: 'test'
+  ...
+# Subtest: codex: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 40 - codex: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.09225
+  type: 'test'
+  ...
+# Subtest: codex: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 41 - codex: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.844917
+  type: 'test'
+  ...
+# Subtest: codex: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 42 - codex: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.735958
+  type: 'test'
+  ...
+# Subtest: codex: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 43 - codex: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 4.955792
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 44 - gemini-cli: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.655708
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 45 - gemini-cli: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.987917
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 46 - gemini-cli: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.694375
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 47 - gemini-cli: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.543458
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 48 - gemini-cli: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.895541
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 49 - gemini-cli: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 2.664166
+  type: 'test'
+  ...
+# Subtest: gemini-cli: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 50 - gemini-cli: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 7.086959
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 51 - antigravity-cli: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.647916
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 52 - antigravity-cli: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.570167
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 53 - antigravity-cli: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.685667
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 54 - antigravity-cli: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.814833
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 55 - antigravity-cli: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.101916
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 56 - antigravity-cli: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.659333
+  type: 'test'
+  ...
+# Subtest: antigravity-cli: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 57 - antigravity-cli: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 3.35575
+  type: 'test'
+  ...
+# Subtest: antigravity: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 58 - antigravity: 1 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.52375
+  type: 'test'
+  ...
+# Subtest: antigravity: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 59 - antigravity: 2 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.489
+  type: 'test'
+  ...
+# Subtest: antigravity: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 60 - antigravity: 3 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.590542
+  type: 'test'
+  ...
+# Subtest: antigravity: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 61 - antigravity: 4 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 0.844959
+  type: 'test'
+  ...
+# Subtest: antigravity: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 62 - antigravity: 5 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.044375
+  type: 'test'
+  ...
+# Subtest: antigravity: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 63 - antigravity: 10 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 1.418042
+  type: 'test'
+  ...
+# Subtest: antigravity: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+ok 64 - antigravity: 17 independent sessions stay concurrent with aliases, interleaved completions and overlapping polls
+  ---
+  duration_ms: 3.947375
+  type: 'test'
+  ...
+# Subtest: 原生Grok Bot接受Cursor官方Webhook路径，拒绝其他Cursor路径和伪造域名
+ok 65 - 原生Grok Bot接受Cursor官方Webhook路径，拒绝其他Cursor路径和伪造域名
+  ---
+  duration_ms: 2.053
+  type: 'test'
+  ...
+# Subtest: Cursor原生Bot接收完整Bearer，严格200受理不等于成员已经回应
+    # Subtest: 200
+    ok 1 - 200
+      ---
+      duration_ms: 48.699583
+      type: 'test'
+      ...
+    # Subtest: 204
+    ok 2 - 204
+      ---
+      duration_ms: 54.970583
+      type: 'test'
+      ...
+    1..2
+ok 66 - Cursor原生Bot接收完整Bearer，严格200受理不等于成员已经回应
+  ---
+  duration_ms: 104.256625
+  type: 'test'
+  ...
+# Subtest: 原生接入测试被拒时明确结束等待，可重新自检且不影响业务工作
+ok 67 - 原生接入测试被拒时明确结束等待，可重新自检且不影响业务工作
+  ---
+  duration_ms: 20.352833
+  type: 'test'
+  ...
+# Subtest: Grok automation rejects clipboard text and truncated previews before storage
+ok 68 - Grok automation rejects clipboard text and truncated previews before storage
+  ---
+  duration_ms: 3.038417
+  type: 'test'
+  ...
+# Subtest: Grok automation uses signed exact bytes; 202 is acceptance without an Agent claim
+ok 69 - Grok automation uses signed exact bytes; 202 is acceptance without an Agent claim
+  ---
+  duration_ms: 13.4565
+  type: 'test'
+  ...
+# Subtest: Grok redirect is rejected without forwarding signed credentials
+ok 70 - Grok redirect is rejected without forwarding signed credentials
+  ---
+  duration_ms: 10.134625
+  type: 'test'
+  ...
+# Subtest: Grok通知200只是受理；并发派发只发送一次，不替原Agent领取
+ok 71 - Grok通知200只是受理；并发派发只发送一次，不替原Agent领取
+  ---
+  duration_ms: 9.538667
+  type: 'test'
+  ...
+# Subtest: 发送状态不明不会重发；进程中断保留unknown；没领取不会永远显示成功
+ok 72 - 发送状态不明不会重发；进程中断保留unknown；没领取不会永远显示成功
+  ---
+  duration_ms: 16.389792
+  type: 'test'
+  ...
+# Subtest: paused member becomes an explicit missing delivery without canceling or freeing running work
+ok 73 - paused member becomes an explicit missing delivery without canceling or freeing running work
+  ---
+  duration_ms: 12.711708
+  type: 'test'
+  ...
+# Subtest: 429按退避重试，失败不伪装交付，真实claim胜过迟到通知回执
+ok 74 - 429按退避重试，失败不伪装交付，真实claim胜过迟到通知回执
+  ---
+  duration_ms: 8.015333
+  type: 'test'
+  ...
+# Subtest: 连接凭证加密，切通道清掉验证证据，但不修改旧账号身份
+ok 75 - 连接凭证加密，切通道清掉验证证据，但不修改旧账号身份
+  ---
+  duration_ms: 3.450458
+  type: 'test'
+  ...
+# Subtest: 回调拒绝内网、伪造后缀、账号密码、非HTTPS；签名与标准HMAC一致
+ok 76 - 回调拒绝内网、伪造后缀、账号密码、非HTTPS；签名与标准HMAC一致
+  ---
+  duration_ms: 2.169667
+  type: 'test'
+  ...
+# Subtest: Dots订阅验证、续期幂等、签名轮换、过滤与撤销持久化
+ok 77 - Dots订阅验证、续期幂等、签名轮换、过滤与撤销持久化
+  ---
+  duration_ms: 6.63075
+  type: 'test'
+  ...
+# Subtest: 文件真实字节往返、校验哈希、拒绝其他成员借用lease和无权限下载
+ok 78 - 文件真实字节往返、校验哈希、拒绝其他成员借用lease和无权限下载
+  ---
+  duration_ms: 5.2085
+  type: 'test'
+  ...
+# Subtest: failed receiver disk write cannot ACK or start native work; retry persists before ACK
+ok 79 - failed receiver disk write cannot ACK or start native work; retry persists before ACK
+  ---
+  duration_ms: 81.442167
+  type: 'test'
+  ...
+# Subtest: local native connector rejects unauthenticated and cross-origin requests without exposing its token
+ok 80 - local native connector rejects unauthenticated and cross-origin requests without exposing its token
+  ---
+  duration_ms: 40.390292
+  type: 'test'
+  ...
+# Subtest: addressed DSH claims use the common session guard without querying work first
+ok 81 - addressed DSH claims use the common session guard without querying work first
+  ---
+  duration_ms: 66.265083
+  type: 'test'
+  ...
+# Subtest: binding requires the exact existing native session and canonical project before registering tools
+ok 82 - binding requires the exact existing native session and canonical project before registering tools
+  ---
+  duration_ms: 24.314916
+  type: 'test'
+  ...
+# Subtest: full tools apply only to a newly created Hub conversation, never to an existing original session
+ok 83 - full tools apply only to a newly created Hub conversation, never to an existing original session
+  ---
+  duration_ms: 30.610667
+  type: 'test'
+  ...
+# Subtest: native Hub tools refuse another Agent identity; disconnect removes tools and retains native work
+ok 84 - native Hub tools refuse another Agent identity; disconnect removes tools and retains native work
+  ---
+  duration_ms: 40.943875
+  type: 'test'
+  ...
+# Subtest: empty polling does not run a model; duplicate ready work and restart retain the same native request identity
+ok 85 - empty polling does not run a model; duplicate ready work and restart retain the same native request identity
+  ---
+  duration_ms: 66.861667
+  type: 'test'
+  ...
+# Subtest: unbinding while a lightweight check is in flight cannot wake the original Agent afterward
+ok 86 - unbinding while a lightweight check is in flight cannot wake the original Agent afterward
+  ---
+  duration_ms: 36.841417
+  type: 'test'
+  ...
+# Subtest: native Agent recreation attaches tools to the same persisted session rather than a stale runtime object
+ok 87 - native Agent recreation attaches tools to the same persisted session rather than a stale runtime object
+  ---
+  duration_ms: 52.38375
+  type: 'test'
+  ...
+# Subtest: parallel restore and connect cannot register Hub tools twice for the same original session
+ok 88 - parallel restore and connect cannot register Hub tools twice for the same original session
+  ---
+  duration_ms: 69.599291
+  type: 'test'
+  ...
+# Subtest: native Host health stays not ready until persisted bindings and scoped tools have finished restoring
+ok 89 - native Host health stays not ready until persisted bindings and scoped tools have finished restoring
+  ---
+  duration_ms: 61.682416
+  type: 'test'
+  ...
+# Subtest: archived native sessions are not offered as active work and are never silently reopened by binding
+ok 90 - archived native sessions are not offered as active work and are never silently reopened by binding
+  ---
+  duration_ms: 13.941834
+  type: 'test'
+  ...
+# Subtest: two native contexts for one Hub member are routed by chat; completion releases the next context and scopes survive restart
+ok 91 - two native contexts for one Hub member are routed by chat; completion releases the next context and scopes survive restart
+  ---
+  duration_ms: 75.779625
+  type: 'test'
+  ...
+# Subtest: DSH: 1 contexts of one account dispatch together and preserve exact request identities after restart
+ok 92 - DSH: 1 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 38.722041
+  type: 'test'
+  ...
+# Subtest: DSH: 2 contexts of one account dispatch together and preserve exact request identities after restart
+ok 93 - DSH: 2 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 74.304416
+  type: 'test'
+  ...
+# Subtest: DSH: 3 contexts of one account dispatch together and preserve exact request identities after restart
+ok 94 - DSH: 3 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 144.661292
+  type: 'test'
+  ...
+# Subtest: DSH: 4 contexts of one account dispatch together and preserve exact request identities after restart
+ok 95 - DSH: 4 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 152.688208
+  type: 'test'
+  ...
+# Subtest: DSH: 5 contexts of one account dispatch together and preserve exact request identities after restart
+ok 96 - DSH: 5 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 314.756291
+  type: 'test'
+  ...
+# Subtest: DSH: 10 contexts of one account dispatch together and preserve exact request identities after restart
+ok 97 - DSH: 10 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 336.212833
+  type: 'test'
+  ...
+# Subtest: DSH: 17 contexts of one account dispatch together and preserve exact request identities after restart
+ok 98 - DSH: 17 contexts of one account dispatch together and preserve exact request identities after restart
+  ---
+  duration_ms: 578.928333
+  type: 'test'
+  ...
+# Subtest: a stalled DSH session poll cannot stop other sessions or their next message
+ok 99 - a stalled DSH session poll cannot stop other sessions or their next message
+  ---
+  duration_ms: 34.633167
+  type: 'test'
+  ...
+# Subtest: an idle claimed native turn gets one receipt-only continuation even without new work, surviving restart
+ok 100 - an idle claimed native turn gets one receipt-only continuation even without new work, surviving restart
+  ---
+  duration_ms: 50.901542
+  type: 'test'
+  ...
+# Subtest: native running, unknown state and network uncertainty cannot trigger receipt replay or fake completion
+ok 101 - native running, unknown state and network uncertainty cannot trigger receipt replay or fake completion
+  ---
+  duration_ms: 18.108167
+  type: 'test'
+  ...
+# Subtest: failed native receipt recovery reports ended once and releases later notifications without redoing the task
+ok 102 - failed native receipt recovery reports ended once and releases later notifications without redoing the task
+  ---
+  duration_ms: 50.144917
+  type: 'test'
+  ...
+# Subtest: pre-claim failure gets bounded recovery and an explicit retry uses a new native request without duplicating it
+ok 103 - pre-claim failure gets bounded recovery and an explicit retry uses a new native request without duplicating it
+  ---
+  duration_ms: 52.196333
+  type: 'test'
+  ...
+# Subtest: send receipts survive older refreshes and are released only when the server catches up
+ok 104 - send receipts survive older refreshes and are released only when the server catches up
+  ---
+  duration_ms: 1.187833
+  type: 'test'
+  ...
+# Subtest: overlapping reads cannot roll back a newer snapshot, including cached inactive chats
+ok 105 - overlapping reads cannot roll back a newer snapshot, including cached inactive chats
+  ---
+  duration_ms: 0.248959
+  type: 'test'
+  ...
+# Subtest: an acknowledged message outside the latest server page is not kept forever
+ok 106 - an acknowledged message outside the latest server page is not kept forever
+  ---
+  duration_ms: 0.919583
+  type: 'test'
+  ...
+# Subtest: slow materials can finish after a fast chat update without erasing either projection
+ok 107 - slow materials can finish after a fast chat update without erasing either projection
+  ---
+  duration_ms: 3.213916
+  type: 'test'
+  ...
+# Subtest: parallel sessions share one inbox read, and stopping a watch discards its stale snapshot
+ok 108 - parallel sessions share one inbox read, and stopping a watch discards its stale snapshot
+  ---
+  duration_ms: 1.869625
+  type: 'test'
+  ...
+# Subtest: receipts retry with stable identity and a user message correction gets a new fenced receipt
+ok 109 - receipts retry with stable identity and a user message correction gets a new fenced receipt
+  ---
+  duration_ms: 0.520958
+  type: 'test'
+  ...
+# Subtest: a failed notification stream immediately invalidates the pushed inbox and exposes fallback state
+ok 110 - a failed notification stream immediately invalidates the pushed inbox and exposes fallback state
+  ---
+  duration_ms: 4.761375
+  type: 'test'
+  ...
+# Subtest: a durable receive is not a model start or a lease; receipts cannot cross members, sessions or recovery attempts
+ok 111 - a durable receive is not a model start or a lease; receipts cannot cross members, sessions or recovery attempts
+  ---
+  duration_ms: 27.911708
+  type: 'test'
+  ...
+# Subtest: lost receipt ACK is replayable; binding changes clear stale status and reject late old-session receipts
+ok 112 - lost receipt ACK is replayable; binding changes clear stale status and reject late old-session receipts
+  ---
+  duration_ms: 18.954
+  type: 'test'
+  ...
+# Subtest: fast chat projection excludes materials without losing messages, addressing, receipts or access checks
+ok 113 - fast chat projection excludes materials without losing messages, addressing, receipts or access checks
+  ---
+  duration_ms: 15.042167
+  type: 'test'
+  ...
+# Subtest: cached successful receipt cannot bypass a later message edit, retry generation or connection revocation
+ok 114 - cached successful receipt cannot bypass a later message edit, retry generation or connection revocation
+  ---
+  duration_ms: 13.866583
+  type: 'test'
+  ...
+# Subtest: receiver killed after fsync and before ACK restarts from same durable envelope without duplicate native execution
+ok 115 - receiver killed after fsync and before ACK restarts from same durable envelope without duplicate native execution
+  ---
+  duration_ms: 485.13175
+  type: 'test'
+  ...
+1..115
+# tests 117
+# suites 0
+# pass 117
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15796.373584

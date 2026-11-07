@@ -1,0 +1,9 @@
+WAN samples 20/100
+WAN samples 40/100
+WAN samples 60/100
+WAN samples 80/100
+WAN samples 100/100
+WAN stopping notification watcher
+WAN saving offline recovery message
+WAN restarting isolated server
+{"scope":"Mac to deployed VPS code in isolated Node/SQLite through direct TLS with pinned temporary certificate; independent TCP connections, no SSH tunnel for data; no CDN/model benchmark","count":100,"errors":[],"networkRecoveries":[{"route":"/v2/commands","method":"POST","attempt":1,"code":"UND_ERR_SOCKET","at":"2026-11-07T16:11:13.546Z"},{"route":"/v2/tools/post_message","method":"POST","attempt":1,"code":"UND_ERR_SOCKET","at":"2026-11-07T16:13:06.396Z"}],"p95RttMs":377.3833330000016,"p95SaveToReceiveAckMs":926,"maxSaveToReceiveAckMs":2585,"restartRecovery":true}

@@ -4,6 +4,7 @@
 export class MessageSnapshots {
  constructor(){this.views=new Map();this.receipts=new Map();this.started=new Map();this.applied=new Map();}
  get(id){return this.views.get(id);}
+ covers(id,number){const view=this.get(id);return !!view&&Math.max(view.channel?.messageSequence||0,...view.messages.map(m=>m.number||0))>=number;}
  beginRead(id){const n=(this.started.get(id)||0)+1;this.started.set(id,n);return n;}
  append(id,message){
   if(!message?.id)return this.get(id);

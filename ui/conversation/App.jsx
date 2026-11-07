@@ -177,7 +177,7 @@ export default function App() {
   const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
   const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
   readRef.current=readThrough;
-  const refreshAfterSend=useRef(()=>{}),coalesceRead=useRef(createReadCoalescer());
+  const refreshAfterSend=useRef(()=>{}),coalesceRead=useRef(createReadCoalescer()),channelIndex=useRef([]),indexGeneration=useRef(0);
   const appendMessage=useCallback((message,channelId)=>{
     const next=viewCache.current.append(channelId,message);
     if(currentRef.current===channelId&&next)setSnapshot(next);
@@ -228,24 +228,26 @@ export default function App() {
     if (failure) throw failure.reason;
     const [w, c] = results.map(result => result.value);
     setWorkspace(w);
-    setChannels(c.items);
+    const generation=++indexGeneration.current,previous=new Map(channelIndex.current.map(row=>[row.id,row]));
+    const changed=c.items.filter(row=>previous.has(row.id)&&!viewCache.current.covers(row.id,row.messageSequence||0)&&(row.messageSequence||0)>(previous.get(row.id).messageSequence||0));
+    const waiting=new Set(changed.map(row=>row.id));
+    const visible=c.items.map(row=>waiting.has(row.id)?{...row,lastMessage:previous.get(row.id).lastMessage,lastMessageAt:previous.get(row.id).lastMessageAt,messageSequence:previous.get(row.id).messageSequence}:row);
+    channelIndex.current=visible;setChannels(visible);
+    // Publish a fresh list preview only after its message body is cached.
+    // Each chat catches up independently; one failed read cannot hold others.
+    for(const row of changed)void refresh({chatOnly:true,channelId:row.id}).then(()=>{
+      if(indexGeneration.current!==generation||!viewCache.current.covers(row.id,row.messageSequence||0))return;
+      setChannels(old=>{const next=old.map(c=>c.id===row.id?row:c);channelIndex.current=next;return next;});
+    }).catch(e=>setSyncError(e.message));
 
     if (!currentRef.current && c.items[0]) setCurrent(c.items[0].id);
   }), []);
-  const refresh = useCallback(async ({chatOnly=false}={}) => {
-    const id = currentRef.current;
+  const refresh = useCallback(async ({chatOnly=false,channelId}={}) => {
+    const id = channelId||currentRef.current;
     if (!id) return;
     return coalesceRead.current(id+':'+(chatOnly?'chat':'space'),async()=>{
     const readSequence=viewCache.current.beginRead(id);
     const data = await api("/v2/channel?id=" + id+(chatOnly?'&view=chat':''));
-    const first=!positions.current[id]&&unreadRef.current[id]?.firstNumber;
-    if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20),view:'chat'}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
-    const pos=positions.current[id];
-    if(pos?.number&&!data.messages.some(m=>m.id===pos.id)&&!olderCache.current.get(id)?.some(m=>m.id===pos.id)){
-      const window=await api('/v2/channel?'+new URLSearchParams({id,before:String(pos.number+20),view:'chat'}));
-      olderCache.current.set(id,window.messages);
-      if(currentRef.current===id){setOlder(window.messages);setMoreCursor(window.before);}
-    }
     const reconciled=viewCache.current.apply(id,data,readSequence);
     if(!reconciled)return;
     if (currentRef.current === id) {
@@ -254,6 +256,19 @@ export default function App() {
       setMoreCursor((old) => (old === undefined ? data.before : old));
       if(data.meetingsCursor!==undefined)setMeetingCursor(old=>old===undefined?data.meetingsCursor:old);
     }
+    // Restoring an old reading anchor is a separate history request. Never
+    // withhold the newly received messages while that request is in flight.
+    if(currentRef.current!==id)return;
+    void coalesceRead.current(id+':history',async()=>{
+    const first=!positions.current[id]&&unreadRef.current[id]?.firstNumber;
+    if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20),view:'chat'}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
+    const pos=positions.current[id];
+    if(pos?.number&&!data.messages.some(m=>m.id===pos.id)&&!olderCache.current.get(id)?.some(m=>m.id===pos.id)){
+      const window=await api('/v2/channel?'+new URLSearchParams({id,before:String(pos.number+20),view:'chat'}));
+      olderCache.current.set(id,window.messages);
+      if(currentRef.current===id){setOlder(window.messages);setMoreCursor(window.before);}
+    }
+    }).catch(e=>setSyncError(e.message));
     });
   }, []);
   refreshAfterSend.current=()=>{void refresh({chatOnly:true}).catch(()=>{});};
@@ -262,6 +277,7 @@ export default function App() {
     const watcher=watchChanges({request:(route,signal)=>api(route,undefined,undefined,{signal}),onError:report,onChange:async page=>{
       const affected=page.changes.filter(c=>c.channelId===currentRef.current);
       const fast=page.reset||affected.length?refresh({chatOnly:true}):Promise.resolve();
+      for(const id of new Set(page.changes.filter(c=>c.kind==='channel_message'&&c.channelId!==currentRef.current).map(c=>c.channelId)))void refresh({chatOnly:true,channelId:id}).catch(report);
       if(page.reset||affected.some(c=>!['channel_message','channel_turn','outbox','execution_binding','channel_coordination','channel_delivery_issue'].includes(c.kind)))void refresh().catch(report);
       if(page.reset||page.changes.some(c=>['channel','channel_message','connection'].includes(c.kind)))void refreshWorkspace().catch(report);
       await fast;setSyncError('');
@@ -322,7 +338,13 @@ export default function App() {
     return()=>{cancelAnimationFrame(frame);el.removeEventListener('scroll',mark);document.removeEventListener('visibilitychange',mark);window.removeEventListener('focus',mark);};
   },[current,snapshot,page]);
   useEffect(()=>{const save=()=>{savePosition();try{const prior=JSON.parse(localStorage.getItem('hub-communication')||'{}');localStorage.setItem('hub-communication',JSON.stringify({...prior,positions:positions.current,tabViews:tabViews.current}));}catch{}};window.addEventListener('pagehide',save);return()=>window.removeEventListener('pagehide',save);},[]);
-  useEffect(()=>{let alive=true;const timer=setTimeout(()=>{const cursors={...readRef.current};api('/v2/channel-unread',{cursors}).then(x=>{if(alive){setUnread(Object.fromEntries(x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber).map(r=>[r.channelId,r])));setReadThrough(old=>{let changed=false;const next={...old};for(const [id,n]of Object.entries(x.cursors||{}))if(next[id]===undefined||n>next[id]){next[id]=n;changed=true;}return changed?next:old;});}}).catch(()=>{});},250);return()=>{alive=false;clearTimeout(timer);};},[readThrough,channels]);
+  useEffect(()=>{let alive=true;const timer=setTimeout(()=>{const cursors={...readRef.current};api('/v2/channel-unread',{cursors}).then(x=>{if(!alive)return;
+    // A badge and its message body become available together. A cache fill
+    // never marks anything read; only the existing visible-message cursor does.
+    setUnread(old=>Object.fromEntries(x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber).map(r=>[r.channelId,viewCache.current.covers(r.channelId,r.lastNumber)?r:old[r.channelId]]).filter(([,r])=>r)));
+    for(const row of x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber&&!viewCache.current.covers(r.channelId,r.lastNumber)))void refresh({chatOnly:true,channelId:row.channelId}).then(()=>{if(alive&&viewCache.current.covers(row.channelId,row.lastNumber))setUnread(old=>(readRef.current[row.channelId]||0)<row.lastNumber?{...old,[row.channelId]:row}:old);}).catch(e=>{if(alive)setSyncError(e.message);});
+    setReadThrough(old=>{let changed=false;const next={...old};for(const [id,n]of Object.entries(x.cursors||{}))if(next[id]===undefined||n>next[id]){next[id]=n;changed=true;}return changed?next:old;});
+  }).catch(()=>{});},250);return()=>{alive=false;clearTimeout(timer);};},[readThrough,channels,refresh]);
   useEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current||isUserInteracting())return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
   const perform = async (fn) => {
     setBusy(true);

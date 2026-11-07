@@ -48,6 +48,28 @@ test('monitor and MCP processes share exact routing but preserve independent rec
  const count=notices.length;await resumed.tick();assert.equal(notices.length,count+1);await resumed.close();
 });
 
+for(const count of [1,3,5,10])test(`Claude Monitor: ${count} independently scoped sessions continue while the first claim stays active`,async t=>{
+ const h=await startHarness();t.after(()=>h.stop());await h.request('/admin/action',{type:'platform.create',payload:{id:'claude-code',name:'Claude'}});
+ const m=await h.member('claude-code','parallel monitors'),connectionDir=path.join(h.directory,'parallel-monitor'),ids=Array.from({length:count},(_,i)=>'native-'+i);
+ await privateJson(path.join(connectionDir,'grant.json'),{memberId:m.id,endpoint:h.base,access_token:m.token});await privateJson(path.join(connectionDir,'monitor-sessions.json'),{runtimeId:'fixture-parallel',sessionIds:ids});
+ const rows=[];
+ for(const [i,sessionId]of ids.entries()){
+  const client=new CodingMemberClient(path.join(connectionDir,'grant.json')),identity=async()=>({sessionId,workspace:'/fixture/project-'+i,title:'Original '+i,instanceId:'instance-'+i}),notices=[];
+  const monitor=new MonitorBridge({connectionDir,client,identity,launcher:async()=>null,output:x=>notices.push(x)});t.after(()=>monitor.close());await monitor.tick();
+  const channel=await h.command('channel.create',{name:'Isolated '+i,memberIds:[m.id]});await h.request('/v2/native-sessions',{requestId:randomUUID(),memberId:m.id,channelId:channel.id,sessionId,mode:'existing'});
+  rows.push({monitor,notices,channel,rpc:new MonitorBridge({connectionDir,client,identity,kind:'tools'})});
+ }
+ await Promise.all(rows.map(r=>h.command('channel.post',{channelId:r.channel.id,body:'Original requirement '+r.channel.id})));
+ await Promise.all(rows.map(async r=>{await r.monitor.tick();await r.monitor.tick();assert.equal(r.notices.length,1);const work=(await r.rpc.tool('list_work')).work;assert.equal(work.length,1);assert.equal(work[0].channelId,r.channel.id);r.claim=await r.rpc.tool('claim_work',{requestId:randomUUID(),stepId:work[0].stepId});}));
+ for(const r of rows.slice(1)){
+  await r.rpc.tool('post_message',{requestId:randomUUID(),channelId:r.channel.id,turnId:r.claim.turnId,body:'Other session finished before first'});
+  await h.command('channel.post',{channelId:r.channel.id,body:'Next independent requirement'});await r.monitor.tick();assert.equal(r.notices.length,2);
+ }
+ // The first native lease is still owned, so other sessions did not steal or
+ // prematurely settle it. Its original claim can complete normally afterward.
+ const first=rows[0];await first.rpc.tool('post_message',{requestId:randomUUID(),channelId:first.channel.id,turnId:first.claim.turnId,body:'First now completed'});
+});
+
 test('pasted association links an unselected original conversation without re-pairing the account',async t=>{
  const h=await startHarness();t.after(()=>h.stop());await h.request('/admin/action',{type:'platform.create',payload:{id:'claude-code',name:'Claude'}});
  const m=await h.member('claude-code','existing account'),connectionDir=path.join(h.directory,'monitor');

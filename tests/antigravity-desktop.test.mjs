@@ -60,3 +60,19 @@ test('one desktop source routes two chat contexts without claiming another conte
  work=[{stepId:'a',channelId:'channel_a',status:'ready'}];await f.sidecar.poll();assert.equal(f.sends[1].session,id);
  await f.sidecar.stop();const next=await new AntigravitySidecar({stateFile:f.stateFile,native:f.native,clientFactory:()=>f.client,pollMs:3600000}).start();t.after(()=>next.stop());assert.deepEqual(next.bindings.get(second).channelIds,['channel_b']);
 });
+
+for(const count of [1,3,5,10])test(`Sidecar: ${count} independent sessions, shared aliases, overlapping polls and restart`,async t=>{
+ const f=await fixture(t),ids=Array.from({length:count},(_,i)=>i===0?id:randomUUID());
+ f.native.summaries=async()=>Object.fromEntries(ids.map(key=>[key,{summary:key,workspaces:[{workspaceFolderAbsoluteUri:'file://'+f.dir}],status:'CASCADE_RUN_STATUS_IDLE'}]));
+ let work=[];f.client.inbox=async()=>({work});
+ for(const [i,sessionId] of ids.entries())await f.sidecar.bind({sessionId,workspace:f.dir,grantFile:f.grantFile,channelIds:['chat-'+i,'alias-'+i],verification:false});
+ work=ids.flatMap((_,i)=>[{stepId:'first-'+i,channelId:'chat-'+i,status:'ready'},{stepId:'next-'+i,channelId:'alias-'+i,status:'ready'}]);
+ let release;const gate=new Promise(r=>release=r),send=f.native.send;f.native.send=async(session,prompt)=>{await send(session,prompt);if(session===ids[0])await gate;};
+ const pending=Promise.all([f.sidecar.poll(),f.sidecar.poll()]);
+ try{const until=Date.now()+3000;while(f.sends.length<count&&Date.now()<until)await new Promise(r=>setTimeout(r,5));assert.equal(f.sends.length,count,'other sessions must dispatch before first send resolves');assert.equal(new Set(f.sends.map(x=>x.session)).size,count);}
+ finally{release();await pending;f.native.send=send;}
+ await f.sidecar.stop();const restarted=await new AntigravitySidecar({stateFile:f.stateFile,native:f.native,clientFactory:()=>f.client,pollMs:3600000}).start();t.after(()=>restarted.stop());
+ await restarted.poll();assert.equal(f.sends.length,count,'restart must retain native delivery identity');
+ work=work.filter(x=>x.stepId.startsWith('next-'));await restarted.poll();assert.equal(f.sends.length,count*2);
+ for(const sessionId of ids)assert.equal(f.sends.filter(x=>x.session===sessionId).length,2);
+});

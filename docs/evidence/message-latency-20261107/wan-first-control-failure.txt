@@ -1,0 +1,28 @@
+WAN samples 20/100
+WAN samples 40/100
+WAN samples 60/100
+WAN samples 80/100
+WAN samples 100/100
+Debugger listening on ws://127.0.0.1:9229/02d5ee19-6e0c-4698-aa97-facb9cc98782
+For help, see: https://nodejs.org/learn/getting-started/debugging
+Debugger attached.
+Debugger ending on ws://127.0.0.1:9229/02d5ee19-6e0c-4698-aa97-facb9cc98782
+For help, see: https://nodejs.org/learn/getting-started/debugging
+Debugger attached.
+Debugger ending on ws://127.0.0.1:9229/02d5ee19-6e0c-4698-aa97-facb9cc98782
+For help, see: https://nodejs.org/learn/getting-started/debugging
+Debugger attached.
+Waiting for the debugger to disconnect...
+node:internal/modules/esm/utils:279
+  throw new ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING();
+        ^
+
+TypeError [ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING]: A dynamic import callback was not specified.
+    at importModuleDynamicallyCallback (node:internal/modules/esm/utils:279:9)
+    at Socket.<anonymous> (<anonymous>:1:131)
+    at Socket.emit (node:events:521:24)
+    at <anonymous>:1:23 {
+  code: 'ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING'
+}
+
+Node.js v24.19.0

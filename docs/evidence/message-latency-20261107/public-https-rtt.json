@@ -1,0 +1,709 @@
+{
+  "scope": "100 serial read-only requests to actual configured public HTTPS health endpoint via normal product network layer; not message delivery or model latency",
+  "count": 100,
+  "p95Ms": 940.2945419999996,
+  "maxMs": 1453.8029589999999,
+  "errors": [],
+  "samples": [
+    {
+      "i": 0,
+      "ms": 1453.8029589999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 1,
+      "ms": 342.88654199999996,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 2,
+      "ms": 781.6930419999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 3,
+      "ms": 345.45804199999975,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 4,
+      "ms": 758.0573749999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 5,
+      "ms": 738.1389589999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 6,
+      "ms": 741.7024590000001,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 7,
+      "ms": 328.2203749999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 8,
+      "ms": 328.65170899999976,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 9,
+      "ms": 355.6713329999993,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 10,
+      "ms": 343.9882499999994,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 11,
+      "ms": 331.06283299999996,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 12,
+      "ms": 331.19454099999984,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 13,
+      "ms": 330.27929100000074,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 14,
+      "ms": 332.69595800000025,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 15,
+      "ms": 331.5839160000005,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 16,
+      "ms": 328.99775000000045,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 17,
+      "ms": 351.9046249999992,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 18,
+      "ms": 328.83387500000026,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 19,
+      "ms": 328.28116599999885,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 20,
+      "ms": 365.91670799999883,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 21,
+      "ms": 327.5822499999995,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 22,
+      "ms": 330.16691699999865,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 23,
+      "ms": 327.6983330000003,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 24,
+      "ms": 331.47762500000135,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 25,
+      "ms": 344.54141700000037,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 26,
+      "ms": 328.7237920000007,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 27,
+      "ms": 334.11512500000026,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 28,
+      "ms": 329.7102080000004,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 29,
+      "ms": 328.8194170000006,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 30,
+      "ms": 328.87454100000105,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 31,
+      "ms": 393.5891249999986,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 32,
+      "ms": 354.40412500000093,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 33,
+      "ms": 1094.3415420000001,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 34,
+      "ms": 344.5307499999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 35,
+      "ms": 366.04725000000144,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 36,
+      "ms": 1113.7830000000013,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 37,
+      "ms": 326.93195800000103,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 38,
+      "ms": 713.854542000001,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 39,
+      "ms": 329.9811249999984,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 40,
+      "ms": 328.19537499999933,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 41,
+      "ms": 330.01224999999977,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 42,
+      "ms": 329.38824999999997,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 43,
+      "ms": 328.82045899999866,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 44,
+      "ms": 332.1523339999985,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 45,
+      "ms": 334.87274999999863,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 46,
+      "ms": 333.1072909999966,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 47,
+      "ms": 372.3123339999984,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 48,
+      "ms": 940.2945419999996,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 49,
+      "ms": 330.5680829999983,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 50,
+      "ms": 329.26637499999924,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 51,
+      "ms": 716.099000000002,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 52,
+      "ms": 330.5190419999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 53,
+      "ms": 329.89787499999875,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 54,
+      "ms": 331.5601659999993,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 55,
+      "ms": 333.3295829999988,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 56,
+      "ms": 331.296875,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 57,
+      "ms": 1095.6750409999986,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 58,
+      "ms": 329.2649999999994,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 59,
+      "ms": 329.6677500000005,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 60,
+      "ms": 333.73866700000144,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 61,
+      "ms": 330.33899999999994,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 62,
+      "ms": 330.8433750000004,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 63,
+      "ms": 329.21108300000196,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 64,
+      "ms": 327.64204200000313,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 65,
+      "ms": 713.3631669999995,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 66,
+      "ms": 332.32704100000046,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 67,
+      "ms": 331.2847499999989,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 68,
+      "ms": 333.09354200000234,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 69,
+      "ms": 331.640790999998,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 70,
+      "ms": 330.27950000000055,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 71,
+      "ms": 330.4110419999997,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 72,
+      "ms": 331.7605000000003,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 73,
+      "ms": 332.31800000000294,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 74,
+      "ms": 327.7643339999995,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 75,
+      "ms": 738.7606669999986,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 76,
+      "ms": 330.9590410000019,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 77,
+      "ms": 342.752542000002,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 78,
+      "ms": 720.7973340000026,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 79,
+      "ms": 727.1739579999994,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 80,
+      "ms": 1094.3790840000001,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 81,
+      "ms": 328.2350839999999,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 82,
+      "ms": 330.64345799999865,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 83,
+      "ms": 718.0166250000038,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 84,
+      "ms": 340.34162500000093,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 85,
+      "ms": 346.346458,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 86,
+      "ms": 340.0722919999971,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 87,
+      "ms": 716.216416999996,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 88,
+      "ms": 714.6168749999997,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 89,
+      "ms": 328.0475000000006,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 90,
+      "ms": 716.963499999998,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 91,
+      "ms": 722.0733330000003,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 92,
+      "ms": 738.0007499999992,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 93,
+      "ms": 328.1391669999939,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 94,
+      "ms": 715.8551670000015,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 95,
+      "ms": 329.75049999999464,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 96,
+      "ms": 329.2256669999988,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 97,
+      "ms": 329.8700000000026,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 98,
+      "ms": 561.4460410000029,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    },
+    {
+      "i": 99,
+      "ms": 329.80354200000147,
+      "status": 200,
+      "backend": "vps",
+      "ok": true
+    }
+  ]
+}

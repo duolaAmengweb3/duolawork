@@ -1,0 +1,533 @@
+{
+  "scope": "Mac to deployed VPS code in isolated Node/SQLite database over SSH encrypted WAN tunnel; receiver fsync and ACK; not public HTTPS proxy nor model benchmark",
+  "count": 100,
+  "errors": [],
+  "rttSamplesMs": [
+    169.58749999999782,
+    333.82708400000047,
+    167.63475000000108,
+    168.63879199999792,
+    169.82529199999772,
+    331.3757089999999,
+    905.268,
+    167.4049159999995,
+    168.05712499999936,
+    700.5965829999986,
+    169.01479200000176,
+    166.56287499999962,
+    167.1088340000024,
+    328.88729100000273,
+    167.16212499999892,
+    167.56774999999834,
+    167.7617910000008,
+    167.51345799999763,
+    168.01554199999737,
+    703.4422919999997
+  ],
+  "p95RttMs": 703.4422919999997,
+  "p95SaveToReceiveAckMs": 1252,
+  "maxSaveToReceiveAckMs": 4039,
+  "samples": [
+    {
+      "i": 0,
+      "saveToReceiveAckMs": 518,
+      "roundTripMs": 692.1626670000005
+    },
+    {
+      "i": 1,
+      "saveToReceiveAckMs": 886,
+      "roundTripMs": 1061.8213330000035
+    },
+    {
+      "i": 2,
+      "saveToReceiveAckMs": 349,
+      "roundTripMs": 521.9462500000009
+    },
+    {
+      "i": 3,
+      "saveToReceiveAckMs": 348,
+      "roundTripMs": 524.4282079999975
+    },
+    {
+      "i": 4,
+      "saveToReceiveAckMs": 372,
+      "roundTripMs": 551.8452079999988
+    },
+    {
+      "i": 5,
+      "saveToReceiveAckMs": 924,
+      "roundTripMs": 1107.3109579999946
+    },
+    {
+      "i": 6,
+      "saveToReceiveAckMs": 1081,
+      "roundTripMs": 1262.1471659999952
+    },
+    {
+      "i": 7,
+      "saveToReceiveAckMs": 744,
+      "roundTripMs": 923.0110409999979
+    },
+    {
+      "i": 8,
+      "saveToReceiveAckMs": 366,
+      "roundTripMs": 545.8752079999977
+    },
+    {
+      "i": 9,
+      "saveToReceiveAckMs": 748,
+      "roundTripMs": 2232.636707999998
+    },
+    {
+      "i": 10,
+      "saveToReceiveAckMs": 365,
+      "roundTripMs": 544.934417000004
+    },
+    {
+      "i": 11,
+      "saveToReceiveAckMs": 375,
+      "roundTripMs": 555.5949580000015
+    },
+    {
+      "i": 12,
+      "saveToReceiveAckMs": 695,
+      "roundTripMs": 876.9246669999993
+    },
+    {
+      "i": 13,
+      "saveToReceiveAckMs": 914,
+      "roundTripMs": 1094.3171250000014
+    },
+    {
+      "i": 14,
+      "saveToReceiveAckMs": 735,
+      "roundTripMs": 1299.974000000002
+    },
+    {
+      "i": 15,
+      "saveToReceiveAckMs": 531,
+      "roundTripMs": 709.5996660000092
+    },
+    {
+      "i": 16,
+      "saveToReceiveAckMs": 365,
+      "roundTripMs": 714.5398750000022
+    },
+    {
+      "i": 17,
+      "saveToReceiveAckMs": 367,
+      "roundTripMs": 543.4029160000064
+    },
+    {
+      "i": 18,
+      "saveToReceiveAckMs": 507,
+      "roundTripMs": 677.3897089999955
+    },
+    {
+      "i": 19,
+      "saveToReceiveAckMs": 504,
+      "roundTripMs": 674.8944579999952
+    },
+    {
+      "i": 20,
+      "saveToReceiveAckMs": 1252,
+      "roundTripMs": 1794.7925419999956
+    },
+    {
+      "i": 21,
+      "saveToReceiveAckMs": 1063,
+      "roundTripMs": 1236.305124999999
+    },
+    {
+      "i": 22,
+      "saveToReceiveAckMs": 879,
+      "roundTripMs": 1053.0083330000052
+    },
+    {
+      "i": 23,
+      "saveToReceiveAckMs": 727,
+      "roundTripMs": 1280.9467500000028
+    },
+    {
+      "i": 24,
+      "saveToReceiveAckMs": 517,
+      "roundTripMs": 686.5803749999905
+    },
+    {
+      "i": 25,
+      "saveToReceiveAckMs": 551,
+      "roundTripMs": 723.3792090000061
+    },
+    {
+      "i": 26,
+      "saveToReceiveAckMs": 1042,
+      "roundTripMs": 1212.580500000011
+    },
+    {
+      "i": 27,
+      "saveToReceiveAckMs": 501,
+      "roundTripMs": 672.0627089999907
+    },
+    {
+      "i": 28,
+      "saveToReceiveAckMs": 1012,
+      "roundTripMs": 1183.7927080000227
+    },
+    {
+      "i": 29,
+      "saveToReceiveAckMs": 492,
+      "roundTripMs": 834.4549579999875
+    },
+    {
+      "i": 30,
+      "saveToReceiveAckMs": 351,
+      "roundTripMs": 522.9449589999858
+    },
+    {
+      "i": 31,
+      "saveToReceiveAckMs": 883,
+      "roundTripMs": 1056.254667000001
+    },
+    {
+      "i": 32,
+      "saveToReceiveAckMs": 668,
+      "roundTripMs": 845.7381670000032
+    },
+    {
+      "i": 33,
+      "saveToReceiveAckMs": 505,
+      "roundTripMs": 676.5819159999955
+    },
+    {
+      "i": 34,
+      "saveToReceiveAckMs": 504,
+      "roundTripMs": 682.3212920000078
+    },
+    {
+      "i": 35,
+      "saveToReceiveAckMs": 502,
+      "roundTripMs": 674.5792920000094
+    },
+    {
+      "i": 36,
+      "saveToReceiveAckMs": 712,
+      "roundTripMs": 882.7698749999981
+    },
+    {
+      "i": 37,
+      "saveToReceiveAckMs": 1798,
+      "roundTripMs": 3108.5893749999814
+    },
+    {
+      "i": 38,
+      "saveToReceiveAckMs": 1036,
+      "roundTripMs": 1213.8874589999905
+    },
+    {
+      "i": 39,
+      "saveToReceiveAckMs": 1213,
+      "roundTripMs": 1384.4124160000065
+    },
+    {
+      "i": 40,
+      "saveToReceiveAckMs": 502,
+      "roundTripMs": 1209.1828749999986
+    },
+    {
+      "i": 41,
+      "saveToReceiveAckMs": 1256,
+      "roundTripMs": 1595.324708
+    },
+    {
+      "i": 42,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 672.9207079999906
+    },
+    {
+      "i": 43,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 1209.8377920000348
+    },
+    {
+      "i": 44,
+      "saveToReceiveAckMs": 349,
+      "roundTripMs": 685.3170419999515
+    },
+    {
+      "i": 45,
+      "saveToReceiveAckMs": 505,
+      "roundTripMs": 1579.3723750000354
+    },
+    {
+      "i": 46,
+      "saveToReceiveAckMs": 4039,
+      "roundTripMs": 4213.027500000026
+    },
+    {
+      "i": 47,
+      "saveToReceiveAckMs": 1104,
+      "roundTripMs": 1279.2183339999756
+    },
+    {
+      "i": 48,
+      "saveToReceiveAckMs": 511,
+      "roundTripMs": 681.6117920000106
+    },
+    {
+      "i": 49,
+      "saveToReceiveAckMs": 349,
+      "roundTripMs": 521.2754169999971
+    },
+    {
+      "i": 50,
+      "saveToReceiveAckMs": 348,
+      "roundTripMs": 684.5232499999693
+    },
+    {
+      "i": 51,
+      "saveToReceiveAckMs": 881,
+      "roundTripMs": 1052.1665420000209
+    },
+    {
+      "i": 52,
+      "saveToReceiveAckMs": 557,
+      "roundTripMs": 891.7703329999931
+    },
+    {
+      "i": 53,
+      "saveToReceiveAckMs": 1092,
+      "roundTripMs": 1263.5720420000143
+    },
+    {
+      "i": 54,
+      "saveToReceiveAckMs": 668,
+      "roundTripMs": 838.4639590000152
+    },
+    {
+      "i": 55,
+      "saveToReceiveAckMs": 560,
+      "roundTripMs": 730.6130840000114
+    },
+    {
+      "i": 56,
+      "saveToReceiveAckMs": 505,
+      "roundTripMs": 1042.227292000025
+    },
+    {
+      "i": 57,
+      "saveToReceiveAckMs": 675,
+      "roundTripMs": 847.2330420000362
+    },
+    {
+      "i": 58,
+      "saveToReceiveAckMs": 668,
+      "roundTripMs": 839.4356249999837
+    },
+    {
+      "i": 59,
+      "saveToReceiveAckMs": 1786,
+      "roundTripMs": 1959.929582999961
+    },
+    {
+      "i": 60,
+      "saveToReceiveAckMs": 524,
+      "roundTripMs": 697.2545420000097
+    },
+    {
+      "i": 61,
+      "saveToReceiveAckMs": 505,
+      "roundTripMs": 675.210875000048
+    },
+    {
+      "i": 62,
+      "saveToReceiveAckMs": 716,
+      "roundTripMs": 1418.8095000000321
+    },
+    {
+      "i": 63,
+      "saveToReceiveAckMs": 881,
+      "roundTripMs": 1586.0881659999723
+    },
+    {
+      "i": 64,
+      "saveToReceiveAckMs": 347,
+      "roundTripMs": 517.9484170000069
+    },
+    {
+      "i": 65,
+      "saveToReceiveAckMs": 561,
+      "roundTripMs": 1103.896000000008
+    },
+    {
+      "i": 66,
+      "saveToReceiveAckMs": 886,
+      "roundTripMs": 1056.1641669999808
+    },
+    {
+      "i": 67,
+      "saveToReceiveAckMs": 347,
+      "roundTripMs": 681.0634999999893
+    },
+    {
+      "i": 68,
+      "saveToReceiveAckMs": 516,
+      "roundTripMs": 850.413292000012
+    },
+    {
+      "i": 69,
+      "saveToReceiveAckMs": 502,
+      "roundTripMs": 673.5758749999804
+    },
+    {
+      "i": 70,
+      "saveToReceiveAckMs": 353,
+      "roundTripMs": 524.7109580000397
+    },
+    {
+      "i": 71,
+      "saveToReceiveAckMs": 882,
+      "roundTripMs": 1061.117249999952
+    },
+    {
+      "i": 72,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 837.8919159999932
+    },
+    {
+      "i": 73,
+      "saveToReceiveAckMs": 501,
+      "roundTripMs": 675.8675829999847
+    },
+    {
+      "i": 74,
+      "saveToReceiveAckMs": 361,
+      "roundTripMs": 696.9792920000036
+    },
+    {
+      "i": 75,
+      "saveToReceiveAckMs": 1252,
+      "roundTripMs": 1421.2280000000028
+    },
+    {
+      "i": 76,
+      "saveToReceiveAckMs": 381,
+      "roundTripMs": 1308.8536249999888
+    },
+    {
+      "i": 77,
+      "saveToReceiveAckMs": 1100,
+      "roundTripMs": 1277.671999999904
+    },
+    {
+      "i": 78,
+      "saveToReceiveAckMs": 527,
+      "roundTripMs": 875.6629999999423
+    },
+    {
+      "i": 79,
+      "saveToReceiveAckMs": 1100,
+      "roundTripMs": 1278.642790999962
+    },
+    {
+      "i": 80,
+      "saveToReceiveAckMs": 1294,
+      "roundTripMs": 1471.8048330000602
+    },
+    {
+      "i": 81,
+      "saveToReceiveAckMs": 771,
+      "roundTripMs": 953.7607079999289
+    },
+    {
+      "i": 82,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 671.8606660000514
+    },
+    {
+      "i": 83,
+      "saveToReceiveAckMs": 506,
+      "roundTripMs": 1040.9110830000136
+    },
+    {
+      "i": 84,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 837.5920410000253
+    },
+    {
+      "i": 85,
+      "saveToReceiveAckMs": 348,
+      "roundTripMs": 902.8395000000019
+    },
+    {
+      "i": 86,
+      "saveToReceiveAckMs": 552,
+      "roundTripMs": 723.546917000087
+    },
+    {
+      "i": 87,
+      "saveToReceiveAckMs": 505,
+      "roundTripMs": 838.7861669999547
+    },
+    {
+      "i": 88,
+      "saveToReceiveAckMs": 670,
+      "roundTripMs": 1210.358125000028
+    },
+    {
+      "i": 89,
+      "saveToReceiveAckMs": 1092,
+      "roundTripMs": 1796.7490410000319
+    },
+    {
+      "i": 90,
+      "saveToReceiveAckMs": 675,
+      "roundTripMs": 847.9882919999072
+    },
+    {
+      "i": 91,
+      "saveToReceiveAckMs": 504,
+      "roundTripMs": 675.5826250000391
+    },
+    {
+      "i": 92,
+      "saveToReceiveAckMs": 504,
+      "roundTripMs": 676.5107919999864
+    },
+    {
+      "i": 93,
+      "saveToReceiveAckMs": 710,
+      "roundTripMs": 1248.6432920000516
+    },
+    {
+      "i": 94,
+      "saveToReceiveAckMs": 672,
+      "roundTripMs": 1216.2465830000583
+    },
+    {
+      "i": 95,
+      "saveToReceiveAckMs": 347,
+      "roundTripMs": 517.2338339999551
+    },
+    {
+      "i": 96,
+      "saveToReceiveAckMs": 678,
+      "roundTripMs": 851.4993749998976
+    },
+    {
+      "i": 97,
+      "saveToReceiveAckMs": 526,
+      "roundTripMs": 704.9950410000747
+    },
+    {
+      "i": 98,
+      "saveToReceiveAckMs": 503,
+      "roundTripMs": 674.621541999979
+    },
+    {
+      "i": 99,
+      "saveToReceiveAckMs": 502,
+      "roundTripMs": 673.0276669999585
+    }
+  ],
+  "restartRecovery": true
+}

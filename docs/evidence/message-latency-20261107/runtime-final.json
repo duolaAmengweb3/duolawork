@@ -1,0 +1,100 @@
+{
+  "observedAt": "2026-11-07T16:26:46.588Z",
+  "local": {
+    "online": true,
+    "build": {
+      "id": "cda13be5bdb0bd35",
+      "version": "0.1.0",
+      "builtAt": "2026-11-07T16:21:17.169Z"
+    },
+    "desktop": {
+      "kind": "desktop",
+      "ready": true,
+      "buildId": "cda13be5bdb0bd35"
+    },
+    "processId": 73713
+  },
+  "deepseek": {
+    "ready": true,
+    "protocolVersion": 7,
+    "receiverRevision": "737e4e1767bf168780ae",
+    "originalSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+    "actualReviewMessage": "chat_30a1af5052874337bbc05edaf4e61767"
+  },
+  "antigravityDesktop": {
+    "ready": true,
+    "protocolVersion": 1,
+    "revision": "182f58f5718a88ff2ea9",
+    "nativeSessionRoundTripThisRun": false
+  },
+  "geminiRuntime": {
+    "receiverRevision": "70bf4e38c2596159d48598ab4a9cf57e41f53642b4839da2a7a394e316f8eb49",
+    "updateAvailable": false,
+    "sourceReady": true
+  },
+  "claudeOriginal": {
+    "id": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+    "title": "新电脑迁移",
+    "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+    "createdAt": "2026-11-06T16:57:22.669Z",
+    "seenAt": "2026-11-07T15:55:00.335Z",
+    "status": "online",
+    "canCreate": true,
+    "online": true
+  },
+  "actualRoundTrips": [
+    {
+      "id": "turn_chat_876eaf4394f74450b7356578a3f19376_member_acbea6620d534e6682d8009db6403f1e",
+      "memberId": "member_acbea6620d534e6682d8009db6403f1e",
+      "messageId": "chat_876eaf4394f74450b7356578a3f19376",
+      "status": "done",
+      "createdAt": "2026-11-07T15:45:46.651Z",
+      "connectorReceivedAt": "2026-11-07T15:45:47.315Z",
+      "nativeAcceptedAt": "2026-11-07T15:45:47.691Z",
+      "claimedAt": "2026-11-07T15:45:59.284Z",
+      "completedAt": "2026-11-07T15:47:00.322Z"
+    },
+    {
+      "id": "turn_chat_767e8f8ad62441bcb3ef720e6d014f97_member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "messageId": "chat_767e8f8ad62441bcb3ef720e6d014f97",
+      "status": "done",
+      "createdAt": "2026-11-07T15:38:27.750Z",
+      "connectorReceivedAt": "2026-11-07T15:38:28.515Z",
+      "nativeAcceptedAt": "2026-11-07T15:38:28.833Z",
+      "claimedAt": "2026-11-07T15:38:36.573Z",
+      "completedAt": "2026-11-07T15:39:21.888Z"
+    }
+  ],
+  "claudeLoaded": {
+    "sha256": "969b4527d8dbb286b4d71b53eef8e7c8fa055c5d1fce44cbf8e41215dd87caf3",
+    "fileUpdatedAt": "2026-11-07T15:36:28.699Z",
+    "monitorMcp": {
+      "pid": 3514130,
+      "startedAt": "2026-11-07T15:36:59Z"
+    },
+    "monitor": {
+      "pid": 3514189,
+      "startedAt": "2026-11-07T15:37:00Z"
+    },
+    "observedAgainAt": "2026-11-07T16:03:32.241Z",
+    "replyMessageId": "chat_b4bf74d31c5443499cfff4c92eba9a66"
+  },
+  "backend": [
+    {
+      "file": "worker.mjs",
+      "sha256": "b2cfa79fe230e0d35e0489ea32a8c4f0e53a7c1b59b133560ad17396637f76bd",
+      "matchesDeployed": true
+    },
+    {
+      "file": "main.mjs",
+      "sha256": "7f4c1a44c7be47e8f8f68a5c7f2165eebaf20f85ebf4074600fd618288a6e86f",
+      "matchesDeployed": true
+    },
+    {
+      "file": "sqlite.mjs",
+      "sha256": "6a6973b15852ecbbaa207a3c89f8d890170e8018e55e5cdbb43698da77d355dc",
+      "matchesDeployed": true
+    }
+  ]
+}
