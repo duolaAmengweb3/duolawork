@@ -16,8 +16,8 @@ const digest=value=>createHash('sha256').update(value).digest('hex');
 const receiverRevision=await fs.readFile(new URL('../complete.json',import.meta.url),'utf8').then(JSON.parse).then(v=>v.revision).catch(()=>null);
 
 export class DshConnector {
- constructor({ctx,stateFile,clientFactory=file=>new CodingMemberClient(file),pollMs=3000,allowProof=false}){
-  Object.assign(this,{ctx,stateFile,clientFactory,pollMs,allowProof});
+ constructor({ctx,stateFile,clientFactory=file=>new CodingMemberClient(file),pollMs=3000,allowProof=false,now=Date.now,receiptGraceMs=60000}){
+  Object.assign(this,{ctx,stateFile,clientFactory,pollMs,allowProof,now,receiptGraceMs});
   this.bindings=new Map();this.bindingJobs=new Map();this.pollJobs=new Map();this.saveChain=Promise.resolve();this.removed=new Set();this.closed=false;this.busy=false;this.ready=false;this.dispatches=[];
  }
  async start(){
@@ -35,7 +35,7 @@ export class DshConnector {
  }
  save(){return this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{
   const records=new Map((this.state.bindings||[]).filter(b=>!this.removed.has(b.sessionId)).map(b=>[b.sessionId,b]));
-  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched]});
+  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched],receiptRecovery:b.receiptRecovery});
   this.state={...this.state,bindings:[...records.values()]};await privateJson(this.stateFile,this.state);
  });}
  async sessionInfo(id){
@@ -54,7 +54,7 @@ export class DshConnector {
   const pending=this.bindingJobs.get(input.sessionId);if(pending){await pending;return this.bindOnce(input);}
   const job=this.bindOnce(input);this.bindingJobs.set(input.sessionId,job);try{return await job;}finally{this.bindingJobs.delete(input.sessionId);}
  }
- async bindOnce({sessionId,workspace,grantFile,dispatched=[],channelIds,verification}){
+ async bindOnce({sessionId,workspace,grantFile,dispatched=[],channelIds,verification,receiptRecovery}){
   if(this.bindings.has(sessionId)){
    const b=this.bindings.get(sessionId),c=await this.clientFactory(grantFile).credentials();
    if(b.memberId!==c.memberId||await fs.realpath(workspace)!==b.workspace)throw Error('Original session is already bound to another Hub member');
@@ -69,7 +69,7 @@ export class DshConnector {
   if((await fs.stat(grantFile)).mode&0o077)throw Error('Hub member grant must be private (0600)');
   const client=this.clientFactory(grantFile),credential=await client.credentials();
 
-  const b={sessionId,channelIds,verification,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),disposers:[],toolCalls:[],abort:new AbortController()};
+  const b={sessionId,channelIds,verification,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),receiptRecovery,disposers:[],toolCalls:[],abort:new AbortController()};
   const definitions=await client.tools();
   try{
    b.definitions=definitions;this.removed.delete(sessionId);this.bindings.set(sessionId,b);this.attachAgent(agent);
@@ -110,7 +110,36 @@ export class DshConnector {
     }));
   }
  }
- publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...b.dispatched],lastError:b.lastError};}
+ publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...b.dispatched],lastError:b.lastError,receiptRecovery:b.receiptRecovery};}
+ async reconcileReceipt(b,work){
+  const pending=work.find(w=>w.status==='claimed'&&w.stepId.startsWith('turn_')&&b.dispatched.has(w.stepId)&&acceptsWork(b,w));
+  if(!pending){if(b.receiptRecovery){b.receiptRecovery=null;await this.save();}return false;}
+  const native=await this.sessionInfo(b.sessionId),now=this.now();
+  if(this.closed||this.bindings.get(b.sessionId)!==b)return true;
+  const previous=b.receiptRecovery;
+  if(native.running===true){
+   if(previous?.stepId===pending.stepId){previous.idleSince=null;previous.state=previous.attemptedAt?'recovering':'running';}
+   // Long native work extends the existing lease; it is never replayed.
+   if(!b.lastRunningReport||now-b.lastRunningReport>=60000){await b.client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:randomUUID(),turnId:pending.stepId,state:'running'}});b.lastRunningReport=now;}
+   return true;
+  }
+  if(native.running!==false)return true; // Unknown is not proof of termination.
+  const recovery=previous?.stepId===pending.stepId?previous:{stepId:pending.stepId,channelId:pending.channelId,state:'observing',idleSince:now};
+  b.receiptRecovery=recovery;recovery.idleSince??=now;
+  if(now-recovery.idleSince<this.receiptGraceMs)return true;
+  const state=await b.client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(pending.stepId));
+  if(state.status!=='active'){b.receiptRecovery=null;await this.save();return true;}
+  if(!recovery.attemptedAt){
+   // Persist before queueing. A lost response or Host restart cannot repeat
+   // completed side effects or create an unbounded recovery/model loop.
+   recovery.attemptedAt=now;recovery.state='recovering';recovery.idleSince=now;await this.save();
+   const text=`DuolaWork 回执恢复：这段原生对话已停止运行，但 ${pending.stepId} 的结果尚未回到原群 ${pending.channelId}。保留当前会话、模型、工具和已有结果。不要重做已完成的操作，不领取其他工作，不重新跑全量测试。用 hub_read_channel 查看本群最新补充，核对本轮已有结果；使用 hub_post_message，提供新的 requestId、channelId=${pending.channelId}、turnId=${pending.stepId}，回传真实结果或具体阻塞。原工作已领取，无需再次 claim_work。若已经回过群，核对对应消息后用 hub_stay_silent 结束此 turn。不能声称未验证的工作完成。只收尾这一条，后续由连接器正常投递。`;
+   await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId:digest(b.memberId+':receipt:'+pending.stepId),content:[{type:'text',text}]},b.abort.signal);
+   return true;
+  }
+  await b.client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:digest(b.memberId+':receipt-ended:'+pending.stepId),turnId:pending.stepId,state:'ended'}});
+  recovery.state='unresolved';await this.save();return true;
+ }
  async poll(){
   if(this.closed)return;
   const launched=[];
@@ -124,9 +153,13 @@ export class DshConnector {
  async pollBinding(b){
    try{
     const signal=await b.client.api('/v2/signal',{timeout:15000});
-    if(!signal.hasWork){b.lastError=null;return;}
+    // A claimed message is absent from hasWork (ready notifications only).
+    // Reconcile it even when no newer message happens to arrive.
+    if(!signal.hasWork&&(!b.dispatched.size||this.now()-(b.lastReceiptCheck||0)<15000)){b.lastError=null;return;}
     const {work}=await b.client.tool('list_work');
+    b.lastReceiptCheck=this.now();
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;
+    if(await this.reconcileReceipt(b,work))return;
     // A native queue belongs to one original session, never to its whole account.
     if(work.some(w=>b.dispatched.has(w.stepId)))return;
     const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(w.stepId));

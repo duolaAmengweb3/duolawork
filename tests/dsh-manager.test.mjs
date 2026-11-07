@@ -104,3 +104,14 @@ test('restoring Host bindings is not presented as a verified, available connecti
  const f=await fixture(t);await f.manager.connect({memberId:'member_one',sessionId:'original-session'});await f.manager.jobs.get('member_one');f.setComplete(true);await f.manager.tick();
  const previous=f.host.call;f.host.call=async(route,body)=>route==='/health'?{ready:false,bindings:[]}:previous(route,body);await f.manager.tick();assert.equal(f.manager.status()[0].status,'connecting');
 });
+
+test('missing native reply is shown as result recovery only in its original conversation, not model processing',async t=>{
+ const f=await fixture(t);await f.manager.connectSource({memberId:'member_one'});await f.manager.jobs.get('member_one');
+ f.manager.records.member_one.chatBindings={good:{sessionId:'original-session',workspace:f.dir}};
+ await f.manager.tick();f.bindings[0].receiptRecovery={stepId:'turn_failed',state:'recovering'};await f.manager.tick();
+ const member={id:'member_one',platformId:'deepseek-harness'},turn={id:'turn_failed',scopeId:'good',memberId:member.id,status:'active'};
+ let status=f.manager.status()[0];assert.equal(memberAvailability(member,{},status,'good',[turn]).label,'正在核对结果');
+ assert.equal(memberAvailability(member,{},status,'good',[{...turn,id:'different-turn'}]).state,'working','old receipt observation cannot overwrite another turn');
+ f.bindings[0].receiptRecovery.state='unresolved';await f.manager.tick();status=f.manager.status()[0];assert.equal(memberAvailability(member,{},status,'good',[turn]).label,'原会话回复中断');
+ delete f.bindings[0].receiptRecovery;await f.manager.tick();assert.equal(memberAvailability(member,{},f.manager.status()[0],'good',[]).state,'idle');
+});

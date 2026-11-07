@@ -6,7 +6,7 @@ export function memberAvailability(member,connection,native,channelId,turns=[]){
  const bound=native?.assignments?.find(b=>b.channelId===channelId);
  if(coding.has(member.platformId)&&!native)return {state:'unknown',label:'状态待更新',detail:'正在读取原运行端的连接与对话信息。'};
  if(coding.has(member.platformId)&&channelId&&!bound)return {state:'unbound',label:'待选择对话',detail:'账号连接与当前聊天的工作对话分开选择。'};
- if(active)return {state:'working',label:processingLabel(active),detail:active.progress||'已领取本聊天的消息，正在处理；不代表正在生成回复文字。'};
+ if(active){const state=pendingTurnState(active,undefined,native,turns);return {state:state.kind==='unavailable'?'offline':state.kind==='recovering'?'waiting':'working',label:state.label,detail:state.detail};}
  if(pending.length){const states=pending.map(t=>pendingTurnState(t,undefined,native,turns)),state=states.find(s=>s.working)||states[0];return {state:state.kind==='unavailable'?'offline':state.working?'working':'waiting',label:state.label,detail:state.detail+(pending.length>1?` 本聊天共 ${pending.length} 条消息待处理。`:'')};}
  if(coding.has(member.platformId)){
   const problem=nativeReceptionProblem(native,channelId);if(problem)return {state:problem.kind==='recovering'?'waiting':'offline',label:problem.label,detail:problem.detail};

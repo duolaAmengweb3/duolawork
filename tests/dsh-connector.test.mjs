@@ -162,3 +162,49 @@ test('a stalled DSH session poll cannot stop other sessions or their next messag
   await f.connector.pollJobs.get(second.id);f.setWork([{channelId:'fast',stepId:'second',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts.length,2);release({hasWork:false});await pending;
  }finally{release?.({hasWork:false});await f.cleanup();}
 });
+
+test('an idle claimed native turn gets one receipt-only continuation even without new work, surviving restart',async()=>{
+ const f=await fixture();let now=100000;try{
+  f.options.now=()=>now;f.connector.now=f.options.now;
+  f.options.ctx.sessionController.list=async()=>({items:[{sessionId:f.agent.id,cwd:f.project,running:false}]});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['group']});
+  const client=f.options.clientFactory(),api=client.api;let status='active';
+  client.api=async(route,args)=>route.startsWith('/v2/self/conversation-state')?{status}:api(route,args);
+  f.setWork([{stepId:'turn_work',channelId:'group',status:'ready'}]);await f.connector.poll();
+  f.setWork([{stepId:'turn_work',channelId:'group',status:'claimed'}]);now+=15000;await f.connector.poll();
+  assert.equal(f.prompts.length,1,'no immediate replay while native may still settle');
+  now+=60000;await f.connector.poll();assert.equal(f.prompts.length,2);
+  assert.equal(f.prompts[1].sessionId,f.agent.id);assert.equal(f.prompts[1].mode,'queue');assert.match(f.prompts[1].content[0].text,/不要重做已完成/);assert.match(f.prompts[1].content[0].text,/无需再次 claim_work/);
+  await f.restart();await f.connector.poll();assert.equal(f.prompts.length,2,'persisted attempt is not enqueued again');
+  status='done';now+=60000;await f.connector.poll();assert.equal(f.prompts.length,2);assert.equal(f.connector.bindings.get(f.agent.id).receiptRecovery,null);
+  f.setWork([{stepId:'turn_next',channelId:'group',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts.length,3,'next message resumes after authoritative receipt');
+ }finally{await f.cleanup();}
+});
+
+test('native running, unknown state and network uncertainty cannot trigger receipt replay or fake completion',async()=>{
+ const f=await fixture();let now=100000,running=true;try{
+  f.connector.now=()=>now;f.options.ctx.sessionController.list=async()=>({items:[{sessionId:f.agent.id,cwd:f.project,running}]});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});
+  f.setWork([{stepId:'turn_busy',channelId:'group',status:'ready'}]);await f.connector.poll();
+  f.setWork([{stepId:'turn_busy',channelId:'group',status:'claimed'}]);const client=f.options.clientFactory(),api=client.api,reports=[];
+  client.api=async(route,args)=>{if(route.startsWith('/v2/self/conversation-state')){if(args)reports.push(args.body);else throw Error('network unavailable');return{status:'active'};}return api(route,args);};
+  now+=90000;await f.connector.poll();assert.deepEqual(reports.map(r=>r.state),['running']);assert.equal(f.prompts.length,1);
+  running=undefined;now+=90000;await f.connector.poll();assert.equal(f.prompts.length,1);
+  running=false;now+=15000;await f.connector.poll();now+=60000;await f.connector.poll();
+  assert.equal(f.prompts.length,1);assert.match(f.connector.bindings.get(f.agent.id).lastError,/network unavailable/);assert.deepEqual(reports.map(r=>r.state),['running']);
+ }finally{await f.cleanup();}
+});
+
+test('failed native receipt recovery reports ended once and releases later notifications without redoing the task',async()=>{
+ const f=await fixture();let now=100000;try{
+  f.connector.now=()=>now;f.options.ctx.sessionController.list=async()=>({items:[{sessionId:f.agent.id,cwd:f.project,running:false}]});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});
+  const current={stepId:'turn_failed',channelId:'group',status:'claimed'},next={stepId:'turn_next',channelId:'group',status:'ready'};
+  f.setWork([{...current,status:'ready'}]);await f.connector.poll();f.setWork([current,next]);
+  const client=f.options.clientFactory(),api=client.api,reports=[];
+  client.api=async(route,args)=>{if(route.startsWith('/v2/self/conversation-state')){if(args?.body.state==='ended'){reports.push(args.body);f.setWork([next]);return{status:'stalled'};}return{status:'active'};}return api(route,args);};
+  now+=15000;await f.connector.poll();now+=60000;await f.connector.poll();assert.equal(f.prompts.length,2);
+  now+=60000;await f.connector.poll();assert.equal(f.prompts.length,2);assert.equal(reports.length,1);assert.equal(reports[0].state,'ended');
+  await f.connector.poll();assert.equal(f.prompts.length,3);assert.match(f.prompts[2].content[0].text,/turn_next/);await f.connector.poll();assert.equal(reports.length,1);
+ }finally{await f.cleanup();}
+});

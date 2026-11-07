@@ -136,8 +136,14 @@ export class DshManager {
     const status=await this.client(r).api('/v2/self/status');r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);
     for(const b of Object.values(r.chatBindings)){
      const s=items.find(s=>s.id===b.sessionId);
+     const recovery=health.bindings?.find(x=>x.sessionId===b.sessionId)?.receiptRecovery;
      b.nativeState=!s||failures.has(b.sessionId)?'unavailable':s.running===true?'running':s.running===false?'idle':'unknown';
      b.nativeMessage=failures.get(b.sessionId)?.message;b.nativeIssueCode=failures.get(b.sessionId)?.code;b.observedAt=new Date().toISOString();
+     b.nativeIssueStepId=undefined;
+     if(!failures.has(b.sessionId)&&['recovering','unresolved'].includes(recovery?.state)){
+      b.nativeIssueStepId=recovery.stepId;b.nativeIssueCode=recovery.state==='recovering'?'reply_recovery':'reply_missing';
+      b.nativeMessage=recovery.state==='recovering'?'原 Agent 上一轮已停止，但尚未回群。正在原对话核对已有结果，不重新执行工作。':'原 Agent 未能回传结果。原工作与后续消息保留，需检查原环境中的具体错误。';
+     }
     }
     r.status=entries.some(b=>!failures.has(b.sessionId)&&items.find(s=>s.id===b.sessionId)?.running)?'working':'idle';
     r.message=missing.length?`${missing.length} 段工作对话暂不可用，其他对话继续接收；原绑定保留`:'运行端已连接，各聊天使用各自的工作会话';continue;
