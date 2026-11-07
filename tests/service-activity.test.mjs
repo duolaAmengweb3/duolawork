@@ -96,6 +96,10 @@ test('GitHub receipts distinguish authorization, rate, permission, missing resou
  const check=await connectorSettings(f.repo,f.identity,owner,{action:'check',connectionId:connection.id},env,async()=>response({name:'project'}));assert.ok(check.receiptId);
  assert.equal((await connectorTool(f.repo,peer,{...args,action:'activity'},env)).items.length,9);
  assert.equal((await connectorSettings(f.repo,f.identity,owner,{action:'activity',connectionId:connection.id},env)).items.length,10);
+ const exact=await connectorTool(f.repo,agent,{...args,action:'file',path:'docs/guide.md'},env,async()=>response({name:'guide.md'}));
+ const latest=(await connectorSettings(f.repo,f.identity,owner,{action:'list'},env)).items[0].latestRead;assert.equal(latest.id,exact.receiptId);assert.equal(latest.source,'https://api.github.com/repos/org/project/contents/docs/guide.md');
+ await assert.rejects(connectorTool(f.repo,agent,{...args,action:'issue',number:13},env,()=>response({},404)));
+ assert.equal((await connectorSettings(f.repo,f.identity,owner,{action:'list'},env)).items[0].latestRead.source,'https://api.github.com/repos/org/project/issues/13');
 });
 test('old native tool catalogs can invoke new skill tools through the compatibility envelope',async t=>{
  const f=await setup(t),s=await f.save({}),task=await f.task({title:'兼容使用',skillRefs:[{skillId:s.id,version:1}]});

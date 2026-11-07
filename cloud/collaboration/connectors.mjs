@@ -25,12 +25,18 @@ async function githubFetch(token,path,fetchImpl){
  try{return await readJSON(response,1500000);}catch{fail('invalid_response','GitHub 返回的数据不完整，请重试',502);}
 }
 async function recordRead(repo,actor,connection,args,started,error){
- return appendActivity(repo,'connector_activity',{parentId:connection.id,scopeId:args.channelId||null,memberId:actor.memberId||'owner',connectionVersion:connection.version,account:connection.account,action:args.action,repository:args.repository,path:args.path||null,number:args.number||null,status:error?'failed':'succeeded',code:error?.code||null,message:error?.message||'已读取实际资源',durationMs:Date.now()-started,source:'https://api.github.com/repos/'+args.repository});
+ return appendActivity(repo,'connector_activity',{parentId:connection.id,scopeId:args.channelId||null,memberId:actor.memberId||'owner',connectionVersion:connection.version,account:connection.account,action:args.action,repository:args.repository,path:args.path||null,number:args.number||null,status:error?'failed':'succeeded',code:error?.code||null,message:error?.message||'已读取实际资源',durationMs:Date.now()-started,source:'https://api.github.com'+(args.resourcePath||'/repos/'+args.repository)});
 }
 export async function connectorSettings(repo,identity,actor,args,env,fetchImpl=fetch){
  await requireManager(repo,actor);
  if(!['list','activity','check','connect','update','disconnect'].includes(args.action))fail('invalid_action','连接操作无效');
- if(args.action==='list')return {items:await Promise.all((await repo.list('service_connection',{limit:500})).map(async c=>({...publicConnection(c),latestRead:(await activityPage(repo,'connector_activity',{parent:c.id})).items[0]||null}))),native:'原 Agent 的已有工具和连接器仍由原环境管理。'};
+ if(args.action==='list'){
+  // One database request for all latest receipts; indexed lookup per connection,
+  // without one network round trip per account or loading entire histories.
+  const [connections,latest]=await Promise.all([repo.list('service_connection',{limit:500}),repo.db.prepare("SELECT c.id,(SELECT a.body FROM hub_v2_records a WHERE a.workspace_id=c.workspace_id AND a.kind='connector_activity' AND a.parent_id=c.id ORDER BY a.updated_at DESC,a.rowid DESC LIMIT 1) AS activity FROM hub_v2_records c WHERE c.workspace_id=? AND c.kind='service_connection'").bind(repo.workspaceId).all()]);
+  const records=new Map(latest.results.map(r=>[r.id,r.activity?JSON.parse(r.activity):null]));
+  return {items:connections.map(c=>({...publicConnection(c),latestRead:records.get(c.id)||null})),native:'原 Agent 的已有工具和连接器仍由原环境管理。'};
+ }
  if(args.action==='activity'){await repo.get('service_connection',args.connectionId);return activityPage(repo,'connector_activity',{parent:args.connectionId,after:args.after});}
  if(args.action==='check'){
   const c=await repo.get('service_connection',args.connectionId);if(c.status!=='connected')fail('authorization_required','请先连接此账号',409);
@@ -82,6 +88,6 @@ export async function connectorTool(repo,actor,args,env,fetchImpl=fetch){
   const fresh=await repo.get('service_connection',connection.id);await access(repo,args.channelId,actor);
   if(fresh.version!==connection.version||!allowed(fresh,actor,args.channelId))fail('connection_changed','连接授权已变化，请重新读取',409);
  }catch(e){error=e;}
- const receipt=await recordRead(repo,actor,connection,args,started,error);if(error)throw error;
+ const receipt=await recordRead(repo,actor,connection,{...args,resourcePath:path},started,error);if(error)throw error;
  return {account:connection.account,repository:repoName,result,access:'read_only',readAt:receipt.createdAt,receiptId:receipt.id,source:'https://api.github.com'+path};
 }
