@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { startHarness } from './v1-harness.mjs';
-const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');
+const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');process.env.AGENT_HUB_TEST_MODE='1';
 const {start}=await import('../local/server.mjs');let local,browser;const checks=[],errors=[];
 try{
  const lead=await h.member('grok-bot','负责人'),peer=await h.member('chatgpt-agent','核验成员');
@@ -39,11 +39,12 @@ try{
  await assertEventually(async()=>assert.equal(await p.getByRole('textbox',{name:'群消息',exact:true}).inputValue(),'还有一个没发送的补充'));
  await p.reload();await p.getByRole('textbox',{name:'群消息',exact:true}).waitFor();assert.equal(await p.getByRole('textbox',{name:'群消息',exact:true}).inputValue(),'还有一个没发送的补充');
  checks.push('关闭筹备面板、重新打开和刷新均保留本场会话与未发送草稿');
- await p.getByRole('button',{name:'开始会议',exact:true}).click();
+ assert.equal(await p.getByRole('button',{name:'开始会议',exact:true}).count(),0,'不要求用户再次点开始');
+ await lead.call('meeting',{requestId:crypto.randomUUID(),action:'start',channelId:channel.id,meetingId:m.id});
  await p.getByRole('complementary',{name:'会议进展'}).waitFor();
  m=(await h.request('/v2/meeting?id='+m.id)).meeting;
  assert.equal(m.status,'running');await p.getByRole('main').getByRole('button',{name:/会议进行中.*外国游客/}).waitFor();
- checks.push('点击正式开始后才生成群内会议卡片、通知参会者并启动计时');
+ checks.push('负责人真实调用开始工具后生成群内会议卡片、通知参会者并启动计时，不再要求用户确认');
  for(let round=0;round<2;round++)for(const member of [lead,peer]){
   const c=await receive(member);assert(c.turnId);
   if(round===1)await member.call('meeting',{requestId:crypto.randomUUID(),action:'review',channelId:channel.id,meetingId:m.id,claim:'预订与支付是否构成高频困难',method:'对照访谈原文和平台支付说明',finding:'有重复投诉，但还需要验证付费意愿',sources:['https://example.com/interview'],sourceVersion:m.version});

@@ -165,13 +165,13 @@ test('人类文字不会自动开始会议；负责人处理最新消息后自�
  assert.equal((await f.repo.get('channel_meeting',m.id)).status,'ended');
 });
 
-test('负责人可在剩余预算内定向补查；预算耗尽后不增加自动调用',async t=>{
+test('负责人可在剩余时间内定向补查；旧累计唤醒预算不截断正常讨论',async t=>{
  const f=await setup(t);await f.plan();let m=await f.meet('start');
  await f.meet('investigate',{body:'上轮缺少付费证据，请核对实际购买记录',memberIds:['check']},actor('grok'));
  m=await f.repo.get('channel_meeting',m.id);assert.equal(m.phase,'定向补查');assert.equal(m.round,1);
- await f.repo.transact('budget-fixture',{},async tx=>{const row=await tx.get('channel_meeting',m.id);tx.put('channel_meeting',{...row,wakeCount:row.maxWakeups-1});return{};});
+ await f.repo.transact('budget-fixture',{},async tx=>{const row=await tx.get('channel_meeting',m.id);tx.put('channel_meeting',{...row,wakeCount:500,maxWakeups:8});return{};});
  await f.meet('investigate',{body:'继续核实',memberIds:['check']},actor('grok'));
- const current=await f.repo.get('channel_meeting',m.id);assert(current.wakeCount<=current.maxWakeups);
+ const current=await f.repo.get('channel_meeting',m.id);assert.equal(current.wakeCount,501);
  const count=(await f.repo.list('outbox')).length;
  await f.meet('stop');
  await conversationMaintenance(f.repo,f.identity,'2026-11-03T05:20:00.000Z');assert.equal((await f.repo.list('outbox')).length,count);

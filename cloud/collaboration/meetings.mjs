@@ -11,12 +11,16 @@ export const MEETING_MODES = {
 const string = { type: 'string' };
 export const MEETING_TOOLS = [{
   name: 'meeting',
-  description: '真实会议工具。prepare筹备；say与负责人沟通；plan由负责人提出可修改的目标和交付；start由负责人在理解最新需求后直接开会，无需用户再次确认；read读取本场；opinion提交本阶段独立意见；review登记具体核验；agenda调整议题；advance推进；finish由负责人自主收尾，交付给用户可直接阅读的完整结果并结束会议，answers写具体发现而非完成状态；stop停止。不要用普通群消息泄漏未公开意见。',
+  description: '真实会议工具。prepare筹备，同一 ownerMessageId/topicKey 复用当前会议；plan保存目标、交付和自定 stages（旧 mode 预设可选）；start由负责人理解需求后直接开会；read读取；opinion提交本阶段意见；review记录核验；agenda调整；advance推进；finish交付具体结果并结束；stop停止；结束缺总结时 retry_summary 只通知负责人、recover_summary 补齐。原生会话已看过上下文时 reviewBasis=existing_context，不冒充盲评。不要公开未发表的意见。',
   inputSchema: { type: 'object', additionalProperties: false,
     properties: {
       requestId: string, channelId: string, meetingId: string, action: string,
       body: string, title: string, summary: string, goal: string, deliverable: string,
-      coordinatorId: string, mode: { type: 'string', enum: Object.keys(MEETING_MODES) },
+      coordinatorId: string, mode: { type: 'string', description:'可选的旧方法预设；也可直接用 stages 描述本场安排。' },
+      topicKey: string,
+      stages: {type:'array',maxItems:20,items:{type:'object',properties:{name:string,memberIds:{type:'array',items:string},private:{type:'boolean'}},required:['name'],additionalProperties:false}},
+      reviewBasis: {type:'string',enum:['existing_context','independent_input']},
+      expectedResultVersion:{type:'integer',minimum:0},
       memberIds: { type: 'array', items: string, maxItems: 30 },
       durationSeconds: { type: 'integer', minimum: 60, maximum: 7200 },
       expectedVersion: { type: 'integer' }, round: { type: 'integer' },
@@ -43,11 +47,25 @@ const liveMember = (identity, mid) => identity.members.find(m => m.id === mid &&
 const stamp = (tx, m, changes = {}) => tx.put('channel_meeting', { ...m, ...changes });
 const due = (m, now) => active(m) && Date.parse(now) >= Date.parse(m.deadlineAt);
 const phaseDue = (m, now) => m.status === 'running' && Date.parse(now) >= Date.parse(m.phaseDeadlineAt);
-const setPhaseDeadline = (m, now) => new Date(Math.min(Date.parse(m.closingAt), Date.parse(now) + Math.max(1000, (Date.parse(m.closingAt) - Date.parse(now)) / Math.max(1, MEETING_MODES[m.mode].stages.length - m.round)))).toISOString();
-const expectedMembers = m => m.phaseMembers || (m.mode === 'redblue' ? (m.round === 1 ? m.memberIds.filter(x => x !== m.coordinatorId) : [m.coordinatorId]) : m.memberIds);
+const stagesOf=m=>m.stages?.length?m.stages:(MEETING_MODES[m.mode]?.stages||['分别提出意见','比较依据与整理结论']).map((name,index)=>({name,private:index===0}));
+const privatePhase=m=>stagesOf(m)[m.round]?.private===true;
+const setPhaseDeadline = (m, now) => new Date(Math.min(Date.parse(m.closingAt), Date.parse(now) + Math.max(1000, (Date.parse(m.closingAt) - Date.parse(now)) / Math.max(1, stagesOf(m).length - m.round)))).toISOString();
+const expectedMembers = m => m.phaseMembers || stagesOf(m)[m.round]?.memberIds || (m.mode === 'redblue' ? (m.round === 1 ? m.memberIds.filter(x => x !== m.coordinatorId) : [m.coordinatorId]) : m.memberIds);
+function cleanStages(value,members){
+ if(!Array.isArray(value)||!value.length||value.length>20)fail('invalid_stages','请提供1至20项实际讨论安排');
+ return value.map((s,index)=>{if(!s||typeof s!=='object'||(s.private!==undefined&&typeof s.private!=='boolean'))fail('invalid_stages','讨论安排格式无效');const memberIds=s.memberIds===undefined?undefined:list(s.memberIds);if(memberIds&&(!memberIds.length||memberIds.some(id=>!members.includes(id))))fail('invalid_member','阶段参与者须来自本场成员');return{name:required(s.name,'讨论环节',100),private:s.private??index===0,...(memberIds?{memberIds}:{})};});
+}
 export function publicMeeting(m, actor = { owner: true }) {
   if (m.status === 'preparing' && !actor.owner && actor.memberId !== m.coordinatorId && actor.memberId !== m.createdBy) return null;
+  if(!actor.owner&&actor.memberId!==m.coordinatorId&&m.status==='running'&&privatePhase(m)){const {organization,...visible}=m;return visible;}
   return m;
+}
+function visibleRecord(r,m,actor){
+ if(actor.owner)return r;
+ if(r.kind==='meeting_preparation'&&actor.memberId!==m.coordinatorId&&!(m.status!=='preparing'&&r.authorId==='owner'))return null;
+ if(['meeting_opinion','meeting_opinion_history','meeting_review'].includes(r.kind)&&!r.publishedAt&&r.authorId!==actor.memberId&&!(r.kind==='meeting_review'&&r.withheld!==true))return null;
+ if(r.kind==='meeting_plan_version'&&actor.memberId!==m.coordinatorId&&m.status==='running'&&privatePhase(m)){const {organization,...visible}=r;return visible;}
+ return r;
 }
 const ownerStop = body => /^(停止本场会议|结束这场会议|停止会议|结束会议|这场会议先停|立刻停止本场会议|停止全部调用)[。！!\s]*$/u.test(body.trim());
 
@@ -66,7 +84,6 @@ async function wake(tx, identity, channel, m, targets, body, helpers, { preparat
   for (const mid of list(targets)) {
     const c = await tx.get('connection', mid, false);
     if (!liveMember(identity, mid) || c?.status !== 'verified') continue;
-    if (!preparation && m.wakeCount >= m.maxWakeups - (closing ? 0 : 1)) break;
     recipients.push(mid);
     if (!preparation) m.wakeCount++;
   }
@@ -126,6 +143,7 @@ async function publish(tx, channel, m, opinions, helpers) {
       opinionId: o.id, sourceVersion: o.sourceVersion, sources: o.sources, hops: 0,
     });
   }
+  for(const review of await tx.list('meeting_review',{parent:m.id}))if(!review.publishedAt&&review.round===m.round&&review.sourceVersion===m.version)tx.put('meeting_review',{...review,publishedAt:tx.now});
 }
 async function advance(tx, identity, channel, m, helpers, force = false) {
   if (m.status !== 'running') return m;
@@ -136,9 +154,9 @@ async function advance(tx, identity, channel, m, helpers, force = false) {
   if (!force && !complete && !phaseDue(m, tx.now)) return m;
   await publish(tx, channel, m, opinions, helpers);
   m.coverage = [...(m.coverage || []), { round: m.round, expected, submitted: opinions.map(o => o.authorId), at: tx.now }];
-  if (m.round + 1 >= MEETING_MODES[m.mode].stages.length || Date.parse(tx.now) >= Date.parse(m.closingAt)) return close(tx, identity, channel, m, helpers);
+  if (m.round + 1 >= stagesOf(m).length || Date.parse(tx.now) >= Date.parse(m.closingAt)) return close(tx, identity, channel, m, helpers);
   await cancelPending(tx, m, '已进入下一环节');
-  m.round++; m.phase = MEETING_MODES[m.mode].stages[m.round];
+  m.round++; m.phase = stagesOf(m)[m.round].name;delete m.phaseMembers;
   m.phaseDeadlineAt = setPhaseDeadline(m, tx.now);
   stamp(tx, m);
   await event(tx, channel, m, `进入${m.phase}。${complete ? '' : '上一环节部分成员未提交，已保留实际参与记录。'}`, helpers);
@@ -162,11 +180,13 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if (!memberIds.length || !memberIds.includes(coordinatorId) || memberIds.some(mid => !channel.memberIds.includes(mid))) fail('invalid_member', '参会者及负责人应来自当前群');
     if (!actor.owner && !cmd.ownerMessageId) fail('owner_request_required', '代用户筹备请关联真实用户请求');
     if (cmd.ownerMessageId) { const origin = await tx.get('channel_message', cmd.ownerMessageId); if (origin.scopeId !== channel.id || origin.authorId !== 'owner') fail('forbidden', '必须关联本群真实用户消息', 403); }
+    const topicKey=cmd.topicKey?required(cmd.topicKey,'讨论主题标识',200):(cmd.title?.trim()||'request');
+    if(cmd.ownerMessageId){const existing=(await tx.list('channel_meeting',{scope:channel.id,limit:1000})).find(x=>['preparing','running','closing'].includes(x.status)&&x.ownerMessageId===cmd.ownerMessageId&&(x.topicKey||'request')===topicKey);if(existing)return existing;}
     m = stamp(tx, { id: id('meeting'), scopeId: channel.id, parentId: channel.id,
       status: 'preparing', createdAt: tx.now, createdBy: actor.memberId || 'owner',
       coordinatorId, memberIds, title: cmd.title?.trim() || '会议筹备', goal: '', deliverable: '', agenda: [],
       version: 0, round: 0, wakeCount: 0, durationSeconds: 600, closure: 'coordinator',
-      phase: '与负责人明确目标和交付', ownerMessageId: cmd.ownerMessageId || null,
+      phase: '与负责人明确目标和交付', ownerMessageId: cmd.ownerMessageId || null,topicKey,
     });
     if (cmd.body || cmd.ownerMessageId) {
       const body = actor.owner?(cmd.body || (await tx.get('channel_message', cmd.ownerMessageId)).body):(await tx.get('channel_message',cmd.ownerMessageId)).body;
@@ -179,32 +199,42 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if (action === 'close') return tx.put('channel_meeting',{...m,status:'closed',summary:required(cmd.summary,'会议结论',12000),endMessage:channel.messageSequence,closedBy:actor.memberId||'owner',closedAt:tx.now});
     fail('legacy_meeting', '这份旧讨论记录可回看；请另开新会议使用筹备与讨论能力', 409);
   }
-  if (due(m, tx.now)) { await end(tx, channel, m, helpers, 'deadline'); if (!['stop', 'finish', 'opinion', 'review'].includes(action)) return m; }
+  if (due(m, tx.now)) { await end(tx, channel, m, helpers, 'deadline'); if (!['stop', 'finish', 'opinion', 'review','retry_summary','recover_summary'].includes(action)) return m; }
+  if(action==='retry_summary'){
+    host(m,actor);if(m.status!=='ended'||m.summary)fail('summary_not_missing','只有已结束但缺少总结的会议需要补齐',409);
+    if(m.recoveryStatus==='requested'&&m.recoveryExpiresAt>tx.now)return m;
+    m.recoveryStatus='requested';m.recoveryRequestId=cmd.requestId;m.recoveryExpiresAt=new Date(Date.parse(tx.now)+600000).toISOString();stamp(tx,m);
+    const notice=await helpers.channelMessage(tx,channel,actor,'本场已结束但总结缺失。只读取已有讨论，调用 meeting(action="recover_summary",sourceVersion,summary,answers) 补齐结果；不重开、不重新召集成员。',{hidden:true,type:'meeting_signal',meetingId:m.id,meetingVersion:m.version,meetingRound:m.round,meetingStage:'ended',meetingPurpose:'summary_recovery',hops:0});
+    await helpers.enqueue(tx,identity,channel,notice,m.coordinatorId);return m;
+  }
   if (action === 'say') return preparationPost(tx, identity, actor, cmd, channel, m, helpers);
   if(action==='request_revision'){
     if(!actor.owner)fail('forbidden','只有用户可要求会后重新解释结果',403);
     if(m.status!=='ended')fail('meeting_active','会议尚未结束，请直接在群里补充要求');
     if(m.revisionStatus==='requested'&&m.revisionExpiresAt>tx.now)return m;
     const source=await helpers.channelMessage(tx,channel,actor,cmd.body||'这份结果我看不懂，请由负责人结合原始要求和讨论重新解释清楚。写出具体结论、理由和实际例子，不用术语列表或双方一致代替结果。',{meetingId:m.id,type:'message',hops:0});
-    m.revisionRequestId=source.id;m.revisionStatus='requested';m.revisionExpiresAt=new Date(Date.parse(tx.now)+600000).toISOString();stamp(tx,m);
+    m.revisionRequestId=source.id;m.revisionStatus='requested';m.revisionBaseResultVersion=m.resultVersion||1;m.revisionExpiresAt=new Date(Date.parse(tx.now)+600000).toISOString();stamp(tx,m);
     const signal=await helpers.channelMessage(tx,channel,actor,'用户要求你重新解释已结束会议的交付。请保留会议原状态，读取原始需求、完整讨论和现有结果，通过meeting(action="revise_result",ownerMessageId=本次用户消息ID,summary,answers,sourceVersion,requestId)发布通俗、完整的修订正文；不重开会议、不召集其他成员。',{hidden:true,type:'meeting_signal',meetingId:m.id,meetingRound:m.round,meetingVersion:m.version,meetingStage:'ended',meetingPurpose:'result_revision',ownerMessageId:source.id,hops:0});
     await helpers.enqueue(tx,identity,channel,signal,m.coordinatorId);return m;
   }
   if (action === 'plan') {
     host(m, actor); if (m.status !== 'preparing') fail('meeting_started', '正式会议已经开始，请调整议题而不是重建筹备');
-    if (!MEETING_MODES[cmd.mode]) fail('invalid_mode', '请选择可执行的组织方法');
+    if (cmd.mode&&!MEETING_MODES[cmd.mode]&&!cmd.stages) fail('invalid_mode', '未知预设方法，请用 stages 说明实际讨论安排');
     const duration = cmd.durationSeconds ?? m.durationSeconds;
     if(cmd.closure&&!['coordinator','deadline'].includes(cmd.closure))fail('invalid_closure','收尾方式无效');
     if (!Number.isInteger(duration) || duration < 60 || duration > 7200) fail('invalid_duration', '会议时长应为1分钟至2小时');
     const members = list(cmd.memberIds || m.memberIds);
     if (!members.includes(m.coordinatorId) || members.some(mid => !channel.memberIds.includes(mid))) fail('invalid_member', '参会成员不属于当前群');
+    const stages=cmd.stages?cleanStages(cmd.stages,members):m.stages||null;
+    if(cmd.reviewBasis&&!['existing_context','independent_input'].includes(cmd.reviewBasis))fail('invalid_input','意见形成方式无效');
     const agenda = cleanAgenda(cmd.agenda || [], m.agenda);
     if (!agenda.length) fail('agenda_required', '请把需要讨论的问题列出来');
     const claimed=(await tx.list('channel_turn',{scope:channel.id,parent:m.coordinatorId,status:'active'})).find(t=>t.meetingId===m.id);
     const basedOnOwnerMessageId=cmd.ownerMessageId||claimed?.claimedOwnerMessageId;
     if(!actor.owner&&m.lastOwnerMessageId&&basedOnOwnerMessageId!==m.lastOwnerMessageId)fail('new_owner_input','用户有新补充，请重读本场并按最新用户消息整理安排',409);
     const next = stamp(tx, m, { title: required(cmd.title, '会议议题', 200), goal: required(cmd.goal, '本场目标', 4000),
-      deliverable: required(cmd.deliverable, '拟交付结果', 4000), agenda, mode: cmd.mode,
+      deliverable: required(cmd.deliverable, '拟交付结果', 4000), agenda, mode: cmd.mode||m.mode||'custom',stages,
+      reviewBasis:cmd.reviewBasis||m.reviewBasis||'existing_context',independenceVerified:false,judgmentLabel:(cmd.reviewBasis||m.reviewBasis)==='independent_input'?'先分别提交，再集中比较（未验证原会话是否接触过其他意见）':'分别复核已有方案',
       closure: cmd.closure || 'coordinator', durationSeconds: duration, memberIds: members,
       organization: required(cmd.body, '用人话说明组织安排', 4000), version: m.version + 1, plannedAt: tx.now,plannedBy:actor.memberId||'owner',basedOnOwnerMessageId:m.lastOwnerMessageId });
     tx.put('meeting_plan_version', { ...next, id: id('meeting_plan'), parentId: m.id, createdAt: tx.now });
@@ -227,9 +257,9 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     m.startMode = actor.owner ? 'owner' : 'coordinator';
     m.deadlineAt = new Date(Date.parse(tx.now) + m.durationSeconds * 1000).toISOString();
     m.closingAt = new Date(Date.parse(m.deadlineAt) - Math.min(120, m.durationSeconds * .2) * 1000).toISOString();
-    m.maxWakeups = 3 * available.length + 2; m.phase = MEETING_MODES[m.mode].stages[0];
+    m.phase = stagesOf(m)[0].name;
     m.phaseDeadlineAt = setPhaseDeadline(m, tx.now); stamp(tx, m);
-    await event(tx, channel, m, `开始会议：${m.title}\n目标：${m.goal}\n交付：${m.deliverable}\n安排：${m.organization}\n总时长${Math.round(m.durationSeconds / 60)}分钟（含收尾）。`, helpers, 'meeting_start');
+    await event(tx, channel, m, `开始会议：${m.title}\n目标：${m.goal}\n交付：${m.deliverable}\n方式：${m.judgmentLabel||'分别复核已有方案'}\n总时长${Math.round(m.durationSeconds / 60)}分钟（含收尾）。`, helpers, 'meeting_start');
     await wake(tx, identity, channel, m, expectedMembers(m), '请读取本场会议，按当前议题独立形成意见。首轮意见先通过meeting(action="opinion")单独提交；公开前不要把意见写入公共群消息、共享文档或附件。', helpers);
     await release(tx, actor, cmd, helpers, channel); return m;
   }
@@ -248,13 +278,11 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
       if(!m.memberIds.includes(mid)||!liveMember(identity,mid)||(await tx.get('connection',mid,false))?.status!=='verified')fail('invalid_member','请选择本场已连接成员接续');
       if(mid===m.coordinatorId)return m;
       m.formerCoordinators=list([...(m.formerCoordinators||[]),m.coordinatorId]);m.coordinatorId=mid;
-      m.maxWakeups=Math.max(m.maxWakeups,m.wakeCount+2);
     }else{
       const extra=cmd.durationSeconds??300;
       if(!Number.isInteger(extra)||extra<60||extra>3600)fail('invalid_duration','每次可追加1至60分钟');
       m.durationSeconds+=extra;m.deadlineAt=new Date(Date.parse(m.deadlineAt)+extra*1000).toISOString();
       m.closingAt=new Date(Date.parse(m.deadlineAt)-Math.min(120,m.durationSeconds*.2)*1000).toISOString();
-      m.maxWakeups+=3*m.memberIds.length+2;
     }
     m.version++;m.phaseDeadlineAt=setPhaseDeadline(m,tx.now);stamp(tx,m);
     tx.put('meeting_plan_version',{...m,id:id('meeting_plan'),parentId:m.id,createdAt:tx.now,reason:action==='coordinator'?'用户更换本场负责人':'用户延长本场'});
@@ -301,8 +329,9 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     const old = await tx.get('meeting_opinion', key, false);
     if (old && !cmd.changeReason) fail('change_reason_required', '修订已提交意见请说明新证据或修改原因');
     if (old) tx.put('meeting_opinion_history', { ...old, id: id('opinion_history'), parentId: m.id });
-    tx.put('meeting_opinion', { id: key, scopeId: channel.id, parentId: m.id, authorId: actor.memberId, body, round: m.round,
+    const opinion=tx.put('meeting_opinion', { id: key, scopeId: channel.id, parentId: m.id, authorId: actor.memberId, body, round: m.round,
       sourceVersion: m.version, sources: cleanSources(cmd.sources), changeReason: cmd.changeReason || null, status: 'submitted', createdAt: tx.now });
+    if(!privatePhase(m))await publish(tx,channel,m,[opinion],helpers);
     const continuation=await release(tx, actor, cmd, helpers, channel);
     await advance(tx, identity, channel, m, helpers);
     return { submitted: true, meetingId: m.id, round: m.round, status: m.status,continuation };
@@ -312,13 +341,15 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     const row = tx.put('meeting_review', { id: id('review'), scopeId: channel.id, parentId: m.id, authorId: actor.memberId,
       claim: required(cmd.claim, '具体待核验主张', 4000), method: required(cmd.method, '实际核验方法', 4000), finding: required(cmd.finding, '核验发现', 8000),
       opinionId: cmd.opinionId || null, sources: cleanSources(cmd.sources), sourceVersion: cmd.sourceVersion ?? m.version,
-      round: m.round, status: active(m) ? 'recorded' : 'late', createdAt: tx.now });
+      round: m.round, withheld:privatePhase(m)&&active(m), status: active(m) ? 'recorded' : 'late', createdAt: tx.now });
+    if(!privatePhase(m)||m.status==='ended')tx.put('meeting_review',{...row,publishedAt:tx.now});
     return { recorded: true, reviewId: row.id, note: '保存记录不等于系统已经独立证明事实正确' };
   }
   if (action === 'advance') { host(m, actor); return advance(tx, identity, channel, m, helpers); }
-  if (action === 'finish' || action === 'close'||action==='revise_result') {
-    const revising=action==='revise_result';
-    if(revising&&(m.status!=='ended'||m.revisionStatus!=='requested'||cmd.ownerMessageId!==m.revisionRequestId||m.revisionExpiresAt<=tx.now))fail('revision_not_requested','需先由用户明确请求修订，原结果和会议状态保留',409);
+  if (action === 'finish' || action === 'close'||action==='revise_result'||action==='recover_summary') {
+    const recovering=action==='recover_summary',revising=action==='revise_result'||recovering;
+    if(recovering&&(m.status!=='ended'||m.summary||m.recoveryStatus!=='requested'||m.recoveryExpiresAt<=tx.now))fail('recovery_not_requested','请先重试缺失总结，不重开原会议',409);
+    if(revising&&!recovering&&(m.status!=='ended'||m.revisionStatus!=='requested'||cmd.ownerMessageId!==m.revisionRequestId||m.revisionExpiresAt<=tx.now))fail('revision_not_requested','需先由用户明确请求修订，原结果和会议状态保留',409);
     if(!actor.owner&&actor.memberId!==m.coordinatorId&&(m.formerCoordinators||[]).includes(actor.memberId)){
       const row=tx.put('meeting_result',{id:id('former_result'),scopeId:channel.id,parentId:m.id,summary:required(cmd.summary,'原负责人迟到总结',24000),answers:cmd.answers||[],authorId:actor.memberId,sourceVersion:cmd.sourceVersion??-1,status:'late',createdAt:tx.now});
       await release(tx,actor,cmd,helpers,channel);return {late:true,resultId:row.id,currentResultUnchanged:true};
@@ -340,7 +371,7 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     if(action==='finish'&&m.latestOwnerDirectiveId&&m.ackOwnerMessageId!==m.latestOwnerDirectiveId&&cmd.ownerMessageId!==m.latestOwnerDirectiveId)fail('new_owner_input','用户有新要求，请先读取并处理，再按最新上下文收尾',409);
     const submittedAnswers = cmd.answers || [];
     if(!Array.isArray(submittedAnswers)||submittedAnswers.length>20||submittedAnswers.some(a=>!a||typeof a!=='object'))fail('invalid_answers','议题回应列表无效');
-    const answers=submittedAnswers.map(a=>({...a,status:answerStatus(a.status)}));
+    const answers=submittedAnswers.map(a=>{const prior=m.answers?.find(old=>old.agendaId===a.agendaId);if(revising&&prior?.dissent&&a.dissent!==undefined&&a.dissent!==prior.dissent&&!cmd.changeReason)fail('change_reason_required','修改保留意见时请说明依据；原分歧不会自动删除');return {...a,status:answerStatus(a.status),...(revising&&a.dissent===undefined&&prior?.dissent?{dissent:prior.dissent}:{})};});
     const currentAgenda = m.agenda.filter(a => a.status !== 'canceled');
     if ((action === 'finish'||revising) && currentAgenda.some(a => !answers.some(x => x.agendaId === a.id && typeof x.body === 'string' && x.body.trim()))) fail('answers_required', '请逐项回应议题，未解决也要说明缺口');
     for (const answer of answers) {
@@ -357,20 +388,25 @@ export async function handleMeeting(tx, identity, actor, cmd, channel, helpers) 
     const latest = await tx.get('meeting_result', m.id, false);
     if(revising){
       if(cmd.sourceVersion!==m.version)fail('version_conflict','请按原会议当前版本解释，保留完整正文后修正来源版本',409);
+      const base=cmd.expectedResultVersion??(recovering?0:m.revisionBaseResultVersion??1);
+      if(base!==(m.resultVersion??(m.summary?1:0)))fail('version_conflict','总结已经更新，请读取最新结果版本再修订',409);
+      const resultVersion=(m.resultVersion??(m.summary?1:0))+1;
       if(latest)tx.put('meeting_result',{...latest,id:id('prior_result'),status:'superseded',supersededAt:tx.now});
-      tx.put('meeting_result',{id:m.id,scopeId:channel.id,parentId:m.id,summary,answers,quality,authorId:actor.memberId||'owner',sourceVersion:m.version,status:'provided',createdAt:tx.now,revisionOf:latest?.id||null});
-      m.summary=summary;m.answers=answers;m.quality=quality;m.revisionStatus='completed';m.summaryRevisedAt=tx.now;stamp(tx,m);
+      tx.put('meeting_result',{id:m.id,scopeId:channel.id,parentId:m.id,summary,answers,quality,authorId:actor.memberId||'owner',sourceVersion:m.version,resultVersion,status:'provided',createdAt:tx.now,revisionOf:latest?.id||null});
+      m.summary=summary;m.answers=answers;m.quality=quality;m.resultVersion=resultVersion;m.summaryStatus='provided';m.revisionStatus='completed';if(recovering)m.recoveryStatus='completed';m.summaryRevisedAt=tx.now;stamp(tx,m);
       await recordMemoryEvent(tx,channel,m,'meeting');
       const continuation=await release(tx,actor,cmd,helpers,channel);
-      await event(tx,channel,m,'负责人已按你的要求重新解释结果，原版和讨论记录均已保留。',helpers,'meeting_result_update');
+      await event(tx,channel,m,recovering?'负责人已补齐会议总结，原讨论和结束状态保留。':'负责人已按你的要求重新解释结果，原版和讨论记录均已保留。',helpers,'meeting_result_update');
       return {...m,continuation};
     }
+    if(m.status!=='ended'&&latest?.status==='provided')tx.put('meeting_result',{...latest,id:id('prior_result'),status:'superseded',supersededAt:tx.now});
     const result = tx.put('meeting_result', { id: m.status === 'ended' ? id('late_result') : m.id, scopeId: channel.id, parentId: m.id,
-      summary, answers, quality,authorId:actor.memberId||'owner',sourceVersion: cmd.sourceVersion ?? m.version, status: m.status === 'ended' ? 'late' : 'provided', createdAt: tx.now });
+      summary, answers, quality,authorId:actor.memberId||'owner',sourceVersion: cmd.sourceVersion ?? m.version,resultVersion:(m.resultVersion||0)+1, status: m.status === 'ended' ? 'late' : 'provided', createdAt: tx.now });
     await release(tx, actor, cmd, helpers, channel);
     if (m.status === 'ended') return { late: true, resultId: result.id, originalResultPreserved: !!latest };
     if (action !== 'close' && cmd.sourceVersion !== m.version) fail('version_conflict', '请按最新议题版本整理，旧结论不能冒充新要求完成', 409);
-    m.answers = answers;m.quality=quality;
+    await publish(tx,channel,m,allOpinions.filter(o=>!o.publishedAt),helpers);
+    m.answers = answers;m.quality=quality;m.resultVersion=(m.resultVersion||0)+1;
     if(m.closure==='deadline'&&m.status!=='ended'&&!due(m,tx.now)){
       m.status='closing';m.phase='结果已整理，等待约定结束';m.summary=summary;m.summaryStatus='provided';
       await cancelPending(tx,m,'结果已整理，等待约定结束');stamp(tx,m);
@@ -467,9 +503,9 @@ export async function meetingDetail(repo, identity, actor, args) {
   if (!Number.isSafeInteger(cursor.sequence) || typeof cursor.id !== 'string') fail('invalid_cursor', '会议分页无效');
   const rows = await repo.db.prepare("SELECT sequence,id,body FROM hub_v2_records WHERE workspace_id=? AND parent_id=? AND kind IN ('meeting_opinion','meeting_opinion_history','meeting_review','meeting_result','meeting_preparation','meeting_plan_version') AND (sequence<? OR (sequence=? AND id<?)) ORDER BY sequence DESC,id DESC LIMIT 101").bind(repo.workspaceId, m.id, cursor.sequence,cursor.sequence,cursor.id).all();
   const page = rows.results.slice(0,100);
-  const visible = page.map(r => JSON.parse(r.body)).filter(r => actor.owner || (r.kind === 'meeting_preparation' ? actor.memberId === m.coordinatorId||(m.status!=='preparing'&&r.authorId==='owner') : !['meeting_opinion','meeting_opinion_history'].includes(r.kind) || r.publishedAt || r.authorId === actor.memberId));
+  const visible = page.map(r => visibleRecord(JSON.parse(r.body),m,actor)).filter(Boolean);
   const last=page.at(-1);
-  return { meeting: m, modes: MEETING_MODES, records: visible.reverse(), nextCursor: rows.results.length>100 ? btoa(JSON.stringify({sequence:last.sequence,id:last.id})) : null };
+  return { meeting: publicMeeting(m,actor), modes: MEETING_MODES, records: visible.reverse(), nextCursor: rows.results.length>100 ? btoa(JSON.stringify({sequence:last.sequence,id:last.id})) : null };
 }
 
 export async function meetingTurnContext(repo, identity, actor, turn) {
@@ -480,14 +516,16 @@ export async function meetingTurnContext(repo, identity, actor, turn) {
     records:detail.records.map(r=>r.kind==='meeting_result'?{id:r.id,kind:r.kind,status:r.status,sourceVersion:r.sourceVersion,createdAt:r.createdAt,note:r.status==='provided'?'当前正文已在meeting.summary和answers中；无需重复读取':'历史原文可用meeting(action="read")读取，未删除或改写'}:r),
     currentRound: m.round, sourceVersion: m.version,
     ...(['user_update','result_revision'].includes(turn.meetingPurpose)?{userUpdate:true,userUpdateMessageId:turn.ownerMessageId}:{}),
-    instruction:turn.meetingPurpose==='result_revision'
+    instruction:turn.meetingPurpose==='summary_recovery'
+      ? '本场已经结束，只补齐缺失总结，不重开或重新召集成员。读取已有讨论后，调用 meeting(action="recover_summary",sourceVersion,summary,answers)；缺少证据标为未解决，不能宣称讨论目标已完成。'
+      :turn.meetingPurpose==='result_revision'
       ? '用户看不懂原结果，请由你重新写清楚，不重开会议。summary首段直接回答用户原问题，再用小标题、自然段或列表展开具体发现、理由和例子。不先回顾任务或反复声明已修订/不重开/不开发，不用元叙述挤占首屏。不要只列术语，不用双方一致/已完成来代替答案；按最新用户要求讲清楚。界面不会替你改写内容。answers保留各议题的具体发现和依据。用meeting(action="revise_result",meetingId,channelId,ownerMessageId=本上下文userUpdateMessageId,sourceVersion,summary,answers,requestId)发布，原结果自动保留。'
       :turn.meetingPurpose==='user_update'
       ? '用户在会议中有新补充或决定。优先阅读群消息里对应owner原文；必要时调用meeting(action="agenda",expectedVersion,agenda,goal,deliverable)更新议题，再post_message回应。不要把这条用户补充当作待独立提交的普通意见；本工具上下文含userUpdateMessageId。结束总结必须处理最新要求。'
       : m.status === 'preparing'
-      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用户没有要求时，不自行加400字等篇幅限制或固定交付模板；以把问题讲清楚为准。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,mode,body,agenda:[{title}],requestId)保存安排，界面会展示安排卡，聊天只简短说明新发现或待确认的问题，不重复抄一遍卡片。需求明确后在同一轮直接调用meeting(action="start",meetingId,channelId,ownerMessageId=最新用户消息ID,requestId)，不等用户再确认或说开始；用户要求暂缓时遵从。讨论足够后自行调用finish交付结果并结束；自然语言说“完成”不替代真实动作。'
+      ? '你在与用户筹备会议。必要时每次只问最影响结果的一两项缺失信息，不发问卷、不要求用户分配成员角色或选择专业模式；已有成员、时长默认值，组织安排和交付形式由你提出建议。用户没有要求时，不自行加400字等篇幅限制或固定交付模板；以把问题讲清楚为准。用必要的多轮沟通确定目标与交付，足够明确即给出安排。调用meeting(action="plan", meetingId,channelId,ownerMessageId=本场lastOwnerMessageId,title,goal,deliverable,stages:[{name:"分别核查",private:true},{name:"比较结论",private:false}],reviewBasis="existing_context",body,agenda:[{title}],requestId)保存安排，界面会展示安排卡，聊天只简短说明新发现或待确认的问题，不重复抄一遍卡片。需求明确后在同一轮直接调用meeting(action="start",meetingId,channelId,ownerMessageId=最新用户消息ID,requestId)，不等用户再确认或说开始；用户要求暂缓时遵从。讨论足够后自行调用finish交付结果并结束；自然语言说“完成”不替代真实动作。'
       : m.status === 'closing'
-        ? '负责人请对照用户最初的问题和本场交付约定，亲自写一份用户可以直接读懂的完整正文。summary是主要交付，先回答问题，再用自然段、小标题或列表解释具体发现和理由；只在相关时写建议、待决或未知，不套固定模板，不堆API/代码名和缩略词，必要术语用日常语言解释。answers逐项填写实际内容，不用“双方一致、已覆盖、无分歧、已合并”等状态句代替答案，不让用户翻过程才能知道结论。不自行压缩成关键词提纲。提交meeting(action="finish",meetingId,channelId,round=本场currentRound,sourceVersion,ownerMessageId=最新已处理用户补充ID（如有）,summary,answers:[{agendaId,body,status,evidenceIds,dissent}],requestId)。status使用supported/partial/unresolved/disputed；supported须关联本场真实意见、核验或本群资料。若接口要求修正参数，只修参数并保留完整正文。未知说明缺口，不伪造共识。必要补查用meeting(action="investigate",body=具体缺口,memberIds=本场核验者)请求，仍受剩余时间与调用预算约束。'
+        ? '负责人请对照用户最初的问题和本场交付约定，亲自写一份用户可以直接读懂的完整正文。summary是主要交付，先回答问题，再用自然段、小标题或列表解释具体发现和理由；只在相关时写建议、待决或未知，不套固定模板，不堆API/代码名和缩略词，必要术语用日常语言解释。answers逐项填写实际内容，不用“双方一致、已覆盖、无分歧、已合并”等状态句代替答案，不让用户翻过程才能知道结论。不自行压缩成关键词提纲。提交meeting(action="finish",meetingId,channelId,round=本场currentRound,sourceVersion,ownerMessageId=最新已处理用户补充ID（如有）,summary,answers:[{agendaId,body,status,evidenceIds,dissent}],requestId)。status使用supported/partial/unresolved/disputed；supported须关联本场真实意见、核验或本群资料。若接口要求修正参数，只修参数并保留完整正文。未知说明缺口，不伪造共识。必要补查用meeting(action="investigate",body=具体缺口,memberIds=本场核验者)请求，仍受本场剩余时间约束，不按固定轮次截断。'
         : '按当前阶段执行。共同输入是records中authorId="owner"的用户原始资料及本场目标，负责人筹备推导不提前公开；不要因读不到价格等事实就猜测。资料更多时用meeting(action="read",cursor=nextCursor)分页。先独立提交意见；后续阶段核验关键依据并用meeting(action="review",claim,method,finding,sources,requestId)登记真实检查，再调用meeting(action="opinion",meetingId,channelId,round,sourceVersion,body,sources,changeReason,requestId)。未公开初稿不写到群或文档。每轮直接回应，不空转。',
     toolFallback: '若原平台缓存了旧工具目录，可刷新目录，或使用自己原有配对凭证向同一Hub的POST /v2/tools/meeting发送相同JSON；不得请求管理凭证、改变模型或订阅。优先使用结构化工具参数；若通过脚本发送JSON，务必避免shell展开金额中的美元符号或其他原文，提交后读取确认。普通post_message/旧submit_work可回传筹备消息和阶段意见，但正式计划、核验与结束须真实调用会议工具。',
   };
@@ -511,6 +549,7 @@ export async function meetingMaintenance(repo, identity, helpers, now = new Date
 export async function meetingTurnAllowed(tx, turn) {
   if (!turn?.meetingId) return true;
   const m = await tx.get('channel_meeting', turn.meetingId, false);
+  if(turn.meetingPurpose==='summary_recovery')return !!m&&m.status==='ended'&&!m.summary&&m.recoveryStatus==='requested'&&m.recoveryExpiresAt>tx.now&&m.coordinatorId===turn.memberId;
   if(turn.meetingPurpose==='result_revision')return !!m&&m.status==='ended'&&m.revisionStatus==='requested'&&m.revisionRequestId===turn.ownerMessageId&&m.revisionExpiresAt>tx.now&&m.coordinatorId===turn.memberId;
   if (!m || m.status === 'ended' || due(m, tx.now)) return false;
   return m.status === 'preparing' || (turn.meetingVersion === m.version && turn.meetingRound === m.round && (m.status === 'closing' ? turn.meetingStage === 'closing' : turn.meetingStage === 'running'));
@@ -521,6 +560,6 @@ export async function chargeMeetingRetry(tx, turn, attempts) {
   const m=await tx.get('channel_meeting',turn.meetingId);
   if(turn.meetingPurpose==='result_revision')return attempts<3&&m.revisionStatus==='requested'&&m.revisionExpiresAt>tx.now;
   if(m.status==='preparing')return attempts<3;
-  if(m.wakeCount>=m.maxWakeups-(m.status==='closing'?0:1))return false;
+  if(attempts>=3)return false; // transport retry bound, never a discussion-round cap
   m.wakeCount++;stamp(tx,m);return true;
 }

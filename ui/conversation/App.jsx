@@ -347,6 +347,11 @@ export default function App() {
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
   const allSelected = mentionAll;
+  useEffect(()=>{
+    if(snapshot?.channel.id!==current)return;
+    const closed=snapshot.meetings?.find(m=>m.id===meetingScopes[current]&&['ended','closed'].includes(m.status));
+    if(closed)setMeetingScopes(old=>old[current]===closed.id?{...old,[current]:null}:old);
+  },[snapshot,current,meetingScopes]);
   const addressedMembers = mentions;
   const recipients = channel ? messageRecipients(channel, { owner: true, mentions: addressedMembers, mentionAll: allSelected }) : [];
   const pendingActivity = pendingMemberActivity(snapshot?.activity?.filter(t=>!t.deliveryReview), snapshot?.notifications, codingStatus.members);
