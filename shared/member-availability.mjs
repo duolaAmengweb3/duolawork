@@ -7,8 +7,9 @@ export function memberAvailability(member,connection,native,channelId,turns=[]){
  if(coding.has(member.platformId)&&!native)return {state:'unknown',label:'状态待更新',detail:'正在读取原运行端的连接与对话信息。'};
  if(coding.has(member.platformId)&&channelId&&!bound)return {state:'unbound',label:'待选择对话',detail:'账号连接与当前聊天的工作对话分开选择。'};
  if(active)return {state:'working',label:processingLabel(active),detail:active.progress||'已领取本聊天的消息，正在处理；不代表正在生成回复文字。'};
- if(pending.length){const states=pending.map(t=>pendingTurnState(t,undefined,native,turns)),state=states.find(s=>s.working)||states[0];return {state:state.working?'working':'waiting',label:state.label,detail:state.detail+(pending.length>1?` 本聊天共 ${pending.length} 条消息待处理。`:'')};}
+ if(pending.length){const states=pending.map(t=>pendingTurnState(t,undefined,native,turns)),state=states.find(s=>s.working)||states[0];return {state:state.kind==='unavailable'?'offline':state.working?'working':'waiting',label:state.label,detail:state.detail+(pending.length>1?` 本聊天共 ${pending.length} 条消息待处理。`:'')};}
  if(coding.has(member.platformId)){
+  const problem=nativeReceptionProblem(native,channelId);if(problem)return {state:problem.kind==='recovering'?'waiting':'offline',label:problem.label,detail:problem.detail};
   if(!native?.enabled)return {state:'offline',label:'暂未连接',detail:'原环境未报告可用连接。登录与原对话保留。'};
   if(['disconnected','waiting_login','offline'].includes(native.status))return {state:'offline',label:'需要连接',detail:native.message||'请在原环境恢复连接。'};
   if(bound?.pendingStepId&&!turns.some(t=>t.id===bound.pendingStepId&&['done','silent','stalled','merged','removed'].includes(t.status)))return {state:bound.workState==='working'?'working':'waiting',label:bound.workState==='working'?'处理中':'等待原对话',detail:bound.workMessage||'消息已保存，原工作继续。'};
@@ -22,4 +23,4 @@ export function memberAvailability(member,connection,native,channelId,turns=[]){
  if(connection?.status==='verified')return {state:'connected',label:'已连接',detail:'已完成真实回复验证；当前原生工作状态未提供。'};
  return {state:'offline',label:'待连接',detail:'尚未完成原生回复验证。'};
 }
-import {processingLabel,pendingTurnState} from './chat-activity.mjs';
+import {processingLabel,pendingTurnState,nativeReceptionProblem} from './chat-activity.mjs';

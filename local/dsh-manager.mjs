@@ -75,11 +75,24 @@ export class DshManager {
  async registerBindings(r,chatBindings=r.chatBindings){
   const bindings=Object.entries(chatBindings||{}).map(([channelId,b])=>({channelId,sessionId:b.sessionId})),fingerprint=JSON.stringify(bindings);if(bindings.length&&r.executionBindingsFingerprint!==fingerprint){await this.client(r).api('/v2/self/execution-bindings',{method:'POST',body:{requestId:randomUUID(),bindings}});r.executionBindingsFingerprint=fingerprint;}
  }
- async syncBindings(r,{availableSessionIds}={}){
+ async syncBindings(r,{availableSessionIds,isolateFailures=false}={}){
   const host=this.recordHost(r),wanted=nativeBindings(r),health=await host.call('/health');
   await this.registerBindings(r);
-  for(const b of wanted){if(availableSessionIds&&!availableSessionIds.has(b.sessionId))continue;const prior=health.bindings?.find(p=>p.sessionId===b.sessionId&&p.memberId===r.memberId);if(!prior||JSON.stringify(prior.channelIds)!==JSON.stringify(b.channelIds)||prior.verification!==b.verification)await host.call('/bind',{...b,grantFile:r.grantFile});}
+  const failures=new Map();
+  const restore=async b=>{
+   if(availableSessionIds&&!availableSessionIds.has(b.sessionId))return;
+   try{const prior=health.bindings?.find(p=>p.sessionId===b.sessionId&&p.memberId===r.memberId);if(!prior||JSON.stringify(prior.channelIds)!==JSON.stringify(b.channelIds)||prior.verification!==b.verification)await host.call('/bind',{...b,grantFile:r.grantFile});}
+   catch(e){
+    if(!isolateFailures)throw e;
+    const missing=/ENOENT|ENOTDIR/.test(e.code||e.message||''),retryable=/network|timeout|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|暂时无法连接/i.test(e.code+' '+e.message);
+    failures.set(b.sessionId,{code:missing?'workspace_unavailable':retryable?'connection_retry':'restore_failed',message:missing?'这段原对话的项目文件夹无法打开。请恢复原文件夹或为这个聊天选择其他对话。':retryable?'这段对话的接收连接暂时失败，DuolaWork 正在重试。原会话保留，无需重新接入。':safeError(e)});
+   }
+  };
+  // Inventory can retain a session after its project folder has disappeared.
+  // Restore independently so one bad project or slow bind cannot starve peers.
+  if(isolateFailures)await Promise.all(wanted.map(restore));else for(const b of wanted)await restore(b);
   for(const b of health.bindings||[])if(b.memberId===r.memberId&&!wanted.some(n=>n.sessionId===b.sessionId))await host.call('/unbind',{sessionId:b.sessionId});
+  return failures;
  }
  async setup(r,{sessionId,mode}){
   const host=this.recordHost(r);await host.start({launch:true});let sessions=await host.sessions();
@@ -111,17 +124,31 @@ export class DshManager {
   await this.save();
  }
  async tickHost(host,active){
-  let health;try{health=await host.call('/health');}catch{for(const r of active){r.status='offline';r.message='原生运行端已关闭；打开原桌面版后继续原会话';}return;}
-  if(health.ready===false){for(const r of active){r.status='connecting';r.message='正在恢复原生工作会话，原登录和历史保留';}return;}
+  let health;try{health=await host.call('/health');}catch{for(const r of active){r.sourceReady=false;r.status='offline';r.message='暂时无法联系原生运行端。请确认原应用正在运行；DuolaWork 会继续尝试连接。';}return;}
+  if(health.ready===false){for(const r of active){r.sourceReady=false;r.status='connecting';r.message='正在恢复原生工作会话，原登录和历史保留';}return;}
   for(const r of active)try{
-   if(r.chatBindings){const items=(await host.sessions()).items,availableSessionIds=new Set(items.map(s=>s.id));await this.syncBindings(r,{availableSessionIds});const entries=nativeBindings(r);r.sourceReady=true;if(!entries.length){r.status='idle';r.message='运行端已连接，请在聊天中选择工作会话';continue;}const missing=entries.filter(b=>!availableSessionIds.has(b.sessionId));const status=await this.client(r).api('/v2/self/status');r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);for(const b of Object.values(r.chatBindings)){const s=items.find(s=>s.id===b.sessionId);b.nativeState=!s?'unavailable':s.running===true?'running':s.running===false?'idle':'unknown';b.observedAt=new Date().toISOString();}r.status=entries.some(b=>items.find(s=>s.id===b.sessionId)?.running)?'working':'idle';r.message=missing.length?`${missing.length} 段工作对话暂不可用，其他对话继续接收；原绑定保留`:'运行端已连接，各聊天使用各自的工作会话';continue;}
+   if(r.chatBindings){
+    const items=(await host.sessions()).items,availableSessionIds=new Set(items.map(s=>s.id));
+    const failures=await this.syncBindings(r,{availableSessionIds,isolateFailures:true}),entries=nativeBindings(r);
+    r.sourceReady=true;
+    if(!entries.length){r.status='idle';r.message='运行端已连接，请在聊天中选择工作会话';continue;}
+    const missing=entries.filter(b=>!availableSessionIds.has(b.sessionId)||failures.has(b.sessionId));
+    const status=await this.client(r).api('/v2/self/status');r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);
+    for(const b of Object.values(r.chatBindings)){
+     const s=items.find(s=>s.id===b.sessionId);
+     b.nativeState=!s||failures.has(b.sessionId)?'unavailable':s.running===true?'running':s.running===false?'idle':'unknown';
+     b.nativeMessage=failures.get(b.sessionId)?.message;b.nativeIssueCode=failures.get(b.sessionId)?.code;b.observedAt=new Date().toISOString();
+    }
+    r.status=entries.some(b=>!failures.has(b.sessionId)&&items.find(s=>s.id===b.sessionId)?.running)?'working':'idle';
+    r.message=missing.length?`${missing.length} 段工作对话暂不可用，其他对话继续接收；原绑定保留`:'运行端已连接，各聊天使用各自的工作会话';continue;
+   }
    if(!health.bindings.some(b=>b.sessionId===r.sessionId&&b.memberId===r.memberId))await host.call('/bind',{sessionId:r.sessionId,workspace:r.cwd,grantFile:r.grantFile});
    const status=await this.client(r).api('/v2/self/status'),s=(await host.sessions()).items.find(s=>s.id===r.sessionId);
    if(!s){r.status='offline';r.message='原会话暂不可用，未新建替代会话';continue;}
    r.title=s.title;
    const fault=health.bindings.find(b=>b.sessionId===r.sessionId)?.lastError;if(fault){r.status='offline';r.message=fault;continue;}
    r.verified=!!status.complete&&(!this.requireFreshReceipt||!!r.proofRunId&&status.connection?.deliveryEvidence?.runId===r.proofRunId);r.status=s.running?'working':'idle';r.message=r.verified?(s.running?'原 Agent 正在工作，消息会进入同一会话':'已接入，保留原项目和工作会话'):'等待原 Agent 完成真实回传';if(r.verified)r.lastReceiptAt=status.connection?.lastReceiptAt||r.lastReceiptAt||new Date().toISOString();
-  }catch(e){r.status='offline';r.message=safeError(e);}
+  }catch(e){r.sourceReady=false;r.status='offline';r.message=safeError(e);}
  }
  async resume({memberId}){const r=this.records[memberId];if(!r)throw Error('原生成员不存在');return r.chatBindings?this.connectSource({memberId}):this.connect({memberId,sessionId:r.sessionId,mode:r.mode});}
  async disconnect(memberId){const r=this.records[memberId];if(!r)return;r.enabled=false;await this.jobs.get(memberId);try{for(const b of nativeBindings(r))await this.recordHost(r).call('/unbind',{sessionId:b.sessionId});}catch(e){r.disconnectPending=true;}r.status='disconnected';r.message='Hub 连接已解除，原 Agent、项目和历史保留';r.verified=false;await this.save();}

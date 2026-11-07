@@ -24,6 +24,51 @@ test('one missing desktop conversation does not mark every other conversation of
  f.host.sessions=async()=>({items:[{id:'original-session',running:false},{id:'not-found',running:false}]});
  await f.manager.tick();assert.equal(memberAvailability(member,{},f.manager.status()[0],'missing').state,'idle');
 });
+test('a listed conversation whose project cannot be opened does not block restoring healthy conversations',async t=>{
+ const f=await fixture(t);await f.manager.connectSource({memberId:'member_one'});await f.manager.jobs.get('member_one');
+ const r=f.manager.records.member_one;
+ r.chatBindings={broken:{sessionId:'old-session',workspace:'/missing-old-project'},good:{sessionId:'original-session',workspace:f.dir}};
+ f.host.sessions=async()=>({items:[{id:'old-session',running:false},{id:'original-session',running:false}]});
+ const call=f.host.call;let broken=true;
+ f.host.call=async(route,body)=>{if(route==='/bind'&&body.sessionId==='old-session'&&broken)throw Object.assign(Error('ENOENT: realpath /missing-old-project'),{code:'ENOENT'});return call(route,body);};
+ await f.manager.tick();
+ let status=f.manager.status()[0];const member={id:'member_one',platformId:'deepseek-harness'};
+ assert.ok(f.bindings.some(b=>b.sessionId==='original-session'),'healthy original session must actually bind');
+ assert.equal(status.status,'idle');assert.equal(status.sourceReady,true);
+ assert.equal(memberAvailability(member,{},status,'good').state,'idle');
+ assert.equal(memberAvailability(member,{},status,'broken').state,'offline');
+ assert.match(status.assignments.find(b=>b.channelId==='broken').nativeMessage,/项目文件夹/);
+ assert.equal(r.chatBindings.broken.sessionId,'old-session','retain unavailable binding and history');
+ broken=false;await f.manager.tick();status=f.manager.status()[0];
+ assert.equal(memberAvailability(member,{},status,'broken').state,'idle');
+ assert.equal(status.assignments.find(b=>b.channelId==='broken').nativeMessage,undefined);
+ // Restart with the broken project still present in native inventory.
+ broken=true;f.bindings.length=0;await f.manager.save();
+ const restored=new DshManager({config:f.manager.config,dataDir:f.dir,host:f.host,request:f.manager.request});await restored.load();
+ await restored.tick();assert.ok(f.bindings.some(b=>b.sessionId==='original-session'));
+ assert.equal(restored.status()[0].assignments.find(b=>b.channelId==='broken').nativeState,'unavailable');
+});
+test('background binding retries are isolated, but an explicit assignment still reports failure',async t=>{
+ const f=await fixture(t);await f.manager.connectSource({memberId:'member_one'});await f.manager.jobs.get('member_one');
+ const r=f.manager.records.member_one;r.chatBindings={good:{sessionId:'original-session',workspace:f.dir}};
+ const call=f.host.call;let failing=true;
+ f.host.call=async(route,body)=>{if(route==='/bind'&&failing)throw Error('temporary network failure');return call(route,body);};
+ await assert.rejects(f.manager.syncBindings(r),/temporary network failure/);
+ await f.manager.tick();assert.equal(f.manager.status()[0].assignments[0].nativeState,'unavailable');
+ assert.equal(memberAvailability({id:'member_one',platformId:'deepseek-harness'},{},f.manager.status()[0],'good').label,'连接恢复中');
+ failing=false;await f.manager.tick();assert.equal(f.manager.status()[0].assignments[0].nativeState,'idle');
+ assert.ok(f.bindings.some(b=>b.sessionId==='original-session'));
+});
+test('one slow restoration does not delay restoring or polling another native session',async t=>{
+ const f=await fixture(t);await f.manager.connectSource({memberId:'member_one'});await f.manager.jobs.get('member_one');
+ const r=f.manager.records.member_one;r.chatBindings={slow:{sessionId:'slow',workspace:f.dir},good:{sessionId:'original-session',workspace:f.dir}};
+ f.host.sessions=async()=>({items:[{id:'slow',running:false},{id:'original-session',running:false}]});
+ const call=f.host.call;let release;const gate=new Promise(resolve=>release=resolve);
+ f.host.call=async(route,body)=>{if(route==='/bind'&&body.sessionId==='slow')await gate;return call(route,body);};
+ const tick=f.manager.tick();
+ try{for(let i=0;i<20&&!f.bindings.some(b=>b.sessionId==='original-session');i++)await new Promise(r=>setImmediate(r));assert.ok(f.bindings.some(b=>b.sessionId==='original-session'));}
+ finally{release();await tick;}
+});
 test('existing DSH binding preserves native work and becomes ready only after an actual provider receipt',async t=>{
  const f=await fixture(t);await f.manager.connect({memberId:'member_one',sessionId:'original-session'});await f.manager.jobs.get('member_one');await f.manager.tick();
  assert.equal(f.manager.records.member_one.sessionId,'original-session');assert.equal(f.manager.status()[0].verified,false);

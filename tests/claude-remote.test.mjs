@@ -54,6 +54,10 @@ test('remote Claude pairing, two native sessions, routing, persistence, disconne
  // Launch the actual distributed bundle as an MCP subprocess; Claude itself is
  // replaced only at the standard protocol boundary, no model/subscription used.
  await register({...two,status:'offline'});
+ const mixed=await h.request('/v2/native-sessions?memberId='+member.id);
+ assert.equal(mixed.record.sourceReady,true);
+ assert.equal(mixed.record.assignments.find(s=>s.channelId===a.id).nativeState,'unknown','online is not proof of native idle');
+ assert.equal(mixed.record.assignments.find(s=>s.channelId===b.id).nativeIssueCode,'session_offline','other online sessions cannot hide this offline binding');
  const runFile=path.join(h.directory,'run.json');await privateJson(runFile,{...two,instanceId:randomUUID()});
  const sdk=new Client({name:'native-protocol-fixture',version:'1.0.0'}),transport=new StdioClientTransport({command:process.execPath,args:[file,'serve',grantFile,runFile,path.join(h.directory,'mcp-state')],env,stderr:'pipe'});t.after(()=>sdk.close());
  let notification; sdk.setNotificationHandler(z.object({method:z.literal('notifications/claude/channel'),params:z.any()}),n=>{notification=n;});await sdk.connect(transport);

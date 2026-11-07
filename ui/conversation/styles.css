@@ -1400,7 +1400,7 @@
 /* Work conversation picker: one compact surface, with readable status. */
 .session-binding-summary{display:flex;align-items:center;gap:8px;color:#68778c;font-size:12px;min-height:24px;overflow-wrap:anywhere}
 .session-dot{display:inline-block;width:6px;height:6px;border-radius:50%;flex-shrink:0;background:#98a5b7}
-.session-dot.connected{background:#4a9e86}.session-dot.unbound{background:#c69b51}
+.session-dot.connected,.session-dot.idle{background:#4a9e86}.session-dot.working{background:#587ac3}.session-dot.unbound,.session-dot.waiting{background:#c69b51}.session-availability-label{font-size:11px;color:#7a8496}
 .session-search-input{font-size:13px}.session-picker .session-new{border:0;padding:4px 0;gap:16px}
 .session-picker .session-option{padding:10px;border-radius:8px;gap:10px}.session-picker .session-option-content{gap:3px}
 .session-picker .session-empty svg{display:inline-block;vertical-align:middle;margin-right:8px}

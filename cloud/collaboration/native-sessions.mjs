@@ -42,8 +42,13 @@ export async function remoteSessions(repo,identity,actor,input={},write=false){
   }
   const r=await repo.get('native-source',memberId,false),items=Object.values(r?.sessions||{}).map(({instanceId,runtimeId,...s})=>({...s,online:live(s)}));
   const canCreate=items.some(s=>s.online&&s.canCreate);
+  // A different online conversation must not turn this chat's offline binding green.
+  const observedAt=new Date().toISOString(),assignments=Object.entries(r?.bindings||{}).map(([channelId,b])=>{
+    const session=items.find(s=>s.id===b.sessionId);
+    return {channelId,...b,nativeState:session?.online?'unknown':'unavailable',observedAt,...(!session?.online?{nativeIssueCode:'session_offline',nativeMessage:'这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。'}:{})};
+  });
   const commands=actor.memberId?(await repo.list('native-command',{parent:memberId,status:'pending',limit:501})).filter(c=>c.engine==='claude'):undefined;
-  return {items,bindings:r?.bindings||{},verificationSessionId:r?.verificationSessionId||null,capabilities:{create:canCreate,createHint:canCreate?'新对话会在 Claude 原来的电脑或服务器创建，沿用原账号和工具。':'原环境的连接器尚未提供新建能力；可配对已打开的对话。'},...(commands?{commands}:{}),record:{memberId,enabled:!!r,sourceReady:items.some(s=>s.online),manualAssignments:true,status:items.some(s=>s.online)?'idle':'offline',message:items.some(s=>s.online)?'Claude 工作会话已在线':'请在原来的环境打开已接入的 Claude',assignments:Object.entries(r?.bindings||{}).map(([channelId,b])=>({channelId,...b}))}};
+  return {items,bindings:r?.bindings||{},verificationSessionId:r?.verificationSessionId||null,capabilities:{create:canCreate,createHint:canCreate?'新对话会在 Claude 原来的电脑或服务器创建，沿用原账号和工具。':'原环境的连接器尚未提供新建能力；可配对已打开的对话。'},...(commands?{commands}:{}),record:{memberId,enabled:!!r,sourceReady:items.some(s=>s.online),manualAssignments:true,status:items.some(s=>s.online)?'idle':'offline',message:items.some(s=>s.online)?'Claude 工作会话已在线':'请在原来的环境打开已接入的 Claude',assignments}};
 }
 export async function assignRemoteSession(repo,identity,actor,input){
   if(!actor.owner)fail('forbidden','只有用户可以选择工作会话',403);

@@ -5,6 +5,24 @@ import {memberAvailability} from '../shared/member-availability.mjs';
 const turn={id:'current',memberId:'agent',scopeId:'group',status:'ready',messageId:'question'};
 const native=state=>({memberId:'agent',enabled:true,status:'working',assignments:[{channelId:'group',sessionId:'original',...state}]});
 
+test('offline native receivers are not disguised as ordinary pending delivery across providers',()=>{
+ for(const platformId of ['codex','antigravity','gemini-cli','deepseek-harness','claude-code']){
+  const state={...native({}),status:'offline',message:'请打开原环境中的已绑定对话'};
+  assert.equal(pendingTurnState(turn,undefined,state).kind,'unavailable');
+  assert.match(pendingTurnState(turn,undefined,state).detail,/打开原环境/);
+  assert.equal(memberAvailability({id:'agent',platformId},{},state,'group',[turn]).state,'offline');
+  assert.match(pendingMemberActivity([turn],[],[state])[0].label,/原环境未连接/);
+ }
+});
+test('one unavailable binding is reported only in its own chat, and stale observations are not asserted',()=>{
+ const state=native({nativeState:'unavailable',nativeMessage:'项目文件夹无法打开',observedAt:new Date().toISOString()});
+ state.status='idle';state.assignments.push({channelId:'healthy',sessionId:'other',nativeState:'idle',observedAt:new Date().toISOString()});
+ assert.equal(pendingTurnState(turn,undefined,state).kind,'unavailable');
+ assert.equal(pendingTurnState({...turn,scopeId:'healthy'},undefined,state).kind,'waiting');
+ state.assignments[0].observedAt=new Date(Date.now()-60000).toISOString();
+ assert.equal(pendingTurnState(turn,undefined,state).kind,'waiting');
+});
+
 test('an unclaimed message does not imply a queue; started delivery appears before the claim',()=>{
  assert.equal(pendingTurnState(turn).kind,'waiting');
  const receiving=native({pendingStepId:'current',deliveryState:'working',workState:'working'});
