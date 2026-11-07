@@ -142,7 +142,13 @@
       "number": 394,
       "recipientIds": [
         "member_ccdf940ba6d3426da01b9f65048909e2"
-      ]
+      ],
+      "completedAt": "2026-11-07T07:54:36.737Z",
+      "summaryMessageIds": [
+        "chat_5c22dc240ab540bfacfbd9a986d37e7d",
+        "chat_aa618705e4814728aeec8a8c67870a32"
+      ],
+      "status": "done"
     }
   },
   "scope": "T02 A-E implementation and release; F independent audit and finite native production readback. No universal model behavior or long-term performance claim.",
