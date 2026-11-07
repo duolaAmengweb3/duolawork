@@ -71,6 +71,7 @@ export class CodexWorkingHost {
       const hash=createHash('sha256').update(sessionId+'\n'+prompt).digest('hex'),clientUserMessageId=[hash.slice(0,8),hash.slice(8,12),'4'+hash.slice(13,16),'8'+hash.slice(17,20),hash.slice(20,32)].join('-');
       const {queuedSubmission}=await rpc.call('thread/queue/add',{threadId:sessionId,clientUserMessageId,input:[{type:'text',text:prompt}]});
       const deadline=Date.now()+20*60000;
+      let nextReceiptCheck=0;
       while(Date.now()<deadline){
         const queue=await rpc.call('thread/queue/list',{threadId:sessionId,limit:100});
         if(!queue.data?.some(q=>q.id===queuedSubmission.id))return; // native UI already consumed it
@@ -78,9 +79,12 @@ export class CodexWorkingHost {
         // through a concurrent user turn. Only an authoritative completed
         // receipt allows deleting our own redundant queued wake. Never interrupt
         // the active turn or delete any other user's queued message.
-        if(isCompleted&&await isCompleted().catch(()=>false)){
-          await rpc.call('thread/queue/delete',{threadId:sessionId,queuedSubmissionId:queuedSubmission.id});
-          return;
+        if(isCompleted&&Date.now()>=nextReceiptCheck){
+          nextReceiptCheck=Date.now()+5000;
+          if(await isCompleted().catch(()=>false)){
+            await rpc.call('thread/queue/delete',{threadId:sessionId,queuedSubmissionId:queuedSubmission.id});
+            return;
+          }
         }
         const {thread}=await rpc.call('thread/read',{threadId:sessionId,includeTurns:false});
         if(thread.status?.type==='idle'&&queue.data[0]?.id===queuedSubmission.id){await rpc.call('thread/queue/start',{threadId:sessionId,queuedSubmissionId:queuedSubmission.id});return;}

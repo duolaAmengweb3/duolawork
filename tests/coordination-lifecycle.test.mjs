@@ -94,3 +94,16 @@ test('cached post_message supports new addressing semantics without catalog refr
  const other=await f.send('channel.create',{name:'另一群',memberIds:['grok'],coordinatorId:'grok'});
  await assert.rejects(()=>callTool(f.repo,f.identity,actor('grok'),'post_message',{...args,requestId:'escape',body:'HUB_SHARED_TOOL_V1\n'+JSON.stringify({name:'post_message',arguments:{channelId:other.id,body:'越界',purpose:'request'}})}),e=>e.code==='forbidden');
 });
+
+test('linking an older user message cannot replace newer requirements, while a fresh edit of the original message remains valid',async t=>{
+ const f=await setup(t),root=await f.send('channel.post',{channelId:f.c.id,body:'原要求'});
+ await f.send('channel.post',{channelId:f.c.id,replyTo:root.id,body:'请核对',mentions:['check']},actor('grok'));
+ const older=await f.send('channel.post',{channelId:f.c.id,body:'第一条补充'});
+ const newer=await f.send('channel.post',{channelId:f.c.id,body:'最后补充'});
+ let r=await record(f);
+ await f.send('channel.coordination',{channelId:f.c.id,action:'update',sourceMessageId:root.id,expectedVersion:r.version,requirementMessageId:newer.id,summary:'已纳入最后补充'},actor('grok'));
+ r=await record(f);
+ await assert.rejects(()=>f.send('channel.coordination',{channelId:f.c.id,action:'update',sourceMessageId:root.id,expectedVersion:r.version,requirementMessageId:older.id,summary:'错误地退回旧补充'},actor('grok')),e=>e.code==='older_requirement');
+ await f.send('channel.message.edit',{channelId:f.c.id,messageId:root.id,expectedVersion:1,body:'现在编辑原要求，仍须生效'});
+ assert.equal((await record(f)).requirementVersion,3);
+});

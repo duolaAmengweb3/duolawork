@@ -93,10 +93,11 @@ export async function coordinationCommand(tx,channel,actor,cmd,identity,helpers)
  return tx.put('channel_coordination',{...r,version:r.version+1,coordinatorId:channel.coordinatorId,appointment:channel.coordinatorVersion||1,status,summary,refs,interruption,completedAt:status==='completed'?tx.now:null});
 }
 
-export async function reviseRequirement(tx,identity,channel,r,source,helpers){
+export async function reviseRequirement(tx,identity,channel,r,source,helpers,{editing=false}={}){
  const revisions=r.requirementRevisions||{},stamp=`${source.id}:${source.version||1}`;
  if(revisions[stamp])return r;
- const next=tx.put('channel_coordination',{...r,version:r.version+1,requirementVersion:(r.requirementVersion||1)+1,requirementMessageIds:[...new Set([...(r.requirementMessageIds||[r.sourceMessageId]),source.id])],requirementRevisions:{...revisions,[stamp]:true},status:'working'});
+ if(!editing&&source.number<(r.latestRequirementNumber||0))fail('older_requirement','已有更新的用户要求，不能用旧消息替换；请读取当前需求',409);
+ const next=tx.put('channel_coordination',{...r,version:r.version+1,requirementVersion:(r.requirementVersion||1)+1,latestRequirementNumber:Math.max(source.number,r.latestRequirementNumber||0),requirementMessageIds:[...new Set([...(r.requirementMessageIds||[r.sourceMessageId]),source.id])],requirementRevisions:{...revisions,[stamp]:true},status:'working'});
  const notice=await helpers.channelMessage(tx,channel,{memberId:'owner'},`用户更新了此项要求：\n${source.body}\n请按新要求检查当前工作；旧结果需说明适用版本。`,{hidden:true,type:'coordination',replyTo:source.id,coordinationRootId:r.sourceMessageId,requirementVersion:next.requirementVersion,hops:0});
  for(const mid of new Set([channel.coordinatorId,...(r.participantIds||[])]))if(channel.memberIds.includes(mid))await helpers.enqueue(tx,identity,channel,notice,mid);
  return next;
@@ -106,7 +107,7 @@ export async function ownerRequirementChanged(tx,identity,channel,message,parent
  const root=parent?.coordinationRootId||parent?.rootId||parent?.id;
  if(!root)return;
  const r=await tx.get('channel_coordination',key(channel.id,root),false);
- if(isOpen(r))await reviseRequirement(tx,identity,channel,r,message,helpers);
+ if(isOpen(r))await reviseRequirement(tx,identity,channel,r,message,helpers,{editing:message.id===parent.id&&(message.version||1)>(parent.version||1)});
 }
 export async function transferCoordination(tx,identity,channel,helpers){
  const records=(await tx.list('channel_coordination',{scope:channel.id,limit:500})).filter(isOpen);

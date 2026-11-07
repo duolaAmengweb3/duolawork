@@ -501,7 +501,7 @@ export async function claimConversation(
           ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,
           coordinatorId: channel.coordinatorId,
-          collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
+          collaboration: collaborationGuidance(),
           ...(actor.memberId===channel.coordinatorId?{coordinatorInstruction:COORDINATOR_COLLABORATION_GUIDANCE,coordination:await tx.list('channel_coordination',{scope:channel.id,limit:100})}:{}),
           members: channel.memberIds.map((memberId) => ({
             id: memberId,
