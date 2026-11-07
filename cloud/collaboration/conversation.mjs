@@ -383,6 +383,8 @@ export async function receiveDelivery(repo,actor,args){
   if(!actor.memberId||existing.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
   const sessionKey=await digest(required(args.sessionId,'原工作会话',200));
   const currentConnection=await repo.get('connection',actor.memberId);
+  await scoped(await repo.get('channel',existing.scopeId),actor,repo);
+  if(currentConnection.status!=='verified')fail('disconnected','接收连接已解除',403);
   if(await executionResource(repo,currentConnection,existing.scopeId)!=='native-session:'+actor.memberId+':'+sessionKey)fail('session_changed','会话选择已变更，旧回执未应用',409);
   if(args.attempt!==(existing.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
   if(args.sourceVersion!==((await repo.get('channel_message',existing.messageId)).version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);

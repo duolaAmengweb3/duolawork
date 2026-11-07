@@ -1,0 +1,118 @@
+{
+  "at": "2026-11-07T15:29:48.686Z",
+  "platform": "original Antigravity CLI on VPS",
+  "receiverRevision": "39548c908882d76ef84e0974a44b8a18a98c069d545fe6420aa9bfb6bdf4733c",
+  "modelOverride": false,
+  "providerCredentialsTouched": false,
+  "existingSessions": [
+    {
+      "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+      "title": "验收 · Gemini 并行 2",
+      "workspace": "/home/claude/workspace",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    },
+    {
+      "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+      "title": "验收 · Gemini 并行 3",
+      "workspace": "/home/claude/workspace",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    }
+  ],
+  "samples": [
+    {
+      "channelId": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+      "messageId": "chat_949336538a914dadbe727d90f4e861b4",
+      "createdAt": "2026-11-07T15:29:49.033Z",
+      "token": "DW-LATENCY-ac81c07b-0",
+      "activity": {
+        "id": "turn_chat_949336538a914dadbe727d90f4e861b4_member_ccdf940ba6d3426da01b9f65048909e2",
+        "scopeId": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+        "parentId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "messageId": "chat_949336538a914dadbe727d90f4e861b4",
+        "queuedResourceKey": "native-session:member_ccdf940ba6d3426da01b9f65048909e2:0faf91dce0fad1188e0f9dc37c2476d86580f43af0d1ad774215eae1cc33a7d7",
+        "wakeSource": "user",
+        "number": 18,
+        "rootId": "chat_949336538a914dadbe727d90f4e861b4",
+        "hops": 0,
+        "status": "done",
+        "createdAt": "2026-11-07T15:29:49.033Z",
+        "kind": "channel_turn",
+        "revision": 6,
+        "updatedAt": "2026-11-07T15:30:38.711Z",
+        "connectorReceivedAt": "2026-11-07T15:29:49.244Z",
+        "receiptSessionKey": "0faf91dce0fad1188e0f9dc37c2476d86580f43af0d1ad774215eae1cc33a7d7",
+        "receiptAttempt": 0,
+        "receiptSourceVersion": 1,
+        "firstPublicOutputAt": "2026-11-07T15:29:50.026Z",
+        "nativeStartedAt": "2026-11-07T15:29:50.201Z",
+        "claimedAt": "2026-11-07T15:29:55.406Z",
+        "requirementVersions": {},
+        "nativeSessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+        "nativeContextMode": "incremental",
+        "expiresAt": "2026-11-07T15:59:55.406Z",
+        "mergedMessageIds": [
+          "chat_949336538a914dadbe727d90f4e861b4"
+        ],
+        "deliveryIssueIds": [],
+        "completedAt": "2026-11-07T15:30:38.711Z"
+      },
+      "reply": {
+        "id": "chat_4e7fc222c4ae445188e306342e305168",
+        "body": "DW-LATENCY-ac81c07b-0\n/home/claude/.config/duolawork-runtime/member_ccdf940ba6d3426da01b9f65048909e2/workspace\n原项目和工具保留",
+        "createdAt": "2026-11-07T15:30:38.711Z"
+      }
+    },
+    {
+      "channelId": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+      "messageId": "chat_dfa7c6a8bf7f4d7494603e00ec4c0f62",
+      "createdAt": "2026-11-07T15:29:57.898Z",
+      "token": "DW-LATENCY-ac81c07b-1",
+      "activity": {
+        "id": "turn_chat_dfa7c6a8bf7f4d7494603e00ec4c0f62_member_ccdf940ba6d3426da01b9f65048909e2",
+        "scopeId": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+        "parentId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "messageId": "chat_dfa7c6a8bf7f4d7494603e00ec4c0f62",
+        "queuedResourceKey": "native-session:member_ccdf940ba6d3426da01b9f65048909e2:1785737a196d5ae14b68e59fd8df00eeab4d157fc31c6585cddfb5d1448cd8fe",
+        "wakeSource": "user",
+        "number": 16,
+        "rootId": "chat_dfa7c6a8bf7f4d7494603e00ec4c0f62",
+        "hops": 0,
+        "status": "done",
+        "createdAt": "2026-11-07T15:29:57.898Z",
+        "kind": "channel_turn",
+        "revision": 5,
+        "updatedAt": "2026-11-07T15:30:32.576Z",
+        "connectorReceivedAt": "2026-11-07T15:29:58.131Z",
+        "receiptSessionKey": "1785737a196d5ae14b68e59fd8df00eeab4d157fc31c6585cddfb5d1448cd8fe",
+        "receiptAttempt": 0,
+        "receiptSourceVersion": 1,
+        "nativeStartedAt": "2026-11-07T15:30:13.015Z",
+        "claimedAt": "2026-11-07T15:30:14.032Z",
+        "requirementVersions": {},
+        "nativeSessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+        "nativeContextMode": "incremental",
+        "expiresAt": "2026-11-07T16:00:14.032Z",
+        "mergedMessageIds": [
+          "chat_dfa7c6a8bf7f4d7494603e00ec4c0f62"
+        ],
+        "deliveryIssueIds": [],
+        "completedAt": "2026-11-07T15:30:32.576Z"
+      },
+      "reply": {
+        "id": "chat_814338ab926948d090249b254c1caa65",
+        "body": "DW-LATENCY-ac81c07b-1 /home/claude/.config/duolawork-runtime/member_ccdf940ba6d3426da01b9f65048909e2/workspace 原项目和工具保留",
+        "createdAt": "2026-11-07T15:30:32.576Z"
+      }
+    }
+  ],
+  "peakActive": 2,
+  "fastBFinishedBeforeA": true,
+  "slowARequestedSeconds": 30,
+  "completedAt": "2026-11-07T15:30:40.040Z",
+  "bindingsPreserved": true,
+  "passed": true
+}

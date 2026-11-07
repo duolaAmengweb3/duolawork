@@ -19,7 +19,7 @@ export const sessionLinkTools=[
 export class ClaudeChannel {
   constructor({client,session,notify,stateFile}){Object.assign(this,{client,session,notify,stateFile});this.sent={};this.claims={};this.pending=null;}
   async load(){try{const s=JSON.parse(await fs.readFile(this.stateFile));this.sent=s.sent||{};this.claims=s.claims||{};this.linkSent=s.linkSent||{};}catch(e){if(e.code!=='ENOENT')throw e;}}
-  save(){return privateJson(this.stateFile,{sent:this.sent,claims:this.claims,linkSent:this.linkSent||{}},{durable:true});}
+  save(){const snapshot=structuredClone({sent:this.sent,claims:this.claims,linkSent:this.linkSent||{}});return this.writes=(this.writes||Promise.resolve()).catch(()=>{}).then(()=>privateJson(this.stateFile,snapshot,{durable:true}));}
   async linkTick(){
     const {items=[]}=await this.client.api('/v2/self/session-links');this.linkSent??={};
     for(const l of items.filter(l=>l.executor==='claude'&&l.session?.id===this.session.sessionId)){
@@ -111,8 +111,9 @@ export async function serve({grantFile,runFile,stateDir}){
     await bridge.linkTick();await bridge.tick();
   }catch(e){if(e.code!=='ENOENT')process.stderr.write('Agent Hub: '+(e.status===403?'连接已撤销或会话被占用':e.status===401?'授权需要重新连接':'连接暂未就绪，保留状态重试')+'\n');}finally{polling=false;}}
   await server.connect(new StdioServerTransport());
-  const timer=setInterval(()=>void tick(),15000);await tick();
+  await tick();let lastFallback=Date.now();
   const stopWatching=subscribeNativeChanges(client,page=>{if(closed)return;if(page.reset||page.changes.some(c=>['session-link','native-command','execution_binding','connection'].includes(c.kind)))void tick();else void bridge?.tick().catch(()=>{});});
+  const timer=setInterval(()=>{if(!stopWatching.available||Date.now()-lastFallback>=15000){lastFallback=Date.now();void tick();}},2000);
   const close=async()=>{if(closed)return;closed=true;stopWatching();clearInterval(timer);while(polling)await new Promise(r=>setTimeout(r,25));if(bridge?.pending)await bridge.pending.catch(()=>{});if(session)await client.api('/v2/self/native-sessions',{method:'POST',body:{...session,status:'offline'}}).catch(()=>{});await server.close();};
   process.stdin.on('end',()=>void close());process.once('SIGTERM',()=>void close());process.once('SIGINT',()=>void close());
   return{server,close};

@@ -19,6 +19,21 @@ async function fixture(){
  return{dir,project,file,grantFile,token,registered,prompts,calls,agent,options,get connector(){return connector;},setWork:v=>{work=v;},restart:async()=>{await connector.stop();connector=await new DshConnector(options).start();return connector;},cleanup:async()=>{await connector.stop();await fs.rm(dir,{recursive:true,force:true});}};
 }
 
+test('failed receiver disk write cannot ACK or start native work; retry persists before ACK',async()=>{
+ const f=await fixture();try{
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['durable']});
+  const receipts=[],client=f.options.clientFactory(),original=client.api;
+  client.api=async(route,args)=>{if(route==='/v2/self/delivery'){
+   const disk=JSON.parse(await fs.readFile(f.file,'utf8'));
+   assert.equal(disk.bindings[0].received.disk.message.body,'full original requirement');receipts.push(args.body);return{ok:true};
+  }return original(route,args);};
+  f.setWork([{stepId:'disk',channelId:'durable',status:'ready',delivery:{attempt:0,message:{version:1,body:'full original requirement'}}}]);
+  const blocker=path.join(f.dir,'not-a-directory');await fs.writeFile(blocker,'block');f.connector.stateFile=path.join(blocker,'state.json');
+  await f.connector.poll();assert.equal(receipts.length,0);assert.equal(f.prompts.length,0);assert.match(f.connector.bindings.get(f.agent.id).lastError,/ENOTDIR|EEXIST/);
+  f.connector.stateFile=f.file;await f.connector.poll();assert.deepEqual(receipts.map(r=>r.phase),['received','accepted']);assert.equal(f.prompts.length,1);
+ }finally{await f.cleanup();}
+});
+
 test('local native connector rejects unauthenticated and cross-origin requests without exposing its token',async()=>{
  const f=await fixture();try{
   const url=f.connector.state.controlUrl;

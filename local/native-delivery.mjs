@@ -6,7 +6,8 @@ export function subscribeNativeChanges(client,listener){
   const key=client.file||client;let entry=subscriptions.get(key);
   if(!entry){entry={listeners:new Set()};subscriptions.set(key,entry);entry.watch=client.watch(page=>{if(page.reset||page.changes.some(c=>wakeKinds.has(c.kind)))for(const fn of entry.listeners)fn(page);});}
   entry.listeners.add(listener);
-  return ()=>{entry.listeners.delete(listener);if(!entry.listeners.size){entry.watch.stop();subscriptions.delete(key);}};
+  const stop=()=>{entry.listeners.delete(listener);if(!entry.listeners.size){entry.watch.stop();subscriptions.delete(key);}};
+  Object.defineProperty(stop,'available',{get:()=>entry.watch.available});return stop;
 }
 export const readNativeInbox=client=>typeof client.inbox==='function'?client.inbox():client.tool('list_work');
 export async function deliveryReceipt(client,work,sessionId,phase='received'){

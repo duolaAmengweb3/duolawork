@@ -43,3 +43,13 @@ test('fast chat projection excludes materials without losing messages, addressin
  assert.ok(JSON.stringify(fast).length<JSON.stringify(full).length/10);
  await assert.rejects(readChannel(f.repo,f.identity,{memberId:'write'},{channelId:f.channel.id,view:'chat'}),e=>e.code==='forbidden');
 });
+test('cached successful receipt cannot bypass a later message edit, retry generation or connection revocation',async t=>{
+ const f=await setup(t),args={...f.input,requestId:'same-receipt'};await receiveDelivery(f.repo,{memberId:'grok'},args);
+ const message=await f.repo.get('channel_message',f.message.id);await f.repo.transact('edit-source',{},tx=>tx.put('channel_message',{...message,version:2,body:'corrected requirement'}));
+ await assert.rejects(receiveDelivery(f.repo,{memberId:'grok'},args),e=>e.code==='message_changed');
+ await f.receipt({sourceVersion:2});const turn=await f.repo.get('channel_turn',f.work.stepId);await f.repo.transact('retry-generation',{},tx=>tx.put('channel_turn',{...turn,recoveryCount:1}));
+ await assert.rejects(receiveDelivery(f.repo,{memberId:'grok'},{...args,sourceVersion:2}),e=>e.code==='stale_delivery');
+ const fresh={...args,requestId:'new-generation',sourceVersion:2,attempt:1};await receiveDelivery(f.repo,{memberId:'grok'},fresh);
+ const connection=await f.repo.get('connection','grok');await f.repo.transact('disconnect',{},tx=>tx.put('connection',{...connection,status:'disconnected'}));
+ await assert.rejects(receiveDelivery(f.repo,{memberId:'grok'},fresh),e=>e.code==='disconnected');
+});

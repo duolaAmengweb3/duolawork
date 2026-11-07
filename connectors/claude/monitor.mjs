@@ -146,7 +146,7 @@ export async function runMonitor(configFile){
     if(page.reset||page.changes.some(c=>['session-link','native-command','execution_binding','connection','channel'].includes(c.kind)))void tick();
     else void bridge.bridge?.tick(bridge.scopeCache).catch(failure);
   });
-  const timer=setInterval(()=>void tick(),15000);
+  let lastFallback=Date.now();const timer=setInterval(()=>{if(!stopWatching.available||Date.now()-lastFallback>=15000){lastFallback=Date.now();void tick();}},2000);
   try{await ended;}finally{closed=true;stopWatching();clearInterval(timer);await pending;await bridge.bridge?.pending?.catch(()=>{});await bridge.close();}
 }
 

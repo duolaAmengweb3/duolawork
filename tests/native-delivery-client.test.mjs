@@ -14,3 +14,9 @@ test('receipts retry with stable identity and a user message correction gets a n
  await deliveryReceipt(client,work,'session');await deliveryReceipt(client,work,'session');work.delivery.message.version=2;await deliveryReceipt(client,work,'session');
  assert.equal(bodies[0].requestId,bodies[1].requestId);assert.notEqual(bodies[1].requestId,bodies[2].requestId);assert.equal(bodies[2].sourceVersion,2);
 });
+test('a failed notification stream immediately invalidates the pushed inbox and exposes fallback state',async()=>{
+ const client=new CodingMemberClient('failed-watch-'+crypto.randomUUID());let calls=0,rejectWatch,failed;
+ const seen=new Promise(r=>failed=r);client.api=async route=>{if(!route.startsWith('/v2/changes'))return{work:[{stepId:'fresh'}]};if(++calls===1)return{cursor:1,reset:true,changes:[],inbox:{work:[{stepId:'old'}]}};return new Promise((_,j)=>rejectWatch=j);};
+ let boot;const ready=new Promise(r=>boot=r),watch=client.watch(()=>boot(),{onError:()=>failed(),retryMs:100000});await ready;assert.equal(watch.available,true);assert.equal((await client.inbox()).work[0].stepId,'old');
+ while(!rejectWatch)await new Promise(r=>setImmediate(r));rejectWatch(Error('disconnected'));await seen;assert.equal(watch.available,false);assert.equal((await client.inbox()).work[0].stepId,'fresh');watch.stop();await watch.finished;
+});

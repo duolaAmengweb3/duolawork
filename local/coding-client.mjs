@@ -29,10 +29,10 @@ export class CodingMemberClient{
   try{return await this.request(d.endpoint+route,{method,body,token:d.access_token,timeout,signal});}
   catch(e){if([401,403,409].includes(e.status||e.statusCode))inboxes.delete(this.file);if(signal?.aborted||e.status!==401&&e.statusCode!==401)throw e;d=await this.refresh(d);return this.request(d.endpoint+route,{method,body,token:d.access_token,timeout,signal});}
  }
- watch(onChange,options={}){const watcher=watchChanges({...options,request:(route,signal)=>this.api(route,{signal}),onChange:page=>{
+ watch(onChange,options={}){const watcher=watchChanges({...options,onError:e=>{inboxes.delete(this.file);options.onError?.(e);},request:(route,signal)=>this.api(route,{signal}),onChange:page=>{
    if(page.inbox)inboxes.set(this.file,{value:page.inbox,at:performance.now()});
    return onChange(page);
- }});return {...watcher,stop:()=>{inboxes.delete(this.file);watcher.stop();}};}
+ }});return {finished:watcher.finished,get available(){return watcher.available;},get cursor(){return watcher.cursor;},stop:()=>{inboxes.delete(this.file);watcher.stop();}};}
  async inbox(){const cached=inboxes.get(this.file);if(cached&&performance.now()-cached.at<2000)return cached.value;
    if(inboxReads.has(this.file))return inboxReads.get(this.file);
    const reading=this.api('/v2/self/inbox').catch(e=>{if(e.status!==404)throw e;return this.tool('list_work');}).finally(()=>{if(inboxReads.get(this.file)===reading)inboxReads.delete(this.file);});

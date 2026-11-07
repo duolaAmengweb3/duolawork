@@ -266,9 +266,10 @@ export default function App() {
       if(page.reset||page.changes.some(c=>['channel','channel_message','connection'].includes(c.kind)))void refreshWorkspace().catch(report);
       await fast;setSyncError('');
     }});
+    let lastFallback=0;
     const stop = startPolling({
-      run: () => Promise.all([refreshWorkspace(),refresh({chatOnly:true})]),
-      interval:15000,
+      run: () => {if(watcher.available&&Date.now()-lastFallback<15000)return Promise.resolve();lastFallback=Date.now();return Promise.all([refreshWorkspace(),refresh({chatOnly:true})]);},
+      interval:6000,
       onSuccess: () => setSyncError(""),
       onError:report,
     });
