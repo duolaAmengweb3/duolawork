@@ -308,7 +308,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
 // A notification timeout is not a consumed message. Late native receivers may
 // claim unstarted work; an expired execution always requires explicit recovery.
 export const receivableTurn = turn => turn.status === 'ready' ||
-  (turn.status === 'stalled' && !turn.claimedAt && !turn.lease);
+  (turn.status === 'stalled' && !turn.claimedAt && !turn.lease && !turn.nativeReceptionFailed);
 
 // Runtime observations do not acknowledge delivery or fabricate an Agent reply.
 export async function conversationRuntime(repo,actor,args){
@@ -319,6 +319,7 @@ export async function conversationRuntime(repo,actor,args){
   if(!['running','ended','unreachable'].includes(args.state))fail('invalid_state','运行观察状态无效');
   return repo.transact(args.requestId,{...args,actor},async tx=>{
     const current=await tx.get('channel_turn',turn.id);
+    if(current.status==='ready'&&args.state==='ended')return publicState(tx.put('channel_turn',{...current,status:'stalled',nativeReceptionFailed:true,nativeObservedAt:tx.now,interruptedAt:tx.now,reason:'原 Agent 在接收消息前停止，尚未开始这条工作。消息已保留，恢复后可重试。'}));
     if(current.status!=='active')return publicState(current);
     if(args.state==='running')return publicState(tx.put('channel_turn',{...current,nativeObservedAt:tx.now,expiresAt:new Date(Date.parse(tx.now)+30*60000).toISOString()}));
     const reason=args.state==='ended'?'原对话已结束，但这条消息尚未回传；请在原环境检查。':'暂时无法确认原运行端状态，消息和原工作保留；未自动重做。';
@@ -360,6 +361,7 @@ export async function conversationWork(repo, identity, memberId) {
       status: receivableTurn(turn) ? "ready" : "claimed",
       kind: "conversation",
       messageId: turn.messageId,
+      deliveryAttempt: turn.recoveryCount||0,
       instruction:
         "这是群聊新消息，不是正式任务。领取后读取上下文，自主决定回复、@、用工具或静默。",
     });

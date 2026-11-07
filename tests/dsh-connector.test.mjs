@@ -208,3 +208,17 @@ test('failed native receipt recovery reports ended once and releases later notif
   await f.connector.poll();assert.equal(f.prompts.length,3);assert.match(f.prompts[2].content[0].text,/turn_next/);await f.connector.poll();assert.equal(reports.length,1);
  }finally{await f.cleanup();}
 });
+
+test('pre-claim failure gets bounded recovery and an explicit retry uses a new native request without duplicating it',async()=>{
+ const f=await fixture();let now=100000,status='ready';try{
+  f.connector.now=()=>now;f.options.ctx.sessionController.list=async()=>({items:[{sessionId:f.agent.id,cwd:f.project,running:false}]});
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile});
+  const work={stepId:'turn_before_claim',channelId:'group',status:'ready'},client=f.options.clientFactory(),api=client.api;
+  client.api=async(route,args)=>{if(route.startsWith('/v2/self/conversation-state')){if(args?.body.state==='ended'){status='stalled';f.setWork([]);}return{status};}return api(route,args);};
+  f.setWork([work]);await f.connector.poll();const first=f.prompts[0].requestId;
+  now+=15000;await f.connector.poll();now+=60000;await f.connector.poll();assert.equal(f.prompts.length,2);assert.match(f.prompts[1].content[0].text,/本条尚未领取/);
+  now+=60000;await f.connector.poll();assert.equal(status,'stalled');assert.equal(f.prompts.length,2);
+  status='ready';f.setWork([{...work,deliveryAttempt:1}]);await f.connector.poll();assert.equal(f.prompts.length,3);assert.notEqual(f.prompts[2].requestId,first);
+  await f.connector.poll();assert.equal(f.prompts.length,3);assert.deepEqual(f.connector.publicBinding(f.connector.bindings.get(f.agent.id)).dispatchedStepIds,['turn_before_claim']);
+ }finally{await f.cleanup();}
+});

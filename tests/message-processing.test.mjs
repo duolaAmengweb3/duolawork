@@ -68,3 +68,14 @@ test('idle original session gets one receipt repair, restart cannot repeat it, l
  const restored=JSON.parse(JSON.stringify(r));await manager.observeOriginal(restored,client,220000);
  assert.equal(sends,1);assert.equal(status,'stalled');assert.equal(restored.inFlight,null);assert.equal(restored.lastReceiptAt,undefined);
 });
+
+test('native failure before claim is held without a fake lease and requires an explicit retry',async t=>{
+ const f=await fixture(t),actor={memberId:'grok'};
+ const c=await conversationCommand(f.repo,f.identity,{owner:true},{type:'channel.create',requestId:'pre-c',name:'接收失败',memberIds:['grok']});
+ await conversationCommand(f.repo,f.identity,{owner:true},{type:'channel.post',channelId:c.id,requestId:'pre-message',body:'请核对',mentions:['grok']});
+ const turn=(await f.repo.list('channel_turn',{scope:c.id}))[0];
+ assert.equal((await conversationRuntime(f.repo,actor,{requestId:'pre-alive',turnId:turn.id,state:'running'})).status,'ready');
+ const stopped=await conversationRuntime(f.repo,actor,{requestId:'pre-end',turnId:turn.id,state:'ended'});assert.equal(stopped.status,'stalled');assert.equal(stopped.completedAt,null);
+ const row=await f.repo.get('channel_turn',turn.id);assert.equal(row.nativeReceptionFailed,true);assert.equal(row.claimedAt,undefined);assert.equal(row.lease,undefined);
+ await assert.rejects(claimConversation(f.repo,f.identity,actor,{requestId:'implicit-retry',stepId:turn.id}),e=>e.code==='turn_unavailable');
+});

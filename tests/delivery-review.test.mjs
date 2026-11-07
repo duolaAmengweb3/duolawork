@@ -184,3 +184,9 @@ test('未选工作对话与断开原环境会显示具体操作，正常忙碌�
  v=deliveryView(snapshot,members,[{memberId:'a',enabled:false,assignments:[]}]);assert.equal(v.attention[0].action,'connect');
  v=deliveryView(snapshot,members,[{memberId:'a',enabled:true,status:'working',assignments:[{channelId:'c'}]}]);assert.equal(v.attention.length,0);assert.equal(v.waiting.length,1);
 });
+
+test('explicit retry releases a pre-claim native failure with a new delivery attempt',async t=>{
+ const f=await setup(t);await f.hold('stalled',{nativeReceptionFailed:true});await f.maintain();await f.resolve('retry');
+ const turns=(await f.turns()).filter(t=>!t.deliveryReview);assert.ok(turns.every(t=>t.status==='ready'&&!t.nativeReceptionFailed&&t.recoveryCount===1));
+ const work=await callTool(f.repo,f.identity,{memberId:'check'},'list_work',{});assert.equal(work.work.find(w=>w.stepId===turns.find(t=>t.memberId==='check').id).deliveryAttempt,1);
+});

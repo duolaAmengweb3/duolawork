@@ -78,7 +78,7 @@ export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helper
    const c=await tx.get('connection',t.memberId,false),m=identity.members.find(m=>m.id===t.memberId);
    if(!channel.memberIds.includes(t.memberId)||!m||m.paused||m.status==='disabled'||c?.status!=='verified')fail('connection_required','请先恢复该成员连接，原消息保留',409);
    if(!await helpers.meetingTurnAllowed(tx,t))fail('meeting_changed','这条会议通知已过期，请核对结果后收尾',409);
-   const next=tx.put('channel_turn',{...t,status:'ready',reason:null,deliveryIssueId:issue.id,recoveryCount:(t.recoveryCount||0)+1});
+   const next=tx.put('channel_turn',{...t,status:'ready',reason:null,nativeReceptionFailed:false,deliveryIssueId:issue.id,recoveryCount:(t.recoveryCount||0)+1});
    await helpers.outbox(tx,channel,next,c);
   }else{
    tx.put('channel_turn',{...t,status:'removed',reason:summary,resolution:cmd.action,resolvedBy:actor.memberId||'owner',evidenceMessageIds:evidence.map(m=>m.id),completedAt:tx.now});

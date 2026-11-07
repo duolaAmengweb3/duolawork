@@ -11,6 +11,7 @@ import {acceptsWork,claimNativeConversation,receiveNativeConversation} from './s
 export const name='agent-hub-existing-session';
 export const inject=['sessionController','agents','tools','workingDirectory','workspaceRegistry','permissionPresets'];
 const digest=value=>createHash('sha256').update(value).digest('hex');
+const deliveryKey=w=>w.deliveryAttempt?w.stepId+':retry:'+w.deliveryAttempt:w.stepId;
 // Captured from the immutable installed directory when this module loads.
 // Updating files on disk is not proof that the original Host loaded the update.
 const receiverRevision=await fs.readFile(new URL('../complete.json',import.meta.url),'utf8').then(JSON.parse).then(v=>v.revision).catch(()=>null);
@@ -110,9 +111,9 @@ export class DshConnector {
     }));
   }
  }
- publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...b.dispatched],lastError:b.lastError,receiptRecovery:b.receiptRecovery};}
+ publicBinding(b){return{sessionId:b.sessionId,workspace:b.workspace,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,toolCalls:b.toolCalls,dispatchedCount:b.dispatched.size,dispatchedStepIds:[...new Set([...b.dispatched].map(key=>key.replace(/:retry:[0-9]+$/,'')))],lastError:b.lastError,receiptRecovery:b.receiptRecovery};}
  async reconcileReceipt(b,work){
-  const pending=work.find(w=>w.status==='claimed'&&w.stepId.startsWith('turn_')&&b.dispatched.has(w.stepId)&&acceptsWork(b,w));
+  const pending=work.find(w=>['claimed','ready'].includes(w.status)&&w.stepId.startsWith('turn_')&&b.dispatched.has(deliveryKey(w))&&acceptsWork(b,w));
   if(!pending){if(b.receiptRecovery){b.receiptRecovery=null;await this.save();}return false;}
   const native=await this.sessionInfo(b.sessionId),now=this.now();
   if(this.closed||this.bindings.get(b.sessionId)!==b)return true;
@@ -124,20 +125,20 @@ export class DshConnector {
    return true;
   }
   if(native.running!==false)return true; // Unknown is not proof of termination.
-  const recovery=previous?.stepId===pending.stepId?previous:{stepId:pending.stepId,channelId:pending.channelId,state:'observing',idleSince:now};
+  const recovery=previous?.stepId===pending.stepId&&(previous.deliveryAttempt||0)===(pending.deliveryAttempt||0)?previous:{stepId:pending.stepId,channelId:pending.channelId,deliveryAttempt:pending.deliveryAttempt||0,state:'observing',idleSince:now};
   b.receiptRecovery=recovery;recovery.idleSince??=now;
   if(now-recovery.idleSince<this.receiptGraceMs)return true;
   const state=await b.client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(pending.stepId));
-  if(state.status!=='active'){b.receiptRecovery=null;await this.save();return true;}
+  if(!['active','ready'].includes(state.status)){b.receiptRecovery=null;await this.save();return true;}
   if(!recovery.attemptedAt){
    // Persist before queueing. A lost response or Host restart cannot repeat
    // completed side effects or create an unbounded recovery/model loop.
    recovery.attemptedAt=now;recovery.state='recovering';recovery.idleSince=now;await this.save();
-   const text=`DuolaWork 回执恢复：这段原生对话已停止运行，但 ${pending.stepId} 的结果尚未回到原群 ${pending.channelId}。保留当前会话、模型、工具和已有结果。不要重做已完成的操作，不领取其他工作，不重新跑全量测试。用 hub_read_channel 查看本群最新补充，核对本轮已有结果；使用 hub_post_message，提供新的 requestId、channelId=${pending.channelId}、turnId=${pending.stepId}，回传真实结果或具体阻塞。原工作已领取，无需再次 claim_work。若已经回过群，核对对应消息后用 hub_stay_silent 结束此 turn。不能声称未验证的工作完成。只收尾这一条，后续由连接器正常投递。`;
-   await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId:digest(b.memberId+':receipt:'+pending.stepId),content:[{type:'text',text}]},b.abort.signal);
+   const text=`DuolaWork 回执恢复：这段原生对话已停止运行，但 ${pending.stepId} 的结果尚未回到原群 ${pending.channelId}。保留当前会话、模型、工具和已有结果。不要重做已完成的操作，不领取其他工作，不重新跑全量测试。用 hub_read_channel 查看本群最新补充，核对本轮已有结果；使用 hub_post_message，提供新的 requestId、channelId=${pending.channelId}、turnId=${pending.stepId}，回传真实结果或具体阻塞。${state.status==='active'?'原工作已领取，无需再次 claim_work。':'本条尚未领取，先 hub_claim_work 领取这一个 stepId 并提供 channelId，然后说明具体中断原因及未执行的工作，不声称完成。'}若已经回过群，核对对应消息后用 hub_stay_silent 结束此 turn。不能声称未验证的工作完成。只收尾这一条，后续由连接器正常投递。`;
+   await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId:digest(b.memberId+':receipt:'+deliveryKey(pending)),content:[{type:'text',text}]},b.abort.signal);
    return true;
   }
-  await b.client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:digest(b.memberId+':receipt-ended:'+pending.stepId),turnId:pending.stepId,state:'ended'}});
+  await b.client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:digest(b.memberId+':receipt-ended:'+deliveryKey(pending)),turnId:pending.stepId,state:'ended'}});
   recovery.state='unresolved';await this.save();return true;
  }
  async poll(){
@@ -161,16 +162,16 @@ export class DshConnector {
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;
     if(await this.reconcileReceipt(b,work))return;
     // A native queue belongs to one original session, never to its whole account.
-    if(work.some(w=>b.dispatched.has(w.stepId)))return;
-    const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(w.stepId));
+    if(work.some(w=>b.dispatched.has(deliveryKey(w))&&acceptsWork(b,w)))return;
+    const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(deliveryKey(w)));
     if(!next)return;
     await this.sessionInfo(b.sessionId);
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;this.attachAgent(found.agent);
-    const requestId=digest(b.memberId+':'+next.stepId);
+    const requestId=digest(b.memberId+':'+deliveryKey(next));
     const text=`Hub 有一条发给你的真实工作。你仍是当前项目的同一个原生 Agent，保留模型、工具、规则和原会话记忆。直接使用 hub_claim_work 领取，参数包含新的 requestId 和 ${JSON.stringify({stepId:next.stepId,...(next.channelId?{channelId:next.channelId}:{})})}，无需先查询工作列表，只处理这条工作。严格按领取结果的指令执行。普通聊天用 hub_post_message 回到同一群，使用领取返回的 turnId；验证或交付任务按要求用 hub_submit_work 提交 attemptId、lease 和 items。所有写调用提供 requestId。不要只在原生界面输出而不回传。普通聊天不擅自创建任务、文档或额外分工。不要读其他会话或登录资料；不输出凭证。`;
     await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId,content:[{type:'text',text}]},b.abort.signal);
-    b.dispatched.add(next.stepId);await this.save();
+    b.dispatched.add(deliveryKey(next));await this.save();
     this.dispatches.push({sessionId:b.sessionId,stepId:next.stepId,requestId,at:new Date().toISOString()});this.dispatches=this.dispatches.slice(-100);
     b.lastError=null;
    }catch(error){b.lastError=safeError(error);}
