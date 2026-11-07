@@ -7,5 +7,9 @@
   "readId": "skill_read_a725bd1e1914405e85ddf038bf52a992",
   "useId": "skill_use_ce865676481342baad5465f565c4dcf6",
   "readback": true,
-  "scope": "Actual original Codex member tool call on deployed server; own use report, not independent review"
+  "scope": "Actual original Codex member tool call on deployed server; own use report, not independent review",
+  "independentReviewId": "skill_review_df59928216f14d45b46547e1ed06d456",
+  "reviewerId": "member_acbea6620d534e6682d8009db6403f1e",
+  "reviewReadback": true,
+  "reviewEvidence": "peer_reviewed"
 }

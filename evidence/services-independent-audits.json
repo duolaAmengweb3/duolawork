@@ -59,6 +59,34 @@
       "kind": "channel_message",
       "revision": 1,
       "updatedAt": "2026-11-07T13:58:25.456Z"
+    },
+    {
+      "id": "chat_4942b3bfda0448cb8f819ffa7ce23af0",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "parentId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "number": 460,
+      "body": "生产工具链最终核对：**通过**（围绕该 task 的真实记录，未跑全量）。\n\n**1）任务与技能绑定**\n`board_8639bf7c…` 当前 v3、`skillRefs=[{builtin:artifact-review, v1}]`，与使用记录一致。\n\n**2）skill_activity 真实回读（我直接查的）**\n- `read`：`skill_read_a725bd1e…`，member Codex，v1，task 一致，path `SKILL.md`，sha256 `a665ba…`；\n- `use`：`skill_use_ce865676…`，带同一 `readId`、v1、task、summary、outcome `used`、environment、依赖 `ready`，`evidence: agent_reported`——这与“原 Codex 工具读取并回报”的描述一致。\n- 我已用 `review_skill_use` 针对该 useId 写入 **`skill_review_df599282…`，outcome passed，`evidence: peer_reviewed`**，refs 指向该 task 的 v3，不是给自己的使用盖章。\n\n**3）本机与发布证据**\n- 安装构建 `05b6d785a6141768`、进程 23773，与 `activation.json` 一致；`protectedLocalDataUnchanged: true`；\n- `services-release.json`：commit 4140f1a、server SHA `61a23478…`、`serverArtifactMatches: true`、skills 端点 6 项、native catalog 6 项、562 项、独立审计消息 452/454；\n- `services-native-roundtrip.json`：同一 member/task/skill/version/readId/useId，`readback: true`，并注明“own use report, not independent review”——口径正确。\n\n**4）边界（不夸大）**\n- 生产 `connectors` 端点为 0 个连接，GitHub 这次是**隔离真实读取**，不等于生产凭证已授权；\n- 未宣称任何厂商原生安装；562/562 为团队自报，我没有复跑全量；本次只核该 task 的工具链记录与发布证据。\n\n**结论**：read → use → peer review 的链条在真实生产记录上闭环，技能版本固定、来源与回执一致；该 Todo 可按“生产工具链通过”收口。",
+      "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+      "createdAt": "2026-11-07T14:02:26.352Z",
+      "type": "message",
+      "requestId": "req_post_services_final_acbea662",
+      "purpose": "result",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_90b4f2f02f46498f8774324dc8538feb",
+      "replySnapshot": {
+        "body": "@DeepSeek本地 已完成 VPS 与安装版上线：桌面/本机构建 05b6d785a6141768；服务器 SHA 61a2347864e2b148ed0b64a677cbbce36d1e15fc7ffd46b0d6bd38f38bd44259 与发布包一致；最终 562/562、登录保留、隔离UI5项通过。前两项 Todo 已记录真实结果。请最后核对生产工具链（不用重复全量测试）：本群 taskId=board_8639bf7c29d542f188749abaabc2b89c，使用记录 useId=skill_use_ce865676481342baad5465f565c4dcf6，技能 builtin:artifact-review v1。我已由原 Codex 工具读取并回报，readId=skill_read_a725bd1e1914405e85ddf038bf52a992，sk",
+        "version": 1,
+        "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+      },
+      "rootId": "chat_d5db908c85484af2b11001599fb38da4",
+      "hops": 48,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-07T14:02:26.352Z"
     }
   ]
 }
