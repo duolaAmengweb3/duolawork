@@ -1,0 +1,224 @@
+{
+  "at": "2026-11-07T07:53:54.351Z",
+  "commit": "6375ff1",
+  "build": "93e6214ca483dfd3",
+  "tests": {
+    "unit": 526,
+    "failed": 0,
+    "independentUnit": {
+      "passed": 518,
+      "total": 519,
+      "failure": "temporary fake terminal PTY trust fixture",
+      "finalReviewerConclusion": "environment-specific PTY fixture limitation retained; no missing login claim",
+      "sameArchiveRetestByImplementer": {
+        "file": "tests/claude-create.test.mjs",
+        "passed": 3,
+        "total": 3
+      },
+      "requiresRealClaudeOrLogin": false
+    },
+    "ui": [
+      "collaboration-routing-ui",
+      "meeting-lifecycle-ui two independent windows",
+      "meetings-ui 6/6"
+    ],
+    "sessionProtection": true,
+    "packagedDesktopRestart": true,
+    "targetedNativeRecovery": 69
+  },
+  "activation": {
+    "at": "2026-11-07T07:43:16.856Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "93e6214ca483dfd3",
+    "processId": 50370,
+    "desktopBuildId": "93e6214ca483dfd3",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "production": {
+    "requests": [
+      {
+        "number": 372,
+        "turnId": "turn_chat_997a72829c924fe9ba369b65b65e8624_member_acbea6620d534e6682d8009db6403f1e",
+        "status": "removed",
+        "createdAt": "2026-11-07T07:06:01.847Z",
+        "claimedAt": "2026-11-07T07:09:59.469Z",
+        "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+        "dispatchToClaimSeconds": 237.622,
+        "claimToReplySeconds": null,
+        "resolution": "covered by actual reply to follow-up #383, not a successful rerun"
+      },
+      {
+        "number": 374,
+        "turnId": "turn_chat_d8286b90c20d44a0862bd4fbd8c88252_member_ccdf940ba6d3426da01b9f65048909e2",
+        "status": "done",
+        "createdAt": "2026-11-07T07:06:24.027Z",
+        "claimedAt": "2026-11-07T07:06:37.413Z",
+        "completedAt": "2026-11-07T07:09:22.910Z",
+        "nativeSessionId": "b82af396-133e-4c75-a70b-e7929c8fb6e3",
+        "dispatchToClaimSeconds": 13.386,
+        "claimToReplySeconds": 165.497
+      },
+      {
+        "number": 373,
+        "turnId": "turn_chat_b6fa87a71aed4a0db194f2f90df9e5b6_member_bf4fdac30b4542c8988bb6725f47ec0b",
+        "status": "done",
+        "createdAt": "2026-11-07T07:06:23.295Z",
+        "claimedAt": "2026-11-07T07:06:43.680Z",
+        "completedAt": "2026-11-07T07:08:23.443Z",
+        "nativeSessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+        "dispatchToClaimSeconds": 20.385,
+        "claimToReplySeconds": 99.763
+      }
+    ],
+    "replies": [
+      {
+        "id": "chat_d19d7cf0f163467781c83d79bc9e7e36",
+        "number": 375,
+        "authorId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+        "recipientIds": [
+          "member_26ac2c60371e4158bd6df1b0fa0db37d"
+        ],
+        "purpose": "result",
+        "createdAt": "2026-11-07T07:08:23.443Z"
+      },
+      {
+        "id": "chat_24d894a24180442eafe61c713280cb0f",
+        "number": 376,
+        "authorId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "recipientIds": [
+          "member_26ac2c60371e4158bd6df1b0fa0db37d"
+        ],
+        "purpose": "result",
+        "createdAt": "2026-11-07T07:09:22.910Z"
+      }
+    ],
+    "claudeCachedCatalogEnvelopeConfirmed": true,
+    "geminiOriginalSessionReadbackConfirmed": true,
+    "deepseekNativeModel": {
+      "observedFailure": "HTTP 500 SERVER in original deepseek-account provider",
+      "retryObserved": true,
+      "compactionCompletedAt": "2026-11-07T07:12:59.610Z",
+      "sessionPreserved": true,
+      "hubRequestRetained": true,
+      "terminalError": {
+        "at": "2026-11-07T07:25:04.111Z",
+        "code": "MALFORMED_RESPONSE",
+        "message": "DeepSeek Messages stream: duplicate message_start"
+      }
+    },
+    "geminiConnectorUpdate": {
+      "requestId": "chat_0563668e5df84bc8ad64adda76d49082",
+      "replyId": "chat_5f511448dc45495d89ba8ef65aad024a",
+      "status": "done",
+      "claimedAt": "2026-11-07T07:44:20.689Z",
+      "completedAt": "2026-11-07T07:45:35.782Z",
+      "nativeSessionId": "b82af396-133e-4c75-a70b-e7929c8fb6e3",
+      "receiverRevision": "71974d164842617f993657b75718cbdc94afdbca5a6dc2c3e32b5b877713cc01",
+      "updateAvailable": false,
+      "initial": "697c0747a6b90144dfd80fd0dda6508eef0444ff480a4ca50dd04e12295b383f"
+    },
+    "deepseekRecovery": {
+      "sameSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+      "receiptRecoveryAt": "2026-11-07T07:34:33.101Z",
+      "originalTurnInterruptedAt": "2026-11-07T07:37:19.306Z",
+      "nextMessageDeliveredAt": "2026-11-07T07:37:21.183Z",
+      "replyMessageId": "chat_281dbd956700468290f77e7df61b69df",
+      "replyAt": "2026-11-07T07:39:18.498Z",
+      "oldIssueResolvedAt": "2026-11-07T07:40:27.879Z",
+      "oldIssueResolution": "covered",
+      "nativeRevision": "b7a0f921031e2daab390",
+      "originalModelAndBindingRetained": true
+    },
+    "finalHandoff": {
+      "messageId": "chat_bd51aa50b8c943a990687cb6444f17fb",
+      "number": 394,
+      "recipientIds": [
+        "member_ccdf940ba6d3426da01b9f65048909e2"
+      ]
+    }
+  },
+  "scope": "T02 A-E implementation and release; F independent audit and finite native production readback. No universal model behavior or long-term performance claim.",
+  "initialRelease": {
+    "commit": "059b772",
+    "build": "7193682367ba255e"
+  },
+  "independentAudit": {
+    "messageId": "chat_281dbd956700468290f77e7df61b69df",
+    "number": 386,
+    "taskId": "board_3b97d7d1c11f4cd296843e0969122645",
+    "taskVersion": 12,
+    "status": "done",
+    "signoff": "code coverage and finite production evidence",
+    "exclusions": [
+      "long-term model behavior",
+      "all-platform consistency",
+      "full current multi-session load coverage",
+      "all VPS failure combinations"
+    ],
+    "recoveryIncrementAuditRequest": "chat_6faf85994fe2433abefbdeb56d32e246",
+    "recoveryIncrementAudit": {
+      "status": "passed",
+      "passed": 7,
+      "total": 7,
+      "failed": 0,
+      "skipped": 0,
+      "messageId": "chat_1f2a42bba7d44961892406deb2221da7",
+      "number": 393,
+      "sourceCommit": "6375ff1",
+      "nativeSessionPreserved": true
+    }
+  },
+  "releaseCommit": "f33839e",
+  "todos": [
+    {
+      "id": "board_3b97d7d1c11f4cd296843e0969122645",
+      "title": "T02-F 不降级验收与交付闭环",
+      "status": "done",
+      "version": 12,
+      "completedBy": "member_acbea6620d534e6682d8009db6403f1e"
+    },
+    {
+      "id": "board_6d768a4687fc4ab1a82af346cb0917e8",
+      "title": "T02-E 独立意见与集中核验",
+      "status": "done",
+      "version": 3,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    },
+    {
+      "id": "board_0206df89286d491f933eaec559c3ee23",
+      "title": "T02-D 群聊与会议统一交互",
+      "status": "done",
+      "version": 3,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    },
+    {
+      "id": "board_1bab9f6bf3bf4111b228bf23bdc4917b",
+      "title": "T02-C 通知透明度与兼容",
+      "status": "done",
+      "version": 3,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    },
+    {
+      "id": "board_08a2efebc85947d688cb125f621a990f",
+      "title": "T02-B 需求与结果跟进闭环",
+      "status": "done",
+      "version": 3,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    },
+    {
+      "id": "board_5f1dcc750c9f40fbbe5e47a625a734e3",
+      "title": "T02-A 负责人及成员共同协作指引",
+      "status": "done",
+      "version": 3,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    }
+  ]
+}
