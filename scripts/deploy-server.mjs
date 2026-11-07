@@ -38,10 +38,13 @@ trap rollback ERR
 tar -xzf /var/lib/agent-hub/release-upload.tar.gz -C /opt/agent-hub-server
 chown -R root:root /opt/agent-hub-server
 systemctl start agent-hub
+ready=0
+for attempt in {1..30}; do
+  if systemctl is-active --quiet agent-hub && curl -fsS --max-time 2 http://127.0.0.1:8787/health; then ready=1; break; fi
+  sleep 1
+done
+if [ "$ready" != 1 ]; then echo 'Backend did not become ready; restoring previous release' >&2; false; fi
 if [ "$memory" = 1 ]; then systemctl start duolawork-memory; fi
-sleep 2
-systemctl is-active --quiet agent-hub
-curl -fsS http://127.0.0.1:8787/health
 trap - ERR
 `);
   const health = await requestJson(target.origin + '/health');
