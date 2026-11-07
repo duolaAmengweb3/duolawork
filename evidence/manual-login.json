@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-07T06:57:49.105Z",
+  "at": "2026-11-07T07:41:17.875Z",
   "checks": [
     "manual Chrome has no CDP/headless/automation/concealment flags",
     "real fixture page observes webdriver=false and original session cookie",
