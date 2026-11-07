@@ -3,7 +3,7 @@ import {ArrowLeft,ChevronRight,MessageSquare,Search,RefreshCw} from 'lucide-reac
 import {Button} from '@/components/ui/button';
 import {api,time} from '../v1/api.mjs';
 
-const phases={goal:'需求',change:'变化',evidence:'依据',decision:'决定',result:'结果',question:'未决问题',dissent:'分歧',correction:'纠正'};
+const phases={goal:'需求',change:'变化',evidence:'依据',decision:'决定',result:'结果',question:'问题',dissent:'分歧',correction:'纠正'};
 export default function GroupMemory({channelId,revision,name,onSource,onQuote}){
  const [data,setData]=useState(null),[topicId,setTopicId]=useState(null),[detail,setDetail]=useState(null),[query,setQuery]=useState(''),[search,setSearch]=useState(''),[error,setError]=useState(''),[refresh,setRefresh]=useState(0);
  useEffect(()=>{const timer=setTimeout(()=>setSearch(query.trim()),200);return()=>clearTimeout(timer);},[query]);
@@ -19,7 +19,7 @@ export default function GroupMemory({channelId,revision,name,onSource,onQuote}){
    <p className="group-memory-summary">{detail.body}</p>
    {detail.needsReconcile&&<p className="space-muted">有待核对的补充或分歧，尚未形成一致结论。</p>}
    <Button variant="outline" size="sm" onClick={()=>onQuote({kind:'memory',id:detail.id,version:detail.version,title:detail.title})}><MessageSquare size={14}/>在聊天中讨论</Button>
-   <ol className="group-memory-timeline">{(detail.episodes||[]).map(e=><li key={e.id}><div><strong>{phases[e.phase]||'记录'}{e.supersededBy?' · 已被纠正':''}</strong><small>{name(e.authorId)} · {time(e.createdAt)}</small></div><p>{e.body}</p><div className="group-memory-sources">{(e.refs||[]).map(r=><button key={r.kind+r.id} onClick={()=>r.kind==='message'?onSource(r.id):onQuote(r)}>{r.kind==='message'?'查看原消息':'引用依据'}<ChevronRight size={12}/></button>)}</div></li>)}</ol>
+   <ol className="group-memory-timeline">{(detail.episodes||[]).map(e=><li key={e.id}><div><strong>{phases[e.phase]||'记录'}{e.supersededBy?' · 已被纠正':['question','dissent'].includes(e.phase)&&Array.isArray(detail.unresolvedEpisodeIds)&&!detail.unresolvedEpisodeIds.includes(e.id)?' · 已核对':''}</strong><small>{name(e.authorId)} · {time(e.createdAt)}</small></div><p>{e.body}</p><div className="group-memory-sources">{(e.refs||[]).map(r=><button key={r.kind+r.id} onClick={()=>r.kind==='message'?onSource(r.id):onQuote(r)}>{r.kind==='message'?'查看原消息':'引用依据'}<ChevronRight size={12}/></button>)}</div></li>)}</ol>
    {!!detail.relatedTopicIds?.length&&<div className="space-section"><h3>关联话题</h3>{detail.relatedTopicIds.map(key=><Button key={key} size="sm" variant="ghost" onClick={()=>open(key)}>{data?.items?.find(x=>x.id===key)?.title||'查看相关经历'}<ChevronRight size={12}/></Button>)}</div>}
    {detail.next&&<Button variant="ghost" onClick={more}>继续查看经历</Button>}
   </>:<p role="status" className="space-muted">正在读取话题…</p>:data?<>
