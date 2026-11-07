@@ -293,9 +293,13 @@ class Transaction {
         .first();
       this.ranges.set(key, { key, revision: clock?.revision ?? -1 });
     }
-    const pageLimit = options.page ? Math.max(1, Math.min(500, options.limit || 100)) : 501;
+    // A recent window is intentionally bounded (e.g. the last 200 messages
+    // for loop detection). It must not become an all-history mutation scan.
+    // Keep the range clock guard so concurrent arrivals still retry this read.
+    const recent = options.order === 'recent';
+    const pageLimit = options.page || recent ? Math.max(1, Math.min(500, options.limit || 100)) : 501;
     const rows = await this.repo.list(kind, { ...options, limit: pageLimit });
-    if (!options.page && rows.length >= 501)
+    if (!options.page && !recent && rows.length >= 501)
       fail("query_limit", "本操作涉及记录过多，请缩小范围", 413);
     const combined = new Map(rows.map((x) => [x.id, x]));
     for (const row of this.writes.values())
@@ -305,8 +309,10 @@ class Transaction {
         (options.scope === undefined || row.scopeId === options.scope) &&
         (options.parent === undefined || row.parentId === options.parent) &&
         (options.status === undefined || row.status === options.status) &&
-        (!options.page || row.id > (options.after || "")),
+        (!options.page || recent || row.id > (options.after || "")) &&
+        (!recent || !options.cursor || row.updatedAt < options.cursor.updatedAt || row.updatedAt === options.cursor.updatedAt && row.id < options.cursor.id),
     );
+    if(recent)return result.sort((a,b)=>a.updatedAt===b.updatedAt?(a.id===b.id?0:a.id>b.id?-1:1):a.updatedAt>b.updatedAt?-1:1).slice(0,pageLimit);
     return options.page ? result.sort((a,b)=>a.id.localeCompare(b.id)).slice(0,pageLimit) : result;
   }
   put(kind, record) {

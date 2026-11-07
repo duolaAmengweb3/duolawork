@@ -83,7 +83,7 @@
   "backend": [
     {
       "file": "worker.mjs",
-      "sha256": "b2cfa79fe230e0d35e0489ea32a8c4f0e53a7c1b59b133560ad17396637f76bd",
+      "sha256": "eed569f67a576a4f529b219874d4d89e39493b06d604a64bec641afee01fa502",
       "matchesDeployed": true
     },
     {
@@ -96,5 +96,6 @@
       "sha256": "6a6973b15852ecbbaa207a3c89f8d890170e8018e55e5cdbb43698da77d355dc",
       "matchesDeployed": true
     }
-  ]
+  ],
+  "backendObservedAt": "2026-11-07T16:38:42.931Z"
 }

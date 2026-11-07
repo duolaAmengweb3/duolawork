@@ -19,6 +19,27 @@ async function setup(t){
  const resolve=async(action,args={},actor={memberId:'grok'})=>{const issue=(await issues())[0];return conversationTool(f.repo,f.identity,actor,'resolve_delivery',{requestId:'decision-'+(++seq),channelId:channel.id,issueId:issue.id,expectedVersion:issue.version,action,summary:'核对章节后的明确处理结论',...args});};
  return {...f,now,send,channel,root,turns,hold,maintain,issues,resolve};
 }
+test('long-lived chats keep sending beyond 500 records without weakening duplicate-request checks',async t=>{
+ const f=await setup(t);
+ await f.repo.transact('seed-long-history',{},async tx=>{
+  for(let i=0;i<1000;i++)tx.put('channel_message',{...f.root,id:'history-'+String(i).padStart(4,'0'),number:i+2,body:'Earlier independent topic '+i,rootId:'topic-'+i,authorId:'write',recipientIds:[]});
+  tx.put('channel',{...await tx.get('channel',f.channel.id),messageSequence:1001});
+ },'2026-11-05T08:00:00.000Z');
+ const args={channelId:f.channel.id,replyTo:f.root.id,body:'Please review the completed chapter',mentions:['grok']};
+ const first=await f.send('channel.post',args,'check');assert.equal(first.holdReason,undefined);
+ assert.equal((await f.repo.get('channel_turn','turn_'+first.id+'_grok')).status,'ready');
+ const second=await f.send('channel.post',args,'check');assert.equal(second.holdReason,undefined);
+ const third=await f.send('channel.post',args,'check');assert.equal(third.holdReason,'repeated_request');
+ const distinct=await f.send('channel.post',{...args,body:'A distinct follow-up with new evidence'},'check');assert.equal(distinct.holdReason,undefined);
+ await f.repo.transact('recent-window',{},async tx=>{
+  const pending=tx.put('channel_message',{...f.root,id:'zz-pending',number:1006,body:'Pending message'});
+  const recent=await tx.list('channel_message',{scope:f.channel.id,order:'recent',limit:3});
+  assert.equal(recent.length,3);assert.equal(recent[0].id,pending.id);
+  const next=await tx.list('channel_message',{scope:f.channel.id,order:'recent',limit:2,cursor:{updatedAt:recent[0].updatedAt,id:recent[0].id}});
+  assert.equal(next.length,2);assert(!next.some(m=>m.id===pending.id));
+ });
+ await assert.rejects(f.repo.transact('unbounded-still-protected',{},tx=>tx.list('channel_message',{scope:f.channel.id})),e=>e.code==='query_limit');
+});
 test('旧次数限制按一件事交给负责人一次；不重放原任务，不占人类待办',async t=>{
  const f=await setup(t);await f.hold();await f.maintain();await f.maintain('2026-11-06T08:01:00.000Z');
  const issues=await f.issues(),turns=await f.turns();assert.equal(issues.length,1);assert.equal(issues[0].turnIds.length,2);

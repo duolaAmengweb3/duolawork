@@ -1,0 +1,46 @@
+✔ committed invalidations wake immediately, idempotent writes emit once, failed transactions emit nothing (7.852334ms)
+✔ member scopes, private auth records and revoked authorization stay isolated during a held request (1.729542ms)
+✔ expired or future cursor resets, cancellation stops waits, multiple pages drain without dropping changes (16.858834ms)
+✔ consumer replays failed refreshes, advances only after success, and aborts its outstanding request (2.812667ms)
+✔ 100 protocol-only saves measure every receipt without a model or hidden warmup (20.743458ms)
+ℹ {"scope":"in-process SQLite commit to change notification, not remote native/model latency","count":100,"p50":0.14658299999999258,"p95":0.2645419999999987,"max":0.35666599999999704}
+✔ 真实存储：配方三步接力、前序成果、原稿与工作稿、反馈及重载 (16.830167ms)
+✔ 并发领取只有一个成功；重复创建幂等，不同内容同 key 拒绝 (7.95775ms)
+✔ 重复交付不重复推进，少交付和确认关卡阻断接力 (5.59725ms)
+✔ 任务超时保留占用，旧 lease 与跨成员提交不被接受 (3.503875ms)
+✔ 运行中补充进入原运行，不取消领取；跨项目同账号不并发 (4.983666ms)
+✔ 规则批准才注入；撤回不改已经执行的快照；日程按上海与DST计算 (16.029041ms)
+✔ 定时重复触发一次；项目未完成时明确跳过、不叠加运行 (11.100208ms)
+✔ 真实验证完成之前不允许业务运行；hello不是完成，nonce错误不变ready (4.26575ms)
+✔ 返工携带完整人工稿；期间再次编辑不被迟到结果覆盖 (9.336709ms)
+✔ Three distinct emoji-only edits propose one rule; approval gates injection and feedback history persists (8.380083ms)
+✔ long-lived chats keep sending beyond 500 records without weakening duplicate-request checks (46.002458ms)
+✔ 旧次数限制按一件事交给负责人一次；不重放原任务，不占人类待办 (6.889875ms)
+✔ 异常核对与普通消息的通知及领取互不吞并 (15.890208ms)
+✔ 覆盖结论需要成员真实回复；后来的无关消息不会自动清除异常 (4.9925ms)
+✔ 覆盖依据逐条校验时间，同成员较早的回复不能覆盖后来的通知 (5.027875ms)
+✔ 安全重试只通知未开始的原消息；实际回执到达才自动收尾 (5.038416ms)
+✔ 既有成果可通过成员的新核对回复引用原版本，不复制文档或重做原任务 (4.6685ms)
+✔ 已开始但结果未知的工作不允许盲目重试，连接恢复也不重复执行 (3.7605ms)
+✔ 连接恢复会自动继续尚未开始的投递；不需要用户再次点击重试 (5.311208ms)
+✔ 不同内容的长讨论正常；相同请求第三次重复才暂缓，用户新要求始终可达 (15.463625ms)
+✔ 工具权限、并发版本与旧 MCP 兼容入口都保持有效 (3.489541ms)
+✔ 负责人回复收到但不处理异常不能算完成，也不会循环叫醒负责人 (5.164625ms)
+✔ 旧的核对未完成记录回到负责人名下，真正的人类决定仍保留 (4.228292ms)
+✔ 合并领取的原通知只在实际处理结束后收尾 (6.768334ms)
+✔ 异常只随当前负责人交接一次，旧负责人不能继续处置 (3.642166ms)
+✔ automatic bursts briefly queue and resume without a coordinator review; humans stay independent (52.95975ms)
+✔ many distinct progress updates across five minutes do not trigger a permanent capacity hold (41.450958ms)
+✔ pending session selection holds only its chat, preserving unrelated claims (2.909417ms)
+✔ 未选工作对话与断开原环境会显示具体操作，正常忙碌仍是自动排队 (0.11475ms)
+✔ explicit retry releases a pre-claim native failure with a new delivery attempt (3.857375ms)
+✔ recovery checks the original native binding and never replays held work in another session (2.638583ms)
+✔ automatic cooldown never releases a notice into a replacement native session (2.000875ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 347.555958
