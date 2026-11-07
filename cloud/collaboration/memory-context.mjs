@@ -3,6 +3,15 @@ import {access,publicMemory} from './workspace-objects.mjs';
 import {workspaceGrant} from './delegation.mjs';
 export const MEMORY_TOOLS=[{name:'forget_memory',description:'按用户要求彻底删除共享记忆正文与修订，异步清除语义索引并阻止从相同来源重新学回。只能处理当前获授权范围，不能让原 Agent 远程忘掉已读内容。',inputSchema:{type:'object',properties:{requestId:{type:'string'},channelId:{type:'string'},memoryId:{type:'string'},expectedVersion:{type:'integer'},reason:{type:'string'}},required:['requestId','channelId','memoryId','expectedVersion'],additionalProperties:false}},{name:'review_memory_events',description:'原 Agent 阅读本次用户补充、决定与会议结果后，记录已整理或无需长期记忆。不要每句话创建一条记忆。',inputSchema:{type:'object',properties:{requestId:{type:'string'},channelId:{type:'string'},eventIds:{type:'array',items:{type:'string'},maxItems:50},summary:{type:'string'}},required:['requestId','channelId','eventIds','summary'],additionalProperties:false}}];
 export async function memoryRows(repo,kind,options={}){const result=[];let after='';for(;;){const rows=await repo.list(kind,{...options,after,limit:500,page:true});result.push(...rows);if(rows.length<500)break;after=rows.at(-1).id;}return result;}
+export function mergeMemoryRefs(...groups){return [...new Map(groups.flat().map(r=>[r.kind+':'+r.id,r])).values()];}
+export async function currentMemoryRefs(repo,memory){
+ if(memory.memoryType!=='topic'||memory.sourceIndexVersion===1)return memory.refs||[];
+ // Legacy topics kept only the last episode's references. Recover dependencies
+ // without replaying messages or mutating the record during a read. Conflicting,
+ // superseded and moved episodes are history, not the current summary's sources.
+ const episodes=await memoryRows(repo,'memory_episode',{scope:memory.scopeId,parent:memory.id});
+ return mergeMemoryRefs(episodes.filter(e=>!e.needsReconcile&&!e.supersededBy&&!e.movedTo&&e.status!=='deleted').flatMap(e=>e.refs||[]),memory.refs||[]);
+}
 export function queueMemoryIndex(tx,memory){tx.put('memory_index_job',{id:memory.id,scopeId:memory.scopeId,parentId:memory.id,status:'pending',memoryVersion:memory.version||1,attempts:0,createdAt:tx.now});}
 export async function recordMemoryEvent(tx,channel,source,kind){
  if(source.hidden||source.type==='memory_review')return;
@@ -32,7 +41,7 @@ export async function memoryAuthority(tx,actor,cmd,channel,refs,old){
 export async function sourcesAvailable(repo,actor,memory,seen=new Set()){
  if(memory.id){if(seen.has(memory.id))return false;seen=new Set([...seen,memory.id]);}
  const kinds={message:'channel_message',document:'channel_doc',file:'shared_file',task:'channel_task',meeting:'channel_meeting',memory:'channel_memory',link:'channel_link'};
- for(const ref of memory.refs||[]){
+ for(const ref of await currentMemoryRefs(repo,memory)){
   try{await access(repo,ref.channelId||memory.scopeId,actor);const source=await repo.get(kinds[ref.kind],ref.id,false);
    if(!source||source.scopeId!==(ref.channelId||memory.scopeId)||source.status==='deleted'||source.hidden||ref.version!==(source.version||1))return false;
    if(ref.kind==='memory'&&!await sourcesAvailable(repo,actor,source,seen))return false;
@@ -69,7 +78,7 @@ export async function recallMemory(repo,actor,args,service){
  const ranked=[...ranks].sort((a,b)=>b[1]-a[1]).slice(0,topK).map(([key])=>byId.get(key));
  // Validate once more after the remote search; a concurrent edit/forget cannot revive stale data.
  const selected=[...new Map([...mandatory,...ranked].map(m=>[m.id,m])).values()],items=[];
- for(const memory of selected){const fresh=await repo.get('channel_memory',memory.id,false);if(fresh?.status==='approved'&&fresh.version===memory.version&&!fresh.sourceUnavailable&&await sourcesAvailable(repo,actor,fresh))items.push(publicMemory(fresh));}
+ for(const memory of selected){const fresh=await repo.get('channel_memory',memory.id,false);if(fresh?.status==='approved'&&fresh.version===memory.version&&!fresh.sourceUnavailable&&await sourcesAvailable(repo,actor,fresh))items.push(publicMemory({...fresh,refs:await currentMemoryRefs(repo,fresh)}));}
  if(actor.memberId&&items.length)await repo.transact('memory-read:'+id('r'),{ids:items.map(m=>m.id),actor},tx=>{for(const m of items)tx.put('shared_read',{id:m.id+':'+actor.memberId+':'+args.channelId,parentId:m.id,scopeId:args.channelId,memberId:actor.memberId,version:m.version,createdAt:tx.now});});
  await access(repo,args.channelId,actor);
  return {items,retrieval,reason,mandatoryIds:items.filter(m=>mandatory.some(x=>x.id===m.id)).map(m=>m.id),truncated:list.length>2000};

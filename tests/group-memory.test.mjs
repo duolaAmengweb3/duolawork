@@ -114,3 +114,18 @@ test('correcting an overinterpreted episode marks it historical and preserves un
  const d=await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id});assert.equal(d.episodes[0].supersededBy,corrected.episode.id);assert.equal(d.episodes[0].body,'必须采用supervisor');assert.ok(d.episodes[1].supersedes.includes(first.episode.id));assert.equal(d.needsReconcile,true);assert.deepEqual(d.unresolvedEpisodeIds,[question.episode.id]);assert.match(d.body,/尚未形成架构决定/);
  await assert.rejects(f.write({topicId:first.topic.id,expectedVersion:1,phase:'correction',body:'stale overwrite',supersededEpisodeIds:[question.episode.id],refs:[{kind:'message',id:m.id}]}),e=>e.code==='version_conflict');
 });
+for(const legacy of [false,true])test(`later episodes preserve earlier source dependencies across recall and edits (legacy=${legacy})`,async t=>{
+ const f=await setup(t),channelId=f.channel.id;
+ const a=await f.send('channel.post',{channelId,body:'预算800，周六活动'}),b=await f.send('channel.post',{channelId,body:'场地仍未确定'});
+ const first=await f.write({title:'预算与场地',body:a.body,refs:[{kind:'message',id:a.id}]});
+ const next=await f.write({topicId:first.topic.id,expectedVersion:1,phase:'question',summary:'预算800，场地待定',body:b.body,refs:[{kind:'message',id:b.id}]});
+ if(legacy)await f.repo.transact('simulate-last-refs-only',{},tx=>{const row={...next.topic,refs:next.episode.refs};delete row.sourceIndexVersion;tx.put('channel_memory',row);});
+ const detail=await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id});assert.deepEqual(new Set(detail.refs.map(r=>r.id)),new Set([a.id,b.id]));
+ await f.send('channel.message.edit',{channelId,messageId:a.id,expectedVersion:1,body:'预算600，周六活动'});
+ assert.equal((await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id})).sourceUnavailable,true);
+ assert.equal((await recallMemory(f.repo,f.actor,{channelId,query:'预算'},null)).items.length,0);
+ assert.equal((await readChannel(f.repo,f.identity,f.actor,{channelId})).knowledge.length,0);
+ const fixed=await f.write({topicId:first.topic.id,expectedVersion:2,phase:'correction',summary:'预算600，场地仍未定',body:'读取新原话后修正预算；保留场地问题',refs:[{kind:'message',id:a.id,version:2}]});
+ assert.equal(fixed.topic.refs.find(r=>r.id===a.id).version,2);assert.ok(fixed.topic.refs.some(r=>r.id===b.id));assert.ok(fixed.topic.unresolvedEpisodeIds.includes(next.episode.id));
+ const current=await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id});assert.equal(current.sourceUnavailable,false);assert.match(current.body,/600/);assert.ok((await recallMemory(f.repo,f.actor,{channelId,query:'预算'},null)).items.some(m=>m.id===first.topic.id));
+});

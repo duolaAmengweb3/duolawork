@@ -1,6 +1,6 @@
 import {fail,id,required,digest} from './repository.mjs';
 import {access,validateRefs,publicMemory} from './workspace-objects.mjs';
-import {queueMemoryIndex,sourcesAvailable,memoryRows} from './memory-context.mjs';
+import {queueMemoryIndex,sourcesAvailable,memoryRows,currentMemoryRefs,mergeMemoryRefs} from './memory-context.mjs';
 
 const string={type:'string'},number={type:'integer',minimum:1};
 const refs={type:'array',maxItems:20,items:{type:'object',properties:{kind:string,id:string,version:number},required:['kind','id'],additionalProperties:false}};
@@ -30,6 +30,7 @@ async function topicRecord(repo,channelId,key){
  return m;
 }
 async function safeTopic(repo,actor,m){
+ m={...m,refs:await currentMemoryRefs(repo,m)};
  const fresh=m.refs?.length&&await sourcesAvailable(repo,actor,m);
  return fresh?publicMemory(m):{id:m.id,scopeId:m.scopeId,memoryType:'topic',title:'来源已变化的话题',version:m.version,status:m.status,body:'部分来源已修改或不可用，请核对最新原件后更新理解。',sourceUnavailable:true,refs:[],relatedTopicIds:m.relatedTopicIds||[]};
 }
@@ -93,6 +94,7 @@ export async function groupMemoryTool(repo,actor,args){
   if(!old&&key)old=await tx.get('channel_memory',key,false);
   if(old?.status==='deleted'||key&&await tx.get('memory_tombstone',key,false))fail('forgotten_source','此话题已被遗忘，不自动重建',409);
   if(old&&args.expectedVersion===undefined)fail('version_required','追加前请读取话题版本',409);
+  const previousRefs=old?await currentMemoryRefs(tx,old):[];
   const sources=await validateRefs(tx,channel.id,args.refs||[]);
   if(!sources.length)fail('source_required','话题经历需要真实来源');
   if(!await sourcesAvailable(tx,actor,{scopeId:channel.id,refs:sources}))fail('source_changed','来源已变化，请读取当前版本',409);
@@ -113,7 +115,7 @@ export async function groupMemoryTool(repo,actor,args){
   for(const e of corrected){tx.put('memory_episode',{...e,supersededBy:entry.id,correctedAt:tx.now});unresolved.delete(e.id);}
   if(corrected.length)entry=tx.put('memory_episode',{...entry,supersedes:corrected.map(e=>e.id)});
   if(conflict||['dissent','question'].includes(phase))unresolved.add(entry.id);
-  const next={...old,id:topicId,scopeId:channel.id,parentId:channel.id,memoryType:'topic',category:'experience',authority:'observation',memoryScope:'channel',status:old?.status||'approved',title:old&&conflict?old.title:required(args.title||old?.title,'话题标题',160),body:conflict?old.body:required(args.summary||old?.body||body,'当前理解',12000),refs:conflict?old.refs:sources,sourceUnavailable:false,version:(old?.version||0)+1,authorId:old?.authorId||authorId,lastEditorId:authorId,createdAt:old?.createdAt||tx.now,updatedAt:tx.now,evidence:'成员维护的话题经历，实际完成状态以原任务和回执为准',needsReconcile:unresolved.size>0,unresolvedEpisodeIds:[...unresolved],latestEpisodeId:entry.id,episodeCount:(old?.episodeCount||0)+1};
+  const next={...old,id:topicId,scopeId:channel.id,parentId:channel.id,memoryType:'topic',category:'experience',authority:'observation',memoryScope:'channel',status:old?.status||'approved',title:old&&conflict?old.title:required(args.title||old?.title,'话题标题',160),body:conflict?old.body:required(args.summary||old?.body||body,'当前理解',12000),refs:conflict?previousRefs:mergeMemoryRefs(previousRefs,sources),sourceIndexVersion:1,sourceUnavailable:false,version:(old?.version||0)+1,authorId:old?.authorId||authorId,lastEditorId:authorId,createdAt:old?.createdAt||tx.now,updatedAt:tx.now,evidence:'成员维护的话题经历，实际完成状态以原任务和回执为准',needsReconcile:unresolved.size>0,unresolvedEpisodeIds:[...unresolved],latestEpisodeId:entry.id,episodeCount:(old?.episodeCount||0)+1};
   tx.put('channel_memory',next);tx.put('channel_memory_version',{...next,id:topicId+':'+next.version,parentId:topicId,reason:phase});queueMemoryIndex(tx,next);
   for(const eventId of args.eventIds||[]){const event=await tx.get('memory_event',eventId);if(event.scopeId!==channel.id||!sources.some(r=>r.id===event.sourceId&&r.kind===event.sourceKind&&r.version===event.sourceVersion))fail('uncovered_event','整理覆盖必须逐条对应本次来源',409);tx.put('memory_event',{...event,status:'reviewed',reviewedBy:authorId,topicId,episodeId:entry.id,summary:body.slice(0,1000)});}
   return {topic:next,episode:entry,conflict,...(conflict?{instruction:'并发补充已保留，未覆盖较新总结；请读取全部新经历再更新当前理解。'}:{})};
