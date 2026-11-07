@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-07T09:30:43.898Z",
+  "sourceCommit": "ea5c0608b532a42ccfe37fed061150fe01aed0d6",
+  "checks": [
+    {
+      "sha256": "4c03de31b9aa5b1e81bed9114be05f7fa296b94341fda165bc728df9a0327d63",
+      "file": "worker.mjs",
+      "localSha256": "4c03de31b9aa5b1e81bed9114be05f7fa296b94341fda165bc728df9a0327d63",
+      "match": true
+    },
+    {
+      "sha256": "f02cb62c7575f8250f95549eabcc4e6aed81f7c8470ec4d067c22917ecb067bf",
+      "file": "memory-ledger.mjs",
+      "localSha256": "f02cb62c7575f8250f95549eabcc4e6aed81f7c8470ec4d067c22917ecb067bf",
+      "match": true
+    }
+  ]
+}
