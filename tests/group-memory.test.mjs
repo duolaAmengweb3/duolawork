@@ -97,3 +97,12 @@ test('topic search covers later pages without exposing invalidated source text',
  await f.send('channel.message.edit',{channelId,messageId:m.id,expectedVersion:1,body:'来源变了'});
  assert.equal((await readGroupMemory(f.repo,f.actor,{channelId,query:'特殊目标'})).items.length,0);
 });
+test('direct group-memory readers receive a withdrawal without leaking the forgotten content',async t=>{
+ const f=await setup(t),channelId=f.channel.id,m=await f.send('channel.post',{channelId,body:'验收用过期价格1234'});
+ const x=await f.write({title:'价格约定',body:m.body,refs:[{kind:'message',id:m.id}]});
+ await groupMemoryTool(f.repo,{memberId:'check'},{channelId,action:'read',topicId:x.topic.id});
+ await memoryTool(f.repo,{owner:true},'forget_memory',{requestId:'forget-read-topic',channelId,memoryId:x.topic.id,expectedVersion:1},f.identity);
+ const notice=(await f.repo.list('channel_message',{scope:channelId})).find(m=>m.forgottenMemoryId===x.topic.id);
+ assert.ok(notice);assert.ok(notice.mentions.includes('check'));assert.ok(!notice.body.includes('1234'));
+ const withdrawal=(await f.repo.list('channel_turn',{scope:channelId,parent:'check'})).find(t=>t.messageId===notice.id);assert.ok(withdrawal);
+});

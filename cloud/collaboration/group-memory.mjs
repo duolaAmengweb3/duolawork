@@ -52,7 +52,14 @@ export async function readGroupMemory(repo,actor,args){
 
 export async function groupMemoryTool(repo,actor,args){
  await access(repo,args.channelId,actor);
- if(['list','read'].includes(args.action))return readGroupMemory(repo,actor,args);
+ if(['list','read'].includes(args.action)){
+  const result=await readGroupMemory(repo,actor,args),items=args.topicId?[result]:result.items;
+  if(actor.memberId&&items.some(m=>!m.sourceUnavailable))await repo.transact('topic-read:'+id('r'),{actor,ids:items.map(m=>m.id)},async tx=>{
+   await access(tx,args.channelId,actor);
+   for(const m of items){const current=await tx.get('channel_memory',m.id,false);if(!m.sourceUnavailable&&current?.status!=='deleted'&&current?.version===m.version)tx.put('shared_read',{id:m.id+':'+actor.memberId+':'+args.channelId,parentId:m.id,scopeId:args.channelId,memberId:actor.memberId,version:m.version,createdAt:tx.now});}
+  });
+  return result;
+ }
  required(args.requestId,'请求编号',150);
  return repo.transact(args.requestId,{actor,args},async tx=>{
   const channel=await access(tx,args.channelId,actor),authorId=actor.memberId||'owner';
