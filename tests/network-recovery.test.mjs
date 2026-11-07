@@ -109,17 +109,18 @@ test('客户端取消和上游慢流超时不会抛未处理异常，后续请�
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   const gateway = http.createServer((req, res) => proxyCollaboration(req, res,
     { endpoint: `http://127.0.0.1:${upstream.address().port}`, adminKey: 'isolated-fixture' },
-    { request: (url, options) => requestNetwork(url, { ...options, timeout: 80 }) },
+    { request: (url, options, consume) => requestNetwork(url, { ...options, timeout: 80 }, consume) },
   ).catch(() => res.destroy()));
   await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
   t.after(async () => { gateway.closeAllConnections(); upstream.closeAllConnections(); await Promise.all([new Promise(r => gateway.close(r)), new Promise(r => upstream.close(r))]); });
   const base = `http://127.0.0.1:${gateway.address().port}`;
   const controller = new AbortController();
-  const canceled = await fetch(base + '/api/v2/slow', { signal: controller.signal });
-  controller.abort();
-  await assert.rejects(canceled.text());
-  const slow = await fetch(base + '/api/v2/slow');
-  await assert.rejects(slow.text());
+  const canceled = fetch(base + '/api/v2/slow', { signal: controller.signal });
+  setTimeout(() => controller.abort(), 25);
+  await assert.rejects(canceled);
+  // JSON headers are now withheld until the body is complete, so timeout
+  // rejects the request itself instead of exposing a partial response.
+  await assert.rejects(fetch(base + '/api/v2/slow'));
   await new Promise(resolve => setTimeout(resolve, 120));
   assert(upstreamCanceled >= 2);
   assert.deepEqual(await (await fetch(base + '/api/v2/ok')).json(), { ok: true });

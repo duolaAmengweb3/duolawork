@@ -106,3 +106,11 @@ test('direct group-memory readers receive a withdrawal without leaking the forgo
  assert.ok(notice);assert.ok(notice.mentions.includes('check'));assert.ok(!notice.body.includes('1234'));
  const withdrawal=(await f.repo.list('channel_turn',{scope:channelId,parent:'check'})).find(t=>t.messageId===notice.id);assert.ok(withdrawal);
 });
+test('correcting an overinterpreted episode marks it historical and preserves unresolved questions',async t=>{
+ const f=await setup(t),channelId=f.channel.id,m=await f.send('channel.post',{channelId,body:'这和supervisor类似吗，已经实现了吗？'});
+ const first=await f.write({title:'架构问题',phase:'goal',body:'必须采用supervisor',refs:[{kind:'message',id:m.id}]});
+ const corrected=await f.write({topicId:first.topic.id,expectedVersion:1,phase:'correction',body:'之前误把提问当决定，用户只是在询问比较和实现状态',summary:'用户询问架构比较与实现状态，尚未形成架构决定',supersededEpisodeIds:[first.episode.id],refs:[{kind:'message',id:m.id}]});
+ const question=await f.write({topicId:first.topic.id,expectedVersion:2,phase:'question',body:'实现状态需要实际证据回答',refs:[{kind:'message',id:m.id}]});
+ const d=await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id});assert.equal(d.episodes[0].supersededBy,corrected.episode.id);assert.equal(d.episodes[0].body,'必须采用supervisor');assert.ok(d.episodes[1].supersedes.includes(first.episode.id));assert.equal(d.needsReconcile,true);assert.deepEqual(d.unresolvedEpisodeIds,[question.episode.id]);assert.match(d.body,/尚未形成架构决定/);
+ await assert.rejects(f.write({topicId:first.topic.id,expectedVersion:1,phase:'correction',body:'stale overwrite',supersededEpisodeIds:[question.episode.id],refs:[{kind:'message',id:m.id}]}),e=>e.code==='version_conflict');
+});

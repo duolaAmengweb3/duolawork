@@ -6,8 +6,8 @@ const string={type:'string'},number={type:'integer',minimum:1};
 const refs={type:'array',maxItems:20,items:{type:'object',properties:{kind:string,id:string,version:number},required:['kind','id'],additionalProperties:false}};
 export const GROUP_MEMORY_TOOLS=[{
  name:'group_memory',
- description:'自动维护本群话题经历，无需用户逐条批准。list/read 查询；record 新建话题或追加关键变化，复用 topicId，带真实来源 refs。summary 是当前理解，不是完成回执；dissent/question 保留未决问题。并发旧版本只追加不覆盖。link 关联、merge 合并、split 拆分话题均保留历史与来源。',
- inputSchema:{type:'object',properties:{requestId:string,channelId:string,action:{type:'string',enum:['list','read','record','link','merge','split']},topicId:string,topicKey:string,expectedVersion:number,title:string,summary:string,body:string,phase:{type:'string',enum:['goal','change','evidence','decision','result','question','dissent','correction']},refs,eventIds:{type:'array',items:string,maxItems:50},relatedTopicIds:{type:'array',items:string,maxItems:20},resolvedEpisodeIds:{type:'array',items:string,maxItems:50},episodeIds:{type:'array',items:string,maxItems:50},query:string,after:string,eventAfter:string},required:['channelId','action'],additionalProperties:false}
+ description:'自动维护本群话题经历，无需用户逐条批准。list/read 查询；record 新建话题或追加关键变化，复用 topicId，带真实来源 refs。summary 是当前理解，不是完成回执；dissent/question 保留未决问题。提问不是授权或决定，实现状态无证据时保留question。用correction和supersededEpisodeIds标记被纠正的旧经历，保留历史但不再作为当前约束。并发旧版本只追加不覆盖。link 关联、merge 合并、split 拆分话题均保留历史与来源。',
+ inputSchema:{type:'object',properties:{requestId:string,channelId:string,action:{type:'string',enum:['list','read','record','link','merge','split']},topicId:string,topicKey:string,expectedVersion:number,title:string,summary:string,body:string,phase:{type:'string',enum:['goal','change','evidence','decision','result','question','dissent','correction']},refs,eventIds:{type:'array',items:string,maxItems:50},relatedTopicIds:{type:'array',items:string,maxItems:20},resolvedEpisodeIds:{type:'array',items:string,maxItems:50},episodeIds:{type:'array',items:string,maxItems:50},supersededEpisodeIds:{type:'array',items:string,maxItems:50},query:string,after:string,eventAfter:string},required:['channelId','action'],additionalProperties:false}
 }];
 
 export async function memoryEvents(repo,channelId,{after='',limit=50}={}){
@@ -101,10 +101,17 @@ export async function groupMemoryTool(repo,actor,args){
   const phase=args.phase||'evidence';
   if(!['goal','change','evidence','decision','result','question','dissent','correction'].includes(phase))fail('invalid_phase','经历类型无效');
   const body=required(args.body,'关键经历',12000),conflict=!!old&&old.version!==args.expectedVersion;
+  const corrected=[];
+  if(args.supersededEpisodeIds?.length){
+   if(phase!=='correction'||!old||conflict)fail('version_conflict','纠正经历前请读取当前话题版本',409);
+   for(const key of [...new Set(args.supersededEpisodeIds)]){const e=await tx.get('memory_episode',key);if(e.parentId!==old.id||e.scopeId!==channel.id||e.supersededBy)fail('invalid_correction','只能纠正本话题尚未被替代的经历');corrected.push(e);}
+  }
   const unresolved=new Set(old?.unresolvedEpisodeIds||[]);
   for(const key of args.resolvedEpisodeIds||[]){const e=await tx.get('memory_episode',key);if(e.parentId!==old?.id||!unresolved.has(key))fail('invalid_resolution','只能核对本话题的未决经历');if(conflict)fail('version_conflict','请读取最新经历后处理分歧',409);unresolved.delete(key);}
   const topicId=old?.id||key||id('topic');
-  const entry=tx.put('memory_episode',{id:topicId+':'+String((old?.episodeCount||0)+1).padStart(9,'0'),scopeId:channel.id,parentId:topicId,phase,body,refs:sources,authorId,createdAt:tx.now,baseVersion:args.expectedVersion||0,needsReconcile:conflict});
+  let entry=tx.put('memory_episode',{id:topicId+':'+String((old?.episodeCount||0)+1).padStart(9,'0'),scopeId:channel.id,parentId:topicId,phase,body,refs:sources,authorId,createdAt:tx.now,baseVersion:args.expectedVersion||0,needsReconcile:conflict});
+  for(const e of corrected){tx.put('memory_episode',{...e,supersededBy:entry.id,correctedAt:tx.now});unresolved.delete(e.id);}
+  if(corrected.length)entry=tx.put('memory_episode',{...entry,supersedes:corrected.map(e=>e.id)});
   if(conflict||['dissent','question'].includes(phase))unresolved.add(entry.id);
   const next={...old,id:topicId,scopeId:channel.id,parentId:channel.id,memoryType:'topic',category:'experience',authority:'observation',memoryScope:'channel',status:old?.status||'approved',title:old&&conflict?old.title:required(args.title||old?.title,'话题标题',160),body:conflict?old.body:required(args.summary||old?.body||body,'当前理解',12000),refs:conflict?old.refs:sources,sourceUnavailable:false,version:(old?.version||0)+1,authorId:old?.authorId||authorId,lastEditorId:authorId,createdAt:old?.createdAt||tx.now,updatedAt:tx.now,evidence:'成员维护的话题经历，实际完成状态以原任务和回执为准',needsReconcile:unresolved.size>0,unresolvedEpisodeIds:[...unresolved],latestEpisodeId:entry.id,episodeCount:(old?.episodeCount||0)+1};
   tx.put('channel_memory',next);tx.put('channel_memory_version',{...next,id:topicId+':'+next.version,parentId:topicId,reason:phase});queueMemoryIndex(tx,next);
