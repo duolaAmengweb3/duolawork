@@ -127,7 +127,7 @@
   margin-bottom: 4px;
   color: #78869c;
 }
-.channel-list > button > span {
+.channel-list > button > .channel-copy {
   min-width: 0;
   flex: 1;
   font-size: 13px;
@@ -153,7 +153,7 @@
   background: #e8edfb;
   color: #3e60bc;
 }
-.channel-list > button.selected > span {
+.channel-list > button.selected > .channel-copy {
   color: #3558b2;
   font-weight: 600;
 }
@@ -1271,7 +1271,7 @@
   .nav-home,
   .sidebar-caption,
   .channel-list small,
-  .channel-list span,
+  .channel-list .channel-copy,
   .sidebar-new,
   .sidebar-footer,
   .sidebar-empty {
@@ -1418,3 +1418,5 @@
 .reading-return{align-self:center;display:flex;gap:6px;align-items:center;padding:6px 12px;background:#eff4ff;color:#365db1;border:1px solid #dce6fa;border-radius:16px;font-size:12px}
 
 .delivery-clear{display:flex;gap:9px;align-items:center;padding:14px 12px;border:1px solid #e2eee8;border-radius:10px;background:#f3faf6;color:#47755e;font-size:12px;line-height:1.6}.delivery-auto{margin-top:26px}.delivery-case{padding:15px;margin:10px 0;border:1px solid #e4eaf2;border-radius:12px;background:#fff}.delivery-case.attention{border-color:#e8d9bc;background:#fffcf5}.delivery-case>header{display:flex;align-items:center;gap:9px;font-size:13px;color:#344861}.delivery-case-icon{display:grid;place-items:center;width:28px;height:28px;background:#edf2fa;border-radius:8px;color:#7087ad}.delivery-case.attention .delivery-case-icon{background:#f7ecd6;color:#9b7735}.delivery-impact{font-size:13px;color:#344861;line-height:1.8;margin:12px 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}.delivery-next{font-size:12px;color:#75849b;line-height:1.8;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}.delivery-case footer{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:#8a97aa;line-height:1.6}.delivery-source small{display:block;font-size:10px;color:#8c9aad;margin-bottom:3px}.delivery-case-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.delivery-case-actions button{border:1px solid #dce4ee;background:white;border-radius:7px;padding:6px 9px;color:#4668a1;font-size:12px}.delivery-case-actions button.quiet{border-color:transparent;background:transparent;color:#8994a5}.delivery-case-actions button:disabled{opacity:.45}.delivery-diagnostics{font-size:11px;color:#8b97a8;margin-top:15px}.delivery-diagnostics p{line-height:1.7;margin-top:8px}.delivery-recipient{display:flex;align-items:center;gap:7px;font-size:11px;margin:10px 0;flex-wrap:wrap}.delivery-recipient .agent-avatar{width:22px;height:22px}.delivery-recipient strong{font-weight:500;color:#52627a}.delivery-recipient>span{margin-left:auto;color:#8190a7;max-width:65%;overflow-wrap:anywhere}.delivery-error{color:#a6463b;font-size:12px;line-height:1.7}.conversation-activity .delivery-attention-link{color:#a07736}.delivery-history .delivery-case{color:#6d7e96;font-size:12px}
+
+.channel-list > button > .avatar-availability{flex:0 0 auto;overflow:visible}.channel-list > button > svg{flex-shrink:0}

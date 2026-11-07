@@ -590,7 +590,7 @@ export default function App() {
                 }}
               >
                 {c.direct ? (()=>{const m=workspace.members.find(m=>m.id===c.memberIds[0]);const s=m?availability(m,c.id):null;return <span className="avatar-availability" title={s?`${s.label} · ${s.detail}`:''}><Face small name={c.name} platformId={m?.platformId}/>{s&&<i className={s.state} aria-label={s.label}/>}</span>;})() : <Hash size={17} />}
-                <span>
+                <span className="channel-copy">
                   {c.name}
                   <small>{c.lastMessage || "开始一段对话"}</small>
                 </span>
