@@ -273,16 +273,18 @@ test("shared tools use conflict-safe versions, user decisions and approved memor
       .status,
     "ready",
   );
+  const writingSource = await f.send("channel.post", {channelId:c,body:"写法简洁直接"});
   const memory = await f.send(
     "channel.remember",
-    { channelId: c, title: "写法", body: "简洁直接" },
+    { channelId: c, title: "写法", body: "简洁直接", refs:[{kind:"message",id:writingSource.id}] },
     agent("check"),
   );
   assert.equal(
     (await readChannel(f.repo, f.identity, agent("grok"), { channelId: c }))
       .knowledge.length,
-    0,
+    1,
   );
+  assert.equal(memory.authority,"proposal");
   await f.send("channel.memory.review", {
     channelId: c,
     memoryId: memory.id,

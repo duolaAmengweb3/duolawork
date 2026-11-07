@@ -190,3 +190,14 @@ test('explicit retry releases a pre-claim native failure with a new delivery att
  const turns=(await f.turns()).filter(t=>!t.deliveryReview);assert.ok(turns.every(t=>t.status==='ready'&&!t.nativeReceptionFailed&&t.recoveryCount===1));
  const work=await callTool(f.repo,f.identity,{memberId:'check'},'list_work',{});assert.equal(work.work.find(w=>w.stepId===turns.find(t=>t.memberId==='check').id).deliveryAttempt,1);
 });
+test('recovery checks the original native binding and never replays held work in another session',async t=>{
+ const f=await setup(t);await f.repo.transact('original-binding',{},async tx=>{for(const mid of ['check','write']){tx.put('execution_binding',{id:mid+':'+f.channel.id,scopeId:f.channel.id,sessionKey:'original'});const turn=(await tx.list('channel_turn',{scope:f.channel.id,parent:mid}))[0];tx.put('channel_turn',{...turn,status:'stalled',queuedResourceKey:'native-session:'+mid+':original'});}});
+ await f.maintain();await f.repo.transact('change-binding',{},async tx=>tx.put('execution_binding',{id:'check:'+f.channel.id,scopeId:f.channel.id,sessionKey:'replacement'}));
+ await assert.rejects(f.resolve('retry'),e=>e.code==='session_changed');assert.equal((await f.turns()).find(t=>t.memberId==='check').status,'stalled');
+});
+test('automatic cooldown never releases a notice into a replacement native session',async t=>{
+ const f=await setup(t);await f.hold('limited',{holdReason:'automatic_burst',resumeAfter:'2026-11-06T08:00:10.000Z',queuedResourceKey:'native-session:check:original'});
+ await f.repo.transact('replacement-before-release',{},tx=>tx.put('execution_binding',{id:'check:'+f.channel.id,scopeId:f.channel.id,sessionKey:'replacement'}));
+ await f.maintain('2026-11-06T08:00:11.000Z');
+ const turn=(await f.turns()).find(t=>t.memberId==='check'&&!t.deliveryReview);assert.equal(turn.status,'stalled');assert.equal(turn.resumeAfter,null);assert.match(turn.reason,/更换/);
+});

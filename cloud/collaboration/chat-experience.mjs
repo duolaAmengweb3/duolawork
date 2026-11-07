@@ -1,3 +1,4 @@
+import {recordMemoryEvent} from './memory-context.mjs';
 import {ownerRequirementChanged} from './coordination.mjs';
 import {fail,required} from './repository.mjs';
 
@@ -42,6 +43,7 @@ export async function editMessage(tx,identity,actor,cmd,channel,helpers) {
   const delivered=turns.some(t=>!['ready','unavailable','limited'].includes(t.status))||notices.some(n=>n&&!['awaiting_poll','pending','coalesced'].includes(n.status));
   tx.put('channel_message_version',{id:`${message.id}:${message.version||1}`,scopeId:channel.id,parentId:message.id,body:message.body,version:message.version||1,authorId:message.authorId,createdAt:message.editedAt||message.createdAt});
   const updated=tx.put('channel_message',{...message,body,version:(message.version||1)+1,editedAt:tx.now});
+  await recordMemoryEvent(tx,channel,updated,'message');
   await ownerRequirementChanged(tx,identity,channel,updated,message,helpers);
   if(delivered){
     const change=await channelMessage(tx,channel,actor,`更新了要求：\n${body}`,{type:'message',replyTo:message.id,replySnapshot:{body:message.body,version:message.version||1,authorId:message.authorId},editedMessageId:message.id,editedVersion:updated.version,rootId:message.rootId||message.id,hops:0,mentions:message.mentions||[],recipientIds:message.recipientIds||[],requestId:cmd.requestId});

@@ -1,4 +1,5 @@
 import {fail, required, digest} from './repository.mjs';
+import {executionResource} from './execution-bindings.mjs';
 
 const held = new Set(['limited','stalled','unavailable']);
 const terminal = new Set(['done','silent','removed']);
@@ -29,7 +30,7 @@ async function effectiveTurn(tx,turn){
 }
 const issueKey=t=>'delivery_'+t.scopeId+'_'+(t.holdReason?(t.rootId||t.messageId)+':'+t.holdReason:t.messageId);
 const causeOf=t=>t.holdReason||({limited:'legacy_hold',stalled:t.claimedAt?'execution_unknown':'not_received',unavailable:'connection'}[t.status]);
-const impact={legacy_hold:'旧的次数限制留下了未送达通知，需要核对后续工作是否已覆盖。',repeated_request:'同一分支短时间重复发送了相同请求，已暂缓重复通知。',automatic_burst:'流量保护暂缓通知：同一分支 5 分钟内已产生 60 条自动消息。消息已保存，不代表已经确认发生循环。',execution_unknown:'原会话曾开始处理，但尚无完成回执；先核对，避免重复执行。',not_received:'多次通知后仍未收到成员领取回执。',connection:'成员连接尚未就绪，消息已保存。'};
+const impact={legacy_hold:'旧的次数限制留下了未送达通知，需要核对后续工作是否已覆盖。',repeated_request:'同一分支短时间重复发送了相同请求，已暂缓重复通知。',automatic_burst:'流量保护暂缓通知：同一分支 10 秒内已产生 20 条自动消息。消息已保存，不代表已经确认发生循环。',execution_unknown:'原会话曾开始处理，但尚无完成回执；先核对，避免重复执行。',not_received:'多次通知后仍未收到成员领取回执。',connection:'成员连接尚未就绪，消息已保存。'};
 
 export async function reconcileDeliveryIssue(tx,issueId){
  const issue=await tx.get('channel_delivery_issue',issueId,false);if(!issue||issue.status==='resolved')return;
@@ -77,6 +78,7 @@ export async function deliveryReviewCommand(tx,identity,channel,actor,cmd,helper
    if(t.claimedAt||t.lease)fail('execution_unknown','这条消息已开始执行；请先核对原会话，不能直接重做',409);
    const c=await tx.get('connection',t.memberId,false),m=identity.members.find(m=>m.id===t.memberId);
    if(!channel.memberIds.includes(t.memberId)||!m||m.paused||m.status==='disabled'||c?.status!=='verified')fail('connection_required','请先恢复该成员连接，原消息保留',409);
+   if(t.queuedResourceKey?.startsWith('native-session:')&&t.queuedResourceKey!==await executionResource(tx,c,channel.id))fail('session_changed','这条旧通知原先的工作对话已更换；请核对原要求后在当前对话继续，旧消息不会自动重做',409);
    if(!await helpers.meetingTurnAllowed(tx,t))fail('meeting_changed','这条会议通知已过期，请核对结果后收尾',409);
    const next=tx.put('channel_turn',{...t,status:'ready',reason:null,nativeReceptionFailed:false,deliveryIssueId:issue.id,recoveryCount:(t.recoveryCount||0)+1});
    await helpers.outbox(tx,channel,next,c);
@@ -101,6 +103,7 @@ export async function deliveryReviewMaintenance(repo,identity,helpers,now){
   const t=await tx.get('channel_turn',row.id);if(t.status!=='limited'||!t.resumeAfter||t.resumeAfter>now||t.claimedAt||t.lease)return {};
   const channel=await tx.get('channel',t.scopeId,false),m=identity.members.find(m=>m.id===t.memberId),c=await tx.get('connection',t.memberId,false);
   if(!channel||!channel.memberIds.includes(t.memberId)||!m||m.status==='disabled'||!await helpers.meetingTurnAllowed(tx,t))return tx.put('channel_turn',{...t,status:'removed',reason:'原通知已不再适用，未重新执行',completedAt:now});
+  if(t.queuedResourceKey?.startsWith('native-session:')&&t.queuedResourceKey!==await executionResource(tx,c||{},channel.id))return tx.put('channel_turn',{...t,status:'stalled',resumeAfter:null,reason:'原工作对话已更换，请核对原要求后继续，旧消息未重新执行'});
   if(channel.status!=='active'||m.paused)return {};
   // Limit each release batch too; do not turn a restart into a second burst.
   const gateId=t.scopeId+':'+t.rootId,gate=await tx.get('delivery_cooldown',gateId,false);
@@ -139,7 +142,7 @@ export async function deliveryReviewMaintenance(repo,identity,helpers,now){
   // Connection recovery only resumes undelivered work, never an uncertain execution.
   for(const t of turns.filter(t=>t.status==='unavailable'&&!t.claimedAt&&!t.lease)){
    const m=identity.members.find(m=>m.id===t.memberId),c=await tx.get('connection',t.memberId,false);
-   if(channel.status==='active'&&channel.memberIds.includes(t.memberId)&&m&&!m.paused&&m.status!=='disabled'&&c?.status==='verified'&&await helpers.meetingTurnAllowed(tx,t)){
+   if((!t.queuedResourceKey?.startsWith('native-session:')||t.queuedResourceKey===await executionResource(tx,c||{},channel.id))&&channel.status==='active'&&channel.memberIds.includes(t.memberId)&&m&&!m.paused&&m.status!=='disabled'&&c?.status==='verified'&&await helpers.meetingTurnAllowed(tx,t)){
     const next=tx.put('channel_turn',{...t,status:'ready',reason:null});await helpers.outbox(tx,channel,next,c);
    }
   }

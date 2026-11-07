@@ -1,8 +1,9 @@
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
+import {groupMemoryMaintenance} from './group-memory.mjs';
 import {acknowledgeNativeContext} from './native-context.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
-import {recordMemoryEvent,queueMemoryIndex} from './memory-context.mjs';
+import {recordMemoryEvent,queueMemoryIndex,sourcesAvailable} from './memory-context.mjs';
 import {workspaceGrant,requireManager} from './delegation.mjs';
 import {MATERIAL_TOOLS,materialCommand} from './materials.mjs';
 import {editMessage} from './chat-experience.mjs';
@@ -96,7 +97,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "remember",
-    "记录本群的背景、要求、决定或经验。附来源 refs；成员提出的内容待核实，用户保存立即生效。",
+    "记录本群的背景、要求、决定或经验。附来源 refs，成员自动维护无需用户审批；提案保留提案身份，不能当用户决定。",
     {
       requestId: "string",
       channelId: "string",
@@ -213,7 +214,7 @@ async function channelMessage(tx, channel, actor, body, extra = {}) {
   });
   if(!extra.hidden){channel.lastMessage = body.slice(0, 160);channel.lastMessageAt = tx.now;}
   tx.put("channel", channel);
-  if(actor.owner&&!extra.hidden)await recordMemoryEvent(tx,channel,message,'message');
+  if(!extra.hidden&&actor.memberId!=='system')await recordMemoryEvent(tx,channel,message,'message');
   return message;
 }
 async function enqueue(tx, identity, channel, message, memberId) {
@@ -233,6 +234,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     parentId: memberId,
     memberId,
     messageId: message.id,
+    queuedResourceKey: connection ? await executionResource(tx,connection,channel.id) : null,
     ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
     ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
     ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1,requirementVersion:message.requirementVersion||1}:{}),
@@ -569,7 +571,7 @@ export async function readChannel(repo, identity, actor, args) {
     folders: await allFolders(repo,channel.id),
     placements: await allPlacements(repo,channel.id),
     links: (await repo.list("channel_link", {scope:channel.id,limit:100,order:"recent"})).filter(x=>x.status!=="deleted"),
-    knowledge: knowledge.filter(k=>k.status!=="deleted"&&(actor.owner||k.status==="approved")).map(publicMemory),
+    knowledge: (await Promise.all(knowledge.filter(k=>k.status!=="deleted"&&(actor.owner||k.status==="approved")).map(async k=>actor.owner||await sourcesAvailable(repo,actor,k)?publicMemory(k):null))).filter(Boolean),
     meetings: meetings.slice(0,100).map(m => publicMeeting(m, actor)).filter(Boolean),
     meetingsCursor:actor.owner&&meetings.length>100?btoa(JSON.stringify({updatedAt:meetings[99].updatedAt,id:meetings[99].id})):null,
     tasks,
@@ -1214,6 +1216,7 @@ export async function conversationMaintenance(
         now,
       );
   await deliveryReviewMaintenance(repo,identity,meetingHelpers,now);
+  await groupMemoryMaintenance(repo,identity,meetingHelpers,now);
 }
 
 export const meetingHelpers = { channelMessage, enqueue, finishTurn, objectFeedback, outbox, meetingTurnAllowed };

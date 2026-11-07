@@ -27,3 +27,13 @@ test('native context advances only after a reply, keeps all user corrections and
  await bind('native-B');await command('channel.post',{channelId:g.id,body:'交给新对话。',mentions:['grok']});const fresh=await receive('native-B');assert.equal(fresh.input.history.mode,'full');assert.ok(fresh.input.messages.some(m=>m.id===peer.id));await reply(fresh);
  await command('channel.post',{channelId:g.id,body:'上下文压缩后重新读取。',mentions:['grok']});const reset=await receive('native-B','full');assert.equal(reset.input.history.mode,'full');assert.ok(reset.input.messages.some(m=>m.id===peer.id));
 });
+test('an unreviewed one-time owner constraint survives the 50-message display page in a fresh native session',async t=>{
+ const f=await fixture(t);let n=0;const actor={memberId:'grok'};f.identity.members.find(m=>m.id==='grok').platformId='codex';
+ const send=(type,args,who={owner:true})=>conversationCommand(f.repo,f.identity,who,{type,requestId:'old-owner-'+(++n),...args});
+ const g=await send('channel.create',{name:'long history',memberIds:['grok','check'],coordinatorId:'grok'});
+ const constraint=await send('channel.post',{channelId:g.id,body:'仅讨论方案，今天不能部署。',mentions:['grok']});
+ for(let i=0;i<61;i++)await send('channel.post',{channelId:g.id,replyTo:constraint.id,body:'后续依据 '+i,mentions:[]},{memberId:'check'});
+ await registerExecutionBindings(f.repo,f.identity,actor,{requestId:'old-owner-bind',bindings:[{channelId:g.id,sessionId:'fresh-native'}]});
+ const claim=await callTool(f.repo,f.identity,actor,'receive_messages',{requestId:'old-owner-claim',channelId:g.id,expectedSessionId:'fresh-native'},{});
+ assert.ok(claim.input.messages.some(m=>m.id===constraint.id&&m.body===constraint.body));
+});

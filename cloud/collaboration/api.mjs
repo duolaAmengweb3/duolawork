@@ -1,3 +1,5 @@
+import {responseMetrics} from './response-metrics.mjs';
+import {GROUP_MEMORY_TOOLS,groupMemoryTool,readGroupMemory} from './group-memory.mjs';
 import {secretaryOverview,secretaryCommand} from './secretary.mjs';
 import {registerExecutionBindings} from './execution-bindings.mjs';
 import {conversationRuntime} from './conversation.mjs';
@@ -83,7 +85,7 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 export const TOOLS = [
   ...CHANNEL_TOOLS,
   ...MANAGEMENT_TOOLS,
-  ...MEMORY_TOOLS,...SKILL_TOOLS,
+  ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,...SKILL_TOOLS,
   ...CONNECTOR_TOOLS,
   ...SHARED_TOOLS,
   {
@@ -334,6 +336,7 @@ export async function callTool(repo, identity, actor, name, args, env, options =
   // recipient before reading an idempotency receipt or claiming any work.
   if (args.expectedMemberId !== undefined && args.expectedMemberId !== actor.memberId)
     fail("receiver_identity_mismatch", "当前工具连接属于另一位成员。请使用接收器绑定的本成员凭证调用 REST；不要重配共享 MCP 或领取其他成员的消息。", 403);
+  if(name==='group_memory')return groupMemoryTool(repo,actor,args);
   if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
   if(name==='github')return connectorTool(repo,actor,args,env);
@@ -342,7 +345,7 @@ export async function callTool(repo, identity, actor, name, args, env, options =
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['resolve_delivery','manage_workspace','github','search_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['resolve_delivery','manage_workspace','github','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
@@ -746,6 +749,9 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/skills')return json(await skillSettings(repo,identity,actor,request.method==='GET'?(url.searchParams.has('skillId')?{action:'read',skillId:url.searchParams.get('skillId')}:{action:'list'}):await readJSON(request)));
   if(url.pathname==='/v2/connectors')return json(await connectorSettings(repo,identity,actor,request.method==='GET'?{action:'list'}:await readJSON(request),env));
   if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});
+  if(url.pathname==='/v2/response-metrics'&&request.method==='GET')return json(await responseMetrics(repo,actor,{channelId:url.searchParams.get('channelId')}));
+  if(url.pathname==='/v2/group-memory'&&request.method==='GET')return json(await readGroupMemory(repo,actor,Object.fromEntries(url.searchParams)));
+  if(url.pathname==='/v2/group-memory'&&request.method==='POST')return json(await groupMemoryTool(repo,actor,await readJSON(request)));
   if(url.pathname==='/v2/memory-forget'&&request.method==='POST')return json(await memoryTool(repo,actor,'forget_memory',await readJSON(request),identity));
   if(url.pathname==='/v2/memory-search'&&request.method==='GET')return json(await recallMemory(repo,actor,Object.fromEntries(url.searchParams),env.MEMORY));
   if(url.pathname==='/v2/secretary'){const result=request.method==='GET'?await secretaryOverview(repo,identity,actor):await secretaryCommand(repo,identity,actor,await readJSON(request));if(request.method!=='GET')kick();return json(result);}

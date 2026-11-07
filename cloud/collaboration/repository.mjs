@@ -285,18 +285,21 @@ class Transaction {
         .first();
       this.ranges.set(key, { key, revision: clock?.revision ?? -1 });
     }
-    const rows = await this.repo.list(kind, { ...options, limit: 501 });
-    if (rows.length >= 501)
+    const pageLimit = options.page ? Math.max(1, Math.min(500, options.limit || 100)) : 501;
+    const rows = await this.repo.list(kind, { ...options, limit: pageLimit });
+    if (!options.page && rows.length >= 501)
       fail("query_limit", "本操作涉及记录过多，请缩小范围", 413);
     const combined = new Map(rows.map((x) => [x.id, x]));
     for (const row of this.writes.values())
       if (row.kind === kind) combined.set(row.id, structuredClone(row));
-    return [...combined.values()].filter(
+    const result = [...combined.values()].filter(
       (row) =>
         (options.scope === undefined || row.scopeId === options.scope) &&
         (options.parent === undefined || row.parentId === options.parent) &&
-        (options.status === undefined || row.status === options.status),
+        (options.status === undefined || row.status === options.status) &&
+        (!options.page || row.id > (options.after || "")),
     );
+    return options.page ? result.sort((a,b)=>a.id.localeCompare(b.id)).slice(0,pageLimit) : result;
   }
   put(kind, record) {
     const next = {

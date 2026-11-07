@@ -51,13 +51,12 @@ test('shared memory revisions and deactivation affect next native context, retai
  const other=await f.send('channel.create',{name:'其他群',memberIds:['grok']});
  await assert.rejects(conversationTool(f.repo,f.identity,agent,'read_memory',{channelId:other.id,memoryId:m.id}),e=>e.code==='forbidden');
 });
-test('Agent proposed memory stays pending and cannot promote itself; source is checked',async t=>{
+test('Agent memory is retrievable automatically but proposal never becomes an owner instruction',async t=>{
  const f=await setup(t),channelId=f.c.id;
  const message=await f.send('channel.post',{channelId,body:'一个待核实的结论'});
  const m=await f.send('channel.remember',{channelId,title:'待核实经验',body:'仅用于测试',refs:[{kind:'message',id:message.id}]},agent);
- assert.equal(m.status,'pending');assert.equal((await readChannel(f.repo,f.identity,agent,{channelId})).knowledge.length,0);
- await assert.rejects(f.send('channel.memory.update',{channelId,memoryId:m.id,status:'approved'},agent),e=>e.code==='forbidden');
- await f.send('channel.memory.review',{channelId,memoryId:m.id,status:'approved',expectedVersion:1});
+ assert.equal(m.status,'approved');assert.equal(m.authority,'proposal');assert.equal((await readChannel(f.repo,f.identity,agent,{channelId})).knowledge.length,1);
+ await assert.rejects(f.send('channel.memory.update',{channelId,memoryId:m.id,authority:'user_directive',expectedVersion:1},agent),e=>e.code==='source_required');
  const search=await conversationTool(f.repo,f.identity,agent,'search_memory',{channelId,query:'测试'});assert.equal(search.items.length,1);assert.equal(search.items[0].refs[0].id,message.id);
 });
 test('versioned references keep old document content and reject cross-channel data or unsupported URLs',async t=>{
