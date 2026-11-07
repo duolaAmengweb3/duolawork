@@ -12,7 +12,7 @@ async function fixture(t){
  const stateFile=path.join(dir,'state.json'),grantFile=path.join(dir,'grant.json');await fs.writeFile(stateFile,JSON.stringify({controlToken:'private-own-control-token-fixture-12345678',bindings:[],deliveries:{}}),{mode:0o600});await fs.writeFile(grantFile,'{}',{mode:0o600});
  let busy=false,hasWork=false,sendFailure=false;const sends=[],tools=[];
  const native={summaries:async()=>({[id]:{summary:'Original GUI session',workspaces:[{workspaceFolderAbsoluteUri:'file://'+dir}],status:busy?'CASCADE_RUN_STATUS_RUNNING':'CASCADE_RUN_STATUS_IDLE'}}),send:async(session,prompt)=>{sends.push({session,prompt});if(sendFailure)throw Error('timeout');}};
- const client={credentials:async()=>({memberId:'member_one'}),tools:async()=>[{name:'post_message'}],api:async()=>({hasWork}),tool:async(name,args)=>{tools.push({name,args});return name==='list_work'?{work:[{stepId:'turn_one',channelId:'channel_one',status:'ready'}]}:{written:true};}};
+ const client={inbox:async()=>({work:hasWork?[{stepId:'turn_one',channelId:'channel_one',status:'ready'}]:[]}),credentials:async()=>({memberId:'member_one'}),tools:async()=>[{name:'post_message'}],api:async()=>({hasWork}),tool:async(name,args)=>{tools.push({name,args});return name==='list_work'?{work:[{stepId:'turn_one',channelId:'channel_one',status:'ready'}]}:{written:true};}};
  const sidecar=await new AntigravitySidecar({stateFile,native,clientFactory:()=>client,pollMs:3600000}).start();t.after(()=>sidecar.stop());await sidecar.bind({sessionId:id,workspace:dir,grantFile});
  return{dir,stateFile,grantFile,sidecar,native,client,sends,tools,setBusy:v=>busy=v,setWork:v=>hasWork=v,setFailure:v=>sendFailure=v};
 }
@@ -53,7 +53,7 @@ test('native agentapi uses the inherited official binary and keeps native secret
 test('one desktop source routes two chat contexts without claiming another context or losing bindings on restart',async t=>{
  const f=await fixture(t),second='ed7e7e51-e0cf-492e-8413-f9e64828540e';let work=[{stepId:'b',channelId:'channel_b',status:'ready'}];
  f.native.summaries=async()=>Object.fromEntries([id,second].map(key=>[key,{summary:key,workspaces:[{workspaceFolderAbsoluteUri:'file://'+f.dir}],status:'CASCADE_RUN_STATUS_IDLE'}]));
- f.client.tool=async name=>name==='list_work'?{work}:{ok:true};f.setWork(true);
+ f.client.inbox=async()=>({work});f.client.tool=async name=>name==='list_work'?{work}:{ok:true};f.setWork(true);
  await f.sidecar.bind({sessionId:id,workspace:f.dir,grantFile:f.grantFile,channelIds:['channel_a'],verification:true});await f.sidecar.bind({sessionId:second,workspace:f.dir,grantFile:f.grantFile,channelIds:['channel_b'],verification:false});
  await f.sidecar.poll();assert.equal(f.sends.length,1);assert.equal(f.sends[0].session,second);
  const state=JSON.parse(await fs.readFile(f.stateFile));const wrong=await fetch(state.controlUrl+'/tool',{method:'POST',headers:{Authorization:'Bearer '+state.controlToken,'Content-Type':'application/json'},body:JSON.stringify({sessionId:id,operation:'claim_step',name:'b'})});assert.equal(wrong.status,400);

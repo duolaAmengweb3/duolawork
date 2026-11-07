@@ -18,3 +18,11 @@ test('an acknowledged message outside the latest server page is not kept forever
  const cache=new MessageSnapshots();cache.append('one',sent);const next=cache.apply('one',{messages:[{id:'later',number:3}]},cache.beginRead('one'));
  assert.deepEqual(next.messages.map(m=>m.id),['later']);assert.equal(cache.receipts.get('one').size,0);
 });
+
+test('slow materials can finish after a fast chat update without erasing either projection',()=>{
+ const cache=new MessageSnapshots(),full=cache.beginRead('one'),fast=cache.beginRead('one');
+ cache.apply('one',{...old,messages:[sent],activity:[{id:'turn',status:'active'}]},fast);
+ const merged=cache.apply('one',{...old,activity:[],documents:[{id:'doc',version:3}],meetings:[]},full);
+ assert.equal(merged.messages[0].id,'sent');assert.equal(merged.activity[0].status,'active');assert.equal(merged.documents[0].version,3);
+ assert.equal(cache.apply('one',{messages:[sent],activity:[{id:'turn',status:'done'}]},cache.beginRead('one')).documents[0].id,'doc');
+});

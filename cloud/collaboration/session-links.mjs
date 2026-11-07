@@ -1,3 +1,4 @@
+import {putExecutionBinding} from './execution-bindings.mjs';
 import {digest,fail,id,required} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
 import {executionResource} from './execution-bindings.mjs';
@@ -62,7 +63,7 @@ export async function sessionLinks(repo,identity,actor,input,write,origin){
    const c=await tx.get('connection',r.memberId),resource=await tx.get('resource',await executionResource(tx,c,v.channelId),false);if(resource?.status==='busy')fail('busy','等待原工作完成后保存关联',409);
    if(JSON.stringify(source.bindings[v.channelId]||null)!==JSON.stringify(v.previousBinding))fail('binding_changed','聊天刚刚选择了其他对话，旧说明没有覆盖它',409);
    source.bindings[v.channelId]={sessionId:native.id,title:native.title,workspace:native.workspace};tx.put('native-source',source);
-   tx.put('execution_binding',{id:r.memberId+':'+v.channelId,parentId:r.memberId,scopeId:v.channelId,sessionKey:await digest(native.id),status:'active'});
+   await putExecutionBinding(tx,{id:r.memberId+':'+v.channelId,parentId:r.memberId,scopeId:v.channelId,sessionKey:await digest(native.id),status:'active'});
    v.status='completed';v.completedAt=tx.now;tx.put('session-link',v);return publicLink(v);
   });
  }

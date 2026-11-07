@@ -1,3 +1,4 @@
+import {putExecutionBinding} from './execution-bindings.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id,digest} from './repository.mjs';
 import {nativeForm} from '../../shared/native-forms.mjs';
@@ -90,7 +91,7 @@ export async function runtimeSelf(repo,identity,actor,input={},write=false){
           if(JSON.stringify(r.bindings[c.channelId]||null)!==JSON.stringify(c.previousBinding))fail('binding_changed','聊天已选择其他对话，未覆盖',409);
           const channel=await tx.get('channel',c.channelId);if(!channel.memberIds.includes(m.id))fail('forbidden','成员已离开该聊天',403);
           c.binding={sessionId:key(b.sessionId),title:required(b.title||c.title,'对话名称',200),workspace:required(b.workspace,'项目位置',1000),mode:b.mode==='native-existing'?'native-existing':'existing',runtimeId};
-          if(input.action==='activate'){const connection=await tx.get('connection',m.id),resource=await tx.get('resource',await executionResource(tx,connection,c.channelId),false);if(resource?.status==='busy')fail('resource_busy','原对话仍在工作，消息和原绑定保留',409);tx.put('execution_binding',{id:m.id+':'+c.channelId,parentId:m.id,scopeId:c.channelId,sessionKey:await digest(c.binding.sessionId),status:'active'});r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';if(link){link.status='completed';link.binding=c.binding;link.completedAt=tx.now;tx.put('session-link',link);}}else c.status='prepared';
+          if(input.action==='activate'){const connection=await tx.get('connection',m.id),resource=await tx.get('resource',await executionResource(tx,connection,c.channelId),false);if(resource?.status==='busy')fail('resource_busy','原对话仍在工作，消息和原绑定保留',409);await putExecutionBinding(tx,{id:m.id+':'+c.channelId,parentId:m.id,scopeId:c.channelId,sessionKey:await digest(c.binding.sessionId),status:'active'});r.bindings[c.channelId]=c.binding;tx.put('remote-runtime',r);c.status='completed';if(link){link.status='completed';link.binding=c.binding;link.completedAt=tx.now;tx.put('session-link',link);}}else c.status='prepared';
         }c.completedAt=tx.now;tx.put('native-command',c);return{};
       });
     }else fail('invalid_action','无效的运行端操作');

@@ -1,5 +1,16 @@
 import {fail,required,digest} from './repository.mjs';
 const native=new Set(['codex','antigravity','gemini-cli','deepseek-harness','claude-code']);
+export async function putExecutionBinding(tx,binding){
+ const old=await tx.get('execution_binding',binding.id,false);
+ if(old?.sessionKey!==binding.sessionKey){
+  const pending=await tx.list('channel_turn',{scope:binding.scopeId,parent:binding.parentId,limit:501});
+  for(const turn of pending.filter(t=>['ready','stalled'].includes(t.status)&&t.receiptSessionKey&&t.receiptSessionKey!==binding.sessionKey)){
+   for(const key of ['connectorReceivedAt','nativeAcceptedAt','nativeStartedAt','firstPublicOutputAt','receiptSessionKey','receiptAttempt','receiptSourceVersion'])delete turn[key];
+   tx.put('channel_turn',turn);
+  }
+ }
+ return tx.put('execution_binding',binding);
+}
 export async function executionResource(tx,connection,channelId){
  const binding=await tx.get('execution_binding',connection.id+':'+channelId,false);
  if(binding?.sessionKey)return 'native-session:'+connection.id+':'+binding.sessionKey;
@@ -26,7 +37,7 @@ export async function registerExecutionBindings(repo,identity,actor,input){
    if(old?.sessionKey===b.sessionKey)continue;
    const occupied=await tx.get('resource',await executionResource(tx,c,b.channelId),false);
    if(occupied?.status==='busy')fail('resource_busy','这段对话还有正在处理的消息，原绑定保留',409);
-   tx.put('execution_binding',{id:key,parentId:m.id,scopeId:b.channelId,sessionKey:b.sessionKey,status:'active'});
+   await putExecutionBinding(tx,{id:key,parentId:m.id,scopeId:b.channelId,sessionKey:b.sessionKey,status:'active'});
   }
   return {registered};
  });

@@ -36,13 +36,14 @@ const env = {
     return { success: ++row.count <= 45 };
   } },
 };
-let active = 0, scheduled = false, closing = false, lastObjectCleanup = 0;
+let active = 0, watchers=0, scheduled = false, closing = false, lastObjectCleanup = 0;
 const pending = new Set();
 const ctx = { waitUntil(promise) { const p = Promise.resolve(promise).catch(() => console.error('background_operation_failed')).finally(() => pending.delete(p)); pending.add(p); } };
 const equal = (a, b) => !!a && !!b && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const server = http.createServer(async (req, res) => {
-  if (closing || active >= (config.maxRequests || 128)) { res.writeHead(503, { 'Retry-After': '3' }); res.end('Service busy'); return; }
-  active++;
+  const watching=req.method==='GET'&&req.url?.split('?')[0]==='/v2/changes';
+  if (closing || (watching?watchers >= (config.maxWatchers||64):active >= (config.maxRequests || 128))) { res.writeHead(503, { 'Retry-After': '3' }); res.end('Service busy'); return; }
+  if(watching)watchers++;else active++;
   const abort = new AbortController();
   res.once('close', () => { if (!res.writableFinished) abort.abort(); });
   try {
@@ -76,7 +77,7 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent && !res.destroyed) { res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '3' }); res.end(JSON.stringify({ error: 'temporarily_unavailable', message: '服务暂时不可用，请重试；原消息和登录保留' })); }
     else res.destroy();
     if (!abort.signal.aborted) console.error('request_failed', error?.name || 'Error');
-  } finally { active--; }
+  } finally { if(watching)watchers--;else active--; }
 });
 server.headersTimeout = 15000;
 server.requestTimeout = 120000;

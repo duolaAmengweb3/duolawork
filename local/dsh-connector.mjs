@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {CodingMemberClient} from './coding-client.mjs';
+import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import {privateJson} from './storage.mjs';
 import {safeError} from './native-agent.mjs';
 import {acceptsWork,claimNativeConversation,receiveNativeConversation} from './session-routing.mjs';
@@ -19,7 +20,7 @@ const receiverRevision=await fs.readFile(new URL('../complete.json',import.meta.
 export class DshConnector {
  constructor({ctx,stateFile,clientFactory=file=>new CodingMemberClient(file),pollMs=3000,allowProof=false,now=Date.now,receiptGraceMs=60000}){
   Object.assign(this,{ctx,stateFile,clientFactory,pollMs,allowProof,now,receiptGraceMs});
-  this.bindings=new Map();this.bindingJobs=new Map();this.pollJobs=new Map();this.saveChain=Promise.resolve();this.removed=new Set();this.closed=false;this.busy=false;this.ready=false;this.dispatches=[];
+  this.bindings=new Map();this.watches=new Map();this.bindingJobs=new Map();this.pollJobs=new Map();this.saveChain=Promise.resolve();this.removed=new Set();this.closed=false;this.busy=false;this.ready=false;this.dispatches=[];
  }
  async start(){
   this.state=JSON.parse(await fs.readFile(this.stateFile,'utf8'));
@@ -36,8 +37,8 @@ export class DshConnector {
  }
  save(){return this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{
   const records=new Map((this.state.bindings||[]).filter(b=>!this.removed.has(b.sessionId)).map(b=>[b.sessionId,b]));
-  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched],receiptRecovery:b.receiptRecovery});
-  this.state={...this.state,bindings:[...records.values()]};await privateJson(this.stateFile,this.state);
+  for(const b of this.bindings.values())records.set(b.sessionId,{sessionId:b.sessionId,workspace:b.workspace,grantFile:b.grantFile,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,dispatched:[...b.dispatched],receiptRecovery:b.receiptRecovery,received:b.received});
+  this.state={...this.state,bindings:[...records.values()]};await privateJson(this.stateFile,this.state,{durable:true});
  });}
  async sessionInfo(id){
   const listed=await this.sessions();
@@ -55,7 +56,7 @@ export class DshConnector {
   const pending=this.bindingJobs.get(input.sessionId);if(pending){await pending;return this.bindOnce(input);}
   const job=this.bindOnce(input);this.bindingJobs.set(input.sessionId,job);try{return await job;}finally{this.bindingJobs.delete(input.sessionId);}
  }
- async bindOnce({sessionId,workspace,grantFile,dispatched=[],channelIds,verification,receiptRecovery}){
+ async bindOnce({sessionId,workspace,grantFile,dispatched=[],channelIds,verification,receiptRecovery,received={}}){
   if(this.bindings.has(sessionId)){
    const b=this.bindings.get(sessionId),c=await this.clientFactory(grantFile).credentials();
    if(b.memberId!==c.memberId||await fs.realpath(workspace)!==b.workspace)throw Error('Original session is already bound to another Hub member');
@@ -70,11 +71,13 @@ export class DshConnector {
   if((await fs.stat(grantFile)).mode&0o077)throw Error('Hub member grant must be private (0600)');
   const client=this.clientFactory(grantFile),credential=await client.credentials();
 
-  const b={sessionId,channelIds,verification,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),receiptRecovery,disposers:[],toolCalls:[],abort:new AbortController()};
+  const b={sessionId,channelIds,verification,workspace:actual,grantFile,memberId:credential.memberId,client,dispatched:new Set(dispatched),receiptRecovery,received,disposers:[],toolCalls:[],abort:new AbortController()};
   const definitions=await client.tools();
   try{
    b.definitions=definitions;this.removed.delete(sessionId);this.bindings.set(sessionId,b);this.attachAgent(agent);
-   await this.save();return this.publicBinding(b);
+   await this.save();
+   if(!this.watches.has(b.memberId))this.watches.set(b.memberId,subscribeNativeChanges(client,()=>{void this.poll();}));
+   return this.publicBinding(b);
   }catch(error){for(const dispose of b.disposers)dispose();this.bindings.delete(sessionId);throw error;}
  }
  attachAgent(agent){
@@ -135,7 +138,7 @@ export class DshConnector {
    // completed side effects or create an unbounded recovery/model loop.
    recovery.attemptedAt=now;recovery.state='recovering';recovery.idleSince=now;await this.save();
    const text=`DuolaWork 回执恢复：这段原生对话已停止运行，但 ${pending.stepId} 的结果尚未回到原群 ${pending.channelId}。保留当前会话、模型、工具和已有结果。不要重做已完成的操作，不领取其他工作，不重新跑全量测试。用 hub_read_channel 查看本群最新补充，核对本轮已有结果；使用 hub_post_message，提供新的 requestId、channelId=${pending.channelId}、turnId=${pending.stepId}，回传真实结果或具体阻塞。${state.status==='active'?'原工作已领取，无需再次 claim_work。':'本条尚未领取，先 hub_claim_work 领取这一个 stepId 并提供 channelId，然后说明具体中断原因及未执行的工作，不声称完成。'}若已经回过群，核对对应消息后用 hub_stay_silent 结束此 turn。不能声称未验证的工作完成。只收尾这一条，后续由连接器正常投递。`;
-   await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId:digest(b.memberId+':receipt:'+deliveryKey(pending)),content:[{type:'text',text}]},b.abort.signal);
+   await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId:digest(b.memberId+':receipt:'+deliveryKey(pending)),content:[{type:'text',text:text+' '+CONTINUE_PRIMARY_WORK}]},b.abort.signal);
    return true;
   }
   await b.client.api('/v2/self/conversation-state',{method:'POST',body:{requestId:digest(b.memberId+':receipt-ended:'+deliveryKey(pending)),turnId:pending.stepId,state:'ended'}});
@@ -145,19 +148,16 @@ export class DshConnector {
   if(this.closed)return;
   const launched=[];
   for(const b of this.bindings.values()){
-   if(this.pollJobs.has(b.sessionId))continue;
-   const job=this.pollBinding(b).finally(()=>{this.pollJobs.delete(b.sessionId);this.busy=this.pollJobs.size>0;});
+   if(this.pollJobs.has(b.sessionId)){b.pollAgain=true;continue;}
+   const job=(async()=>{do{b.pollAgain=false;await this.pollBinding(b);}while(b.pollAgain&&!this.closed&&this.bindings.get(b.sessionId)===b);})().finally(()=>{this.pollJobs.delete(b.sessionId);this.busy=this.pollJobs.size>0;});
    this.pollJobs.set(b.sessionId,job);launched.push(job);
   }
   this.busy=this.pollJobs.size>0;await Promise.allSettled(launched);
  }
  async pollBinding(b){
    try{
-    const signal=await b.client.api('/v2/signal',{timeout:15000});
-    // A claimed message is absent from hasWork (ready notifications only).
-    // Reconcile it even when no newer message happens to arrive.
-    if(!signal.hasWork&&(!b.dispatched.size||this.now()-(b.lastReceiptCheck||0)<15000)){b.lastError=null;return;}
-    const {work}=await b.client.tool('list_work');
+    const {work}=await readNativeInbox(b.client);
+    b.received??={};let removed=false;for(const id of Object.keys(b.received))if(!work.some(w=>w.stepId===id)){delete b.received[id];removed=true;}if(removed)await this.save();
     b.lastReceiptCheck=this.now();
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;
     if(await this.reconcileReceipt(b,work))return;
@@ -165,18 +165,20 @@ export class DshConnector {
     if(work.some(w=>b.dispatched.has(deliveryKey(w))&&acceptsWork(b,w)))return;
     const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(deliveryKey(w)));
     if(!next)return;
+    if(next.delivery){b.received[next.stepId]=next.delivery;await this.save();await deliveryReceipt(b.client,next,b.sessionId);}
     await this.sessionInfo(b.sessionId);
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;this.attachAgent(found.agent);
     const requestId=digest(b.memberId+':'+deliveryKey(next));
     const text=`Hub 有一条发给你的真实工作。你仍是当前项目的同一个原生 Agent，保留模型、工具、规则和原会话记忆。直接使用 hub_claim_work 领取，参数包含新的 requestId 和 ${JSON.stringify({stepId:next.stepId,...(next.channelId?{channelId:next.channelId}:{})})}，无需先查询工作列表，只处理这条工作。严格按领取结果的指令执行。普通聊天用 hub_post_message 回到同一群，使用领取返回的 turnId；验证或交付任务按要求用 hub_submit_work 提交 attemptId、lease 和 items。所有写调用提供 requestId。不要只在原生界面输出而不回传。普通聊天不擅自创建任务、文档或额外分工。不要读其他会话或登录资料；不输出凭证。`;
-    await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId,content:[{type:'text',text}]},b.abort.signal);
+    await this.ctx.sessionController.prompt({sessionId:b.sessionId,mode:'queue',requestId,content:[{type:'text',text:text+' '+CONTINUE_PRIMARY_WORK}]},b.abort.signal);
+    await deliveryReceipt(b.client,next,b.sessionId,'accepted').catch(()=>{});
     b.dispatched.add(deliveryKey(next));await this.save();
     this.dispatches.push({sessionId:b.sessionId,stepId:next.stepId,requestId,at:new Date().toISOString()});this.dispatches=this.dispatches.slice(-100);
     b.lastError=null;
    }catch(error){b.lastError=safeError(error);}
  }
- async unbind(id){const b=this.bindings.get(id);this.removed.add(id);this.bindings.delete(id);if(b){b.abort.abort();for(const dispose of b.disposers)dispose();}await this.save();return{disconnected:true,nativeSessionRetained:true};}
+ async unbind(id){const b=this.bindings.get(id);this.removed.add(id);this.bindings.delete(id);if(b){b.abort.abort();for(const dispose of b.disposers)dispose();if(![...this.bindings.values()].some(x=>x.memberId===b.memberId)){this.watches.get(b.memberId)?.();this.watches.delete(b.memberId);}}await this.save();return{disconnected:true,nativeSessionRetained:true};}
  async handle(req,res){
   const send=(status,body)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(body));};
   try{
@@ -227,7 +229,7 @@ export class DshConnector {
   }catch(error){send(400,{error:safeError(error)});}
  }
  async stop(){
-  this.closed=true;clearInterval(this.timer);
+  this.closed=true;for(const stop of this.watches.values())stop();this.watches.clear();clearInterval(this.timer);
   for(const b of this.bindings.values()){b.abort.abort();for(const dispose of b.disposers)dispose();}
   if(this.server)await new Promise(resolve=>{this.server.close(resolve);this.server.closeIdleConnections();});
  }

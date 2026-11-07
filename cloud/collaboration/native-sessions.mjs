@@ -1,3 +1,4 @@
+import {putExecutionBinding} from './execution-bindings.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id,digest} from './repository.mjs';
 
@@ -73,7 +74,7 @@ export async function assignRemoteSession(repo,identity,actor,input){
     const s=r.sessions[input.sessionId];if(!live(s))fail('session_offline','请先在原来的环境打开这个 Claude 会话',409);
     for(const pending of await tx.list('native-command',{parent:input.memberId,status:'pending',limit:501}))if(pending.channelId===channel.id){pending.status='failed';pending.message='你已选择其他对话，未覆盖当前选择；已经创建的对话仍保留。';tx.put('native-command',pending);}
     const binding={sessionId:s.id,title:s.title,workspace:s.workspace};r.bindings[input.channelId]=binding;tx.put('native-source',r);
-    tx.put('execution_binding',{id:input.memberId+':'+input.channelId,parentId:input.memberId,scopeId:input.channelId,sessionKey:await digest(s.id),status:'active'});
+    await putExecutionBinding(tx,{id:input.memberId+':'+input.channelId,parentId:input.memberId,scopeId:input.channelId,sessionKey:await digest(s.id),status:'active'});
     return{binding};
   });
 }
@@ -106,7 +107,7 @@ async function createCommand(repo,actor,input){
     if(resource?.status==='busy')fail('resource_busy','原对话仍在处理消息，结束后自动完成选择',409);
     c.sessionId=fresh.id;c.binding={sessionId:fresh.id,title:c.title,workspace:fresh.workspace,mode:'new',runtimeId:c.runtimeId};
     r.bindings[c.channelId]=c.binding;tx.put('native-source',r);
-    tx.put('execution_binding',{id:actor.memberId+':'+c.channelId,parentId:actor.memberId,scopeId:c.channelId,sessionKey:await digest(fresh.id),status:'active'});
+    await putExecutionBinding(tx,{id:actor.memberId+':'+c.channelId,parentId:actor.memberId,scopeId:c.channelId,sessionKey:await digest(fresh.id),status:'active'});
     c.status='completed';c.completedAt=tx.now;tx.put('native-command',c);return c;
   });
 }

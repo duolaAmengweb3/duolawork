@@ -8,6 +8,7 @@ import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
+import {subscribeNativeChanges} from '../../local/native-delivery.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {ClaudeChannel,sessionLinkTools} from './channel.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
@@ -104,7 +105,7 @@ export class MonitorBridge{
         await this.client.api('/v2/self/check',{method:'POST',body:{requestId}});this.checkId=requestId;
       }}
     }
-    const scope=await b.scope();this.creator?.tick(this.session,scope.commands);
+    const scope=await b.scope();this.scopeCache=scope;this.creator?.tick(this.session,scope.commands);
     await b.linkTick();await b.tick(scope);
   }
   async tool(name,args={}){
@@ -130,14 +131,23 @@ export class MonitorBridge{
 }
 
 export async function runMonitor(configFile){
-  const config=await read(configFile),bridge=new MonitorBridge(config);let closed=false;
-  const close=()=>{closed=true;};process.once('SIGTERM',close);process.once('SIGINT',close);
-  // Plugin monitors live for the native session. Idle polls never invoke a model.
-  try{while(!closed){try{await bridge.tick();}catch(e){
-    if([401,403].includes(e.status)){process.stderr.write('DuolaWork 连接已失效，请在连接页处理。\n');break;}
+  const config=await read(configFile),bridge=new MonitorBridge(config);let closed=false,pending,finish;
+  const ended=new Promise(resolve=>finish=resolve);
+  const close=()=>{closed=true;finish();};process.once('SIGTERM',close);process.once('SIGINT',close);
+  const failure=e=>{
+    if([401,403].includes(e.status)){process.stderr.write('DuolaWork 连接已失效，请在连接页处理。\n');close();return;}
     // Transient failures stay out of model context; retained work retries later.
     process.stderr.write('DuolaWork 暂未连通，保留消息后重试。\n');
-  }await sleep(2000);}}finally{await bridge.close();}
+  };
+  const tick=()=>pending??=(closed?Promise.resolve():bridge.tick()).catch(failure).finally(()=>pending=null);
+  await tick();
+  const stopWatching=subscribeNativeChanges(bridge.client,page=>{
+    if(closed)return;
+    if(page.reset||page.changes.some(c=>['session-link','native-command','execution_binding','connection','channel'].includes(c.kind)))void tick();
+    else void bridge.bridge?.tick(bridge.scopeCache).catch(failure);
+  });
+  const timer=setInterval(()=>void tick(),15000);
+  try{await ended;}finally{closed=true;stopWatching();clearInterval(timer);await pending;await bridge.bridge?.pending?.catch(()=>{});await bridge.close();}
 }
 
 export async function serveMonitor(configFile){

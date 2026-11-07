@@ -1,8 +1,9 @@
 import {responseMetrics} from './response-metrics.mjs';
+import {changes} from './change-feed.mjs';
 import {GROUP_MEMORY_TOOLS,groupMemoryTool,readGroupMemory} from './group-memory.mjs';
 import {secretaryOverview,secretaryCommand} from './secretary.mjs';
 import {registerExecutionBindings} from './execution-bindings.mjs';
-import {conversationRuntime} from './conversation.mjs';
+import {conversationRuntime,receiveDelivery} from './conversation.mjs';
 import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
 import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
 import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
@@ -626,6 +627,18 @@ export async function v2Fetch(request, env, ctx, identity) {
         ),
       ),
     );
+  if(url.pathname==='/v2/changes'&&request.method==='GET'){
+    const page=await changes(repo,actor,{after:url.searchParams.get('after'),signal:request.signal,
+    waitMs:url.searchParams.has('waitMs')?Number(url.searchParams.get('waitMs')):8000,
+    authorize:async()=>resolveActor(request,env,env.loadIdentity?await env.loadIdentity():identity)});
+    if(actor.memberId&&(page.reset||page.changes.some(c=>['channel_turn','step','execution_binding','connection','channel'].includes(c.kind)))){
+      const freshIdentity=env.loadIdentity?await env.loadIdentity():identity;
+      const freshActor=await resolveActor(request,env,freshIdentity);
+      const [chat,work]=await Promise.all([conversationWork(repo,freshIdentity,freshActor.memberId,{delivery:true}),workForMember(repo,freshIdentity,freshActor.memberId)]);
+      page.inbox={work:[...chat,...work]};
+    }
+    return json(page);
+  }
   if(url.pathname==='/v2/connect/claude'&&request.method==='POST'){
     if(!actor.owner)fail('forbidden','需要所有者身份',403);
     const {memberId}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.platformId==='claude-code');if(!m)fail('invalid_member','请选择 Claude Code 成员');
@@ -665,6 +678,12 @@ export async function v2Fetch(request, env, ctx, identity) {
     return json(result);
   }
   if(url.pathname==='/v2/self/conversation-state')return json(await conversationRuntime(repo,actor,request.method==='GET'?{action:'read',turnId:url.searchParams.get('turnId')}:await readJSON(request)));
+  if(url.pathname==='/v2/self/delivery'&&request.method==='POST')return json(await receiveDelivery(repo,actor,await readJSON(request)));
+  if(url.pathname==='/v2/self/inbox'&&request.method==='GET'){
+    if(!actor.memberId)fail('member_required','需要成员身份',403);
+    const [chat,work]=await Promise.all([conversationWork(repo,identity,actor.memberId,{delivery:true}),workForMember(repo,identity,actor.memberId)]);
+    return json({work:[...chat,...work]});
+  }
   if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
   if (url.pathname === "/v2/self/status" && request.method === "POST") return json(await reportSetup(repo, actor, await readJSON(request)));
   if (url.pathname === "/v2/mcp") {
@@ -767,7 +786,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/management')return json(request.method==='GET'?await workspaceOverview(repo,identity,actor):await managementSettings(repo,identity,actor,await readJSON(request)));
   if(url.pathname==='/v2/channel-unread'&&request.method==='POST')return json(await channelUnread(repo,(await readJSON(request)).cursors));
   if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await repo.list("channel",{order:"recent",limit:500})});
-  if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
+  if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),view:url.searchParams.get('view'),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
   if(url.pathname==='/v2/meeting'&&request.method==='GET') return json(await meetingDetail(repo,identity,actor,{meetingId:url.searchParams.get('id'),cursor:url.searchParams.get('cursor')||undefined}));
   if(url.pathname==='/v2/meetings'&&request.method==='GET'){
     const channel=await repo.get('channel',url.searchParams.get('channelId'));

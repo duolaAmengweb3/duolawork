@@ -142,8 +142,9 @@ export class NativeAgent{
    if(params.threadId&&params.threadId!==run.session.id)return;
    if(run.turnId&&params.turnId&&params.turnId!==run.turnId)return;
    if(run.turnId&&params.turn?.id&&params.turn.id!==run.turnId)return;
+   if(method==='turn/started')run.started();
    if(params.item?.id){run.items??=new Map();run.items.set(params.item.id,params.item);}
-   if(method==='item/completed'&&params.item?.type==='agentMessage')run.text=params.item.text||run.text;
+   if(method==='item/completed'&&params.item?.type==='agentMessage'){run.text=params.item.text||run.text;if(params.item.text?.trim())run.publicOutput();}
    if(method==='item/started'&&params.item?.type!=='agentMessage')this.onProgress({kind:'tool',name:params.item?.type||'working'});
    if(method==='turn/completed'){
     const failed=params.turn?.status==='failed'||params.turn?.status==='interrupted';
@@ -151,20 +152,22 @@ export class NativeAgent{
    }
   }else if(method==='session/update'&&params.sessionId===run.session.id){
    const update=params.update;
-   if(update?.sessionUpdate==='agent_message_chunk'&&update.content?.type==='text')run.text+=update.content.text;
+   if(['agent_message_chunk','tool_call','tool_call_update'].includes(update?.sessionUpdate))run.started();
+   if(update?.sessionUpdate==='agent_message_chunk'&&update.content?.type==='text'){run.text+=update.content.text;if(update.content.text?.trim())run.publicOutput();}
    if(['tool_call','tool_call_update'].includes(update?.sessionUpdate))this.onProgress({kind:'tool',name:update.title||update.kind||'working'});
   }
  }
- async run({session,prompt,timeout=20*60000}){
+ async run({session,prompt,timeout=20*60000,onStarted=()=>{},onPublicOutput=()=>{}}){
   if(this.busy)throw new Error('同一原生成员正在执行上一条请求');
   this.busy=true;
   let timer,run;
   try{
-   const done=new Promise((resolve,reject)=>{run=this.current={session,text:'',resolve,reject};timer=setTimeout(()=>{reject(new Error('原生任务等待超时，状态保留，未重新执行'));this.rpc.stop().catch(()=>{});},timeout);});
+   let observedStart=false,observedOutput=false;
+   const done=new Promise((resolve,reject)=>{run=this.current={session,text:'',resolve,reject,started:()=>{if(!observedStart){observedStart=true;Promise.resolve().then(onStarted).catch(()=>{});}},publicOutput:()=>{if(!observedOutput){observedOutput=true;Promise.resolve().then(onPublicOutput).catch(()=>{});}}};timer=setTimeout(()=>{reject(new Error('原生任务等待超时，状态保留，未重新执行'));this.rpc.stop().catch(()=>{});},timeout);});
    done.catch(()=>{});
    this.rpc.once('closed',run.reject);
    if(this.engine==='codex'){
-    const started=await this.rpc.call('turn/start',{threadId:session.id,input:[{type:'text',text:prompt}]});run.turnId=started.turn?.id;
+    const started=await this.rpc.call('turn/start',{threadId:session.id,input:[{type:'text',text:prompt}]});run.turnId=started.turn?.id;if(started.turn?.status==='inProgress')run.started();
    }else{
     this.rpc.call('session/prompt',{sessionId:session.id,prompt:[{type:'text',text:prompt}]},timeout).then(result=>{
      if(result.stopReason==='cancelled')run.reject(new Error('原生请求已取消'));

@@ -1,6 +1,8 @@
 import SecretaryDesk from './SecretaryDesk.jsx';
 import {notificationRecipients} from '../../shared/message-recipients.mjs';
 import {MessageSnapshots} from './message-snapshots.mjs';
+import {createReadCoalescer} from './read-coalescer.mjs';
+import {watchChanges} from '../../local/change-watcher.mjs';
 import BrandMark from './BrandMark.jsx';
 import WorkspaceServices from './WorkspaceServices.jsx';
 import MessageActivity from './MessageActivity.jsx';
@@ -175,9 +177,11 @@ export default function App() {
   const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
   const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
   readRef.current=readThrough;
+  const refreshAfterSend=useRef(()=>{}),coalesceRead=useRef(createReadCoalescer());
   const appendMessage=useCallback((message,channelId)=>{
     const next=viewCache.current.append(channelId,message);
     if(currentRef.current===channelId&&next)setSnapshot(next);
+    refreshAfterSend.current();
   },[]);
   const outbox=useMessageOutbox(appendMessage);
   const savePosition=()=>{const el=scroll.current;if(!el||el.dataset.channelId!==currentRef.current)return;const top=el.getBoundingClientRect().top;const first=[...el.querySelectorAll('.chat-message')].find(m=>m.getBoundingClientRect().bottom>top);positions.current[currentRef.current]={id:first?.id,offset:first?first.getBoundingClientRect().top-top:0,number:Number(first?.dataset.messageNumber)||null,top:el.scrollTop,bottom:nearBottom.current};};
@@ -215,7 +219,7 @@ export default function App() {
     id === 'system' ? '会议记录' : id === "owner"
       ? "我"
       : workspace.members.find((m) => m.id === id)?.name || workspace.formerMembers?.find(m=>m.id===id)?.name || "已移出成员";
-  const refreshWorkspace = useCallback(async () => {
+  const refreshWorkspace = useCallback(() => coalesceRead.current('workspace',async () => {
     const results = await Promise.allSettled([
       api("/v2/workspace"),
       api("/v2/channels"),
@@ -227,17 +231,18 @@ export default function App() {
     setChannels(c.items);
 
     if (!currentRef.current && c.items[0]) setCurrent(c.items[0].id);
-  }, []);
-  const refresh = useCallback(async () => {
+  }), []);
+  const refresh = useCallback(async ({chatOnly=false}={}) => {
     const id = currentRef.current;
     if (!id) return;
+    return coalesceRead.current(id+':'+(chatOnly?'chat':'space'),async()=>{
     const readSequence=viewCache.current.beginRead(id);
-    const data = await api("/v2/channel?id=" + id);
+    const data = await api("/v2/channel?id=" + id+(chatOnly?'&view=chat':''));
     const first=!positions.current[id]&&unreadRef.current[id]?.firstNumber;
-    if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20)}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
+    if(first&&!data.messages.some(m=>m.number===first)){const window=await api("/v2/channel?"+new URLSearchParams({id,before:String(first+20),view:'chat'}));if(currentRef.current===id){setOlder(window.messages);olderCache.current.set(id,window.messages);setMoreCursor(window.before);}}
     const pos=positions.current[id];
     if(pos?.number&&!data.messages.some(m=>m.id===pos.id)&&!olderCache.current.get(id)?.some(m=>m.id===pos.id)){
-      const window=await api('/v2/channel?'+new URLSearchParams({id,before:String(pos.number+20)}));
+      const window=await api('/v2/channel?'+new URLSearchParams({id,before:String(pos.number+20),view:'chat'}));
       olderCache.current.set(id,window.messages);
       if(currentRef.current===id){setOlder(window.messages);setMoreCursor(window.before);}
     }
@@ -247,22 +252,31 @@ export default function App() {
       setSnapshot(reconciled);
       setLastSync(new Date().toISOString());
       setMoreCursor((old) => (old === undefined ? data.before : old));
-      setMeetingCursor(old=>old===undefined?data.meetingsCursor:old);
+      if(data.meetingsCursor!==undefined)setMeetingCursor(old=>old===undefined?data.meetingsCursor:old);
     }
-  }, []);
-  useEffect(() => {
-    let alive = true;
-    const stop = startPolling({
-      run: async () => {
-        await refreshWorkspace();
-        if (alive) await refresh();
-      },
-      onSuccess: () => setSyncError(""),
-      onError: e => setSyncError(e.message),
     });
+  }, []);
+  refreshAfterSend.current=()=>{void refresh({chatOnly:true}).catch(()=>{});};
+  useEffect(() => {
+    const report=e=>setSyncError(e.message);
+    const watcher=watchChanges({request:(route,signal)=>api(route,undefined,undefined,{signal}),onError:report,onChange:async page=>{
+      const affected=page.changes.filter(c=>c.channelId===currentRef.current);
+      const fast=page.reset||affected.length?refresh({chatOnly:true}):Promise.resolve();
+      if(page.reset||affected.some(c=>!['channel_message','channel_turn','outbox','execution_binding','channel_coordination','channel_delivery_issue'].includes(c.kind)))void refresh().catch(report);
+      if(page.reset||page.changes.some(c=>['channel','channel_message','connection'].includes(c.kind)))void refreshWorkspace().catch(report);
+      await fast;setSyncError('');
+    }});
+    const stop = startPolling({
+      run: () => Promise.all([refreshWorkspace(),refresh({chatOnly:true})]),
+      interval:15000,
+      onSuccess: () => setSyncError(""),
+      onError:report,
+    });
+    const stopSpace=startPolling({run:()=>refresh(),interval:30000,onError:report});
     return () => {
-      alive = false;
+      watcher.stop();
       stop();
+      stopSpace();
     };
   }, [refreshWorkspace, refresh]);
   useLayoutEffect(() => {
@@ -276,6 +290,8 @@ export default function App() {
     setShowMentions(false);
     lastMessage.current = "";
     nearBottom.current = positions.current[current]?.bottom??!firstUnread.current;
+    // Chat paints independently; a slow materials panel cannot delay messages.
+    void refresh({chatOnly:true}).catch(e=>setSyncError(e.message));
     refresh().then(() => setSyncError("")).catch((e) => setSyncError(e.message));
   }, [current, refresh]);
   useEffect(() => {

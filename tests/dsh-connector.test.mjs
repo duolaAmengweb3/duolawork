@@ -157,10 +157,10 @@ test('a stalled DSH session poll cannot stop other sessions or their next messag
  const f=await fixture();let release;try{
   const second={...f.agent,id:'independent'};f.options.ctx.sessionController.list=async()=>({items:[f.agent,second].map(a=>({sessionId:a.id,cwd:f.project}))});f.options.ctx.sessionController.resolveAgent=async id=>({agent:id===second.id?second:f.agent});
   await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['slow']});await f.connector.bind({sessionId:second.id,workspace:f.project,grantFile:f.grantFile,channelIds:['fast']});
-  const slow=f.connector.bindings.get(f.agent.id);slow.client={...slow.client,api:()=>new Promise(r=>release=r)};
+  const slow=f.connector.bindings.get(f.agent.id);let stalled=false;slow.client={...slow.client,inbox:()=>{if(stalled)return Promise.resolve({work:[]});stalled=true;return new Promise(r=>release=r);}};
   f.setWork([{channelId:'fast',stepId:'first',status:'ready'}]);const pending=f.connector.poll();while(!f.prompts.length)await new Promise(r=>setTimeout(r,2));
-  await f.connector.pollJobs.get(second.id);f.setWork([{channelId:'fast',stepId:'second',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts.length,2);release({hasWork:false});await pending;
- }finally{release?.({hasWork:false});await f.cleanup();}
+  await f.connector.pollJobs.get(second.id);f.setWork([{channelId:'fast',stepId:'second',status:'ready'}]);await f.connector.poll();assert.equal(f.prompts.length,2);release({work:[]});await pending;
+ }finally{release?.({work:[]});await f.cleanup();}
 });
 
 test('an idle claimed native turn gets one receipt-only continuation even without new work, surviving restart',async()=>{

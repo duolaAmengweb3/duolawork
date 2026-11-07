@@ -3,6 +3,9 @@ import fs from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {privateJson} from './storage.mjs';
 import {requestJson} from './transport.mjs';
+import {watchChanges} from './change-watcher.mjs';
+const inboxes=new Map();
+const inboxReads=new Map();
 
 // Only this member's grant is loaded. Provider login files are never copied,
 // printed, replaced or used as Hub credentials.
@@ -21,13 +24,22 @@ export class CodingMemberClient{
    const next={...latest,...response,expiresAt:Date.now()+(response.expires_in||3600)*1000};await privateJson(this.file,next);return next;
   }finally{await handle.close();await fs.unlink(lock).catch(()=>{});}
  }
- async api(route,{method='GET',body,timeout=30000}={}){
+ async api(route,{method='GET',body,timeout=30000,signal}={}){
   let d=await this.credentials();if(d.expiresAt&&d.expiresAt<Date.now()+30000)d=await this.refresh(d);
-  try{return await this.request(d.endpoint+route,{method,body,token:d.access_token,timeout});}
-  catch(e){if(e.status!==401&&e.statusCode!==401)throw e;d=await this.refresh(d);return this.request(d.endpoint+route,{method,body,token:d.access_token,timeout});}
+  try{return await this.request(d.endpoint+route,{method,body,token:d.access_token,timeout,signal});}
+  catch(e){if([401,403,409].includes(e.status||e.statusCode))inboxes.delete(this.file);if(signal?.aborted||e.status!==401&&e.statusCode!==401)throw e;d=await this.refresh(d);return this.request(d.endpoint+route,{method,body,token:d.access_token,timeout,signal});}
  }
+ watch(onChange,options={}){const watcher=watchChanges({...options,request:(route,signal)=>this.api(route,{signal}),onChange:page=>{
+   if(page.inbox)inboxes.set(this.file,{value:page.inbox,at:performance.now()});
+   return onChange(page);
+ }});return {...watcher,stop:()=>{inboxes.delete(this.file);watcher.stop();}};}
+ async inbox(){const cached=inboxes.get(this.file);if(cached&&performance.now()-cached.at<2000)return cached.value;
+   if(inboxReads.has(this.file))return inboxReads.get(this.file);
+   const reading=this.api('/v2/self/inbox').catch(e=>{if(e.status!==404)throw e;return this.tool('list_work');}).finally(()=>{if(inboxReads.get(this.file)===reading)inboxReads.delete(this.file);});
+   inboxReads.set(this.file,reading);return reading;}
  async tools(){const response=await this.api('/v2/mcp',{method:'POST',body:{jsonrpc:'2.0',id:randomUUID(),method:'tools/list',params:{}}});if(response.error)throw new Error(response.error.message);return [...response.result.tools,...LOCAL_FILE_TOOLS];}
  async tool(name,args={}){
+  if(!['list_work','read_channel','read_todo'].includes(name))inboxes.delete(this.file);
   if(LOCAL_FILE_TOOLS.some(t=>t.name===name))return localFileTool(this,name,args);
   const waiting=name==='claim_work'&&args.stepId?.startsWith('inbox:after:')||name==='receive_messages'&&args.waitSeconds>0;
   return this.api('/v2/tools/'+encodeURIComponent(name),{method:'POST',body:args,...(waiting?{timeout:55000}:{})});

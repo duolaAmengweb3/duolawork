@@ -49,6 +49,8 @@ export function pendingTurnState(turn = {}, notice, native, activity = []) {
   if(turn.status!=='ready')return null;
   const problem=nativeReceptionProblem(native,turn.scopeId||turn.channelId);
   if(problem)return problem;
+  if(turn.nativeStartedAt)return {kind:'processing',label:'已开始处理',working:true,detail:'原生运行端已报告本轮开始，等待 Agent 回传。无需重发。'};
+  if(turn.nativeAcceptedAt)return {kind:'delivered',label:'原对话已收到',working:false,detail:'原生接收接口已接纳这条消息，尚未收到开始处理的回执。无需重发。'};
   const delivery=nativeTurnDelivery(turn,native);
   if(delivery?.deliveryState==='queued')return {kind:'queued',label:'排队中',working:false,detail:'这段原对话正在工作，这条消息已在原对话排队，空闲后会继续接收。无需重发。'};
   if(delivery?.deliveryState==='sent')return {kind:'delivered',label:'已送达，等待接收',working:false,detail:'消息已送入原对话，等待 Agent 确认接收。无需重发。'};
@@ -57,6 +59,7 @@ export function pendingTurnState(turn = {}, notice, native, activity = []) {
   const bound=channelId&&native?.assignments?.find(a=>a.channelId===channelId);
   const blocker=bound?.pendingStepId&&bound.pendingStepId!==turn.id&&activity.find(t=>t.id===bound.pendingStepId&&t.memberId===turn.memberId&&t.status==='active');
   if(blocker)return {kind:'queued',label:'排队中',working:false,detail:'这段原对话正在处理前一条消息，完成后会接收这条消息。无需重发。',waitingForMessageId:blocker.messageId};
+  if(turn.connectorReceivedAt)return {kind:'receiving',label:'消息已接收',working:false,detail:'连接器已保存这条消息，正在交给指定的原工作对话。无需重发。'};
   return {kind:'waiting',label:waitingLabel(notice),working:false,detail:notice?.unclaimedRetry?'尚未收到 Agent 的接收回执，系统正在重新通知。原消息已保存，无需重发。':'消息已保存，正在等待 Agent 接收。无需重发。'};
 }
 export function pendingMemberActivity(activity = [], notifications = [], nativeMembers = []) {

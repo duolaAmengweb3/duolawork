@@ -1,14 +1,14 @@
 import { isNetworkError } from "../../local/network.mjs";
 
 export function createApi({ fetchImpl = (...args) => fetch(...args), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
-  return async function api(path, body, method, {timeoutMs = 35000} = {}) {
+  return async function api(path, body, method, {timeoutMs = 35000,signal} = {}) {
     method = (method || (body === undefined ? "GET" : "POST")).toUpperCase();
     const read = method === "GET" || method === "HEAD";
     for (let attempt = 0; attempt < (read ? 2 : 1); attempt++) {
       try {
         const r = await fetchImpl("/api" + path, {
           method,
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs),
           headers: { "Content-Type": "application/json" },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         });
@@ -27,6 +27,7 @@ export function createApi({ fetchImpl = (...args) => fetch(...args), sleep = ms 
         }
         return d;
       } catch (error) {
+        if(signal?.aborted)throw error;
         if (!isNetworkError(error)) throw error;
         if (read && attempt === 0) { await sleep(300); continue; }
         const failure = new Error(read

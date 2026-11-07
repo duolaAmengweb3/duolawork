@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {subscribeNativeChanges} from '../../local/native-delivery.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -188,7 +189,8 @@ export async function run(alias,{interval=4000,managerFactory}={}){
     await privateJson(path.join(base,'last-error.json'),{at:new Date().toISOString(),message:safeError(e)});
   }finally{pending=false;}};
   const timer=setInterval(()=>void tick(),interval);await tick();
-  const close=async()=>{if(stopped)return;stopped=true;clearInterval(timer);manager.stopped=true;while(pending||commandBusy||managerStarting||catalogJob||manager.jobs.size||linkJobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
+  const stopWatching=subscribeNativeChanges(client,page=>{if(page.reset||page.changes.some(c=>['native-command','execution_binding','session-link','connection'].includes(c.kind)))void tick();});
+  const close=async()=>{if(stopped)return;stopped=true;stopWatching();clearInterval(timer);manager.stopped=true;while(pending||commandBusy||managerStarting||catalogJob||manager.jobs.size||linkJobs.size)await new Promise(r=>setTimeout(r,100));await manager.stop();await client.api('/v2/self/runtime',{method:'POST',body:{action:'release',runtimeId:config.runtimeId,instanceId}}).catch(()=>{});await lock.close();await fs.rm(lockFile,{force:true});};
   process.once('SIGTERM',()=>void close());process.once('SIGINT',()=>void close());return{manager,close,tick};
 }
 if(process.argv[1]&&await fs.realpath(process.argv[1]).catch(()=>'')===entry){const [command,alias]=process.argv.slice(2);(async()=>{if(command==='setup'){let raw='';for await(const c of process.stdin){raw+=c;if(raw.length>10000)throw Error('接入参数过大');}console.log(JSON.stringify(await setup(JSON.parse(raw))));}else if(command==='run')await run(alias);else throw Error('请使用软件复制的接入说明');})().catch(e=>{console.error('DuolaWork: '+safeError(e));process.exitCode=1;});}

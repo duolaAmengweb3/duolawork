@@ -1,3 +1,4 @@
+import {isNetworkError} from './network.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -7,6 +8,7 @@ import {promisify} from 'node:util';
 import {privateJson} from './storage.mjs';
 import {requestJson} from './transport.mjs';
 import {CodingMemberClient} from './coding-client.mjs';
+import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import {NativeAgent,findExecutable,safeError} from './native-agent.mjs';
 import {NativeRuntime} from './native-runtime.mjs';
 import {CodexWorkingHost} from './codex-working-host.mjs';
@@ -26,7 +28,7 @@ export function rememberAccount(record,auth){
 }
 export class CodingManager{
  constructor({config,dataDir,maintenance=false,request=requestJson,agentFactory,runtime,interval=5000}){
-  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.sessionOperations=new Map();this.dispatchHolds=new Set();this.nativeUsedAt=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();
+  Object.assign(this,{config,dataDir,request,agentFactory,interval});this.runtime=runtime||new NativeRuntime(dataDir);this.workingHost=new CodexWorkingHost();this.file=path.join(dataDir,'native-coding.json');this.records={};this.jobs=new Map();this.sessionOperations=new Map();this.dispatchHolds=new Set();this.nativeUsedAt=new Map();this.agents=new Map();this.approvals=new Map();this.hubToolNames=new Map();this.stopped=maintenance;this.writes=Promise.resolve();this.watches=new Map();this.dispatching=new Set();
  }
  async load(){try{this.records=JSON.parse(await fs.readFile(this.file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw new Error('本机接入记录无法读取，原文件保留');}
   for(const r of Object.values(this.records)){
@@ -46,7 +48,7 @@ export class CodingManager{
   }
  }
  workingHostFor(r){return r.engine==='antigravity-cli'?(this.antigravityCliHost??=new AntigravityCliHost(this.dataDir)):r.engine==='gemini-cli'?(this.geminiProjects??=new GeminiCliProjects()):r.engine==='antigravity'?(this.antigravityWorkingHost??=new AntigravityDesktopHost(this.dataDir)):this.workingHost;}
- async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value));this.writes=next;await next;}
+ async save(){const value=structuredClone(this.records);for(const r of Object.values(value))delete r.authorizationUrl;const next=this.writes.catch(()=>{}).then(()=>privateJson(this.file,value,{durable:true}));this.writes=next;await next;}
  get busy(){return this.sessionOperations.size>0||Object.values(this.records).some(r=>['installing','connecting','working'].includes(r.status)||Object.values(r.executions||{}).some(s=>s.inFlight&&s.status==='working'));}
  rawStatus(){return{members:Object.values(this.records).map(({memberId,engine,status,message,cwd,sessions,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,chatBindings,sourceReady,manualAssignments,accountLabel,inFlight,nativeDeliveries})=>({memberId,engine,status,message,cwd,sessionCount:new Set(Object.values(sessions||{})).size,lastRunAt,lastCompletedAt,lastReceiptAt,enabled,authorizationUrl,downloadedBytes,totalBytes,permissionMode,sourceReady,manualAssignments,accountLabel,pendingReply:!!inFlight,pendingStepId:inFlight?.stepId||null,deliveryState:inFlight?nativeDeliveries?.[inFlight.stepId]?.status||null:null,assignments:publicAssignments({chatBindings})})),approvals:[...this.approvals.values()].map(({id,memberId,title,detail,questions})=>({id,memberId,title,detail,questions})),running:!this.stopped};}
  status(){const result=this.rawStatus();for(const item of result.members){const r=this.records[item.memberId],slots=Object.values(r.executions||{}),flight=slots.filter(s=>s.inFlight);
@@ -138,21 +140,31 @@ export class CodingManager{
   if(!r.executionSessionId)return this.sessionOperations.has(r.memberId)||[...this.dispatchHolds].some(h=>h.memberId===r.memberId);
   return [...this.dispatchHolds].some(h=>h.memberId===r.memberId&&(h.sessions.has(r.executionSessionId)||Object.hasOwn(r.chatBindings||{},h.channelId)));
  }
+ syncWatches(){
+  if(!this.timer)return;
+  for(const [id,stop] of this.watches)if(!this.records[id]?.enabled){stop();this.watches.delete(id);}
+  for(const r of Object.values(this.records))if(r.enabled&&r.grantFile&&!this.watches.has(r.memberId))this.watches.set(r.memberId,subscribeNativeChanges(this.client(r),()=>{void this.tick().catch(()=>{});}));
+ }
  async tickExecutions(r){
   if(r.inFlight||this.jobs.has(r.memberId))return;
+  if(this.dispatching.has(r.memberId)){r.dispatchAgain=true;return;}
+  this.dispatching.add(r.memberId);
+  const launched=[];
+  try{
   await this.syncExecutionBindings(r);
   const states=this.executionRecords(r);
-  const {work}=await this.client(r).tool('list_work');
-  const launched=[];
+  const {work}=await readNativeInbox(this.client(r));
   for(const state of states){const key=executionKey(state);if(this.jobs.has(key)||this.dispatchBlocked(state))continue;
    if(state.inFlight){const job=this.reconcileOriginal(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);continue;}
    if(!['idle','needs_review'].includes(state.status)||!work.some(w=>w.status==='ready'&&w.channelId&&state.chatBindings[w.channelId]&&(!state.lastFailure?.stepId||w.stepId!==state.lastFailure.stepId)))continue;
-   const job=this.check(state).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);
+   const job=this.check(state,{work}).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);launched.push(job);
   }
+  }finally{this.dispatching.delete(r.memberId);if(r.dispatchAgain){delete r.dispatchAgain;if(!this.stopped)void this.tickExecutions(r).catch(()=>{});}}
   await Promise.allSettled(launched);
  }
  async tick(){
   if(this.stopped)return;
+  this.syncWatches();
   // Hub may restart while the independently running native conversation keeps
   // working. Reconcile its durable delivery without starting or replaying it.
   const reconciled=new Set();
@@ -228,6 +240,7 @@ export class CodingManager{
    const client=this.client(r),{work}=await client.tool('list_work');
    if(this.stopped||!r.enabled||r.inFlight!==flight)return;
    const pending=work.find(w=>w.stepId===flight.stepId),delivery=r.nativeDeliveries?.[flight.stepId];
+   if(pending?.status==='ready'&&flight.deliveryPhase==='received'&&!delivery){await this.check(r,{recover:true});return;}
    if(!pending){
     await this.settleOriginal(r,client);
    }else if(pending.status==='claimed'){
@@ -242,13 +255,15 @@ export class CodingManager{
   }catch(e){r.status=[401,403].includes(e.status)?'needs_review':'syncing';r.message=safeError(e);}
   await this.save();
  }
- async check(r,{recover=false}={}){
+ async check(r,{recover=false,work:providedWork}={}){
   try{
-   const client=this.client(r),signal=await client.api('/v2/signal',{timeout:15000});if(!r.enabled||this.stopped||this.dispatchBlocked(r)||(!signal.hasWork&&!recover))return;
-   const {work}=await client.tool('list_work'),first=recover?work.find(w=>w.stepId===r.inFlight?.stepId):work.find(w=>w.status==='ready'&&(!r.lastFailure?.stepId||w.stepId!==r.lastFailure.stepId)&&(!r.manualAssignments||(w.channelId?r.chatBindings?.[w.channelId]:r.verificationSessionId)));
+   const client=this.client(r);if(!r.enabled||this.stopped||this.dispatchBlocked(r))return;
+   const {work}=providedWork?{work:providedWork}:await readNativeInbox(client),first=recover?work.find(w=>w.stepId===r.inFlight?.stepId):work.find(w=>w.status==='ready'&&(!r.lastFailure?.stepId||w.stepId!==r.lastFailure.stepId)&&(!(r.manualAssignments||r.executionSessionId)||(w.channelId?r.chatBindings?.[w.channelId]:r.verificationSessionId)));
    if(this.dispatchBlocked(r))return;
    if(!first){r.inFlight=null;r.status='idle';r.message='已检查原回执，继续接收消息';await this.save();return;}
-   const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key};r.lastRunAt=r.inFlight.at;r.status='working';r.message='原生 Agent 正在处理消息';await this.save();
+   const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key,delivery:first.delivery,deliveryPhase:'received'};r.lastRunAt=r.inFlight.at;r.status='working';r.message='消息已收到，正在准备原工作对话';await this.save();
+   await deliveryReceipt(client,first,binding?.sessionId);
+   r.inFlight.deliveryPhase='preparing';await this.save();
    if(r.engine==='antigravity-cli'&&binding){
     const host=this.workingHostFor(r);
     if(await host.attached(binding.sessionId)){
@@ -268,7 +283,8 @@ export class CodingManager{
    const fallbackInstruction=toolFallback?' 若原会话缓存了旧工具列表而缺少本次所需工具，不换会话、不扫描凭证。直接使用本环境连接器：'+toolFallback+' list_tools 查看最新工具；'+toolFallback+' call <工具名> <JSON参数> 调用。这是同一成员、同一群的已授权工具入口。':'';
    const prompt=`你是 Agent Hub 成员 ${r.memberId}，使用你自己的原生工具、模型、规则和本会话记忆。Hub 工具来自${r.engine==='codex'?' hub_ 前缀动态工具':' MCP hub_'+r.memberId.slice(-16)}。直接调用已提供的工具，不需要先通过终端扫描工具目录。常用签名：list_work({})；claim_work({requestId,stepId,channelId?})；post_message({requestId,channelId,turnId,body,mentions?})；submit_work({requestId,attemptId,lease,items:[{title,body}]} )。本轮只处理 stepId=${first.stepId}，channelId=${first.channelId||'无'}。直接调用 claim_work，使用新的 requestId 和 ${JSON.stringify({stepId:first.stepId,...(first.channelId?{channelId:first.channelId}:{})})}；领取结果即真实工作，无需先查 list_work。${recover?'上次运行中断：检查原领取和已经完成的操作，沿用原 attemptId/lease 继续未完成部分，不要重做副作用；不清楚时回报具体问题。':'用 claim_work 领取并遵循完整指令。'}普通群消息直接沟通，不擅自建任务或文档。使用所需原生工具完成后，必须调用 post_message 或 submit_work 回到这个 Hub 会话；只在原生终端输出不算回群。验证任务严格提交要求的内容，不自称验证通过。不轮询空跑、不改提供方配置、不替其他成员领取、不回显凭证。${fallbackInstruction}`;
    if(r.engine==='antigravity-cli'){r.managedNativePid=agent.rpc.child?.pid;r.managedNativeSessionIds=[...agent.sessions.keys()];await this.save();}
-   const result=await agent.run({session,prompt});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
+   r.inFlight.deliveryPhase='dispatching';await this.save();
+   const result=await agent.run({session,prompt:prompt+' '+CONTINUE_PRIMARY_WORK,onStarted:()=>deliveryReceipt(client,first,session.id,'started').catch(()=>{}),onPublicOutput:()=>deliveryReceipt(client,first,session.id,'public_output').catch(()=>{})});if(result.sessionId){r.sessions[key]=result.sessionId;if(binding)binding.sessionId=result.sessionId;}
    const remaining=await client.tool('list_work');
    if(r.engine==='antigravity-cli'&&r.nativeLifecycle==='stop-hook-v1')await this.waitForNativeReceipt(r,client,first,agent,{sessionId:session.id});
    else if(remaining.work.some(w=>w.stepId===first.stepId)){
@@ -279,7 +295,7 @@ export class CodingManager{
     else throw new Error('原生运行结束，但 Hub 未收到该工作回复；原会话保留，请继续检查');
    }
    const status=await client.api('/v2/self/status');r.lastReceiptAt=new Date().toISOString();r.lastCompletedAt=r.lastReceiptAt;r.inFlight=null;r.status='idle';r.message=status.complete?'已接入，正在后台接收消息':'本轮已回传，连接验证仍待完成';await this.save();
-  }catch(e){r.message=safeError(e);if(e.code!=='native_queued')r.lastFailure={stepId:r.inFlight?.stepId,message:r.message,at:new Date().toISOString()};if(e.code==='native_queued')r.status='syncing';else if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';
+  }catch(e){if(r.inFlight?.deliveryPhase==='received'&&(isNetworkError(e)||e.name==='HubNetworkError'||[502,503,504].includes(e.status))){r.receivedDelivery=r.inFlight;r.inFlight=null;r.status='idle';r.message='接收回执正在自动补传，原消息已保存，尚未启动工作';await this.save();return;}r.message=safeError(e);if(e.code!=='native_queued')r.lastFailure={stepId:r.inFlight?.stepId,message:r.message,at:new Date().toISOString()};if(e.code==='native_queued')r.status='syncing';else if(r.inFlight||[401,403].includes(e.status))r.status='needs_review';
    // A managed native execution ending in error is not a successful reply.
    if(r.inFlight?.stepId.startsWith('turn_')&&!r.nativeDeliveries?.[r.inFlight.stepId]&&e.code!=='native_queued')try{await this.client(r).api('/v2/self/conversation-state',{method:'POST',body:{requestId:randomUUID(),turnId:r.inFlight.stepId,state:'unreachable'}});}catch{}
    await this.save();}
@@ -349,15 +365,16 @@ export class CodingManager{
  async sessionOptions(memberId){const r=this.records[memberId];let native=[],projects=[],existingHint='';if(r)try{const host=this.workingHostFor(r);if(r.engine==='antigravity')await host.start({launch:false});({items:native,projects=[]}=r.engine==='antigravity-cli'?await this.cliSessionOptions(r):await host.sessions());}catch(e){existingHint='原项目暂不可用：'+safeError(e);}
   const owned=Object.values(r?.chatBindings||{}).map(b=>({id:b.sessionId,title:b.title||'原工作会话',workspace:b.workspace,mode:b.mode,createdAt:b.createdAt}));const otherSessions=new Set(Object.values(this.records).filter(v=>v.memberId!==memberId&&v.enabled).flatMap(v=>Object.values(v.chatBindings||{}).map(b=>b.sessionId)));return {existingHint,projects,items:[...new Map([...owned,...native.filter(s=>!otherSessions.has(s.id))].map(s=>[s.id,s])).values()]};}
  async runExisting(r,first,binding,client){
+  r.inFlight.deliveryPhase='dispatching';await this.save();
   const key=first.channelId||Object.entries(r.chatBindings).find(([,b])=>b.sessionId===r.verificationSessionId)?.[0];if(!key)throw Error('请选择负责连接验证的工作会话');
   r.nativeDeliveries??={};const delivery=r.nativeDeliveries[first.stepId];
   if(delivery&&delivery.status!=='sent')throw Error('原会话发送结果待确认，请查看原会话；未重复执行');
   const q=v=>"'"+v.replaceAll("'","'\"'\"'")+"'",helper=['node',path.join(here,'coding-session-tools.mjs'),this.file,r.memberId,key].map(q).join(' ');
-  const prompt='DuolaWork collaboration '+first.stepId+'\nHub 有一条发给你这个原工作会话的消息，保留原项目、模型、工具和记忆。Hub 工具命令：'+helper+'。先运行命令加 claim_step '+first.stepId+'，按领取返回的真实指令完成；只处理这个工作。其他工具用 call <工具名> <JSON>，定义可用 list_tools 查询。普通消息必须用 post_message({requestId,channelId,turnId,body,mentions?}) 回到原 Hub 聊天；验证用 submit_work，不能只在原界面回答。回传成功后结束本轮，下一条消息由连接器唤醒；不要自行领取 follow-up、inbox:after 或循环监听。不扫描登录资料、不读其他会话、不自动创建任务文档或分工。';
+  const prompt='DuolaWork collaboration '+first.stepId+'\nHub 有一条发给你这个原工作会话的消息，保留原项目、模型、工具和记忆。Hub 工具命令：'+helper+'。先运行命令加 claim_step '+first.stepId+'，按领取返回的真实指令完成；只处理这个工作。其他工具用 call <工具名> <JSON>，定义可用 list_tools 查询。普通消息必须用 post_message({requestId,channelId,turnId,body,mentions?}) 回到原 Hub 聊天；验证用 submit_work，不能只在原界面回答。'+CONTINUE_PRIMARY_WORK+'不扫描登录资料、不读其他会话、不自动创建任务文档或分工。';
   const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
   try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
-  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt,isCompleted:async()=>{if(!first.stepId.startsWith('turn_'))return false;const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));return ['done','silent'].includes(state.status);}});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
+  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt,isCompleted:async()=>{if(!first.stepId.startsWith('turn_'))return false;const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));return ['done','silent'].includes(state.status);}});r.nativeDeliveries[first.stepId].status='sent';await this.save();await deliveryReceipt(client,first,binding.sessionId,'accepted').catch(()=>{});}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
   const deadline=Date.now()+20*60000;
   while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');const pending=work.find(w=>w.stepId===first.stepId);
    if(!pending){if(await this.settleOriginal(r,client)){await this.save();return;}}
@@ -418,5 +435,5 @@ export class CodingManager{
  async disconnect(memberId){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再解除连接');const r=this.records[memberId];if(!r)return;r.enabled=false;r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';delete r.authorizationUrl;for(const [id,a] of this.approvals)if(a.memberId===memberId){clearTimeout(a.timer);a.reject(new Error('Hub 连接已解除'));this.approvals.delete(id);}await this.agents.get(memberId)?.stop();this.agents.delete(memberId);for(const [key,agent]of this.agents)if(key.startsWith(memberId+':')){await agent.stop();this.agents.delete(key);}await Promise.allSettled([...this.jobs].filter(([key])=>key===memberId||key.startsWith(memberId+':')).map(([,job])=>job));r.status='disconnected';r.message='Hub 连接已解除，原生登录和会话历史保留';await this.save();}
  async permissions({memberId,mode}){if(this.sessionOperations.has(memberId))throw new Error('正在连接对话，请稍等完成后再调整权限');const r=this.records[memberId];if(!r||!['full','ask'].includes(mode))throw new Error('权限选项不正确');if(r.inFlight||Object.values(r.executions||{}).some(s=>s.inFlight))throw new Error('本轮工作结束后即可调整权限');await this.jobs.get(memberId);if(r.inFlight||Object.values(r.executions||{}).some(s=>s.inFlight))throw new Error('本轮工作结束后即可调整权限');r.permissionMode=mode;for(const [key,agent]of this.agents)if(key===memberId||key.startsWith(memberId+':')){await agent.stop();this.agents.delete(key);}await this.save();return this.status();}
  async resume({memberId}){const r=this.records[memberId];if(!r)throw new Error('本机没有此成员');if(this.jobs.has(memberId))return this.status();r.enabled=true;for(const state of this.executionRecords(r))if(state.inFlight&&state.status==='needs_review'&&!this.jobs.has(executionKey(state))){const key=executionKey(state),job=this.check(state,{recover:true}).finally(()=>this.jobs.delete(key));this.jobs.set(key,job);}if(r.inFlight){this.launch(r,()=>this.check(r,{recover:true}));}else if(['disconnected','needs_review'].includes(r.status)){return this.connect({memberId,engine:r.engine});}else{r.status='idle';r.message='继续接收消息';await this.save();}return this.status();}
- async stop(){this.stopped=true;clearInterval(this.timer);this.timer=null;for(const a of this.approvals.values()){clearTimeout(a.timer);a.reject(new Error('本机执行端停止，未批准操作'));}this.approvals.clear();await Promise.allSettled([...this.agents.values()].map(a=>a.stop()));this.agents.clear();await Promise.allSettled([...this.jobs.values()]);await this.save();}
+ async stop(){this.stopped=true;for(const stop of this.watches.values())stop();this.watches.clear();clearInterval(this.timer);this.timer=null;for(const a of this.approvals.values()){clearTimeout(a.timer);a.reject(new Error('本机执行端停止，未批准操作'));}this.approvals.clear();await Promise.allSettled([...this.agents.values()].map(a=>a.stop()));this.agents.clear();await Promise.allSettled([...this.jobs.values()]);await this.save();}
 }

@@ -1,3 +1,4 @@
+import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -45,12 +46,12 @@ export function nativeSession(id,s){
 }
 
 export class AntigravitySidecar {
- constructor({stateFile,native=new AntigravityNative(),clientFactory=f=>new CodingMemberClient(f),pollMs=3000}={}){Object.assign(this,{stateFile,native,clientFactory,pollMs});this.bindings=new Map();this.ready=false;this.closed=false;this.writes=Promise.resolve();this.bindingWrites=Promise.resolve();}
- async save(){const s=structuredClone(this.state);this.writes=this.writes.catch(()=>{}).then(()=>privateJson(this.stateFile,s));return this.writes;}
+ constructor({stateFile,native=new AntigravityNative(),clientFactory=f=>new CodingMemberClient(f),pollMs=3000}={}){Object.assign(this,{stateFile,native,clientFactory,pollMs});this.bindings=new Map();this.watches=new Map();this.pollJobs=new Map();this.ready=false;this.closed=false;this.writes=Promise.resolve();this.bindingWrites=Promise.resolve();}
+ async save(){const s=structuredClone(this.state);this.writes=this.writes.catch(()=>{}).then(()=>privateJson(this.stateFile,s,{durable:true}));return this.writes;}
  async start(){
   if((await fs.stat(this.stateFile)).mode&0o077)throw Error('Hub Sidecar state must be private');
   this.state=JSON.parse(await fs.readFile(this.stateFile));if(this.state.controlToken?.length<32)throw Error('Missing Hub control token');
-  this.state.deliveries??={};
+  this.state.deliveries??={};this.state.received??={};
   for(const d of Object.values(this.state.deliveries))if(d.status==='sending')d.status='uncertain';
   for(const b of this.state.bindings||[])this.bindings.set(b.sessionId,{...b,client:this.clientFactory(b.grantFile),toolCalls:[]});
   this.server=http.createServer((req,res)=>this.handle(req,res));await new Promise((r,j)=>{this.server.once('error',j);this.server.listen(0,'127.0.0.1',r);});
@@ -71,25 +72,35 @@ export class AntigravitySidecar {
  }
  publicBinding(b){return{sessionId:b.sessionId,memberId:b.memberId,channelIds:b.channelIds,verification:b.verification,workspace:b.workspace,toolCalls:b.toolCalls,dispatchedStepIds:Object.values(this.state.deliveries).filter(d=>d.sessionId===b.sessionId).map(d=>d.stepId),lastError:b.lastError,waitingForNative:b.waitingForNative||false};}
  async saveBindings(){this.state.bindings=[...this.bindings.values()].map(({sessionId,workspace,grantFile,memberId,channelIds,verification})=>({sessionId,workspace,grantFile,memberId,channelIds,verification}));await this.save();}
- async unbind(sessionId){this.bindings.delete(sessionId);await this.saveBindings();return{disconnected:true,nativeSessionRetained:true};}
+ async unbind(sessionId){const b=this.bindings.get(sessionId);this.bindings.delete(sessionId);if(b&&![...this.bindings.values()].some(x=>x.memberId===b.memberId)){this.watches.get(b.memberId)?.();this.watches.delete(b.memberId);}await this.saveBindings();return{disconnected:true,nativeSessionRetained:true};}
  async poll(){
-  if(this.closed||this.polling||!this.ready)return;this.polling=true;
-  try{for(const b of this.bindings.values())try{
-   if(!(await b.client.api('/v2/signal',{timeout:15000})).hasWork){b.lastError=null;continue;}
-   const {work}=await b.client.tool('list_work');if(work.some(w=>this.state.deliveries[b.memberId+':'+w.stepId]))continue;const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w));if(!next)continue;
+  if(this.closed||!this.ready)return;
+  for(const b of this.bindings.values())if(!this.watches.has(b.memberId))this.watches.set(b.memberId,subscribeNativeChanges(b.client,()=>{void this.poll();}));
+  const jobs=[];
+  for(const b of this.bindings.values()){
+    if(this.pollJobs.has(b.sessionId)){b.pollAgain=true;continue;}
+    const job=(async()=>{do{b.pollAgain=false;await this.pollBinding(b);}while(b.pollAgain&&!this.closed&&this.bindings.get(b.sessionId)===b);})().finally(()=>this.pollJobs.delete(b.sessionId));this.pollJobs.set(b.sessionId,job);jobs.push(job);
+  }
+  await Promise.allSettled(jobs);
+ }
+ async pollBinding(b){try{
+   const {work}=await readNativeInbox(b.client);
+   let removed=false;for(const key of Object.keys(this.state.received))if(key.startsWith(b.memberId+':')&&!work.some(w=>key===b.memberId+':'+w.stepId)){delete this.state.received[key];removed=true;}if(removed)await this.save();
+   if(work.some(w=>acceptsWork(b,w)&&this.state.deliveries[b.memberId+':'+w.stepId]?.sessionId===b.sessionId))return;const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w));if(!next)return;
    const key=b.memberId+':'+next.stepId,previous=this.state.deliveries[key];
-   if(previous){if(previous.status==='uncertain')b.lastError='上次发送结果尚未确认，未重复执行；请查看原会话';continue;}
+   if(previous){if(previous.status==='uncertain')b.lastError='上次发送结果尚未确认，未重复执行；请查看原会话';return;}
+   if(next.delivery){this.state.received[key]=next.delivery;await this.save();await deliveryReceipt(b.client,next,b.sessionId);}
    const s=(await this.sessions()).items.find(s=>s.id===b.sessionId);if(!s)throw Error('原桌面会话暂不可用，未新建替代会话');
    if(!s.workspace||await fs.realpath(s.workspace)!==await fs.realpath(b.workspace))throw Error('原会话的项目发生变化，未向其他项目发送消息');
-   if(s.running){b.waitingForNative=true;continue;}
-   b.waitingForNative=false;if(this.closed||this.bindings.get(b.sessionId)!==b)continue;
+   if(s.running){b.waitingForNative=true;return;}
+   b.waitingForNative=false;if(this.closed||this.bindings.get(b.sessionId)!==b)return;
    const helper=path.join(path.dirname(fileURLToPath(import.meta.url)),'antigravity-tools.mjs');
    const quote=v=>"'"+v.replaceAll("'","'\"'\"'")+"'";
    const command=['node',helper,this.stateFile,b.sessionId].map(quote).join(' ');
    const prompt='Hub 有一条发给你的真实消息。你仍是当前原生会话，保留原项目、规则、工具和已有记忆。Hub 工具入口：'+command+'。先执行该命令加 claim_step '+next.stepId+'（合并 list_work 核对和 claim_work 领取），按返回的真实指令工作，channelId='+(next.channelId||'')+'。其他工具用 call <工具名> <JSON参数>。普通聊天回传：post_message({requestId,channelId,turnId,body,mentions?})；验证或交付：submit_work({requestId,attemptId,lease,items:[{title,body}]} )。文档/事项/会议等工具需要时用 list_tools 查看定义。写入带稳定 requestId。不读或输出凭证，不读其他会话日志，不改提供方设置，不擅自创建文档、任务或分工。只在原界面回答不算回到 Hub。';
    this.state.deliveries[key]={status:'sending',sessionId:b.sessionId,stepId:next.stepId,at:new Date().toISOString()};await this.save();
-   try{await this.native.send(b.sessionId,prompt);this.state.deliveries[key].status='sent';b.lastError=null;}catch{this.state.deliveries[key].status='uncertain';b.lastError='原会话消息发送结果待确认，未自动重复执行';}await this.save();
-  }catch(e){b.lastError=safeError(e);}}finally{this.polling=false;}
+   try{await this.native.send(b.sessionId,prompt+' '+CONTINUE_PRIMARY_WORK);await deliveryReceipt(b.client,next,b.sessionId,'accepted').catch(()=>{});this.state.deliveries[key].status='sent';b.lastError=null;}catch{this.state.deliveries[key].status='uncertain';b.lastError='原会话消息发送结果待确认，未自动重复执行';}await this.save();
+  }catch(e){b.lastError=safeError(e);}
  }
  async handle(req,res){
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
@@ -128,7 +139,7 @@ export class AntigravitySidecar {
    return send(404,{error:'Unknown route'});
   }catch(e){send(400,{error:safeError(e)});}
  }
- async stop(){this.closed=true;clearInterval(this.timer);if(this.server)await new Promise(r=>{this.server.close(r);this.server.closeIdleConnections();});await this.writes;}
+ async stop(){this.closed=true;for(const stop of this.watches.values())stop();this.watches.clear();clearInterval(this.timer);if(this.server)await new Promise(r=>{this.server.close(r);this.server.closeIdleConnections();});await this.writes;}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const sidecar=await new AntigravitySidecar({stateFile:process.argv[2]}).start();

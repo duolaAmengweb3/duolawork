@@ -337,7 +337,7 @@ async function pendingConversationTurns(tx, options) {
   return (await Promise.all(['ready', 'stalled'].map(status =>
     tx.list('channel_turn', { ...options, status })))).flat().filter(receivableTurn);
 }
-export async function conversationWork(repo, identity, memberId) {
+export async function conversationWork(repo, identity, memberId,{delivery=false}={}) {
   const connection=await repo.get("connection", memberId, false);if(connection?.status!=="verified")return [];
   const turns = (
     await Promise.all(
@@ -366,11 +366,47 @@ export async function conversationWork(repo, identity, memberId) {
       kind: "conversation",
       messageId: turn.messageId,
       deliveryAttempt: turn.recoveryCount||0,
+      createdAt:turn.createdAt,
+      ...(delivery?{delivery:{turnId:turn.id,channelId:turn.scopeId,attempt:turn.recoveryCount||0,message:await repo.get('channel_message',turn.messageId,false)}}:{}),
       instruction:
         "这是群聊新消息，不是正式任务。领取后读取上下文，自主决定回复、@、用工具或静默。",
     });
   }
-  return result.sort((a, b) => a.stepId.localeCompare(b.stepId));
+  return result.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||'')||a.stepId.localeCompare(b.stepId));
+}
+
+// Transport receipts do not acquire a model lease. The receiving process saves
+// the actual message locally before acknowledging, with the selected-session and
+// recovery-attempt fence checked again here. Late observations cannot revive work.
+export async function receiveDelivery(repo,actor,args){
+  const existing=await repo.get('channel_turn',required(args.turnId,'消息通知'));
+  if(!actor.memberId||existing.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
+  const sessionKey=await digest(required(args.sessionId,'原工作会话',200));
+  const currentConnection=await repo.get('connection',actor.memberId);
+  if(await executionResource(repo,currentConnection,existing.scopeId)!=='native-session:'+actor.memberId+':'+sessionKey)fail('session_changed','会话选择已变更，旧回执未应用',409);
+  if(args.attempt!==(existing.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
+  if(args.sourceVersion!==((await repo.get('channel_message',existing.messageId)).version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
+  return repo.transact(required(args.requestId,'回执编号',180),{...args,actor},async tx=>{
+    const turn=await tx.get('channel_turn',required(args.turnId,'消息通知'));
+    if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
+    const channel=await tx.get('channel',turn.scopeId),connection=await tx.get('connection',actor.memberId);
+    await scoped(channel,actor,tx);
+    if(connection.status!=='verified')fail('disconnected','接收连接已解除',403);
+    if(await executionResource(tx,connection,channel.id)!=='native-session:'+actor.memberId+':'+await digest(required(args.sessionId,'原工作会话',200)))fail('session_changed','会话选择已变更，旧回执未应用',409);
+    if(args.attempt!==(turn.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
+    const message=await tx.get('channel_message',turn.messageId);
+    if(args.sourceVersion!==(message.version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
+    if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
+    if(!['ready','active'].includes(turn.status))return {applied:false,status:turn.status};
+    const field={received:'connectorReceivedAt',accepted:'nativeAcceptedAt',started:'nativeStartedAt',public_output:'firstPublicOutputAt'}[args.phase];
+    const sessionKey=await digest(args.sessionId);
+    if(turn.receiptAttempt!==args.attempt||turn.receiptSessionKey!==sessionKey||turn.receiptSourceVersion!==args.sourceVersion){
+      for(const key of ['connectorReceivedAt','nativeAcceptedAt','nativeStartedAt','firstPublicOutputAt'])delete turn[key];
+    }
+    if(args.phase!=='received'&&!turn.connectorReceivedAt)fail('receipt_required','需先保存并回传消息接收回执',409);
+    if(!turn[field])tx.put('channel_turn',{...turn,[field]:tx.now,receiptSessionKey:sessionKey,receiptAttempt:args.attempt,receiptSourceVersion:args.sourceVersion});
+    return {applied:true,phase:args.phase,at:turn[field]||tx.now};
+  });
 }
 export async function claimConversation(
   repo,
@@ -542,6 +578,13 @@ export async function readChannel(repo, identity, actor, args) {
     const parent=await repo.get('channel_message',m.replyTo,false),source=await deliveryReviewSource(repo,parent);
     if(source&&source.id!==parent?.id){m.replyTo=source.id;m.replySnapshot={body:source.body.slice(0,400),version:source.version||1,authorId:source.authorId};}
   }));
+  if(args.view==='chat'){
+    const [turns,notifications,coordination,deliveryIssues]=await Promise.all(['channel_turn','outbox','channel_coordination','channel_delivery_issue'].map(kind=>repo.list(kind,{scope:channel.id,order:'recent',limit:100})));
+    return {channel,members:channel.memberIds.map(memberId=>({id:memberId,name:activeMember(identity,memberId)?.name||'已停用成员',isCoordinator:channel.coordinatorId===memberId})),
+      messages:rows.slice(0,50).reverse(),before:rows.length>50?rows[49].number:null,
+      activity:turns.filter(t=>actor.owner||t.memberId===actor.memberId).map(({lease,resourceKey,...t})=>t),
+      notifications:actor.owner?notifications.map(({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})=>({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})):[],coordination,deliveryIssues};
+  }
   const [documents, decisions, knowledge, meetings, tasks, suggestions, turns] =
     await Promise.all(
       [
@@ -556,6 +599,10 @@ export async function readChannel(repo, identity, actor, args) {
         repo.list(kind, { scope: channel.id, order: "recent", limit: kind==='channel_meeting'?101:100 }),
       ),
     );
+  const [files,handoffs,folders,placements,links,notifications,coordination,deliveryIssues]=await Promise.all([
+    repo.list('shared_file',{scope:channel.id,limit:100,order:'recent'}),repo.list('shared_handoff',{scope:channel.id,limit:100,order:'recent'}),
+    allFolders(repo,channel.id),allPlacements(repo,channel.id),repo.list('channel_link',{scope:channel.id,limit:100,order:'recent'}),
+    actor.owner?repo.list('outbox',{scope:channel.id,limit:100,order:'recent'}):[],repo.list('channel_coordination',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_delivery_issue',{scope:channel.id,limit:100,order:'recent'})]);
   return {
     channel,
     collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
@@ -567,25 +614,19 @@ export async function readChannel(repo, identity, actor, args) {
     messages: rows.slice(0, 50).reverse(),
     before: rows.length > 50 ? rows[49].number : null,
     documents:documents.filter(d=>d.status!=="deleted"),
-    files: (await repo.list("shared_file", {scope:channel.id,limit:100,order:"recent"})).filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
-    handoffs: await repo.list("shared_handoff", {scope:channel.id,limit:100,order:"recent"}),
+    files:files.filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
+    handoffs,
     decisions,
-    folders: await allFolders(repo,channel.id),
-    placements: await allPlacements(repo,channel.id),
-    links: (await repo.list("channel_link", {scope:channel.id,limit:100,order:"recent"})).filter(x=>x.status!=="deleted"),
+    folders,
+    placements,
+    links:links.filter(x=>x.status!=="deleted"),
     knowledge: (await Promise.all(knowledge.filter(k=>k.status!=="deleted"&&(actor.owner||k.status==="approved")).map(async k=>actor.owner||await sourcesAvailable(repo,actor,k)?publicMemory(k):null))).filter(Boolean),
     meetings: meetings.slice(0,100).map(m => publicMeeting(m, actor)).filter(Boolean),
     meetingsCursor:actor.owner&&meetings.length>100?btoa(JSON.stringify({updatedAt:meetings[99].updatedAt,id:meetings[99].id})):null,
     tasks,
     suggestions,
     notifications: actor.owner
-      ? (
-          await repo.list("outbox", {
-            scope: channel.id,
-            order: "recent",
-            limit: 100,
-          })
-        ).map(
+      ? notifications.map(
           ({
             id,
             stepId,
@@ -623,8 +664,7 @@ export async function readChannel(repo, identity, actor, args) {
           }),
         )
       : [],
-    coordination: await repo.list('channel_coordination',{scope:channel.id,order:'recent',limit:100}),
-    deliveryIssues: await repo.list('channel_delivery_issue',{scope:channel.id,order:'recent',limit:100}),
+    coordination,deliveryIssues,
     activity: actor.owner
       ? turns.map(({ lease, resourceKey, ...t }) => t)
       : turns

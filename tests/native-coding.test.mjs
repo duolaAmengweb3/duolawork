@@ -38,8 +38,8 @@ test('native turn startup rejection does not leave an unhandled completion or bu
 });
 test('idle signal polling never starts a model or claims work; failed reads do not create replies',async t=>{
  const dir=await temp(t),file=path.join(dir,'grant.json');await privateJson(file,{memberId:'member_test',endpoint:'https://hub.test',access_token:'private-test'});let starts=0;const routes=[];
- const manager=new CodingManager({config:{},dataDir:dir,request:async url=>{routes.push(url);return{hasWork:false};},agentFactory:()=>{starts++;}});
- manager.records.member_test={memberId:'member_test',engine:'codex',enabled:true,status:'idle',grantFile:file};await manager.tick();assert.equal(starts,0);assert.deepEqual(routes,['https://hub.test/v2/signal']);assert.equal(manager.busy,false);
+ const manager=new CodingManager({config:{},dataDir:dir,request:async url=>{routes.push(url);return{work:[]};},agentFactory:()=>{starts++;}});
+ manager.records.member_test={memberId:'member_test',engine:'codex',enabled:true,status:'idle',grantFile:file};await manager.tick();assert.equal(starts,0);assert.deepEqual(routes,['https://hub.test/v2/self/inbox']);assert.equal(manager.busy,false);
 });
 test('crash recovery preserves the exact session and refuses to silently replay unknown execution',async t=>{
  const dir=await temp(t);await privateJson(path.join(dir,'native-coding.json'),{member_test:{memberId:'member_test',engine:'codex',enabled:true,status:'working',sessions:{channel1:'native-session'},inFlight:{stepId:'turn1'}}});

@@ -13,7 +13,7 @@ async function fixture(t,{session,signal}={}){
   const agent={rpc:{closed:false},initialize:async()=>({}),stop:async()=>{agent.rpc.closed=true;agent.stops++;},stops:0,session:async options=>session?session(agent,options):{id:'created-session'}};agents.push(agent);return agent;
  }});
  const record=manager.records.member_fixture={memberId:'member_fixture',engine:'codex',enabled:true,sourceReady:true,status:'idle',cwd:dir,chatBindings:{},sessions:{},lastCompletedAt:'2026-01-01T00:00:00Z'};
- manager.client=()=>({tools:async()=>[],api:async p=>p==='/v2/signal'?(signal?signal():{hasWork:false}):{complete:true}});
+ manager.client=()=>({tools:async()=>[],inbox:async()=>{if(signal)await signal();return{work:[]};},api:async()=>({complete:true})});
  manager.workingHost={sessions:async()=>({items:[]})};
  return{manager,record,agents};
 }

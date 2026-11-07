@@ -1,4 +1,5 @@
 import { HubError } from "../../shared/domain.mjs";
+import {changeDescriptor,publishChanges} from './change-feed.mjs';
 
 /** @returns {never} */
 export const fail = (code, message, status = 400) => {
@@ -185,6 +186,13 @@ export class Repository {
           ]),
         ),
       ];
+      const changes=[...tx.writes.values()].map(changeDescriptor).filter(Boolean);
+      if(changes.length){
+        statements.push(this.db.prepare(`INSERT INTO hub_v2_records(workspace_id,kind,id,scope_id,parent_id,status,revision,sequence,updated_at,body) SELECT ?,'change_event',?,'','','',1,(SELECT revision FROM hub_v2_clock WHERE workspace_id=?),?,? WHERE ${guard}`)
+          .bind(this.workspaceId,mutation,this.workspaceId,now,JSON.stringify({changes}),this.workspaceId,mutation));
+        statements.push(this.db.prepare(`DELETE FROM hub_v2_records WHERE workspace_id=? AND kind='change_event' AND sequence<(SELECT revision-10000 FROM hub_v2_clock WHERE workspace_id=?) AND ${guard}`)
+          .bind(this.workspaceId,this.workspaceId,this.workspaceId,mutation));
+      }
       if (rangeKeys.length)
         statements.push(
           this.db
@@ -214,7 +222,7 @@ export class Repository {
           ),
       );
       const committed = await this.db.batch(statements);
-      if (committed[0].meta.changes === 1) return result;
+      if (committed[0].meta.changes === 1) {if(changes.length)publishChanges(this.db,this.workspaceId);return result;}
       if (
         idleParams.length &&
         !(
