@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-07T09:54:51.855Z",
+  "scope": "2026-11-07 T01-T08 including T02 A-F",
+  "tests": {
+    "passed": 547,
+    "failed": 0,
+    "skipped": 0
+  },
+  "buildId": "5de5f599687cf513",
+  "productionMemoryAudit": 438,
+  "artifacts": {
+    "activation": "evidence/activation.json",
+    "deployment": "evidence/today-server-deployment-final.json",
+    "nativeMemory": "evidence/t04-group-memory-production.json",
+    "independentAudits": "evidence/today-final-audits.json",
+    "ui": "evidence/group-memory-ui.json",
+    "packageRestart": "evidence/conversation-desktop.json",
+    "publication": "evidence/today-final-publication.json"
+  },
+  "limitations": [
+    "Finite production acceptance, not all providers/long-term model correctness",
+    "Shared existing native sessions still queue; business bindings intentionally retained",
+    "Research trial is 12 synthetic cases and 84 actual calls, not engine superiority or universal cost reduction",
+    "No formal commercial launch or notarization"
+  ]
+}
