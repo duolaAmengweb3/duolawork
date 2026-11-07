@@ -107,7 +107,8 @@ export async function spaceCommand(tx,identity,actor,cmd,channel,helpers){
   next.completedBy=next.status==='done'?authorId:null;
   const result=await save(tx,'channel_task',next,old,actor,cmd.reason||cmd.progress||cmd.result);
   if(next.status==='done'&&(old?.status!=='done'||old?.result!==next.result))await recordMemoryEvent(tx,channel,result,'task');
-  if(next.assigneeId&&next.assigneeId!==authorId&&next.assigneeId!==old?.assigneeId){
+  if(cmd.notifyAssignee!==undefined&&typeof cmd.notifyAssignee!=='boolean')fail('invalid_input','通知选项无效');
+  if(next.assigneeId&&next.assigneeId!==authorId&&cmd.notifyAssignee!==false&&(next.assigneeId!==old?.assigneeId||cmd.notifyAssignee===true)){
    const message=await helpers.channelMessage(tx,channel,actor,`请跟进：${next.title}${next.body?'\n'+next.body:''}`,{type:'todo',taskId:next.id,refs:[{kind:'task',id:next.id,title:next.title,version:result.version,channelId:channel.id}],mentions:[next.assigneeId],hops:0});
    await helpers.enqueue(tx,identity,channel,message,next.assigneeId);
    result.notificationMessageId=message.id;tx.put('channel_task',result);

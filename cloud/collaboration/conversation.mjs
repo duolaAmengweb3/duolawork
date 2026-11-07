@@ -1,3 +1,4 @@
+import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {acknowledgeNativeContext} from './native-context.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
@@ -23,7 +24,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "post_message",
-    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；需要全员回应时设 mentionAll=true；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
+    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；确需全员参与或全员知晓变更时设 mentionAll=true，不要求确认收到；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
     {
       requestId: "string",
       channelId: "string",
@@ -120,7 +121,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "board_task",
-    "Todo：create/update/accept。指派会真实通知成员；执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。只在需要跟进时使用。",
+    "Todo：create/update/accept。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。只在需要跟进时使用。",
     {
       requestId: "string",
       channelId: "string",
@@ -129,6 +130,7 @@ const BASIC_CHANNEL_TOOLS = [
       taskId: "string",
       assigneeId: "string",
       status: "string",
+      notifyAssignee: "boolean",
       body: "string", progress: "string", blocker: "string", result: "string",
       dueDate: "string", expectedVersion: "number", sourceMessageId: "string",
       meetingIds: "array", refs: referenceSchema,
@@ -493,7 +495,8 @@ export async function claimConversation(
           ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,
           coordinatorId: channel.coordinatorId,
-          ...(actor.memberId===channel.coordinatorId?{coordinatorInstruction:'你是用户指定的负责人。先理解本次目标和交付范围，核对本次所有 triggerMessageIds 与用户连续补充；有影响行动的歧义才追问。按需要组织成员核查，独立判断证据，避免互相点头。相关成员结果、文档和 Todo 反馈会送回你；请继续处理或向用户交付，不止说收到。能在已授权范围内推进就推进，确需用户决定时说清具体问题。讨论框架不等于授权全面写作；用户要求完成则不能只给计划。管好资料/Todo/会议/共享记忆，按需要用工具，不强制建任务。对正在协调的需求用 coordinate(read/update/close) 跟进，读取最新版本后再处理；回复消息只结束本次通知，不代表整件事完成。不要从无人反对、stay_silent 或一条回执推断验收通过。',coordination:await tx.list('channel_coordination',{scope:channel.id,limit:100})}:{}),
+          collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
+          ...(actor.memberId===channel.coordinatorId?{coordinatorInstruction:COORDINATOR_COLLABORATION_GUIDANCE,coordination:await tx.list('channel_coordination',{scope:channel.id,limit:100})}:{}),
           members: channel.memberIds.map((memberId) => ({
             id: memberId,
             name: activeMember(identity, memberId)?.name || memberId,
@@ -543,6 +546,7 @@ export async function readChannel(repo, identity, actor, args) {
     );
   return {
     channel,
+    collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
     members: channel.memberIds.map((memberId) => ({
       id: memberId,
       name: activeMember(identity, memberId)?.name || "已停用成员",
