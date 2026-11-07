@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-07T16:31:51.926Z",
+  "at": "2026-11-07T16:41:14.781Z",
   "parent": {
     "id": "board_25d66ae1bd524ce2a6affd29ad713ff7",
     "status": "done",
-    "version": 3
+    "version": 5
   },
   "items": [
     {
@@ -16,7 +16,7 @@
       "id": "board_0a6032b9032e463aa9440fbadbaffdcb",
       "title": "B｜可靠收发与事件通知",
       "status": "done",
-      "version": 3
+      "version": 5
     },
     {
       "id": "board_731c0d1cf27e41aaaa8f679918d884cc",
@@ -46,8 +46,11 @@
       "id": "board_dfabe0da50fc4eaf9e4f4e9045695ba1",
       "title": "【独立验收】通用消息链路提速与可靠性 A–F",
       "status": "done",
-      "version": 4
+      "version": 5
     }
   ],
-  "independentReviewMessage": "chat_f09fe216a70f4a01a7773a4cb87386b3"
+  "independentReviewMessages": [
+    "chat_f09fe216a70f4a01a7773a4cb87386b3",
+    "chat_ce967fc96e8f4172b32659d69637ea2b"
+  ]
 }
