@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-07T13:55:05.608Z",
+  "scope": "Live public GitHub import; no installation or script execution",
+  "source": "https://github.com/anthropics/skills/tree/main/skills/internal-comms",
+  "revision": "2c5958ecac7cee2b583967a2c4981d0f4a75c579",
+  "name": "internal-comms",
+  "files": [
+    "LICENSE.txt",
+    "SKILL.md",
+    "examples/3p-updates.md",
+    "examples/company-newsletter.md",
+    "examples/faq-answers.md",
+    "examples/general-comms.md"
+  ],
+  "bytes": 22393,
+  "warnings": []
+}
