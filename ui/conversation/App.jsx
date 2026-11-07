@@ -1,4 +1,5 @@
 import SecretaryDesk from './SecretaryDesk.jsx';
+import {notificationRecipients} from '../../shared/message-recipients.mjs';
 import {MessageSnapshots} from './message-snapshots.mjs';
 import BrandMark from './BrandMark.jsx';
 import WorkspaceServices from './WorkspaceServices.jsx';
@@ -481,6 +482,8 @@ export default function App() {
                             ))}
                           </div>
                         )}
+                        {!m.pendingStatus&&notificationRecipients(m).known&&notificationRecipients(m).ids.length>0&&<div className="message-notification-receipt" title="按服务端实际投递对象显示；表示已通知，不代表已读或完成">通知对象：{notificationRecipients(m).ids.map(name).join('、')}</div>}
+                        {m.obsoleteRequirement&&<div className="message-obsolete-requirement">这是旧要求下的结果；后续按用户的新要求继续</div>}
                         {!!m.refs?.length&&<div className="message-references">{m.refs.map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject}/>)}</div>}
                         {m.meetingId&&m.type==='message'&&<button className="message-meeting-link" onClick={()=>setMeetingPanel({id:m.meetingId,channelId:current})}><Video size={12}/>会议：{snapshot.meetings.find(x=>x.id===m.meetingId)?.title||'查看记录'}</button>}
                         {editing?.id===m.id?<div className="message-editor"><Textarea aria-label="修改消息" value={editing.body} onChange={e=>setEditing({...editing,body:e.target.value})}/><div><Button size="sm" disabled={!editing.body.trim()||busy} onClick={async()=>{try{await perform(()=>command('channel.message.edit',{channelId:current,messageId:m.id,expectedVersion:editing.version,body:editing.body}));setEditing(null);}catch{}}}>保存修改</Button><Button size="sm" variant="ghost" onClick={()=>setEditing(null)}>取消</Button></div></div>:m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (

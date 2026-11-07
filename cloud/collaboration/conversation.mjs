@@ -6,7 +6,7 @@ import {recordMemoryEvent,queueMemoryIndex} from './memory-context.mjs';
 import {workspaceGrant,requireManager} from './delegation.mjs';
 import {MATERIAL_TOOLS,materialCommand} from './materials.mjs';
 import {editMessage} from './chat-experience.mjs';
-import {COORDINATION_TOOLS,trackCoordination,relatedCoordination,registerFeedback,objectFeedback,coordinationCommand,transferCoordination} from './coordination.mjs';
+import {COORDINATION_TOOLS,trackCoordination,relatedCoordination,registerFeedback,objectFeedback,coordinationCommand,transferCoordination,ownerRequirementChanged} from './coordination.mjs';
 import {FOLDER_TOOLS,folderCommand,allFolders,allPlacements,placeMaterial} from './material-folders.mjs';
 import { SPACE_TOOLS, referenceSchema, spaceCommand, validateRefs, publicMemory, readSpaceObject } from './workspace-objects.mjs';
 import { fail, id, required, digest } from "./repository.mjs";
@@ -24,7 +24,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "post_message",
-    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；确需全员参与或全员知晓变更时设 mentionAll=true，不要求确认收到；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。",
+    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；确需全员参与或全员知晓变更时设 mentionAll=true，不要求确认收到；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。purpose=question 用于成员间求助（不额外唤醒负责人），request 用于明确交办（负责人可从原工作环境带来请求），result 为实际回传；旧调用可省略。",
     {
       requestId: "string",
       channelId: "string",
@@ -32,6 +32,8 @@ const BASIC_CHANNEL_TOOLS = [
       mentions: "array",
       mentionAll: "boolean",
       replyTo: "string",
+      purpose: {type:"string",enum:["message","question","request","result"]},
+      executionOutcome: {type:"string",enum:["not_started","awaiting_confirmation","outcome_unknown","result"]},
       turnId: "string",
       refs: referenceSchema,
     },
@@ -233,7 +235,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     messageId: message.id,
     ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
     ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
-    ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1}:{}),
+    ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1,requirementVersion:message.requirementVersion||1}:{}),
     wakeSource: message.authorId === "owner" ? "user" : "agent",
     number: message.number,
     rootId: message.rootId || message.id,
@@ -441,6 +443,8 @@ export async function claimConversation(
         scope: channel.id,
         parent: actor.memberId,
       })).filter(t => (t.deliveryReview || null) === (turn.deliveryReview || null) && (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
+      const requirementVersions={};
+      for(const root of new Set(pending.map(t=>t.coordinationRootId).filter(Boolean))){const r=await tx.get("channel_coordination",channel.id+":"+root,false);if(r)requirementVersions[root]=r.requirementVersion||1;}
       const lease = id("lease");
       for (const other of pending)
         if (other.id !== turn.id)
@@ -459,6 +463,8 @@ export async function claimConversation(
         lease,
         resourceKey,
         claimedAt: tx.now,
+        requirementVersions,
+        ...(turn.coordinationRootId?{requirementVersion:requirementVersions[turn.coordinationRootId]||turn.requirementVersion||1}:{}),
         ...(args.expectedSessionId?{nativeSessionId:args.expectedSessionId,nativeContextMode:args.contextMode==='incremental'?'incremental':'full'}:{}),
         reason: null,
         ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
@@ -690,7 +696,7 @@ export async function conversationCommand(
       if (['channel.folder','channel.material.move'].includes(type)) return folderCommand(tx,actor,cmd,channel);
       if (['channel.task','channel.remember','channel.memory.update','channel.memory.review','channel.link'].includes(type)) return spaceCommand(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);
-      if (type === "channel.coordination") return coordinationCommand(tx,channel,actor,cmd);
+      if (type === "channel.coordination") return coordinationCommand(tx,channel,actor,cmd,identity,meetingHelpers);
       if (type === "channel.update") {
         await owner(actor,tx);
         const oldCoordinator=channel.coordinatorId;
@@ -750,6 +756,8 @@ export async function conversationCommand(
       if (type === 'channel.message.edit') return editMessage(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === "channel.post") {
         const body = messageText(cmd.body);
+        if(cmd.purpose!==undefined&&! ["message","question","request","result"].includes(cmd.purpose))fail("invalid_input","消息用途无效");
+        if(cmd.executionOutcome!==undefined&&!['not_started','awaiting_confirmation','outcome_unknown','result'].includes(cmd.executionOutcome))fail('invalid_input','执行结果状态无效');
         const refs = await validateRefs(tx, channel.id, cmd.refs||[]);
         // Legacy housekeeping states must never require the human to unlock chat.
         // An Agent cannot reactivate a stopped channel on its own.
@@ -812,7 +820,7 @@ export async function conversationCommand(
         // A reply without explicit turnId still acknowledges this member's active
         // delivery. Omitting both references cannot reset the causal wake budget.
         parent = await deliveryReviewSource(tx,parent);
-        if (actor.memberId && !parent && !await workspaceGrant(tx,actor))
+        if (actor.memberId && !parent && !(actor.memberId===channel.coordinatorId&&cmd.purpose==="request") && !await workspaceGrant(tx,actor))
           fail(
             "context_required",
             "Agent 发言必须关联群内消息或已领取通知",
@@ -821,6 +829,9 @@ export async function conversationCommand(
         const message = await channelMessage(tx, channel, actor, body, {
           ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion, ...(meeting.chat ? { meetingChat: true } : {}) } : {}),
           requestId:cmd.requestId,
+          purpose:cmd.purpose||null,
+          ...(cmd.executionOutcome?{executionOutcome:cmd.executionOutcome}:{}),
+          ...(turn?.requirementVersions?.[parent?.coordinationRootId]?{requirementVersion:turn.requirementVersions[parent.coordinationRootId]}:turn?.requirementVersion?{requirementVersion:turn.requirementVersion}:parent?.requirementVersion?{requirementVersion:parent.requirementVersion}:{}),
           mentions,
           mentionAll,
           recipientIds: targets,
@@ -832,13 +843,16 @@ export async function conversationCommand(
           hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
         });
         if(targets.length){const holdReason=await automationHold(tx,channel,message);if(holdReason){message.holdReason=holdReason;tx.put('channel_message',message);}}
+        if(!actor.owner&&!targets.length&&parent?.purpose==='question'&&channel.memberIds.includes(parent.authorId)&&parent.authorId!==actor.memberId&&!['message','question'].includes(cmd.purpose))targets.push(parent.authorId);
+        if(actor.owner)await ownerRequirementChanged(tx,identity,channel,message,parent,meetingHelpers);
         await trackCoordination(tx,channel,message,parent,targets);
-        const coordinated=await relatedCoordination(tx,channel,message,parent);
+        const coordinated=await relatedCoordination(tx,channel,message,parent,targets);
         if(coordinated&&channel.coordinatorId&&await registerFeedback(tx,channel,coordinated,message)){
           message.coordinationRootId=coordinated.sourceMessageId;message.coordinationFeedback=true;
           if(!targets.includes(channel.coordinatorId))targets.push(channel.coordinatorId);
           tx.put('channel_message',message);
         }
+        message.recipientIds=[...new Set(targets)];tx.put("channel_message",message);
         for (const mid of targets)
           await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
         await finishTurn(tx, actor, cmd.turnId || turn?.id, "done");

@@ -357,7 +357,7 @@ export class CodingManager{
   const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
   try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
-  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
+  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt,isCompleted:async()=>{if(!first.stepId.startsWith('turn_'))return false;const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));return ['done','silent'].includes(state.status);}});r.nativeDeliveries[first.stepId].status='sent';await this.save();}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
   const deadline=Date.now()+20*60000;
   while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');const pending=work.find(w=>w.stepId===first.stepId);
    if(!pending){if(await this.settleOriginal(r,client)){await this.save();return;}}

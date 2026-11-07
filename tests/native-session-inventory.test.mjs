@@ -37,6 +37,19 @@ test('Codex wakes an idle original queue after enqueueing without replacing the 
  assert.deepEqual(calls.map(c=>c[0]),['thread/resume','thread/queue/add','thread/queue/list','thread/read','thread/queue/start']);assert.deepEqual(calls.at(-1)[1],{threadId:'original',queuedSubmissionId:'q'});assert.ok(calls.every(([,p])=>!('model'in p)&&!('cwd'in p)&&!('approvalPolicy'in p)));
 });
 
+test('a completed Hub receipt removes only its redundant wake; missing receipt never deletes or interrupts native work',async()=>{
+ for(const state of ['done','not-done','network-failure']){
+  const h=new CodexWorkingHost(),calls=[];h.sessions=async()=>({items:[{id:'original',workspace:'/project'}]});
+  h.read=fn=>fn({call:async(method,p)=>{calls.push([method,p]);if(method==='thread/queue/add')return{queuedSubmission:{id:'owned'}};if(method==='thread/queue/list')return{data:[{id:'owned'},{id:'unrelated-user-message'}]};if(method==='thread/read')return{thread:{status:{type:'idle'}}};return{};}});
+  await h.queue({sessionId:'original',workspace:'/project',prompt:'exact owned request',isCompleted:async()=>{if(state==='network-failure')throw Error('offline');return state==='done';}});
+  const deletes=calls.filter(([m])=>m==='thread/queue/delete');
+  assert.equal(deletes.length,state==='done'?1:0);
+  if(deletes.length)assert.deepEqual(deletes[0][1],{threadId:'original',queuedSubmissionId:'owned'});
+  assert.equal(calls.some(([m])=>m.includes('interrupt')),false);
+  assert.equal(calls.some(([m])=>m==='thread/queue/start'),state!=='done');
+ }
+});
+
 for(const platform of ['antigravity','deepseek'])test(platform+' deploy artifact imports in isolation, including all shared-file dependencies',async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-plugin-artifact-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));let entry;
  if(platform==='antigravity'){const host=new AntigravityDesktopHost(path.join(dir,'hub'),{home:dir});await host.deploy();entry=JSON.parse(await fs.readFile(path.join(dir,'.gemini/config/sidecars/duola-agent-hub/sidecar.json'))).args[0];}

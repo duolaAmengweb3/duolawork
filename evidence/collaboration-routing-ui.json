@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-07T06:46:00.587Z",
+  "scope": "isolated Hub and Chromium, protocol actors",
+  "checks": [
+    "真实收件人显示",
+    "普通致谢不产生通知标记",
+    "旧要求的迟到回传标明版本边界",
+    "草稿保留"
+  ]
+}

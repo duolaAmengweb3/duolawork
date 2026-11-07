@@ -1,3 +1,4 @@
+import {ownerRequirementChanged} from './coordination.mjs';
 import {fail,required} from './repository.mjs';
 
 // Human read cursors never share storage or acknowledgements with agent inboxes.
@@ -27,7 +28,8 @@ export async function channelUnread(repo,cursors) {
   return {items:rows.results,cursors};
 }
 
-export async function editMessage(tx,identity,actor,cmd,channel,{channelMessage,enqueue}) {
+export async function editMessage(tx,identity,actor,cmd,channel,helpers) {
+  const {channelMessage,enqueue}=helpers;
   const message=await tx.get('channel_message',cmd.messageId);
   if(message.scopeId!==channel.id||!actor.owner||message.authorId!=='owner')fail('forbidden','只能修改自己发出的消息',403);
   if(message.type!=='message')fail('invalid_input','此类消息不能直接修改');
@@ -40,6 +42,7 @@ export async function editMessage(tx,identity,actor,cmd,channel,{channelMessage,
   const delivered=turns.some(t=>!['ready','unavailable','limited'].includes(t.status))||notices.some(n=>n&&!['awaiting_poll','pending','coalesced'].includes(n.status));
   tx.put('channel_message_version',{id:`${message.id}:${message.version||1}`,scopeId:channel.id,parentId:message.id,body:message.body,version:message.version||1,authorId:message.authorId,createdAt:message.editedAt||message.createdAt});
   const updated=tx.put('channel_message',{...message,body,version:(message.version||1)+1,editedAt:tx.now});
+  await ownerRequirementChanged(tx,identity,channel,updated,message,helpers);
   if(delivered){
     const change=await channelMessage(tx,channel,actor,`更新了要求：\n${body}`,{type:'message',replyTo:message.id,replySnapshot:{body:message.body,version:message.version||1,authorId:message.authorId},editedMessageId:message.id,editedVersion:updated.version,rootId:message.rootId||message.id,hops:0,mentions:message.mentions||[],recipientIds:message.recipientIds||[],requestId:cmd.requestId});
     for(const mid of new Set(turns.map(t=>t.memberId).filter(mid=>channel.memberIds.includes(mid)))){

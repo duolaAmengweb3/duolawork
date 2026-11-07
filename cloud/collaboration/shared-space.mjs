@@ -207,7 +207,7 @@ export async function sharedToolEnvelope(repo,identity,actor,message,env){
   const channel=await channelAccess(repo,message.channelId,actor);
   let envelope;
   try{envelope=JSON.parse(message.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','共享工具请求必须是完整JSON');}
-  const workspaceNames=['manage_material','coordinate','board_task','remember','revise_memory','read_space_object','search_memory','read_memory','read_todo','manage_folder','move_material'];
+  const workspaceNames=['post_message','meeting','manage_material','coordinate','board_task','remember','revise_memory','read_space_object','search_memory','read_memory','read_todo','manage_folder','move_material'];
   const workspaceDefinition=envelope&&workspaceNames.includes(envelope.name)&&CHANNEL_TOOLS.find(t=>t.name===envelope.name);
   const definition=workspaceDefinition||envelope&&SHARED_TOOLS.find(t=>t.name===envelope.name);
   if(!definition)fail('unknown_tool','此兼容入口只接受已发布的共享工具',404);
