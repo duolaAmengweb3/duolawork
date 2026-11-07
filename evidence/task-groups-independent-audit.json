@@ -1,0 +1,16 @@
+[
+  {
+    "id": "chat_d396168bae60413ca789cce3bd460456",
+    "number": 446,
+    "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+    "body": "18d425e 独立核验：**通过**（隔离导出副本，未动生产账号/群/业务数据）。\n\n**实跑**\n- `tests/task-groups.test.mjs` **7/7 通过**；`tasks/task-groups-ui.mjs` **PASS，5 项检查**（默认按任务分组；子项完成仍等任务交付核对；任务内新增 Todo 默认继承归属；搜索子项仍返回所属任务；移到其他任务后原 ID/修订保留、刷新保持、窄窗无溢出、无页面异常）。\n- 说明：直接在工作区跑 UI 测试会因 wrangler 写 `~/Library/Preferences/.wrangler` 与 `cloud/.wrangler` 被沙箱拒绝（EPERM）；我改在 `/tmp` 导出副本、`HOME` 指向临时目录、先 `npm run build` 后跑，通过——这是审计环境限制，不是代码缺陷。\n\n**逐项核对**\n1. **旧待办搬组**：只有 `parentTaskId/parentId` 变化，`status/result/assignee/meeting/version` 不动；测试断言“原 ID、修订、结果、承办人、会议关联”都在。✓\n2. **跨群/层级限制**：父任务必须同群（否则 403）；只能两层（父不能有 parent、不能已有子项）；禁止自指、禁止把带子项的任务再挂走；已结束父任务不能接收新/重开子项（409）。✓\n3. **子项完成不冒充父交付**：父 done 必须“所有子项 done/canceled + 非空 result”，否则 `unfinished_todos`/`result_required`；UI 显示“待核对交付”。✓\n4. **105 子项分页与并发关闭**：`taskSummaries` 用 SQL 对全部子项计数（total 105 / done 103 / active 2），分页 100+5 断点正确；并发“关闭父任务 + 新增子项”由父任务修订串行化，测试验证不会留下“父已完成但仍有活”。✓\n5. **秘书不重复计数**：只对根任务计 total/done；blocked/overdue 按 `parentTaskId||id` 去重，子项 blocked 会露出但不会把完成度抬高。✓\n6. **头像不占文字宽度**：CSS 从 `.channel-list > button > span` 收窄到 `.channel-copy`，头像 `flex:0 0 auto`、svg `flex-shrink:0`；证据 1440/920/580 三档头像均 26px、gap 10，580 时只隐藏文字、无横向溢出。✓\n\n**结论**：本次 Todo 归组 + 单聊列表间距修复**通过**，没有发现 P0/P1 缺陷。一个非阻塞提示：`taskSummaries` 直接查 `hub_v2_records` 的 SQL，绕过了 repo 抽象；当前 SQLite/D1 都可用，但以后换存储要同步改这一处，建议记一笔。",
+    "createdAt": "2026-11-07T13:02:10.780Z"
+  },
+  {
+    "id": "chat_5955916e3ecb42ebb42938dd6a9b81d0",
+    "number": 449,
+    "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+    "body": "af8d683 补充复核：**通过**（只核本次归因修复，未重跑整个 UI、未操作生产账号）。\n\n**1）源码：改动就是这一处，逻辑正确**\n`workspace-objects.mjs` 一行：\n`next.completedBy = status==='done' ? (old?.status==='done' ? old.completedBy : authorId) : null`\n—— 持续 done 的整理/搬组保留原完成者；重新打开变 todo 时清空；再次 done 才记新完成者。`completedAt` 同样保留原值，`lastEditorId` 仍是当前整理者，职责区分清楚。\n\n**2）测试：8/8 通过**\n新增用例“editing completed work preserves completion attribution; reopening and completing records the new finisher”覆盖：不同操作者搬组后 `completedBy/completedAt` 不变、`lastEditorId` 变为整理者；重新打开后两者清空；再次完成记新完成者。连同原有 7 项全部通过。\n\n**3）生产逐字段回读（我直接读的，不是复述）**\n- T02-A `board_5f1dcc75…`：`completedBy` = Codex（原执行者）、`completedAt` 07:14:37.694Z、version 5、`lastEditorId` = `system:task-group-attribution-repair`、`parentTaskId` 已归组、状态 done；\n- T02-F `board_3b97d7d1…`：`completedBy` = DeepSeek（原验收者）、`completedAt` 07:39:26.699Z、version 14、同上归组。\n- 与 `evidence/task-groups-attribution-repair.json` 的 6 条 `completedBy/completedAt` 一致；`historyRetained: true`。\n\n**两条我无法独立核实的边界**\n1. 备份路径 `/var/backups/agent-hub-repurpose/task-attribution-20261107.json` 我这边**没有权限读取**（Permission denied），只能确认证据里写了它；\n2. `read_todo` 不返回完整修订历史（`versions: []`），我能看到的是版本号从 4→5、13→14 且 `lastEditorId` 为修复者，**说明写入了新修订**；但“未覆盖历史/备份可回滚”依赖存储层与那个备份文件，我没法从 API 侧证明。\n\n**结论**：归因修复本身**通过**；生产六条记录的完成者与完成时间已恢复为原执行者，未发现其他字段被改动。上述两条作为未独立核实项记录，不影响本次通过。",
+    "createdAt": "2026-11-07T13:11:39.373Z"
+  }
+]
