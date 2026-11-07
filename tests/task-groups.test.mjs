@@ -13,8 +13,9 @@ test('existing tasks move without losing history, identity, result, assignee or 
  const root=await f.task({title:'记忆系统'}),other=await f.task({title:'通信修复'});
  const old=await f.task({title:'验收来源完整性',status:'done',result:'已核验三条来源',assigneeId:'check',meetingIds:[meeting.id]});
  const before=(await f.repo.list('channel_message')).length;
- const moved=await f.task({action:'update',taskId:old.id,parentTaskId:root.id,expectedVersion:1});
+ const moved=await f.task({action:'update',taskId:old.id,parentTaskId:root.id,expectedVersion:1},agent);
  assert.equal(moved.id,old.id);assert.equal(moved.version,2);assert.equal(moved.assigneeId,'check');assert.equal(moved.result,old.result);assert.equal(moved.status,'done');assert.deepEqual(moved.meetingIds,[meeting.id]);assert.equal((await f.repo.list('channel_message')).length,before);
+ assert.equal(moved.completedBy,old.completedBy);assert.equal(moved.completedAt,old.completedAt);assert.equal(moved.lastEditorId,'grok');
  const roots=await f.list({});assert.equal(roots.items.length,2);assert.equal(roots.items.find(x=>x.id===root.id).subtasks.done,1);
  assert.equal((await f.list({query:'来源完整性'})).items[0].id,root.id);
  assert.equal((await f.list({parentTaskId:root.id})).items[0].id,old.id);
@@ -25,6 +26,16 @@ test('existing tasks move without losing history, identity, result, assignee or 
  const priorGroup=await conversationTool(f.repo,f.identity,owner,'read_space_object',{channelId,kind:'task',id:old.id,version:2});assert.equal(priorGroup.parentTask.id,root.id);
  await assert.rejects(f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:2}),e=>e.code==='version_conflict');
  await f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:3});assert.equal((await f.list({})).items.length,3);
+});
+
+test('editing completed work preserves completion attribution; reopening and completing records the new finisher',async t=>{
+ const f=await setup(t),done=await f.task({title:'已交付',status:'done',result:'原交付'});
+ const edited=await f.task({action:'update',taskId:done.id,title:'更清楚的标题'},agent);
+ assert.equal(edited.completedBy,'owner');assert.equal(edited.completedAt,done.completedAt);assert.equal(edited.lastEditorId,'grok');
+ const reopened=await f.task({action:'update',taskId:done.id,status:'todo'},agent);
+ assert.equal(reopened.completedBy,null);assert.equal(reopened.completedAt,null);
+ const again=await f.task({action:'update',taskId:done.id,status:'done',result:'重新验收'},agent);
+ assert.equal(again.completedBy,'grok');assert.ok(again.completedAt);
 });
 
 test('completion remains explicit, requires all Todos resolved plus result; closed task cannot receive new or reopened work',async t=>{

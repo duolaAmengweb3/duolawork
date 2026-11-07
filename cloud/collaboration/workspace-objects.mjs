@@ -107,7 +107,7 @@ export async function spaceCommand(tx,identity,actor,cmd,channel,helpers){
   }
   await validateTaskGroup(tx,channel,next,old,cmd);
   next.completedAt=next.status==='done'?(old?.completedAt||tx.now):null;
-  next.completedBy=next.status==='done'?authorId:null;
+  next.completedBy=next.status==='done'?(old?.status==='done'?(old.completedBy??null):authorId):null;
   const result=await save(tx,'channel_task',next,old,actor,cmd.reason||cmd.progress||cmd.result);
   if(next.status==='done'&&(old?.status!=='done'||old?.result!==next.result))await recordMemoryEvent(tx,channel,result,'task');
   if(cmd.notifyAssignee!==undefined&&typeof cmd.notifyAssignee!=='boolean')fail('invalid_input','通知选项无效');
