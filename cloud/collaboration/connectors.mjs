@@ -2,20 +2,44 @@ import {fail,id,required,digest} from './repository.mjs';
 import {seal,unseal,readJSON} from './security.mjs';
 import {requireManager} from './delegation.mjs';
 import {access} from './workspace-objects.mjs';
+import {appendActivity,activityPage} from './service-activity.mjs';
 const string={type:'string'};
-export const CONNECTOR_TOOLS=[{name:'github',description:'读取已授权 GitHub 仓库的资料、Issue、PR和文件；connectionId选择实际账号，channelId限制使用范围。只读共享连接器，不修改代码或复制原 Agent 的 GitHub 登录。',inputSchema:{type:'object',properties:{channelId:string,connectionId:string,action:{type:'string',enum:['connections','repository','issues','pulls','issue','file']},repository:string,number:{type:'integer',minimum:1},path:string,page:{type:'integer',minimum:1}},required:['channelId','action'],additionalProperties:false}}];
+export const CONNECTOR_TOOLS=[{name:'github',description:'读取已授权 GitHub 仓库的资料、Issue、PR和文件；activity 查看本群实际读取记录。返回读取时间和来源；失败按原因处理，不反复要求重新授权。只读共享连接，不复制原 Agent 登录。',inputSchema:{type:'object',properties:{channelId:string,connectionId:string,action:{type:'string',enum:['connections','activity','repository','issues','pulls','issue','file']},repository:string,number:{type:'integer',minimum:1},path:string,page:{type:'integer',minimum:1},after:string},required:['channelId','action'],additionalProperties:false}}];
 const publicConnection=({credentials,...c})=>c;
 const repositoryName=value=>{if(typeof value!=='string'||! /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)||value.includes('..'))fail('invalid_repository','仓库请填写 owner/repository');return value;};
 const allowed=(c,actor,channelId)=>c.status==='connected'&&(!c.channelIds.length||c.channelIds.includes(channelId))&&(!c.memberIds.length||actor.owner||c.memberIds.includes(actor.memberId));
 async function githubFetch(token,path,fetchImpl){
- const response=await fetchImpl('https://api.github.com'+path,{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,'X-GitHub-Api-Version':'2026-03-10','User-Agent':'DuolaWork'},signal:AbortSignal.timeout(12000),redirect:'error'});
- if(!response.ok)fail(response.status===401?'authorization_expired':'github_unavailable',response.status===401?'GitHub 授权已失效，请更新连接':response.status===403?'GitHub 权限不足或达到调用上限':response.status===404?'该账号无法访问此仓库或资料':'GitHub 暂时不可用',response.status===404?404:409);
- return readJSON(response,1500000);
+ let response;try{response=await fetchImpl('https://api.github.com'+path,{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,'X-GitHub-Api-Version':'2026-03-10','User-Agent':'DuolaWork'},signal:AbortSignal.timeout(12000),redirect:'error'});}catch(error){fail(error.name==='TimeoutError'||error.name==='AbortError'?'connection_timeout':'connection_network',error.name==='TimeoutError'||error.name==='AbortError'?'GitHub 响应超时，请稍后重试':'暂时无法连接 GitHub，请检查网络后重试',503);}
+ if(!response.ok){
+  if(response.status===401)fail('authorization_expired','GitHub 授权已失效，请更新此连接的授权',401);
+  let message='';try{message=(await readJSON(response,10000)).message||'';}catch{}
+  if(response.status===429||response.status===403&&(response.headers.get('x-ratelimit-remaining')==='0'||response.headers.has('retry-after')||/rate limit|secondary rate/i.test(message))){
+   const seconds=Number(response.headers.get('retry-after')),reset=Number(response.headers.get('x-ratelimit-reset'));
+   const wait=seconds>0?Math.ceil(seconds):reset>0?Math.max(1,Math.ceil(reset-Date.now()/1000)):60;
+   fail('rate_limited',`GitHub 调用较频繁，请在约 ${wait} 秒后重试，无需重新授权`,429);
+  }
+  if(response.status===403)fail('permission_denied','GitHub 未允许读取此资源，请检查仓库权限或组织授权',403);
+  if(response.status===404)fail('resource_unavailable','资源不存在或此账号不可见，请核对仓库和路径',404);
+  fail('github_unavailable','GitHub 服务暂时不可用，请稍后重试',503);
+ }
+ try{return await readJSON(response,1500000);}catch{fail('invalid_response','GitHub 返回的数据不完整，请重试',502);}
+}
+async function recordRead(repo,actor,connection,args,started,error){
+ return appendActivity(repo,'connector_activity',{parentId:connection.id,scopeId:args.channelId||null,memberId:actor.memberId||'owner',connectionVersion:connection.version,account:connection.account,action:args.action,repository:args.repository,path:args.path||null,number:args.number||null,status:error?'failed':'succeeded',code:error?.code||null,message:error?.message||'已读取实际资源',durationMs:Date.now()-started,source:'https://api.github.com/repos/'+args.repository});
 }
 export async function connectorSettings(repo,identity,actor,args,env,fetchImpl=fetch){
  await requireManager(repo,actor);
- if(!['list','connect','update','disconnect'].includes(args.action))fail('invalid_action','连接操作无效');
- if(args.action==='list')return {items:(await repo.list('service_connection',{limit:500})).map(publicConnection),native:'原 Agent 的已有工具和连接器仍由原环境管理。'};
+ if(!['list','activity','check','connect','update','disconnect'].includes(args.action))fail('invalid_action','连接操作无效');
+ if(args.action==='list')return {items:await Promise.all((await repo.list('service_connection',{limit:500})).map(async c=>({...publicConnection(c),latestRead:(await activityPage(repo,'connector_activity',{parent:c.id})).items[0]||null}))),native:'原 Agent 的已有工具和连接器仍由原环境管理。'};
+ if(args.action==='activity'){await repo.get('service_connection',args.connectionId);return activityPage(repo,'connector_activity',{parent:args.connectionId,after:args.after});}
+ if(args.action==='check'){
+  const c=await repo.get('service_connection',args.connectionId);if(c.status!=='connected')fail('authorization_required','请先连接此账号',409);
+  const repository=repositoryName(args.repository||c.repositories[0]);if(!c.repositories.includes(repository))fail('forbidden','请选择已关联仓库',403);
+  const started=Date.now();let result,error;
+  try{const {token}=await unseal(c.credentials,env.ADMIN_KEY);result=await githubFetch(token,'/repos/'+repository,fetchImpl);const fresh=await repo.get('service_connection',c.id);await requireManager(repo,actor);if(fresh.version!==c.version||fresh.status!=='connected')fail('connection_changed','授权已变化，请重新检查',409);}catch(e){error=e;}
+  const receipt=await recordRead(repo,actor,c,{action:'repository',repository},started,error);
+  if(error)throw error;return {account:c.account,repository,readAt:receipt.createdAt,receiptId:receipt.id,result};
+ }
  if(args.action==='connect'&&!actor.owner)fail('owner_required','请让用户在连接器页面完成 GitHub 授权，令牌不要放到聊天里',403);
  let account;
  const tokenFingerprint=args.token?await digest(args.token):undefined;
@@ -44,6 +68,7 @@ export async function connectorTool(repo,actor,args,env,fetchImpl=fetch){
  const connections=(await repo.list('service_connection',{limit:500})).filter(c=>allowed(c,actor,args.channelId));
  if(args.action==='connections')return {items:connections.map(publicConnection)};
  const connection=connections.find(c=>c.id===args.connectionId);if(!connection)fail('forbidden','此聊天或成员没有该连接的使用权',403);
+ if(args.action==='activity')return activityPage(repo,'connector_activity',{parent:connection.id,scope:args.channelId,after:args.after});
  const repoName=repositoryName(args.repository);
  if(!connection.repositories.includes(repoName))fail('forbidden','此仓库尚未关联到连接',403);
  let path='/repos/'+repoName;
@@ -51,8 +76,12 @@ export async function connectorTool(repo,actor,args,env,fetchImpl=fetch){
  else if(args.action==='issue'){if(!Number.isSafeInteger(args.number)||args.number<1)fail('invalid_input','Issue编号无效');path+='/issues/'+args.number;}
  else if(args.action==='file'){if(typeof args.path!=='string'||args.path.split('/').some(p=>!p||p==='..'))fail('invalid_path','文件路径无效');path+='/contents/'+args.path.split('/').map(encodeURIComponent).join('/');}
  else if(args.action!=='repository')fail('invalid_action','不支持此 GitHub 操作');
- const {token}=await unseal(connection.credentials,env.ADMIN_KEY),result=await githubFetch(token,path,fetchImpl);
- const fresh=await repo.get('service_connection',connection.id);await access(repo,args.channelId,actor);
- if(fresh.version!==connection.version||!allowed(fresh,actor,args.channelId))fail('connection_changed','连接授权已变化，请重新读取',409);
- return {account:connection.account,repository:repoName,result,access:'read_only'};
+ const started=Date.now();let result,error;
+ try{
+  const {token}=await unseal(connection.credentials,env.ADMIN_KEY);result=await githubFetch(token,path,fetchImpl);
+  const fresh=await repo.get('service_connection',connection.id);await access(repo,args.channelId,actor);
+  if(fresh.version!==connection.version||!allowed(fresh,actor,args.channelId))fail('connection_changed','连接授权已变化，请重新读取',409);
+ }catch(e){error=e;}
+ const receipt=await recordRead(repo,actor,connection,args,started,error);if(error)throw error;
+ return {account:connection.account,repository:repoName,result,access:'read_only',readAt:receipt.createdAt,receiptId:receipt.id,source:'https://api.github.com'+path};
 }

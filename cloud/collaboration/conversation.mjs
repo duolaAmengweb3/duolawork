@@ -1,4 +1,5 @@
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
+import {skillRefsSchema} from './skill-bindings.mjs';
 import {groupMemoryMaintenance} from './group-memory.mjs';
 import {acknowledgeNativeContext} from './native-context.mjs';
 import {executionResource} from './execution-bindings.mjs';
@@ -124,7 +125,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "board_task",
-    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。create/update/accept。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。只在需要跟进时使用。",
+    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。create/update/accept。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
     {
       requestId: "string",
       channelId: "string",
@@ -137,7 +138,7 @@ const BASIC_CHANNEL_TOOLS = [
       notifyAssignee: "boolean",
       body: "string", progress: "string", blocker: "string", result: "string",
       dueDate: "string", expectedVersion: "number", sourceMessageId: "string",
-      meetingIds: "array", refs: referenceSchema,
+      meetingIds: "array", refs: referenceSchema, skillRefs:skillRefsSchema,
     },
     ["requestId", "channelId", "action"],
   ],

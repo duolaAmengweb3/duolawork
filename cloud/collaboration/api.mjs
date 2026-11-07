@@ -746,8 +746,17 @@ export async function v2Fetch(request, env, ctx, identity) {
     const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
     return json({active:r.total});
   }
-  if(url.pathname==='/v2/skills')return json(await skillSettings(repo,identity,actor,request.method==='GET'?(url.searchParams.has('skillId')?{action:'read',skillId:url.searchParams.get('skillId')}:{action:'list'}):await readJSON(request)));
-  if(url.pathname==='/v2/connectors')return json(await connectorSettings(repo,identity,actor,request.method==='GET'?{action:'list'}:await readJSON(request),env));
+  if(url.pathname==='/v2/skills'){
+    const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||(url.searchParams.has('skillId')?'read':'list')}:await readJSON(request);
+    if(request.method==='GET'&&!['read','list','catalog','activity'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    return json(await skillSettings(repo,identity,actor,args));
+  }
+  if(url.pathname==='/v2/skill-activity'&&request.method==='GET')return json(await skillTool(repo,actor,'skill_activity',Object.fromEntries(url.searchParams)));
+  if(url.pathname==='/v2/connectors'){
+    const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||'list'}:await readJSON(request);
+    if(request.method==='GET'&&!['list','activity'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    return json(await connectorSettings(repo,identity,actor,args,env));
+  }
   if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});
   if(url.pathname==='/v2/response-metrics'&&request.method==='GET')return json(await responseMetrics(repo,actor,{channelId:url.searchParams.get('channelId')}));
   if(url.pathname==='/v2/group-memory'&&request.method==='GET')return json(await readGroupMemory(repo,actor,Object.fromEntries(url.searchParams)));

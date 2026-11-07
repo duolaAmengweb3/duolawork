@@ -1,4 +1,5 @@
 import {validateTaskGroup,listTaskGroups,taskSummaries} from './task-groups.mjs';
+import {bindTaskSkills} from './skill-bindings.mjs';
 import {memoryAuthority,queueMemoryIndex,recordMemoryEvent,sourcesAvailable} from './memory-context.mjs';
 import {workspaceGrant} from './delegation.mjs';
 import {placeMaterial} from './material-folders.mjs';
@@ -106,6 +107,7 @@ export async function spaceCommand(tx,identity,actor,cmd,channel,helpers){
    next.assigneeId=authorId;next.status='doing';next.acceptedAt=next.acceptedAt||tx.now;next.acceptedBy=authorId;
   }
   await validateTaskGroup(tx,channel,next,old,cmd);
+  await bindTaskSkills(tx,actor,channel,next,old,cmd);
   next.completedAt=next.status==='done'?(old?.completedAt||tx.now):null;
   next.completedBy=next.status==='done'?(old?.status==='done'?(old.completedBy??null):authorId):null;
   const result=await save(tx,'channel_task',next,old,actor,cmd.reason||cmd.progress||cmd.result);
@@ -125,7 +127,7 @@ export async function spaceCommand(tx,identity,actor,cmd,channel,helpers){
  return null;
 }
 export const publicMemory=m=>({...m,version:m.version||1,category:m.category||'background',evidence:m.evidence||'历史记录，未保留原始依据',refs:m.refs||[]});
-export async function readSpaceObject(repo,actor,args){
+export async function readSpaceObject(repo,actor,args,{recordRead=true}={}){
  await access(repo,args.channelId,actor);
  const kind=args.kind|| (args.memoryId?'memory':args.taskId?'task':'memory');
  if(!['memory','task','link','document','file','meeting','message'].includes(kind))fail('invalid_kind','对象类型无效');
@@ -154,7 +156,7 @@ export async function readSpaceObject(repo,actor,args){
  if(!actor.owner&&kind==='memory'&&!await sourcesAvailable(repo,actor,item))fail('source_changed','记忆来源已变化，请核对当前原件',409);
  if(!actor.owner&&kind==='memory'&&selected!==(item.version||1))fail('forbidden','成员只能读取当前有效记忆',403);
  const {objectKey,...safeData}=data;
- if(actor.memberId&&['memory','document'].includes(kind))await repo.transact('read:'+id('r'),{kind,key,actor},tx=>tx.put('shared_read',{id:key+':'+actor.memberId,parentId:key,scopeId:item.scopeId,memberId:actor.memberId,version:selected,createdAt:tx.now}));
+ if(recordRead&&actor.memberId&&['memory','document'].includes(kind))await repo.transact('read:'+id('r'),{kind,key,actor},tx=>tx.put('shared_read',{id:key+':'+actor.memberId,parentId:key,scopeId:item.scopeId,memberId:actor.memberId,version:selected,createdAt:tx.now}));
  const taskInfo=kind==='task'?{subtasks:selected===(item.version||1)?(await taskSummaries(repo,[item]))[0].subtasks:null,parentTask:data.parentTaskId?((p)=>({id:p.id,title:p.title,status:p.status}))(await repo.get('channel_task',data.parentTaskId)):null}:{};
  return {...safeData,...taskInfo,id:item.id,currentVersion:item.version||1,version:selected,versions:actor.owner?versions.map(({objectKey,...v})=>v):[],...(kind==='memory'?{evidence:publicMemory(item).evidence}:{})};
 }
