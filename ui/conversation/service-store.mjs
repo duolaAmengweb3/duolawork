@@ -20,6 +20,6 @@ export function createServiceStore(request,{now=Date.now,ttl=30000,limit=80}={})
   setScope(next){if(scope===next)return;const previous=scope;scope=next;if(!previous)return;epoch++;for(const e of entries.values())e.controller?.abort();entries.clear();for(const key of listeners.keys()){notify(key);if(listeners.get(key)?.size)void load(key).catch(()=>{});}},
   update(key,update){const e=entry(key);if(e.value.data)publish(key,e,{data:update(e.value.data)});},
   patch(prefix,update){for(const [key,e]of entries)if(key.startsWith(prefix)&&e.value.data)publish(key,e,{data:update(e.value.data,new URL(key,'https://local.invalid').searchParams)});},
-  prefetch(page){const key={connectors:'/v2/connectors',vault:'/v2/vault?query=',skills:'/v2/skills'}[page];if(key)void load(key).catch(()=>{});},
+  prefetch(page){const key={connectors:'/v2/connectors',vault:'/v2/vault?query=',skills:'/v2/skills'}[page];return key?load(key).catch(()=>{}):Promise.resolve();},
  };
 }

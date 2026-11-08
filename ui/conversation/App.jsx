@@ -234,8 +234,8 @@ export default function App() {
     if(!workspace.accounts[0]?.id)return;
     // Let the initial conversation paint first; warm only the three small
     // metadata lists once per workspace, never values or platform logins.
-    const timer=setTimeout(()=>{for(const view of ['connectors','vault','skills'])serviceStore.prefetch(view);},800);
-    return()=>clearTimeout(timer);
+    let cancelled=false;const timer=setTimeout(async()=>{for(const view of ['connectors','vault','skills']){if(cancelled)return;await serviceStore.prefetch(view);}},800);
+    return()=>{cancelled=true;clearTimeout(timer);};
   },[workspace.accounts[0]?.id]);
   const refreshWorkspace = useCallback(() => coalesceRead.current('workspace',async () => {
     const results = await Promise.allSettled([
