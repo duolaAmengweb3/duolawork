@@ -5,10 +5,11 @@ import {privateJson} from '../../local/storage.mjs';
 
 const markerFile=(dir,sessionId)=>path.join(dir,'monitor-state',sessionId+'.ended.json');
 const read=file=>fs.readFile(file,'utf8').then(JSON.parse);
-export async function flushNativeEnd({client,session,connectionDir}){
+export async function flushNativeEnd({client,session,connectionDir,nativeState}){
  const file=markerFile(connectionDir,session.sessionId);let marker;
  try{marker=await read(file);}catch(e){if(e.code==='ENOENT')return;throw e;}
  if(marker.sessionId!==session.sessionId)return;
+ if(marker.awaitNativeIdle&&(!nativeState||await nativeState()!=='ended'))return;
  const pending=[];
  for(const turn of marker.turns){
   try{
@@ -25,10 +26,10 @@ export async function observeNativeEnd({client,session,connectionDir,claims={},w
  if(input.session_id!==session.sessionId||!['Stop','StopFailure','SessionEnd'].includes(input.hook_event_name))return {ignored:true};
  // A persistent Monitor is a notification listener, not an unfinished turn.
  // Counting our own always-on Monitor here would recreate the permanent lock.
- if(input.background_tasks?.some(t=>t.type!=='monitor'&&!['completed','failed','cancelled'].includes(t.status)))return {deferred:true};
+ const awaitNativeIdle=!!input.background_tasks?.some(t=>t.type!=='monitor'&&!['completed','failed','cancelled'].includes(t.status));
  const observedAt=Date.now(),turns=Object.values(claims).filter(c=>!c.acknowledged&&c.turnId?.startsWith('turn_')&&c.lease&&(!c.claimedAtLocal||c.claimedAtLocal<=observedAt)).map(c=>({turnId:c.turnId,lease:c.lease}));
  const file=markerFile(connectionDir,session.sessionId);
- const marker={sessionId:session.sessionId,eventId:randomUUID(),event:input.hook_event_name,observedAt:new Date(observedAt).toISOString(),turns};
+ const marker={sessionId:session.sessionId,eventId:randomUUID(),event:input.hook_event_name,observedAt:new Date(observedAt).toISOString(),turns,...(awaitNativeIdle?{awaitNativeIdle:true}:{})};
  // Persist event metadata before network access. No transcript files are read;
  // response text in the hook input is neither stored nor forwarded.
  await privateJson(file,marker,{durable:true});
@@ -43,6 +44,7 @@ export async function observeNativeEnd({client,session,connectionDir,claims={},w
   }
   await privateJson(file,{...marker,turns},{durable:true});
  }catch{/* Known leases remain durable for the Monitor to reconcile later. */}
+ if(awaitNativeIdle)return {deferred:true};
  await flushNativeEnd({client,session,connectionDir});
  return {observed:true};
 }

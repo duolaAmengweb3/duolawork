@@ -12,7 +12,7 @@ import {flushNativeEnd,observeNativeEnd} from './end-observer.mjs';
 import {subscribeNativeChanges} from '../../local/native-delivery.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {ClaudeChannel,sessionLinkTools} from './channel.mjs';
-import {refreshSessionInfo} from './session-info.mjs';
+import {refreshSessionInfo,nativeExecutionState} from './session-info.mjs';
 import {nativeLauncher,NativeSessionCreator} from './create-session.mjs';
 
 const run=promisify(execFile),read=async file=>JSON.parse(await fs.readFile(file,'utf8'));
@@ -88,7 +88,7 @@ export class MonitorBridge{
     this.session=next;this.bridge=null;this.heartbeatAt=0;this.checkId=null;this.creator=null;
     if(!next)return null;
     if(this.kind==='monitor'){
-      const launcher=await this.launcher(next);next.canCreate=!!launcher;
+      const launcher=await this.launcher(next);next.canCreate=!!launcher;this.nativeBinary=launcher?.binary;
       if(launcher)this.creator=new NativeSessionCreator({connectionDir:this.connectionDir,client:this.client,launcher});
     }
     // A notification queued just as the terminal exits may never reach Claude.
@@ -102,7 +102,7 @@ export class MonitorBridge{
   }
   async tick(){
     const b=await this.select();if(!b)return;
-    await flushNativeEnd({client:this.client,session:this.session,connectionDir:this.connectionDir});
+    await flushNativeEnd({client:this.client,session:this.session,connectionDir:this.connectionDir,nativeState:()=>nativeExecutionState(this.session,{binary:this.nativeBinary})});
     if(Date.now()-this.heartbeatAt>20000){
       this.session=await refreshSessionInfo(this.session);b.session=this.session;
       await this.client.api('/v2/self/native-sessions',{method:'POST',body:this.session});this.heartbeatAt=Date.now();

@@ -9,6 +9,7 @@ import {conversationCommand,conversationRuntime} from '../cloud/collaboration/co
 import {registerExecutionBindings} from '../cloud/collaboration/execution-bindings.mjs';
 import {ClaudeChannel} from '../connectors/claude/channel.mjs';
 import {observeNativeEnd,flushNativeEnd} from '../connectors/claude/end-observer.mjs';
+import {nativeExecutionState} from '../connectors/claude/session-info.mjs';
 
 async function setup(t){
  const f=await fixture(t),actor={memberId:'grok'};f.identity.members[0].platformId='claude-code';let seq=0;
@@ -83,4 +84,17 @@ test('old claim ledger can use current native ownership; successful receipts rem
  const next=await f.claim(1);
  await f.end({[claim.turnId]:f.bridge.claims[claim.turnId]}, {last_assistant_message:'private final'});
  assert.equal((await f.repo.get('channel_turn',claim.turnId)).status,'silent');assert.equal((await f.repo.get('channel_turn',next.turnId)).status,'stalled');
+});
+
+test('a deferred Stop is durable and reconciles only exact official idle metadata, without another Stop or a timeout guess',async t=>{
+ const f=await setup(t),claim=await f.claim(0),claims={[claim.turnId]:{turnId:claim.turnId,lease:claim.lease}};
+ await f.end(claims,{background_tasks:[{type:'shell',status:'running'}]});
+ const file=path.join(f.dir,'monitor-state/original.ended.json');assert.equal(JSON.parse(await fs.readFile(file,'utf8')).awaitNativeIdle,true);
+ const session={...f.bridge.session,pid:123,workspace:'/original/project'};
+ const query=rows=>nativeExecutionState(session,{binary:'/original/claude',run:async(binary,args)=>{assert.deepEqual(args,['agents','--all','--json','--cwd',session.workspace]);return {stdout:JSON.stringify(rows)};}});
+ for(const rows of [[],[{sessionId:'original',pid:999,cwd:session.workspace,status:'idle',state:'done'}],[{sessionId:'original',pid:123,cwd:session.workspace,status:'working',state:'working'}]]){
+  await flushNativeEnd({client:f.client,session,connectionDir:f.dir,nativeState:()=>query(rows)});assert.equal((await f.repo.get('channel_turn',claim.turnId)).status,'active');
+ }
+ await flushNativeEnd({client:f.client,session,connectionDir:f.dir,nativeState:()=>query([{sessionId:'original',pid:123,cwd:session.workspace,status:'idle',state:'done'}])});
+ assert.equal((await f.repo.get('channel_turn',claim.turnId)).status,'stalled');await assert.rejects(fs.access(file));
 });

@@ -1,13 +1,14 @@
-✔ bad tool fields return controlled errors, observed aliases work, and another member remains forbidden (15.906875ms)
-✔ official native end frees the exact session after receipt failure without inventing a reply or replaying work (51.289083ms)
-✔ background tasks, another session, another member and stale lease cannot release an active turn (4.982042ms)
-✔ end report survives network loss using only its saved lease and never settles a newer execution (30.742ms)
-✔ old claim ledger can use current native ownership; successful receipts remain valid for continuation (45.862916ms)
-ℹ tests 5
+✔ bad tool fields return controlled errors, observed aliases work, and another member remains forbidden (17.451542ms)
+✔ official native end frees the exact session after receipt failure without inventing a reply or replaying work (60.86575ms)
+✔ background tasks, another session, another member and stale lease cannot release an active turn (25.721416ms)
+✔ end report survives network loss using only its saved lease and never settles a newer execution (33.38925ms)
+✔ old claim ledger can use current native ownership; successful receipts remain valid for continuation (44.772334ms)
+✔ a deferred Stop is durable and reconciles only exact official idle metadata, without another Stop or a timeout guess (24.318833ms)
+ℹ tests 6
 ℹ suites 0
-ℹ pass 5
+ℹ pass 6
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 316.051709
+ℹ duration_ms 374.521292
