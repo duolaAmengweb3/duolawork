@@ -24,6 +24,7 @@ import {
   Layers,
   Headset,
   Plug,
+  KeyRound,
   Sparkles,
   Hash,
   Plus,
@@ -139,7 +140,7 @@ export default function App() {
     [current, setCurrent] = useState(saved.current.channelId || ""),
     [snapshot, setSnapshot] = useState(null),
     [secretaryOpen,setSecretaryOpen]=useState(saved.current.page==="secretary"),[secretarySource,setSecretarySource]=useState(null),
-    [page, setPage] = useState(["members","connectors","skills"].includes(saved.current.page) ? saved.current.page : "chat"),
+    [page, setPage] = useState(["members","connectors","skills","vault"].includes(saved.current.page) ? saved.current.page : "chat"),
     [tab, setTab] = useState(saved.current.spaceTab||"documents"),
     [spaceSelection,setSpaceSelection]=useState(null),[spaceEditor,setSpaceEditor]=useState(null),[meetingStart,setMeetingStart]=useState(false),
     [references,setReferences]=useState(saved.current.references||{}),
@@ -644,7 +645,7 @@ export default function App() {
           <Users size={17} />
           成员与连接<span>{workspace.members.length}</span>
         </button>
-        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} aria-label={label} title={label} className={"nav-home "+((key==="secretary"?secretaryOpen:page===key)?"selected":"")} onClick={()=>key==="secretary"?setSecretaryOpen(v=>!v):setPage(key)}>{key==="secretary"?<BrandMark motion="hand" size={22} alt=""/>:<Icon size={17}/>}{label}</button>)}
+        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["vault","Vault",KeyRound],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} aria-label={label} title={label} className={"nav-home "+((key==="secretary"?secretaryOpen:page===key)?"selected":"")} onClick={()=>key==="secretary"?setSecretaryOpen(v=>!v):setPage(key)}>{key==="secretary"?<BrandMark motion="hand" size={22} alt=""/>:<Icon size={17}/>}{label}</button>)}
         <div className="sidebar-caption">
           <div className="chat-kind-tabs" role="group" aria-label="聊天类型">{[['direct','单聊'],['group','群聊']].map(([kind,label])=><button key={kind} aria-pressed={chatKind===kind} onClick={()=>switchChatKind(kind)}>{label}{channels.some(c=>!!c.direct===(kind==='direct')&&!!unread[c.id]?.count)&&<i/>}</button>)}</div>
           <button
@@ -719,7 +720,7 @@ export default function App() {
             {notice}
           </div>
         )}
-        {["connectors","skills"].includes(page)?<WorkspaceServices key={page} page={page} workspace={workspace} channels={channels} onChat={openDirect} onChannel={id=>{savePosition();setCurrent(id);setChatKind(channels.find(c=>c.id===id)?.direct?"direct":"group");setPage("chat");}}/>:page === "members" ? (
+        {["connectors","skills","vault"].includes(page)?<WorkspaceServices key={page} page={page} workspace={workspace} channels={channels} onChat={openDirect} onChannel={id=>{savePosition();setCurrent(id);setChatKind(channels.find(c=>c.id===id)?.direct?"direct":"group");setPage("chat");}}/>:page === "members" ? (
           <Members
             workspace={workspace}
             coding={codingStatus}

@@ -12,6 +12,7 @@ import {finishConnectorOAuth} from './connector-oauth.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {validateToolArguments} from './tool-validation.mjs';
 import {connectorHostRequest} from './connector-hosts.mjs';
+import {VAULT_TOOL,vaultTool,vaultSettings,redeemVaultLease} from './vault.mjs';
 import {bytes as toolHostBytes,sha256 as toolHostSHA} from './tool-host-download.mjs';
 import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
 import {channelUnread} from './chat-experience.mjs';
@@ -82,7 +83,7 @@ function decodeCursor(raw) {
     fail("invalid_cursor", "分页游标无效");
   }
 }
-const quietSharedTools = new Set(['shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff']);
+const quietSharedTools = new Set(['shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff','vault']);
 const string = { type: "string" };
 const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   type: "object",
@@ -95,6 +96,7 @@ export const TOOLS = [
   ...MANAGEMENT_TOOLS,
   ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,...SKILL_TOOLS,
   ...CONNECTOR_TOOLS,
+  VAULT_TOOL,
   ...SHARED_TOOLS,
   {
     name: "report_setup_status",
@@ -363,12 +365,13 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
   if(name==='github')return connectorTool(repo,actor,args,env);
   if(name==='connector')return mcpConnectorTool(repo,actor,args,env);
+  if(name==='vault')return vaultTool(repo,identity,actor,args,env);
   if(SKILL_TOOLS.some(t=>t.name===name))return skillTool(repo,actor,name,args);
   if(name==='manage_workspace')return manageWorkspace(repo,identity,actor,args,env);
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['resolve_delivery','manage_workspace','github','connector','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
@@ -658,6 +661,13 @@ export async function v2Fetch(request, env, ctx, identity) {
         ),
       ),
     );
+  if(url.pathname==='/v2/vault'){
+   if(!['GET','POST'].includes(request.method))fail('method_not_allowed','此接口仅支持 GET / POST',405);
+   const args=request.method==='GET'?{action:'list',...Object.fromEntries(url.searchParams)}:await readJSON(request,8000000);
+   if(request.method==='GET'&&!['list','get','activity'].includes(args.action))fail('method_not_allowed','查看凭证值、备份与变更必须使用 POST',405);
+   return json(await vaultSettings(repo,identity,actor,args,env));
+  }
+  if(url.pathname==='/v2/self/vault/redeem'&&request.method==='POST')return json(await redeemVaultLease(repo,actor,await readJSON(request),env));
   if(url.pathname==='/v2/changes'&&request.method==='GET'){
     const page=await changes(repo,actor,{after:url.searchParams.get('after'),signal:request.signal,
     waitMs:url.searchParams.has('waitMs')?Number(url.searchParams.get('waitMs')):8000,

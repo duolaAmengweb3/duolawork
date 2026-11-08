@@ -9,6 +9,14 @@ directory.mkdir(mode=0o700, exist_ok=True)
 object_root = pathlib.Path(config.get('objectDirectory', database.parent / 'objects'))
 object_backup = directory / 'objects'
 object_backup.mkdir(mode=0o700, exist_ok=True)
+# The encryption key deliberately stays outside database/object archives.
+# Record only its fingerprint so recovery can select the separately held key.
+vault_key = config.get('vaultEncryptionKey')
+if vault_key is None:
+    key_file = pathlib.Path(config.get('vaultKeyDirectory', database.parent / '.vault-keys')) / 'recovery.key'
+    if key_file.exists(): vault_key = key_file.read_text().strip()
+vault_recovery = {'keyId': hashlib.sha256(vault_key.encode()).hexdigest()[:16] if vault_key else None,
+                  'keyIncluded': False, 'requiresSeparateKeyBackup': True}
 # Deletion intent stays outside point-in-time database snapshots. Restoring an
 # old DB must retain the newest ledger, so deleted memories cannot reappear.
 ledger = database.parent / 'memory-forgotten.d'
@@ -50,7 +58,7 @@ with tempfile.TemporaryDirectory(dir=directory) as work:
         shutil.copyfileobj(src, dst)
     with compressed.open('rb') as done: os.fsync(done.fileno())
     manifest = pathlib.Path(work) / 'manifest.json'
-    manifest.write_text(json.dumps({'stamp': stamp, 'objects': objects, 'database': 'hub-' + stamp + '.sqlite.gz'}))
+    manifest.write_text(json.dumps({'stamp': stamp, 'objects': objects, 'database': 'hub-' + stamp + '.sqlite.gz', 'vaultRecovery': vault_recovery}))
     # Both are only advertised after every referenced object has been copied and checked.
     os.replace(compressed, directory / ('hub-' + stamp + '.sqlite.gz'))
     os.replace(manifest, directory / ('hub-' + stamp + '.manifest.json'))

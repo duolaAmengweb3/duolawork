@@ -11,6 +11,7 @@ import worker from './worker.mjs';
 import { openDatabase } from './sqlite.mjs';
 import { diskObjects } from './object-store.mjs';
 import { cleanUploads } from './object-maintenance.mjs';
+import {loadVaultKey} from './vault-key.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.HUB_SERVER_CONFIG;
@@ -20,10 +21,12 @@ if (!config.adminKey || !config.publicOrigin || !config.workspaceId) throw new E
 const origins = new Set([config.publicOrigin, ...(config.compatibleOrigins || [])]);
 for (const origin of origins) if (new URL(origin).origin !== origin || !origin.startsWith('https://')) throw new Error('Expected HTTPS public origin');
 const DB = openDatabase(config.database, path.join(directory, 'migrations'));
+const vaultKey=await loadVaultKey(DB,config).catch(()=>({state:'locked'}));
 for(const entry of await forgottenLedger(DB,config.workspaceId,config.database,{restore:true}))await scrubMemoryReceipts(DB,config.workspaceId,entry.id);
 const limits = new Map();
 const {connectorFetch}=await import('./connector-fetch.mjs');
 const env = {
+  VAULT_ENCRYPTION_KEY:vaultKey.key,
   CONNECTOR_FETCH:connectorFetch,
   PERSIST_MEMORY_FORGET:async id=>{await forgottenLedger(DB,config.workspaceId,config.database);await scrubMemoryReceipts(DB,config.workspaceId,id);},
   MEMORY:config.memory?memoryClient('http://127.0.0.1:'+(config.memory.port||8791)):undefined,

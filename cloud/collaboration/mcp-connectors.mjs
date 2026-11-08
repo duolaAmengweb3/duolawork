@@ -7,12 +7,15 @@ import {CONNECTOR_CATALOG,connectorAllowed,importConnectorConfig} from '../../sh
 import {openRemoteMcp,mcpTools,publicMcpURL} from '../../shared/mcp-client.mjs';
 import {oauthProvider} from './connector-oauth.mjs';
 import {UnauthorizedError} from '@modelcontextprotocol/sdk/client/auth.js';
+import {resolveVaultConfig,assertVaultUses,recordVaultUse} from './vault.mjs';
+import {vaultReferences,concealSecrets} from '../../shared/vault-references.mjs';
 
 export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书等）。先 connections 查可用连接，tools 按需获取工具定义，再 call。使用原聊天 channelId；工具在连接指定位置执行，不复制账号登录。写操作须提供唯一 requestId，超时结果不明确时不要换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
 export const publicService=({credentials,...c})=>({...c,toolCount:c.tools?.length||0});
 const agentService=c=>{const value=publicService(c);return {...value,url:value.url?new URL(value.url).origin:null};};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function errorState(e){
+ if(e.code?.startsWith('vault_'))return {code:e.code,message:e.message,state:'attention'};
  if(e.code==='host_offline')return {code:e.code,message:'工具所在电脑或 VPS 不在线，连接配置已保留',state:'offline'};
  if(e.code==='outcome_unknown')return {code:e.code,message:'未收到明确结果，请查看调用记录；操作可能已经执行，请勿重复提交',state:'attention'};
  if(e instanceof UnauthorizedError||e.code===401||e.status===401||e.name==='UnauthorizedError')return {code:'authorization_required',message:'需要完成服务授权，请打开此连接继续登录',state:'authorization_required'};
@@ -23,11 +26,13 @@ function errorState(e){
 async function fresh(repo,c,actor,channelId){
  const next=await repo.get('service_connection',c.id);
  if(next.version!==c.version||next.status==='disconnected'||channelId&&!connectorAllowed(next,actor,channelId))fail('connection_changed','连接或使用范围已变化，请刷新后再试',409);
+ if(actor)await assertVaultUses(repo,(next.vaultReferences||[]).map(r=>({id:r.credentialId})),actor,channelId);
  return next;
 }
 async function credentials(repo,c,env){return c.credentials?unseal(c.credentials,env.ADMIN_KEY):{};}
-async function remote(repo,c,env,fn,{authorize=false}={}){
- const secret=await credentials(repo,c,env);let o=c.authType==='oauth'?await oauthProvider(repo,c,env,{begin:authorize}):null;
+export async function resolveConnectorCredentials(repo,c,actor,channelId,env,expectedUses){return resolveVaultConfig(repo,await credentials(repo,c,env),actor,channelId,env,{targetOrigin:c.url?new URL(c.url).origin:undefined,expectedUses});}
+async function remote(repo,c,env,fn,{authorize=false,actor={owner:true},channelId}={}){
+ const resolved=await resolveConnectorCredentials(repo,c,actor,channelId,env),secret=resolved.config;let o=c.authType==='oauth'?await oauthProvider(repo,c,env,{begin:authorize}):null;
  const initialToken=o?.data.tokens?.access_token;
  let session;
  try{
@@ -38,7 +43,7 @@ async function remote(repo,c,env,fn,{authorize=false}={}){
    // Retry initialization only, before a tool has been submitted. Never retry fn.
    session=await openRemoteMcp({url:c.url,headers:secret.headers||{},authProvider:latest.provider,fetch:latest.fetch});
   }
-  return await fn(session.client);
+  const result=await fn(session.client);await assertVaultUses(repo,resolved.uses,actor,channelId);await recordVaultUse(repo,resolved.uses,actor,channelId,actor.owner?'connector_check':'connector_call');return concealSecrets(result,resolved.secrets);
  }finally{await session?.client.close().catch(()=>{});}
 }
 async function hostRequest(repo,c,actor,args){
@@ -56,7 +61,7 @@ async function hostRequest(repo,c,actor,args){
 }
 async function perform(repo,c,actor,args,env){
  if(c.transport==='stdio')return hostRequest(repo,c,actor,args);
- return remote(repo,c,env,async client=>args.action==='tools'?mcpTools(client):client.callTool({name:args.tool,arguments:args.arguments||{}},undefined,{timeout:30000}));
+ return remote(repo,c,env,async client=>args.action==='tools'?mcpTools(client):client.callTool({name:args.tool,arguments:args.arguments||{}},undefined,{timeout:30000}),{actor,channelId:args.channelId});
 }
 async function check(repo,c,env,{authorize=false}={}){
  try{
@@ -103,9 +108,16 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
   }else secret.headers=headers;
   if(args.oauthClientId!==undefined)secret.oauthClientId=args.oauthClientId;
   if(args.oauthClientSecret)secret.oauthClientSecret=args.oauthClientSecret;
+  if(args.vaultBindings!==undefined){
+   if(!Array.isArray(args.vaultBindings)||args.vaultBindings.length>40)fail('invalid_vault_reference','凭证引用配置无效');
+   for(const b of args.vaultBindings){if(!['headers','env'].includes(b.target)||b.target!==(transport==='stdio'?'env':'headers')||typeof b.name!=='string'||! /^[A-Za-z_][A-Za-z0-9_-]{0,127}$/.test(b.name)||['__proto__','constructor','prototype','host','connection','content-length','cookie'].includes(b.name.toLowerCase())||typeof b.value!=='string'||/[\r\n]/.test(b.value)||!vaultReferences(b.value).length)fail('invalid_vault_reference','请求头或环境变量中的凭证引用无效');secret[b.target]={...secret[b.target],[b.name]:b.value};}
+  }
+  const refs=vaultReferences(secret);if(refs.some(r=>!r.location.startsWith('headers.')&&!r.location.startsWith('env.')))fail('invalid_vault_reference','凭证引用只能用于请求头或环境变量，不能写入命令行');
+  if(JSON.stringify(secret).includes('vault://')&&!refs.length)fail('invalid_vault_reference','Vault 凭证引用格式不正确');
   const row={...old,id:old?.id||'mcp_'+(await digest(required(args.requestId,'请求编号'))).slice(0,32),serviceType:'mcp',provider:args.provider||old?.provider||'custom',name:required(args.name||old?.name||preset?.name,'连接名称',120),transport,url:transport==='http'?publicMcpURL(args.url||old?.url||preset?.url):null,hostId:transport==='stdio'?(args.hostId||old?.hostId):null,authType:args.authType||old?.authType||(Object.keys(headers).length?'headers':'oauth'),callbackOrigin:env.CONNECTOR_ORIGIN,blockedMemberIds:old?.blockedMemberIds||[],blockedChannelIds:old?.blockedChannelIds||[],tools:[],status:'configured',health:'unchecked',version:(old?.version||0)+1,createdAt:old?.createdAt||new Date().toISOString()};
-  if(!['oauth','headers','none'].includes(row.authType))fail('invalid_auth','登录方式无效');
+  row.vaultReferences=refs;if(!['oauth','headers','none'].includes(row.authType))fail('invalid_auth','登录方式无效');
   if(row.authType==='none'||old&&old.authType!==row.authType&&args.headers===undefined)secret.headers={};
+  row.vaultReferences=vaultReferences(secret);await resolveVaultConfig(repo,secret,{owner:true},null,env,{targetOrigin:row.url?new URL(row.url).origin:undefined});
   // Hash the secret in the receipt; never retain submitted tokens in an input ledger.
   await repo.transact(args.requestId,{...row,createdAt:undefined,secretHash:await digest(JSON.stringify(secret))},async tx=>{if(old)await fresh(tx,old);if(old&&(old.url!==row.url||args.oauthClientId!==undefined))tx.put('service_oauth',{id:row.id,sealed:null,state:null});return publicService(tx.put('service_connection',{...row,credentials:await seal(secret,env.ADMIN_KEY)}));});
   return check(repo,await repo.get('service_connection',row.id),env,{authorize:row.authType==='oauth'});
@@ -129,6 +141,7 @@ export async function mcpConnectorTool(repo,actor,args,env){
  const c=all.find(c=>c.id===args.connectionId);if(!c)fail('forbidden','此聊天或成员不可使用该连接',403);
  if(args.action==='tools')return {connection:agentService({...c,tools:undefined}),tools:c.tools||[],health:c.health,message:c.message};
  if(args.action==='result'){
+  await fresh(repo,c,actor,args.channelId);
   const r=await repo.get('service_invocation',required(args.invocationId,'调用记录'));
   if(r.scopeId!==c.id||r.channelId!==args.channelId||r.memberId!==actor.memberId)fail('forbidden','只能查看自己在当前聊天的调用',403);
   if(r.status==='running'&&Date.now()-Date.parse(r.createdAt)>90000){

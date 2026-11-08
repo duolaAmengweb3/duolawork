@@ -5,7 +5,7 @@ await fs.mkdir(output, { recursive: true });
 await build({ entryPoints: ['cloud/worker.ts'], bundle: true, platform: 'node', format: 'esm', target: 'node24', outfile: output + '/worker.mjs', banner: { js: "import {createRequire as __hubRequire} from 'node:module'; const require=__hubRequire(import.meta.url);" } });
 await build({entryPoints:['server/object-maintenance.mjs'],bundle:true,platform:'node',format:'esm',target:'node24',outfile:output+'/object-maintenance.mjs'});
 await build({entryPoints:['server/connector-fetch.mjs'],bundle:true,platform:'node',format:'esm',target:'node24',outfile:output+'/connector-fetch.mjs',banner:{js:"import {createRequire as __connectorRequire} from 'node:module'; const require=__connectorRequire(import.meta.url);"}});
-for (const file of ['main.mjs', 'memory-client.mjs','memory-ledger.mjs','sqlite.mjs', 'object-store.mjs', 'backup.py']) await fs.copyFile('server/' + file, output + '/' + file);
+for (const file of ['main.mjs', 'memory-client.mjs','memory-ledger.mjs','sqlite.mjs', 'object-store.mjs', 'vault-key.mjs','backup.py']) await fs.copyFile('server/' + file, output + '/' + file);
 await fs.cp('cloud/migrations', output + '/migrations', { recursive: true });
 console.log('Built standalone server without credentials or workspace data');
 

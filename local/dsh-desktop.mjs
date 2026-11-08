@@ -7,6 +7,7 @@ import {promisify} from 'node:util';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {parseDocument,isSeq,isMap} from 'yaml';
 import {privateJson} from './storage.mjs';
+import {nativeBridgeFiles,writeNativeBridgeFiles} from './native-bridge-files.mjs';
 const exec=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_ID='duola-agent-hub-desktop';
 const runtimeFiles=['dsh-connector.mjs','coding-client.mjs','change-watcher.mjs','native-delivery.mjs','shared-file-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
@@ -69,11 +70,11 @@ export class DshDesktopHost {
  async deploy(profile){
   await fs.mkdir(this.root,{recursive:true,mode:0o700});
   let state;try{state=await read(this.stateFile);}catch(e){if(e.code!=='ENOENT')throw Error('桌面版连接记录损坏，原文件保留');state={controlToken:randomBytes(32).toString('base64url'),bindings:[]};await privateJson(this.stateFile,state);}
-  const bytes=await Promise.all(runtimeFiles.map(f=>fs.readFile(path.join(this.source,f))));
+  const files=await nativeBridgeFiles(this.source,runtimeFiles),bytes=files.map(f=>f.bytes);
   const hash=createHash('sha256');for(const b of bytes)hash.update(b);const revision=hash.digest('hex').slice(0,20),folder=path.join(this.root,'revisions',revision);
   try{await fs.access(path.join(folder,'complete.json'));}catch{
    const stage=path.join(this.root,'revisions','.stage-'+randomUUID());await fs.mkdir(path.join(stage,'local'),{recursive:true,mode:0o700});
-   for(let i=0;i<runtimeFiles.length;i++)await fs.writeFile(path.join(stage,'local',runtimeFiles[i]),bytes[i]);
+   await writeNativeBridgeFiles(stage,files);
    const undici=path.dirname(fileURLToPath(import.meta.resolve('undici/package.json')));await fs.mkdir(path.join(stage,'node_modules'),{recursive:true,mode:0o700});await fs.cp(undici,path.join(stage,'node_modules/undici'),{recursive:true});
    await privateJson(path.join(stage,'package.json'),{type:'module'});await privateJson(path.join(stage,'complete.json'),{revision});
    try{await fs.rename(stage,folder);}catch(e){if(!['EEXIST','ENOTEMPTY'].includes(e.code))throw e;await fs.rm(stage,{recursive:true,force:true});}

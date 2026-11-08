@@ -10,8 +10,9 @@ import ServiceDetails from './ServiceDetails.jsx';
 import {api,time} from '../v1/api.mjs';
 import './services.css';
 import ConnectorWorkspace from './ConnectorWorkspace.jsx';
+import VaultWorkspace from './VaultWorkspace.jsx';
 const definitions={secretary:{title:'秘书',description:'一位熟悉你工作安排的全局助手。',icon:Headset,endpoint:'/v2/management'},connectors:{title:'连接器',description:'把外部资料和工具带进团队，授权一次，按范围使用。',icon:Plug,endpoint:'/v2/connectors'},skills:{title:'技能',description:'把验证过的做事方法留下，需要时再取用。',icon:Sparkles,endpoint:'/v2/skills'}};
-export default function WorkspaceServices(props){return props.page==='connectors'?<ConnectorWorkspace {...props}/>:<ExistingServices {...props}/>;}
+export default function WorkspaceServices(props){return props.page==='vault'?<VaultWorkspace {...props}/>:props.page==='connectors'?<ConnectorWorkspace {...props}/>:<ExistingServices {...props}/>;}
 function ExistingServices({page,workspace,channels,onChat,onChannel}){
  const def=definitions[page],Icon=def.icon;
  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[editor,setEditor]=useState(null),[secretaryChoice,setSecretaryChoice]=useState(''),[detail,setDetail]=useState(null),[checking,setChecking]=useState('');

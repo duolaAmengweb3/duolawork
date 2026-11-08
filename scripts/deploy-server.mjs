@@ -50,5 +50,6 @@ trap - ERR
   const health = await requestJson(target.origin + '/health');
   const state = await requestJson(target.origin + '/admin/state', { token: config.adminKey });
   if (!health.ok || !Array.isArray(state.members)) throw Error('Deployed server verification failed');
+  await run(process.execPath,['scripts/backup-vault-key.mjs']);
   console.log('VPS backend deployed and authenticated read verified; existing configuration and database retained.');
 } finally { await fs.rm(directory, { recursive: true, force: true }); }

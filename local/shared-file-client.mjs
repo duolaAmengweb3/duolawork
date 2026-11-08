@@ -3,13 +3,16 @@ import {createReadStream} from 'node:fs';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {privateJson} from './storage.mjs';
+import {LOCAL_VAULT_TOOLS,runWithCredentials} from './credential-client.mjs';
 const str={type:'string'};
 export const LOCAL_FILE_TOOLS=[
+ ...LOCAL_VAULT_TOOLS,
  {name:'download_shared_file',description:'把获授权的共享文件准确下载到当前运行环境的私有缓存，校验SHA256后返回实际本地路径；不是用户Mac的路径。不会覆盖项目文件。',inputSchema:{type:'object',properties:{resourceId:str,version:{type:'integer',minimum:1}},required:['resourceId'],additionalProperties:false}},
  {name:'publish_local_file',description:'将当前环境内明确选择的单个成果文件发布到群共享空间，自动分块/续传/校验。不会上传目录或无关文件。更新已有文件时传resourceId和expectedVersion。',inputSchema:{type:'object',properties:{channelId:str,path:str,name:str,mime:str,resourceId:str,expectedVersion:{type:'integer',minimum:1}},required:['channelId','path'],additionalProperties:false}}
 ];
 async function sha(file){const hash=createHash('sha256');for await(const b of createReadStream(file))hash.update(b);return hash.digest('hex');}
 export async function localFileTool(client,name,args){
+ if(name==='run_with_credentials')return runWithCredentials(client,args);
  const root=path.join(path.dirname(client.file),'shared-cache');await fs.mkdir(root,{recursive:true,mode:0o700});
  if(name==='download_shared_file'){
   let part=await client.api('/v2/tools/read_shared_file',{method:'POST',body:{resourceId:args.resourceId,...(args.version?{version:args.version}:{})}});

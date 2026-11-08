@@ -6,6 +6,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {privateJson} from './storage.mjs';
+import {nativeBridgeFiles,writeNativeBridgeFiles} from './native-bridge-files.mjs';
 const execute=promisify(execFile),here=path.dirname(fileURLToPath(import.meta.url));
 const SIDECAR='duola-agent-hub';
 const assets=['antigravity-sidecar.mjs','antigravity-tools.mjs','coding-client.mjs','change-watcher.mjs','native-delivery.mjs','shared-file-client.mjs','session-routing.mjs','storage.mjs','native-agent.mjs','transport.mjs','network.mjs'];
@@ -28,9 +29,9 @@ export class AntigravityDesktopHost {
  async status(){const d=await this.discover();let online=false;if(d.running)try{const s=JSON.parse(await fs.readFile(this.stateFile));online=s.nativePid===d.pid&&!!(await this.call('/health')).ready;}catch{}return{...d,hostKind:this.kind,configured:true,online,progress:this.progress,model:'沿用原桌面会话的模型'};}
  async deploy(){
   await fs.mkdir(this.root,{recursive:true,mode:0o700});try{await fs.access(this.stateFile);}catch(e){if(e.code!=='ENOENT')throw e;await privateJson(this.stateFile,{controlToken:randomBytes(32).toString('base64url'),bindings:[],deliveries:{}});}
-  const bytes=await Promise.all(assets.map(f=>fs.readFile(path.join(this.source,f))));const hash=createHash('sha256');for(const b of bytes)hash.update(b);const revision=hash.digest('hex').slice(0,20),folder=path.join(this.root,'revisions',revision);
+  const files=await nativeBridgeFiles(this.source,assets);const hash=createHash('sha256');for(const file of files){hash.update(file.relative);hash.update(file.bytes);}const revision=hash.digest('hex').slice(0,20),folder=path.join(this.root,'revisions',revision);
   try{await fs.access(path.join(folder,'complete.json'));}catch{
-   const temp=path.join(this.root,'revisions','.stage-'+randomUUID());await fs.mkdir(path.join(temp,'local'),{recursive:true,mode:0o700});for(let i=0;i<assets.length;i++)await fs.writeFile(path.join(temp,'local',assets[i]),bytes[i]);await fs.mkdir(path.join(temp,'node_modules'),{recursive:true});await fs.cp(path.dirname(fileURLToPath(import.meta.resolve('undici/package.json'))),path.join(temp,'node_modules/undici'),{recursive:true});await privateJson(path.join(temp,'package.json'),{type:'module'});await privateJson(path.join(temp,'complete.json'),{revision});await fs.rename(temp,folder);
+   const temp=path.join(this.root,'revisions','.stage-'+randomUUID());await writeNativeBridgeFiles(temp,files);await fs.mkdir(path.join(temp,'node_modules'),{recursive:true});await fs.cp(path.dirname(fileURLToPath(import.meta.resolve('undici/package.json'))),path.join(temp,'node_modules/undici'),{recursive:true});await privateJson(path.join(temp,'package.json'),{type:'module'});await privateJson(path.join(temp,'complete.json'),{revision});await fs.rename(temp,folder);
   }
   const dir=path.join(this.home,'.gemini/config/sidecars',SIDECAR),manifestFile=path.join(dir,'sidecar.json');await fs.mkdir(dir,{recursive:true,mode:0o700});
   let oldManifest;try{oldManifest=JSON.parse(await fs.readFile(manifestFile));if(oldManifest.hubOwner!==this.stateFile)throw Error('同名 Sidecar 属于其他连接，未覆盖');}catch(e){if(e.code!=='ENOENT')throw e;}

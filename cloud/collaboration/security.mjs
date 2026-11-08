@@ -1,6 +1,6 @@
 import { fail, required } from "./repository.mjs";
 const enc = new TextEncoder();
-export const base64 = (bytes) => btoa(String.fromCharCode(...bytes));
+export const base64 = (bytes) => {let raw='';for(let i=0;i<bytes.length;i+=8192)raw+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(raw);};
 export const unbase64 = (value) =>
   Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
 async function key(secret) {
