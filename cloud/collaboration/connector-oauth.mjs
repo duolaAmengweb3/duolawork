@@ -2,7 +2,8 @@ import {auth} from '@modelcontextprotocol/sdk/client/auth.js';
 import {seal,unseal} from './security.mjs';
 import {fail,id,digest} from './repository.mjs';
 import {publicMcpURL} from '../../shared/mcp-client.mjs';
-import {applicationKey,configuredApplication} from './connector-applications.mjs';
+import {configuredApplication} from './connector-applications.mjs';
+import {connectorAuthorizationURL} from '../../shared/connector-authorization.mjs';
 
 export async function oauthProvider(repo,connection,env,{begin=false}={}){
  const key=connection.id,old=await repo.get('service_oauth',key,false);
@@ -42,17 +43,7 @@ export async function oauthProvider(repo,connection,env,{begin=false}={}){
   saveCodeVerifier:async v=>{data.verifier=v;await persist(['verifier']);},
   codeVerifier:()=>data.verifier,
   redirectToAuthorization:async u=>{
-   // A resource's default scopes can omit offline_access even when its
-   // authorization server supports refresh tokens. Request durable access
-   // without adding any new resource permissions or dropping existing scopes.
-   if(data.discovery?.authorizationServerMetadata?.scopes_supported?.includes('offline_access')){
-    const scopes=new Set((u.searchParams.get('scope')||'').split(/\s+/).filter(Boolean));scopes.add('offline_access');u.searchParams.set('scope',[...scopes].join(' '));
-   }
-   // Google does not issue refresh tokens for offline_access alone. Keep this
-   // provider requirement confined to the registered Google service origins.
-   if(applicationKey(connection.provider,connection.url)==='google-workspace'&&u.origin==='https://accounts.google.com'){
-    u.searchParams.set('access_type','offline');u.searchParams.set('prompt','consent select_account');
-   }
+   u=connectorAuthorizationURL(connection,u,data.discovery?.authorizationServerMetadata);
    data.authorizationUrl=publicMcpURL(u.href);await persist(['authorizationUrl']);
   },
   invalidateCredentials:async scope=>{const fields=scope==='all'?['tokens','client','verifier','discovery']:[{tokens:'tokens',client:'client',verifier:'verifier',discovery:'discovery'}[scope]];await persist(fields,{invalidate:true});const row=await repo.get('service_oauth',key,false);const latest=row?.sealed?await unseal(row.sealed,env.ADMIN_KEY):{};for(const field of fields)data[field]=latest[field];},

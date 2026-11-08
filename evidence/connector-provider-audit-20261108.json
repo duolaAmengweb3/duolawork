@@ -1,7 +1,7 @@
 {
   "at": "2026-11-08T10:34:02.928Z",
-  "buildId": "354442c0861b6b2d",
-  "scope": "Real authorized Cloudflare, Vercel and Notion reads through the existing Coding-member connector, with exact saved receipt read-back. Actual Vercel token refresh verified and business read succeeded afterwards. No external resource edits or claims about commercial Agent reasoning.",
+  "buildId": "bbf792a8929a90a4",
+  "scope": "Real authorized Cloudflare, Vercel and Notion reads plus GitHub personal-account create/read/update/read verification through the existing Coding-member connector. Vercel and GitHub refresh verified; the synthetic GitHub test gist was deleted and confirmed absent. No external organization access requests or original repository edits.",
   "results": [
     {
       "provider": "cloudflare",
@@ -35,6 +35,16 @@
       "sha256": "3b25b01b2633eb8a2498f0e50c02c6fcbea2eb2ca024dd33810fdc5169076254",
       "receiptMatches": true,
       "afterRealRefresh": true
+    },
+    {
+      "provider": "github",
+      "connectionId": "mcp_6615e15efce8050706d43d08233deb48",
+      "toolCount": 113,
+      "status": "succeeded",
+      "readWriteVerified": true,
+      "receiptMatches": true,
+      "afterRealRefresh": true,
+      "testDataCleaned": true
     }
   ],
   "vercel": {
@@ -64,7 +74,7 @@
     "Provider-advertised offline access and omitted replacement refresh token retention"
   ],
   "tests": {
-    "unitPassed": 635,
+    "unitPassed": 640,
     "unitFailed": 0,
     "connectorOAuthUI": true,
     "sharedStdioUI": true,
@@ -80,8 +90,9 @@
   },
   "externalLimits": {
     "github": {
-      "status": "waiting_confirmation",
-      "detail": "DuolaWork OAuth app registered; dedicated client secret not generated yet. No private application secret has been copied."
+      "status": "connected",
+      "detail": "Real owner-account OAuth, 113 tools, create/read/update/read verification, cleanup and actual refresh passed.",
+      "evidence": "evidence/github-connector-20261108.json"
     },
     "figma": {
       "status": "vendor_admission",
@@ -98,5 +109,6 @@
       "detail": "Official MCP configuration platform explicitly displayed no access. Native official CLI availability was inspected separately and is not proof of a shared DuolaWork connector.",
       "source": "https://open.feishu.cn/document/mcp_open_tools/end-user-call-remote-mcp-server"
     }
-  }
+  },
+  "updatedAt": "2026-11-08T13:18:28.753Z"
 }

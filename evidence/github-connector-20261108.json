@@ -1,0 +1,99 @@
+{
+  "at": "2026-11-08T13:18:28.753Z",
+  "buildId": "bbf792a8929a90a4",
+  "provider": "GitHub",
+  "account": "duolaAmengweb3",
+  "connectionId": "mcp_6615e15efce8050706d43d08233deb48",
+  "toolCount": 113,
+  "scope": "Real registered GitHub OAuth application and account grant; actual shared connector create/read/update/read of synthetic unlisted gist, cleanup via the same application grant. No external organization access requests, original repository edits, native login extraction or model substitution.",
+  "permissionPolicy": {
+    "default": "Full supported personal-account MCP capabilities",
+    "requestedScopes": [
+      "repo",
+      "delete_repo",
+      "read:user",
+      "user:email",
+      "read:packages",
+      "write:packages",
+      "read:project",
+      "project",
+      "gist",
+      "notifications",
+      "workflow",
+      "codespace"
+    ],
+    "source": "https://github.com/github/github-mcp-server/blob/main/pkg/scopes/scopes.go",
+    "organizationAndEnterpriseManagementRequested": false,
+    "externalOrganizationRequestsSent": false
+  },
+  "steps": [
+    {
+      "tool": "get_me",
+      "status": "succeeded",
+      "sha256": "44aeb363612d828b4cb1aa53f91a806547dc5babe763f4e1bf5289d4dc5c9b43"
+    },
+    {
+      "tool": "create_gist",
+      "status": "succeeded",
+      "sha256": "7f29a0b4307a45c034e6137e8a4dab72879cc49d352f6fa1016da7acd24df982"
+    },
+    {
+      "tool": "get_gist",
+      "status": "succeeded",
+      "sha256": "3550750c2846468032877e9d665a29216e585a71cd53b8f4aaf604a2c2907b88"
+    },
+    {
+      "tool": "update_gist",
+      "status": "succeeded",
+      "sha256": "7f29a0b4307a45c034e6137e8a4dab72879cc49d352f6fa1016da7acd24df982"
+    },
+    {
+      "tool": "get_gist",
+      "status": "succeeded",
+      "sha256": "b24051d2ab224dc5a0fc8c049d5be7b630d8e442b8795b3ac27fec2c19820d83"
+    }
+  ],
+  "readWriteVerified": true,
+  "clientAppStoredEncrypted": true,
+  "tokenExpiresIn": 28800,
+  "refresh": {
+    "available": true,
+    "result": "AUTHORIZED",
+    "tokenRetained": true,
+    "accessTokenRotated": true
+  },
+  "grantedScopes": [
+    "codespace",
+    "delete_repo",
+    "gist",
+    "notifications",
+    "project",
+    "read:user",
+    "repo",
+    "user:email",
+    "workflow",
+    "write:packages"
+  ],
+  "organizationManagementScopesPresent": false,
+  "cleanup": {
+    "deleted": true,
+    "readAfterDeleteStatus": 404,
+    "scope": "Only the synthetic unlisted gist created for this connector test; owner and content verified first."
+  },
+  "postRefreshMcpRead": {
+    "status": "succeeded",
+    "sha256": "44aeb363612d828b4cb1aa53f91a806547dc5babe763f4e1bf5289d4dc5c9b43",
+    "receiptMatches": true
+  },
+  "tests": {
+    "unitPassed": 640,
+    "unitFailed": 0,
+    "sessionRetention": true
+  },
+  "deployment": {
+    "backend": "VPS",
+    "desktopAndLocalMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true
+  }
+}
