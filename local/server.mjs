@@ -19,6 +19,7 @@ import {CodingManager} from './coding-manager.mjs';
 import {DshManager} from './dsh-manager.mjs';
 import {AntigravityDesktopHost} from './antigravity-host.mjs';
 import {ChatSessions} from './chat-sessions.mjs';
+import {McpHostManager} from './mcp-host-manager.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
@@ -28,6 +29,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const logins=new LoginMonitor({file:path.join(dataDir,'login-status.json')});
  const connections=new AgentConnections({cloud,browsers,logins,file:path.join(dataDir,'agent-connections.json')});
  const documents=new DocumentStore(path.join(dataDir,'documents'));
+ const toolHost=new McpHostManager(config,dataDir);if(!maintenance)await toolHost.load();
  const coding=new CodingManager({config,dataDir,maintenance,runtime:nativeRuntime,agentFactory:nativeAgentFactory});await coding.load();
  const dsh=new DshManager({config,dataDir,maintenance,host:dshHost});await dsh.load();
  const ag=new DshManager({config,dataDir,maintenance,host:antigravityHost||new AntigravityDesktopHost(dataDir),platformId:"antigravity",engine:"antigravity",fileName:"antigravity-desktop-members.json",requireFreshReceipt:true});await ag.load();
@@ -84,6 +86,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/local/coding/permissions'&&req.method==='POST')return json(res,await coding.permissions(await body(req)));
  if(url.pathname==='/api/local/open-provider'&&req.method==='POST')return json(res,await openProviderApp((await body(req)).platformId));
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
+ if(url.pathname==='/api/local/connector-host'&&req.method==='POST')return json(res,await toolHost.connect());
  if(url.pathname==='/api/local/status')return json(res,{...runner.status,network:networkDiagnostics(),build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
  if(url.pathname.startsWith('/api/workspace/')&&req.method==='POST'){
   const input=await body(req),state=await cloud.state(),ready=availability(state);let command;
@@ -212,6 +215,6 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  res.writeHead(200,{'Content-Type':mime,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; frame-ancestors 'none'",'Cache-Control':'no-cache'});res.end(data);
  }catch(e){if(res.headersSent||res.destroyed||req.aborted){res.destroy();return;}json(res,{message:e.message||'操作失败',...(e.code?{error:e.code}:{}),...(e.uncertain?{uncertain:true}:{})},e.status||400);}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();if(!maintenance){await coding.start();await dsh.start();await ag.start();}
- return{url:origin,server,runner,browsers,coding,dsh,ag,setClientView(value){clientView={...clientView,...value};},async close(){await chatSessions.stop();await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
+ return{url:origin,server,runner,browsers,coding,dsh,ag,setClientView(value){clientView={...clientView,...value};},async close(){await toolHost.stop();await chatSessions.stop();await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){const instance=await start();console.log('Agent Hub 本地工作台：'+instance.url);for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>instance.close().finally(()=>process.exit(0)));}

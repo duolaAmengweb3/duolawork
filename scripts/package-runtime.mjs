@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+await import('./package-tool-host.mjs');
 const stage=path.resolve('release/native-runtime'),archive=path.resolve('release/native-runtime.tgz');
 await fs.rm(stage,{recursive:true,force:true});
 await fs.mkdir(stage,{recursive:true});

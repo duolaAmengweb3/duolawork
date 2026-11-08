@@ -1,0 +1,9 @@
+import {build} from 'esbuild';
+import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+await fs.mkdir('release/tool-host',{recursive:true});
+await build({entryPoints:['local/mcp-host-cli.mjs'],bundle:true,platform:'node',format:'cjs',target:'node22',outfile:'release/tool-host/tool-host.cjs',minify:true,banner:{js:'{const [major,minor]=process.versions.node.split(".").map(Number);if(major<22||major===22&&minor<19){console.error("DuolaWork 工具运行端需要 Node.js 22.19 或更新版本，建议 Node.js 24；请只为此工具安装独立运行环境。");process.exit(1);}}'}});
+await build({entryPoints:['local/mcp-tool-host.mjs'],bundle:true,platform:'node',format:'cjs',target:'node22',outfile:'local/mcp-tool-host-bundle.cjs',minify:true});
+const bytes=await fs.readFile('release/tool-host/tool-host.cjs'),sha256=createHash('sha256').update(bytes).digest('hex');
+await fs.writeFile('cloud/collaboration/tool-host-download.mjs','// Generated public program; no user configuration.\nexport const sha256='+JSON.stringify(sha256)+';\nexport const bytes='+JSON.stringify(bytes.toString('base64'))+';\n');
+console.log(JSON.stringify({program:'shared-tool-host',bytes:bytes.length,sha256}));

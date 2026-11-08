@@ -40,6 +40,7 @@ for (const name of ["playwright-core", "undici", "yaml", "ws"])
 // Import from the actual isolated installation to catch omitted files and
 // dependencies. This does not read accounts or invoke a native Agent.
 execFileSync(process.execPath,["--input-type=module","-e","await import("+JSON.stringify("file://"+path.join(appDir,"connectors/runtime/session-link.mjs"))+");"],{stdio:"inherit"});
+execFileSync(process.execPath,["--input-type=module","-e","await import("+JSON.stringify("file://"+path.join(appDir,"local/mcp-host-manager.mjs"))+");"],{stdio:"inherit"});
 const plist = path.join(out, "Contents/Info.plist");
 execFileSync("/usr/libexec/PlistBuddy", [
   "-c",

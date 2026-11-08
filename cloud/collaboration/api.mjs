@@ -7,6 +7,10 @@ import {conversationRuntime,receiveDelivery} from './conversation.mjs';
 import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
 import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
 import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
+import {mcpConnectorTool} from './mcp-connectors.mjs';
+import {finishConnectorOAuth} from './connector-oauth.mjs';
+import {connectorHostRequest} from './connector-hosts.mjs';
+import {bytes as toolHostBytes,sha256 as toolHostSHA} from './tool-host-download.mjs';
 import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
 import {channelUnread} from './chat-experience.mjs';
 import {listChannels} from './channel-management.mjs';
@@ -342,12 +346,13 @@ export async function callTool(repo, identity, actor, name, args, env, options =
   if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
   if(name==='github')return connectorTool(repo,actor,args,env);
+  if(name==='connector')return mcpConnectorTool(repo,actor,args,env);
   if(SKILL_TOOLS.some(t=>t.name===name))return skillTool(repo,actor,name,args);
   if(name==='manage_workspace')return manageWorkspace(repo,identity,actor,args,env);
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['resolve_delivery','manage_workspace','github','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['resolve_delivery','manage_workspace','github','connector','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
@@ -574,6 +579,15 @@ async function mcp(repo, identity, actor, request, env, kick = () => {}) {
 export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
+  env={...env,CONNECTOR_ORIGIN:url.origin};
+  if(url.pathname==='/v2/connectors/host/guide')return json({node:'Node.js 22.19 或更新版本，建议 Node.js 24；旧环境为工具安装独立 Node，不改系统 PATH',download:url.origin+'/v2/connectors/host/download',sha256:toolHostSHA,install:'下载程序到独立目录，核对 SHA-256，保存为 tool-host.cjs。将接入说明中的 JSON 从标准输入传入 node tool-host.cjs setup。setup 会保存本运行端的私有授权，安装自己的后台服务；不读取 Agent 登录。若系统不支持自动启动，会明确报告并给出已安装的 host.cjs run 命令。'});
+  if(url.pathname==='/v2/connectors/host/download')return new Response(Uint8Array.from(atob(toolHostBytes),c=>c.charCodeAt(0)),{headers:{'Content-Type':'application/javascript','Content-Disposition':'attachment; filename="tool-host.cjs"','Cache-Control':'no-store','X-Content-SHA256':toolHostSHA}});
+  if(url.pathname==='/v2/connectors/host'&&request.method==='POST')return json(await connectorHostRequest(repo,identity,await readJSON(request,2000000),request.headers.get('authorization')?.replace(/^Bearer /i,''),env));
+  if(url.pathname==='/v2/connectors/oauth/client.json')return json({client_id:url.href,client_name:'DuolaWork',client_uri:url.origin,redirect_uris:[url.origin+'/v2/connectors/oauth/callback'],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'});
+  if(url.pathname==='/v2/connectors/oauth/callback'){
+    let text='授权已保存，请回到 DuolaWork 查看连接状态。';try{const c=await finishConnectorOAuth(repo,env,url.searchParams);const result=await connectorSettings(repo,identity,{owner:true},{action:'check',connectionId:c.id},env);if(result.issue)text='授权已保存，服务暂未就绪。请回到连接器查看原因并重试。';}catch(e){text=e.code?e.message:'授权未完成，请回到连接器重试。';}
+    return new Response('<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DuolaWork 连接器</title><body style="font-family:system-ui;padding:48px"><h1>DuolaWork</h1><p>'+text.replace(/[<>&"]/g,'')+'</p><p>可以关闭此页面。</p></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"}});
+  }
   repo.memoryService=env.MEMORY;repo.persistMemoryForget=env.PERSIST_MEMORY_FORGET;
   if(url.pathname==='/v2/connectors/claude/guide'&&request.method==='GET')return json(claudeRecipe(url.origin,claudeSHA));
   if(url.pathname==='/v2/connectors/native/guide'&&request.method==='GET')return json(runtimeRecipe(url.origin,runtimeSHA));
@@ -774,7 +788,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/skill-activity'&&request.method==='GET')return json(await skillTool(repo,actor,'skill_activity',Object.fromEntries(url.searchParams)));
   if(url.pathname==='/v2/connectors'){
     const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||'list'}:await readJSON(request);
-    if(request.method==='GET'&&!['list','activity'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    if(request.method==='GET'&&!['list','activity','catalog','hosts'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
     return json(await connectorSettings(repo,identity,actor,args,env));
   }
   if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});

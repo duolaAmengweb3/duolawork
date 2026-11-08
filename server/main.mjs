@@ -22,7 +22,9 @@ for (const origin of origins) if (new URL(origin).origin !== origin || !origin.s
 const DB = openDatabase(config.database, path.join(directory, 'migrations'));
 for(const entry of await forgottenLedger(DB,config.workspaceId,config.database,{restore:true}))await scrubMemoryReceipts(DB,config.workspaceId,entry.id);
 const limits = new Map();
+const {connectorFetch}=await import('./connector-fetch.mjs');
 const env = {
+  CONNECTOR_FETCH:connectorFetch,
   PERSIST_MEMORY_FORGET:async id=>{await forgottenLedger(DB,config.workspaceId,config.database);await scrubMemoryReceipts(DB,config.workspaceId,id);},
   MEMORY:config.memory?memoryClient('http://127.0.0.1:'+(config.memory.port||8791)):undefined,
   DB, ADMIN_KEY: config.adminKey, WORKSPACE_ID: config.workspaceId, FILE_STORAGE: 'd1',

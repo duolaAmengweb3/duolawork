@@ -3,11 +3,14 @@ import {seal,unseal,readJSON} from './security.mjs';
 import {requireManager} from './delegation.mjs';
 import {access} from './workspace-objects.mjs';
 import {appendActivity,activityPage} from './service-activity.mjs';
+import {mcpConnectorSettings,MCP_CONNECTOR_TOOL} from './mcp-connectors.mjs';
+import {connectorAllowed} from '../../shared/connector-catalog.mjs';
 const string={type:'string'};
 export const CONNECTOR_TOOLS=[{name:'github',description:'读取已授权 GitHub 仓库的资料、Issue、PR和文件；activity 查看本群实际读取记录。返回读取时间和来源；失败按原因处理，不反复要求重新授权。只读共享连接，不复制原 Agent 登录。',inputSchema:{type:'object',properties:{channelId:string,connectionId:string,action:{type:'string',enum:['connections','activity','repository','issues','pulls','issue','file']},repository:string,number:{type:'integer',minimum:1},path:string,page:{type:'integer',minimum:1},after:string},required:['channelId','action'],additionalProperties:false}}];
 const publicConnection=({credentials,...c})=>c;
+CONNECTOR_TOOLS.push(MCP_CONNECTOR_TOOL);
 const repositoryName=value=>{if(typeof value!=='string'||! /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)||value.includes('..'))fail('invalid_repository','仓库请填写 owner/repository');return value;};
-const allowed=(c,actor,channelId)=>c.status==='connected'&&(!c.channelIds.length||c.channelIds.includes(channelId))&&(!c.memberIds.length||actor.owner||c.memberIds.includes(actor.memberId));
+const allowed=(c,actor,channelId)=>c.serviceType!=='mcp'&&c.status==='connected'&&connectorAllowed(c,actor,channelId);
 async function githubFetch(token,path,fetchImpl){
  let response;try{response=await fetchImpl('https://api.github.com'+path,{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,'X-GitHub-Api-Version':'2026-03-10','User-Agent':'DuolaWork'},signal:AbortSignal.timeout(12000),redirect:'error'});}catch(error){fail(error.name==='TimeoutError'||error.name==='AbortError'?'connection_timeout':'connection_network',error.name==='TimeoutError'||error.name==='AbortError'?'GitHub 响应超时，请稍后重试':'暂时无法连接 GitHub，请检查网络后重试',503);}
  if(!response.ok){
@@ -29,6 +32,7 @@ async function recordRead(repo,actor,connection,args,started,error){
 }
 export async function connectorSettings(repo,identity,actor,args,env,fetchImpl=fetch){
  await requireManager(repo,actor);
+ if(['catalog','hosts','host.create','host.disconnect','import','save','access','authorize'].includes(args.action)||(args.connectionId&&(await repo.get('service_connection',args.connectionId,false))?.serviceType==='mcp'))return mcpConnectorSettings(repo,identity,actor,args,env);
  if(!['list','activity','check','connect','update','disconnect'].includes(args.action))fail('invalid_action','连接操作无效');
  if(args.action==='list'){
   // One database request for all latest receipts; indexed lookup per connection,

@@ -32,7 +32,7 @@ export async function proxyCollaboration(req, res, config, { request = requestNe
     if (typeof req.headers[key] === "string") headers[key] = req.headers[key];
   const {response, bytes} = await request(target, {
     method: req.method,
-    timeout: 30000,
+    timeout: incoming.pathname==='/api/v2/connectors'&&req.method==='POST'?60000:30000,
     signal: controller.signal,
     headers,
     ...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
