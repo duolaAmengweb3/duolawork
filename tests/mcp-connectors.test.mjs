@@ -11,6 +11,10 @@ import {unseal} from '../cloud/collaboration/security.mjs';
 import {oauthProvider,finishConnectorOAuth} from '../cloud/collaboration/connector-oauth.mjs';
 import {McpToolHost} from '../local/mcp-tool-host.mjs';
 import {publicAddress} from '../server/connector-fetch.mjs';
+import {connectorResponse} from '../server/connector-fetch.mjs';
+import {Response as UndiciResponse} from 'undici';
+import {parseErrorResponse} from '@modelcontextprotocol/sdk/client/auth.js';
+import {applicationKey,configuredApplication} from '../cloud/collaboration/connector-applications.mjs';
 const owner={owner:true},agent={memberId:'grok'},peer={memberId:'check'};
 function remoteFixture(){
  let writes=0,failAfterWrite=false,onCall=async()=>{};
@@ -58,6 +62,43 @@ test('simultaneous duplicate writes execute once; uncertain writes never replay 
  f.service.fail();const unknown=await f.tool({...args,requestId:'write-2'});assert.equal(unknown.status,'unknown');
  assert.equal((await f.tool({...args,requestId:'write-2'})).status,'unknown');assert.equal(f.service.writes,2);
  assert.equal(JSON.stringify(await f.repo.list('connector_activity')).includes('credential-secret'),false);
+});
+test('large tool results complete atomically and replays read exact data without executing again',async t=>{
+ const f=await setup(t),c=await f.save(),text='汉字🪻\\\"\n'.repeat(40000);
+ const args={action:'call',connectionId:c.id,requestId:'large-response',tool:'write',arguments:{text}};
+ const first=await f.tool(args);assert.equal(first.status,'succeeded');assert.equal(first.result.content[0].text,text);
+ const stored=await f.repo.get('service_invocation',first.invocationId);
+ assert.ok(stored.resultRef.parts>1);assert.equal(stored.result,undefined);
+ const chunks=await f.repo.list('service_result_chunk',{parent:c.id,limit:501});
+ assert.ok(chunks.every(r=>Buffer.byteLength(JSON.stringify(r))<180000));
+ assert.deepEqual((await f.tool(args)).result,first.result);assert.equal(f.service.writes,1);
+ const receipt=await f.tool({action:'result',connectionId:c.id,invocationId:first.invocationId});assert.deepEqual(receipt.result,first.result);
+ await assert.rejects(f.tool({action:'result',connectionId:c.id,invocationId:first.invocationId},peer),e=>e.code==='forbidden');
+ await f.settings({action:'access',connectionId:c.id,expectedVersion:c.version,blockedMemberIds:['grok']});
+ await assert.rejects(f.tool(args),e=>e.code==='forbidden');assert.equal(f.service.writes,1);
+});
+test('registered OAuth apps are reused by trusted providers while account tokens stay independent',async t=>{
+ const f=await setup(t),url=CONNECTOR_CATALOG.find(p=>p.id==='github-mcp').url;
+ const a=await f.save({provider:'github-mcp',url,oauthClientId:'app-one',oauthClientSecret:'private-app-secret'});
+ const b=await f.save({provider:'github-mcp',url});
+ const ca=await oauthProvider(f.repo,a,f.env,{begin:true}),cb=await oauthProvider(f.repo,b,f.env,{begin:true});
+ assert.equal(ca.provider.clientInformation().client_id,'app-one');assert.equal(cb.provider.clientInformation().client_secret,'private-app-secret');
+ await ca.provider.saveTokens({access_token:'account-one-token',token_type:'Bearer'});
+ await cb.provider.saveTokens({access_token:'account-two-token',token_type:'Bearer'});
+ assert.equal((await ca.provider.tokens()).access_token,'account-one-token');assert.equal((await cb.provider.tokens()).access_token,'account-two-token');
+ assert.equal(JSON.stringify(await f.repo.list('service_application')).includes('private-app-secret'),false);
+ assert.deepEqual(await configuredApplication(f.repo,{provider:'github-mcp',url:'https://other.test/mcp'},f.env),{});
+ assert.equal(applicationKey('custom',url),null);assert.equal(applicationKey('google-gmail','https://drivemcp.googleapis.com/mcp/v1'),null);
+ const drive=await f.save({provider:'google-drive',url:CONNECTOR_CATALOG.find(p=>p.id==='google-drive').url,oauthClientId:'google-app',oauthClientSecret:'google-secret'});
+ assert.equal((await configuredApplication(f.repo,{provider:'google-calendar',url:CONNECTOR_CATALOG.find(p=>p.id==='google-calendar').url},f.env)).oauthClientId,'google-app');
+ const google=await oauthProvider(f.repo,drive,f.env,{begin:true});
+ await google.provider.redirectToAuthorization(new URL('https://accounts.google.com/o/oauth2/v2/auth?scope=drive'));
+ const redirect=new URL(google.data.authorizationUrl);assert.equal(redirect.searchParams.get('access_type'),'offline');assert.equal(redirect.searchParams.get('prompt'),'consent select_account');
+ await google.provider.redirectToAuthorization(new URL('https://unrelated.test/auth'));assert.equal(new URL(google.data.authorizationUrl).searchParams.has('access_type'),false);
+ // Replacing an application's client ID cannot inherit the old secret.
+ const rotated=(await f.settings({action:'save',connectionId:a.id,expectedVersion:a.version,oauthClientId:'app-two'})).connection;
+ assert.deepEqual(await configuredApplication(f.repo,a,f.env),{oauthClientId:'app-two'});
+ assert.equal((await oauthProvider(f.repo,rotated,f.env,{begin:true})).provider.clientInformation().client_secret,undefined);
 });
 test('revocation during an external call suppresses its data and stale versions cannot change scope',async t=>{
  const f=await setup(t),c=await f.save();
@@ -121,18 +162,20 @@ test('full OAuth discovery, browser handoff, code exchange, reconnect and shared
  f.env.CONNECTOR_FETCH=async(raw,init={})=>{
   const url=String(raw),json=data=>new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});
   if(url.includes('oauth-protected-resource'))return json({resource:'https://tools.test/mcp',authorization_servers:['https://auth.test'],scopes_supported:['tools']});
-  if(url.includes('.well-known/'))return json({issuer:'https://auth.test',authorization_endpoint:'https://auth.test/authorize',token_endpoint:'https://auth.test/token',registration_endpoint:'https://auth.test/register',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256']});
+  if(url.includes('.well-known/'))return json({issuer:'https://auth.test',authorization_endpoint:'https://auth.test/authorize',token_endpoint:'https://auth.test/token',registration_endpoint:'https://auth.test/register',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],scopes_supported:['tools','offline_access'],code_challenge_methods_supported:['S256']});
   if(url==='https://auth.test/register')return json({client_id:'test-client',redirect_uris:['https://hub.test/v2/connectors/oauth/callback'],token_endpoint_auth_method:'none'});
-  if(url==='https://auth.test/token'){const body=new URLSearchParams(init.body);if(body.get('grant_type')==='refresh_token'){assert.equal(body.get('refresh_token'),'isolated-refresh-token');refreshRequests++;await new Promise(r=>setTimeout(r,refreshRequests===1?20:60));if(exchanged>=2)return new Response(JSON.stringify({error:'invalid_grant'}),{status:400,headers:{'content-type':'application/json'}});}else{assert.equal(body.get('code'),'test-code');assert.ok(body.get('code_verifier'));}exchanged++;return json({access_token:forceRefresh?'refreshed-oauth-token':'isolated-oauth-token',token_type:'Bearer',refresh_token:'isolated-refresh-token'});}
+  if(url==='https://auth.test/token'){const body=new URLSearchParams(init.body);if(body.get('grant_type')==='refresh_token'){assert.equal(body.get('refresh_token'),'isolated-refresh-token');refreshRequests++;await new Promise(r=>setTimeout(r,refreshRequests===1?20:60));if(exchanged>=2)return new Response(JSON.stringify({error:'invalid_grant'}),{status:400,headers:{'content-type':'application/json'}});}else{assert.equal(body.get('code'),'test-code');assert.ok(body.get('code_verifier'));}exchanged++;return json({access_token:forceRefresh?'refreshed-oauth-token':'isolated-oauth-token',token_type:'Bearer',...(!forceRefresh?{refresh_token:'isolated-refresh-token'}:{})});}
   const authorization=new Headers(init.headers).get('authorization');if(!authorization||forceRefresh&&!authorization.includes('refreshed-oauth-token'))return new Response(null,{status:401,headers:{'www-authenticate':'Bearer resource_metadata="https://tools.test/.well-known/oauth-protected-resource"'}});
   return base.fetcher(raw,init);
  };
  const start=await f.settings({action:'save',name:'OAuth service',url:'https://tools.test/mcp',authType:'oauth'});
  assert.equal(start.connection.health,'authorization_required',diagnostic?.stack);assert.ok(start.authorizationUrl);
  const authURL=new URL(start.authorizationUrl);assert.ok(authURL.searchParams.get('code_challenge'));assert.equal(authURL.searchParams.get('code_challenge_method'),'S256');
+ assert.deepEqual(new Set(authURL.searchParams.get('scope').split(' ')),new Set(['tools','offline_access']));
  const state=authURL.searchParams.get('state');await finishConnectorOAuth(f.repo,f.env,new URLSearchParams({code:'test-code',state}));assert.equal(exchanged,1);
  const checked=await f.settings({action:'check',connectionId:start.connection.id});assert.equal(checked.connection.health,'ready');
  forceRefresh=true;const results=await Promise.all([f.tool({action:'call',connectionId:start.connection.id,requestId:'oauth-write',tool:'write',arguments:{text:'authorized'}},peer),f.tool({action:'call',connectionId:start.connection.id,requestId:'oauth-write-2',tool:'write',arguments:{text:'concurrent authorized'}})]);assert.ok(results.every(r=>r.status==='succeeded'),JSON.stringify(results));assert.equal(exchanged,2);assert.equal(base.writes,2);assert.equal(refreshRequests,1,'one-use refresh token must be rotated only once');
+ assert.equal((await oauthProvider(f.repo,checked.connection,f.env)).data.tokens.refresh_token,'isolated-refresh-token','a non-rotating refresh response must retain its original refresh token');
  await assert.rejects(finishConnectorOAuth(f.repo,f.env,new URLSearchParams({code:'test-code',state})));assert.equal(exchanged,2);
 });
 test('large provider catalogs retain full Unicode schemas, remain callable and reuse storage on recheck',async t=>{
@@ -152,4 +195,30 @@ test('large provider catalogs retain full Unicode schemas, remain callable and r
  const called=await f.tool({action:'call',connectionId:c.id,requestId:'large-catalog-call',tool:'write',arguments:{text:'catalog retains callable tools'}});assert.equal(called.status,'succeeded');
  await f.settings({action:'check',connectionId:c.id});assert.equal((await f.repo.list('service_catalog_chunk',{parent:c.id,limit:501})).length,chunks.length);
  await f.settings({action:'access',connectionId:c.id,expectedVersion:c.version,blockedMemberIds:[peer.memberId]});await assert.rejects(f.tool({action:'tools',connectionId:c.id},peer));
+});
+test('numeric HTTP errors remain actionable instead of throwing during error classification',async t=>{
+ for(const [status,code]of [[403,'permission_denied'],[429,'rate_limited']]){
+  const f=await setup(t);f.env.CONNECTOR_FETCH=async()=>new Response('Provider rejected request',{status});
+  const r=await f.settings({action:'save',name:'HTTP failure',url:'https://tools.test/mcp',authType:'none'});
+  assert.equal(r.issue.code,code);assert.equal(r.connection.health,'attention');
+ }
+});
+test('npm undici OAuth errors are normalized for the official SDK without losing the provider reason',async()=>{
+ const response=connectorResponse(new UndiciResponse(JSON.stringify({error:'invalid_client',error_description:'Provider requires a registered client'}),{status:400,headers:{'content-type':'application/json'}}));
+ const error=await parseErrorResponse(response);assert.equal(error.name,'InvalidClientError');assert.match(error.message,/registered client/);assert.doesNotMatch(error.message,/object Response/);
+});
+test('anonymous tool discovery cannot mark an OAuth account connected, including confidential DCR servers',async t=>{
+ const f=await setup(t),base=remoteFixture();let anonymousMCP=0,diagnostic;f.env.CONNECTOR_DIAGNOSTICS=e=>diagnostic=e;
+ f.env.CONNECTOR_FETCH=async(raw,init={})=>{
+  const url=String(raw);
+  if(url.includes('oauth-protected-resource'))return Response.json({resource:'https://tools.test/mcp',authorization_servers:['https://auth.test']});
+  if(url.includes('.well-known/'))return Response.json({issuer:'https://auth.test',authorization_endpoint:'https://auth.test/authorize',token_endpoint:'https://auth.test/token',registration_endpoint:'https://auth.test/register',response_types_supported:['code'],token_endpoint_auth_methods_supported:['client_secret_basic'],code_challenge_methods_supported:['S256']});
+  if(url==='https://auth.test/register'){assert.equal(JSON.parse(init.body).token_endpoint_auth_method,'client_secret_basic');return Response.json({client_id:'isolated-client',client_secret:'isolated-secret',redirect_uris:['https://hub.test/v2/connectors/oauth/callback'],token_endpoint_auth_method:'client_secret_basic'});}
+  if(url==='https://auth.test/token'){assert.match(new Headers(init.headers).get('authorization'),/^Basic /);return Response.json({access_token:'isolated-token',token_type:'Bearer'});}
+  anonymousMCP++;return base.fetcher(raw,init);
+ };
+ const pending=await f.settings({action:'save',name:'Public catalog with private data',url:'https://tools.test/mcp',authType:'oauth'});
+ assert.equal(pending.connection.health,'authorization_required',diagnostic?.stack);assert.ok(pending.authorizationUrl);assert.equal(anonymousMCP,0);
+ await finishConnectorOAuth(f.repo,f.env,new URLSearchParams({state:new URL(pending.authorizationUrl).searchParams.get('state'),code:'test-code'}));
+ const checked=await f.settings({action:'check',connectionId:pending.connection.id});assert.equal(checked.connection.health,'ready');
 });

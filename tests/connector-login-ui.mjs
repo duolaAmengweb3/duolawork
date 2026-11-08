@@ -20,8 +20,8 @@ try{
   return route.fulfill({json:{connection,...(fail?{issue:{message:'服务方暂未提供登录地址，请重试'}}:{authorizationUrl:'https://auth.example.test/authorize?state=isolated'})}});
  });
  await p.goto(local.url);await p.getByRole('button',{name:'连接器',exact:true}).click();
- await p.getByRole('button',{name:'连接 Vercel',exact:true}).click();
- const popupEvent=p.waitForEvent('popup');await p.getByRole('dialog').getByRole('button',{name:'保存并连接'}).click();
+ const popupEvent=p.waitForEvent('popup');await p.getByRole('button',{name:'连接 Vercel',exact:true}).click();
+ assert.equal(await p.getByRole('dialog').count(),0,'preset OAuth needs no configuration form');
  const popup=await popupEvent;await popup.waitForURL('https://auth.example.test/**');await popup.getByRole('heading',{name:'Isolated provider consent'}).waitFor();await popup.close();
  await p.getByText('请在浏览器完成 Vercel 登录',{exact:true}).waitFor();
  const secondEvent=p.waitForEvent('popup');await p.getByRole('button',{name:'继续登录',exact:true}).click();await p.getByRole('button',{name:'正在连接…',exact:true}).waitFor();
@@ -29,5 +29,5 @@ try{
  ready=true;await p.getByText('连接已就绪',{exact:true}).waitFor();assert.equal(await p.getByRole('link',{name:'打开登录',exact:true}).count(),0);
  fail=true;ready=false;await p.getByRole('button',{name:'检查连接',exact:true}).click();await p.getByText('服务方暂未提供登录地址，请重试',{exact:false}).waitFor();
  assert.equal(context.pages().length,1,'an unsuccessful connection closes its waiting popup');
- console.log(JSON.stringify({scope:'isolated browser OAuth UI handoff, not real Vercel authorization',checks:['save directly opens OAuth consent','continue login directly opens consent with immediate progress','callback metadata refresh displays ready','missing login URL displays actionable error and closes waiting tab']}));
+ console.log(JSON.stringify({scope:'isolated browser OAuth UI handoff, not real Vercel authorization',checks:['one click opens OAuth consent without a setup form','continue login directly opens consent with immediate progress','callback metadata refresh displays ready','missing login URL displays actionable error and closes waiting tab']}));
 }finally{await browser?.close();await local?.close();await h.stop();await fs.rm(directory,{recursive:true,force:true});}

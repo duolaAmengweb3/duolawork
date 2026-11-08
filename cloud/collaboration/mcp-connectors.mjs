@@ -6,17 +6,20 @@ import {appendActivity,activityPage} from './service-activity.mjs';
 import {CONNECTOR_CATALOG,connectorAllowed,importConnectorConfig} from '../../shared/connector-catalog.mjs';
 import {openRemoteMcp,mcpTools,publicMcpURL} from '../../shared/mcp-client.mjs';
 import {oauthProvider} from './connector-oauth.mjs';
-import {UnauthorizedError} from '@modelcontextprotocol/sdk/client/auth.js';
+import {auth,UnauthorizedError} from '@modelcontextprotocol/sdk/client/auth.js';
 import {resolveVaultConfig,assertVaultUses,recordVaultUse} from './vault.mjs';
 import {vaultReferences,concealSecrets} from '../../shared/vault-references.mjs';
 import {prepareToolCatalog,readToolCatalog} from './connector-catalog-storage.mjs';
+import {saveApplication} from './connector-applications.mjs';
+import {prepareConnectorResult,readConnectorResult} from './connector-result-storage.mjs';
 
 export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书等）。先 connections 查可用连接，tools 按需获取工具定义，再 call。使用原聊天 channelId；工具在连接指定位置执行，不复制账号登录。写操作须提供唯一 requestId，超时结果不明确时不要换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
 export const publicService=({credentials,...c})=>({...c,toolCount:c.toolCount??c.tools?.length??0});
 const agentService=c=>{const value=publicService(c);return {...value,url:value.url?new URL(value.url).origin:null};};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function errorState(e){
- if(e.code?.startsWith('vault_'))return {code:e.code,message:e.message,state:'attention'};
+ if(typeof e.code==='string'&&e.code.startsWith('vault_'))return {code:e.code,message:e.message,state:'attention'};
+ if(/does not support dynamic client registration/i.test(e.message||''))return {code:'oauth_app_required',message:'此服务需要先由 DuolaWork 配置官方登录应用，尚未接通；无需重复点击登录',state:'attention'};
  if(e.code==='host_offline')return {code:e.code,message:'工具所在电脑或 VPS 不在线，连接配置已保留',state:'offline'};
  if(e.code==='outcome_unknown')return {code:e.code,message:'未收到明确结果，请查看调用记录；操作可能已经执行，请勿重复提交',state:'attention'};
  if(e instanceof UnauthorizedError||e.code===401||e.status===401||e.name==='UnauthorizedError')return {code:'authorization_required',message:'需要完成服务授权，请打开此连接继续登录',state:'authorization_required'};
@@ -35,6 +38,9 @@ export async function resolveConnectorCredentials(repo,c,actor,channelId,env,exp
 async function remote(repo,c,env,fn,{authorize=false,actor={owner:true},channelId}={}){
  const resolved=await resolveConnectorCredentials(repo,c,actor,channelId,env),secret=resolved.config;let o=c.authType==='oauth'?await oauthProvider(repo,c,env,{begin:authorize}):null;
  const initialToken=o?.data.tokens?.access_token;
+ // Some providers expose initialize/tools/list anonymously. For an OAuth
+ // connection, public discovery is not proof that the account has signed in.
+ if(o&&!initialToken){const result=await auth(o.provider,{serverUrl:c.url,fetchFn:o.fetch});if(result!=='AUTHORIZED')throw new UnauthorizedError();}
  let session;
  try{
   try{session=await openRemoteMcp({url:c.url,headers:secret.headers||{},authProvider:o?.provider,fetch:o?.fetch||env.CONNECTOR_FETCH||fetch});}
@@ -68,13 +74,13 @@ async function check(repo,c,env,{authorize=false}={}){
  try{
   const tools=c.transport==='stdio'?await perform(repo,c,{owner:true},{action:'tools'},env):await remote(repo,c,env,mcpTools,{authorize});
   const {chunks,...catalog}=await prepareToolCatalog(c.id,tools);
-  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);for(const chunk of chunks)tx.put('service_catalog_chunk',chunk);return tx.put('service_connection',{...c,...catalog,status:'connected',health:'ready',message:null,checkedAt:tx.now});});
+  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);for(const chunk of chunks)tx.put('service_catalog_chunk',chunk);return tx.put('service_connection',{...c,...catalog,status:'connected',health:'ready',issueCode:null,message:null,checkedAt:tx.now});});
   return {connection:publicService(await repo.get('service_connection',c.id))};
  }catch(e){
   env.CONNECTOR_DIAGNOSTICS?.(e);
   const issue=errorState(e);
   const oauth=await repo.get('service_oauth',c.id,false),state=oauth?.sealed?await unseal(oauth.sealed,env.ADMIN_KEY):{};
-  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);return tx.put('service_connection',{...c,health:issue.state,message:issue.message,checkedAt:tx.now});});
+  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);return tx.put('service_connection',{...c,health:issue.state,issueCode:issue.code,message:issue.message,checkedAt:tx.now});});
   return {connection:publicService(await repo.get('service_connection',c.id)),...(state.authorizationUrl?{authorizationUrl:state.authorizationUrl}:{}),issue};
  }
 }
@@ -108,7 +114,10 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
    secret.command=required(args.command||secret.command,'启动命令',2000);secret.args=args.args??secret.args??[];secret.env=args.env??secret.env??{};secret.cwd=args.cwd??secret.cwd??'';
    if(!Array.isArray(secret.args)||secret.args.some(v=>typeof v!=='string')||typeof secret.env!=='object'||Array.isArray(secret.env)||Object.values(secret.env).some(v=>typeof v!=='string'))fail('invalid_command','启动参数或环境变量格式无效');
   }else secret.headers=headers;
-  if(args.oauthClientId!==undefined)secret.oauthClientId=args.oauthClientId;
+  if(args.oauthClientId!==undefined){
+   if(args.oauthClientId!==secret.oauthClientId&&!args.oauthClientSecret)delete secret.oauthClientSecret;
+   secret.oauthClientId=args.oauthClientId;
+  }
   if(args.oauthClientSecret)secret.oauthClientSecret=args.oauthClientSecret;
   if(args.vaultBindings!==undefined){
    if(!Array.isArray(args.vaultBindings)||args.vaultBindings.length>40)fail('invalid_vault_reference','凭证引用配置无效');
@@ -121,7 +130,7 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
   if(row.authType==='none'||old&&old.authType!==row.authType&&args.headers===undefined)secret.headers={};
   row.vaultReferences=vaultReferences(secret);await resolveVaultConfig(repo,secret,{owner:true},null,env,{targetOrigin:row.url?new URL(row.url).origin:undefined});
   // Hash the secret in the receipt; never retain submitted tokens in an input ledger.
-  await repo.transact(args.requestId,{...row,createdAt:undefined,secretHash:await digest(JSON.stringify(secret))},async tx=>{if(old)await fresh(tx,old);if(old&&(old.url!==row.url||args.oauthClientId!==undefined))tx.put('service_oauth',{id:row.id,sealed:null,state:null});return publicService(tx.put('service_connection',{...row,credentials:await seal(secret,env.ADMIN_KEY)}));});
+  await repo.transact(args.requestId,{...row,createdAt:undefined,secretHash:await digest(JSON.stringify(secret))},async tx=>{if(old)await fresh(tx,old);if(old&&(old.url!==row.url||args.oauthClientId!==undefined))tx.put('service_oauth',{id:row.id,sealed:null,state:null});if(args.oauthClientId!==undefined)await saveApplication(tx,row,secret,env);return publicService(tx.put('service_connection',{...row,credentials:await seal(secret,env.ADMIN_KEY)}));});
   return check(repo,await repo.get('service_connection',row.id),env,{authorize:row.authType==='oauth'});
  }
  const c=await repo.get('service_connection',required(args.connectionId,'连接'));
@@ -150,7 +159,8 @@ export async function mcpConnectorTool(repo,actor,args,env){
   if(r.status==='running'&&Date.now()-Date.parse(r.createdAt)>90000){
    return repo.transact(id('stalecall'),{},async tx=>{const current=await tx.get('service_invocation',r.id);if(current.status!=='running')return current;const next=tx.put('service_invocation',{...current,status:'unknown',message:'执行端未回传明确结果，请核对服务记录，勿重复执行'});const event=await tx.get('connector_activity',r.id,false);if(event)tx.put('connector_activity',{...event,status:'unknown',message:next.message});return next;});
   }
-  return r;
+  const result=await readConnectorResult(repo,r);await fresh(repo,c,actor,args.channelId);
+  return {...r,...(result!==undefined?{result}:{})};
  }
  if(args.action!=='call')fail('invalid_action','工具操作无效');
  const tools=c.catalog&&c.tools.length!==c.toolCount?await readToolCatalog(repo,c):c.tools;
@@ -158,11 +168,12 @@ export async function mcpConnectorTool(repo,actor,args,env){
  required(args.requestId,'请求编号',160);
  const invocationId='invoke_'+await digest(c.id+':'+actor.memberId+':'+args.requestId),fingerprint=await digest(JSON.stringify({tool:args.tool,arguments:args.arguments||{},channelId:args.channelId}));
  const claim=await repo.transact(id('invocationclaim'),{fingerprint},async tx=>{const old=await tx.get('service_invocation',invocationId,false);if(old){if(old.fingerprint!==fingerprint)fail('idempotency_conflict','同一编号不能执行不同操作',409);return {started:false};}await fresh(tx,c,actor,args.channelId);tx.put('service_invocation',{id:invocationId,scopeId:c.id,channelId:args.channelId,memberId:actor.memberId,fingerprint,status:'running',tool:args.tool,createdAt:tx.now});tx.put('connector_activity',{id:invocationId,parentId:c.id,scopeId:args.channelId,memberId:actor.memberId,event:'call',tool:args.tool,status:'running',invocationId,message:'工具正在执行',createdAt:tx.now});return {started:true};});
- if(!claim.started){const r=await repo.get('service_invocation',invocationId);return {invocationId,status:r.status,...(r.status==='succeeded'?{result:r.result}:{message:r.message||'调用已提交，请查询结果；不要重复执行'})};}
+ if(!claim.started){const r=await repo.get('service_invocation',invocationId),result=await readConnectorResult(repo,r);await fresh(repo,c,actor,args.channelId);return {invocationId,status:r.status,...(result!==undefined?{result}:{}),...(r.status!=='succeeded'?{message:r.message||'调用已提交，请查询结果；不要重复执行'}:{})};}
  let result,issue;
  try{result=await perform(repo,c,actor,{...args,invocationId},env);await access(repo,args.channelId,actor);await fresh(repo,c,actor,args.channelId);if(JSON.stringify(result).length>1500000)fail('outcome_unknown','结果过大，需在服务端核对');if(result?.isError)issue={code:'tool_error',message:'工具返回执行错误，请查看返回结果',state:'attention'};}catch(e){result=undefined;issue=errorState(e);if(!['authorization_required','permission_denied','rate_limited','host_offline'].includes(issue.code))issue={code:'outcome_unknown',message:'未取得明确结果；操作可能已执行，请查看记录，不要重复提交',state:'attention'};}
- const record=await repo.transact('finish-'+invocationId,{},async tx=>{const r=await tx.get('service_invocation',invocationId);return tx.put('service_invocation',{...r,status:issue?(issue.code==='outcome_unknown'?'unknown':'failed'):'succeeded',...(issue?{code:issue.code,message:issue.message}:{}),...(result?{result}:{}),completedAt:tx.now});});
- await repo.transact(id('connectorhealth'),{},async tx=>{const current=await tx.get('service_connection',c.id);if(current.version!==c.version||current.status==='disconnected')return {};return tx.put('service_connection',{...current,health:issue?.state||'ready',message:issue?.message||null,lastCallAt:tx.now});});
+ const {chunks,...storedResult}=await prepareConnectorResult(c.id,invocationId,result);
+ const record=await repo.transact('finish-'+invocationId,{},async tx=>{const r=await tx.get('service_invocation',invocationId);for(const chunk of chunks)tx.put('service_result_chunk',chunk);return tx.put('service_invocation',{...r,status:issue?(issue.code==='outcome_unknown'?'unknown':'failed'):'succeeded',...(issue?{code:issue.code,message:issue.message}:{}),...storedResult,completedAt:tx.now});});
+ await repo.transact(id('connectorhealth'),{},async tx=>{const current=await tx.get('service_connection',c.id);if(current.version!==c.version||current.status==='disconnected')return {};return tx.put('service_connection',{...current,health:issue?.state||'ready',issueCode:issue?.code||null,message:issue?.message||null,lastCallAt:tx.now});});
  await repo.transact(id('connectorreceipt'),{},async tx=>{const event=await tx.get('connector_activity',invocationId);return tx.put('connector_activity',{...event,status:record.status,message:record.message||'工具已返回结果',completedAt:record.completedAt});});
  return {invocationId,status:record.status,...(issue?{code:issue.code,message:issue.message}:{}),...(result?{result}:{})};
 }

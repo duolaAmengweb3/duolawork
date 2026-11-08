@@ -17,10 +17,9 @@ try{
  const d=p.getByRole('dialog');
  for(const name of ['GitHub','Cloudflare','Vercel','飞书','Notion','Figma','Gmail'])await p.getByRole('button',{name:'连接 '+name,exact:true}).waitFor();
  checks.push('服务目录包含开发、云服务、办公和设计入口，Google 明示预览资格');
- await p.getByRole('button',{name:'连接 Cloudflare',exact:true}).click();
- await d.getByLabel('服务地址',{exact:true}).waitFor();assert.equal(await d.getByLabel('服务地址',{exact:true}).inputValue(),'https://mcp.cloudflare.com/mcp');
- assert.match(await d.innerText(),/默认向所有成员和聊天开放/);assert.equal(await d.getByRole('checkbox').count(),0);await d.getByRole('button',{name:'取消',exact:true}).click();
- checks.push('Cloudflare 官方地址预填，普通连接流程不要求逐群逐成员选择');
+ await p.getByRole('button',{name:'自定义连接',exact:true}).click();
+ assert.equal(await d.getByLabel('登录方式',{exact:true}).inputValue(),'oauth');assert.match(await d.innerText(),/默认向所有成员和聊天开放/);assert.equal(await d.getByRole('checkbox').count(),0);await d.getByRole('button',{name:'取消',exact:true}).click();
+ checks.push('自定义高级入口与标准服务直接连接分开，授权不要求逐群选择');
  await p.getByRole('button',{name:'自定义连接',exact:true}).click();
  await d.getByLabel('连接名称',{exact:true}).fill('本机共享工具');await d.getByLabel('运行方式',{exact:true}).selectOption('stdio');
  await d.getByLabel('启动命令',{exact:true}).fill(process.execPath);await d.getByLabel('参数（JSON 数组）',{exact:true}).fill(JSON.stringify([path.resolve('tests/fixtures/mcp-stdio.mjs')]));
