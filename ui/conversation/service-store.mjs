@@ -7,12 +7,13 @@ export function createServiceStore(request,{now=Date.now,ttl=30000,limit=80}={})
  function entry(key){if(!safe(key))throw Error('Only service-list metadata may be cached');if(!entries.has(key)){if(entries.size>=limit){for(const [k,v]of entries)if(!v.pending&&!listeners.get(k)?.size){entries.delete(k);break;}}entries.set(key,{value:Object.freeze({data:null,loading:false,error:''}),at:0,sequence:0});}return entries.get(key);}
  function publish(key,e,changes){e.value=Object.freeze({...e.value,...changes});notify(key);}
  function load(key,{force=false}={}){
-  const e=entry(key);if(e.pending)return e.pending;if(!force&&e.value.data&&now()-e.at<ttl)return Promise.resolve(e.value.data);
+  const e=entry(key);if(e.pending)return e.pending;if(!force&&e.value.data&&!e.value.error&&now()-e.at<ttl)return Promise.resolve(e.value.data);
   const generation=epoch,sequence=++e.sequence,controller=new AbortController();e.controller=controller;publish(key,e,{loading:true,error:''});
   const pending=Promise.resolve().then(()=>request(key,controller.signal)).then(data=>{if(epoch===generation&&e.sequence===sequence){e.at=now();publish(key,e,{data,loading:false,error:''});}return data;}).catch(error=>{if(epoch===generation&&e.sequence===sequence)publish(key,e,{loading:false,error:error.message,...([401,403].includes(error.status)?{data:null}:{})});throw error;}).finally(()=>{if(e.pending===pending)e.pending=null;});e.pending=pending;return pending;
  }
  function invalidate(prefix,{refresh=true,onlyCached=false}={}){for(const [key,e]of entries)if(key.startsWith(prefix)&&(!onlyCached||e.value.data)){e.at=-Infinity;e.sequence++;e.controller?.abort();e.pending=null;if(e.value.loading)publish(key,e,{loading:false});if(refresh&&listeners.get(key)?.size)void load(key,{force:true}).catch(()=>{});}}
  return{
+  get generation(){return epoch;},
   snapshot:key=>entry(key).value,
   subscribe(key,fn){entry(key);if(!listeners.has(key))listeners.set(key,new Set());listeners.get(key).add(fn);return()=>{listeners.get(key)?.delete(fn);if(!listeners.get(key)?.size)listeners.delete(key);};},
   load,invalidate,

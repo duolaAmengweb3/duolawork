@@ -11,6 +11,9 @@ test('stale refresh retains visible data and failure; revoked authorization clea
  let fail=false,code=503;const store=createServiceStore(async()=>{if(fail)throw Object.assign(Error('offline'),{status:code});return {items:[{id:'existing'}]};});await store.load('/v2/connectors');fail=true;
  const read=store.load('/v2/connectors',{force:true});assert.equal(store.snapshot('/v2/connectors').data.items[0].id,'existing');assert.equal(store.snapshot('/v2/connectors').loading,true);await assert.rejects(read);assert.equal(store.snapshot('/v2/connectors').data.items[0].id,'existing');assert.equal(store.snapshot('/v2/connectors').error,'offline');code=401;await assert.rejects(store.load('/v2/connectors',{force:true}));assert.equal(store.snapshot('/v2/connectors').data,null);
 });
+test('returning to a page retries a failed read even when the prior success was still fresh',async()=>{
+ let calls=0,offline=false;const store=createServiceStore(async()=>{calls++;if(offline)throw Error('offline');return {items:[]};});await store.load('/v2/connectors');offline=true;await assert.rejects(store.load('/v2/connectors',{force:true}));offline=false;await store.load('/v2/connectors');assert.equal(calls,3);assert.equal(store.snapshot('/v2/connectors').error,'');
+});
 test('mutations fence an older pending read and invalidate every cached filter',async()=>{
  const reads=[];const store=createServiceStore(()=>{const r=deferred();reads.push(r);return r.promise;});const old=store.load('/v2/vault?query=');await Promise.resolve();store.invalidate('/v2/vault');const fresh=store.load('/v2/vault?query=');await Promise.resolve();reads[1].resolve({items:[{id:'new'}]});await fresh;reads[0].resolve({items:[{id:'old'}]});await old;assert.equal(store.snapshot('/v2/vault?query=').data.items[0].id,'new');
 });
