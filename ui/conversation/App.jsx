@@ -150,7 +150,7 @@ export default function App() {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [drafts, setDrafts] = useState(saved.current.drafts || {}),
-    [reply, setReply] = useState(null),
+    [replies, setReplies] = useState(saved.current.replies || {}),
     [addressing, setAddressing] = useState(saved.current.addressing || {}),
     [showMentions, setShowMentions] = useState(false),
     [documentId, setDocumentId] = useState(null),
@@ -158,7 +158,9 @@ export default function App() {
     [query, setQuery] = useState(saved.current.tabViews?.[saved.current.chatKind||"group"]?.query||""),[chatKind,setChatKind]=useState(saved.current.chatKind||"group"),[readThrough,setReadThrough]=useState(saved.current.readThrough||{}),
     [older, setOlder] = useState([]),
     [moreCursor, setMoreCursor] = useState(null),
-    [lastSync, setLastSync] = useState(null),[unread,setUnread]=useState({}),[editing,setEditing]=useState(null);
+    [lastSync, setLastSync] = useState(null),[unread,setUnread]=useState({}),[editing,setEditing]=useState(null),[loadingOlder,setLoadingOlder]=useState(false);
+  const reply = replies[current] || null;
+  const setReply = value => setReplies(old=>({...old,[current]:value?{id:value.id,authorId:value.authorId,body:value.body.slice(0,200)}:null}));
   const mentions = addressing[current]?.mentions || [];
   const mentionAll = addressing[current]?.mentionAll || false;
   const setMentions = value => setAddressing(old => ({...old,[current]: {...old[current],mentions: typeof value === 'function' ? value(old[current]?.mentions || []) : value}}));
@@ -171,7 +173,7 @@ export default function App() {
     lastMessage = useRef("");
   currentRef.current = current;
   const viewCache=useRef(new MessageSnapshots()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
-  const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false);
+  const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false),historyEpoch=useRef(0),sourceNavigation=useRef(0),sourceTarget=useRef(null),olderRequest=useRef(null);
   const scrollInteraction=useRef(null);
   const isUserInteracting=()=>scrollInteraction.current?.element===scroll.current&&scrollInteraction.current?.active;
   const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
@@ -297,12 +299,13 @@ export default function App() {
     };
   }, [refreshWorkspace, refresh]);
   useLayoutEffect(() => {
+    historyEpoch.current++;sourceNavigation.current++;sourceTarget.current=null;olderRequest.current=null;setLoadingOlder(false);oldHeight.current=null;
     setSnapshot(viewCache.current.get(current)||null);restorePosition.current=true;firstUnread.current=!positions.current[current]?unreadRef.current[current]?.firstNumber:null;
     setSpaceSelection(null);setSpaceEditor(null);
     setOlder(olderCache.current.get(current)||[]);
     setOlderMeetings([]);setMeetingCursor(undefined);
     setMoreCursor(undefined);
-    setReply(null);setEditing(null);
+    setEditing(null);
     setDocumentId(null);
     setShowMentions(false);
     lastMessage.current = "";
@@ -314,9 +317,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       "hub-communication",
-      JSON.stringify({ channelId: current,chatKind,readThrough,positions:positions.current,tabViews:{...tabViews.current,[chatKind]:{query,channelId:current,top:listScroll.current?.scrollTop||0}}, drafts, addressing, references,spaceTab:tab,meetingPanel, meetingScopes,page }),
+      JSON.stringify({ channelId: current,chatKind,readThrough,positions:positions.current,tabViews:{...tabViews.current,[chatKind]:{query,channelId:current,top:listScroll.current?.scrollTop||0}}, drafts, replies, addressing, references,spaceTab:tab,meetingPanel, meetingScopes,page }),
     );
-  }, [current,chatKind,query,readThrough, drafts, addressing,references,tab, page, meetingPanel,meetingScopes]);
+  }, [current,chatKind,query,readThrough, drafts, replies, addressing,references,tab, page, meetingPanel,meetingScopes]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 4000);
@@ -324,6 +327,7 @@ export default function App() {
   }, [notice]);
   useLayoutEffect(()=>{
     const el=scroll.current;if(!el||!snapshot||snapshot.channel.id!==current)return;
+    if(sourceTarget.current){const target=el.querySelector('[id="'+sourceTarget.current+'"]');if(target){sourceTarget.current=null;nearBottom.current=false;restorePosition.current=false;oldHeight.current=null;target.scrollIntoView({block:'center'});savePosition();return;}}
     if(isUserInteracting()){oldHeight.current=null;restorePosition.current=false;return;}
     if(oldHeight.current){el.scrollTop+=el.scrollHeight-oldHeight.current;oldHeight.current=null;}
     else if(restorePosition.current){const pos=positions.current[current];const anchor=pos?.id&&document.getElementById(pos.id);const unreadAnchor=firstUnread.current&&el.querySelector('[data-message-number="'+firstUnread.current+'"]');if(firstUnread.current&&!pos&&!unreadAnchor)return;el.scrollTop=unreadAnchor&&!pos?el.scrollTop+unreadAnchor.getBoundingClientRect().top-el.getBoundingClientRect().top:pos?(anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top):el.scrollHeight;restorePosition.current=false;}
@@ -381,7 +385,7 @@ export default function App() {
     groupMembers = workspace.members.filter((m) =>
       channel?.memberIds.includes(m.id),
     ),
-    messages = [...older, ...(snapshot?.messages || []),...outbox.items.filter(x=>x.input.channelId===current&&!snapshot?.messages.some(m=>m.requestId===x.input.requestId)).map(x=>({id:'pending_'+x.input.requestId,requestId:x.input.requestId,body:x.input.body,authorId:'owner',type:'message',createdAt:x.createdAt,number:Number.MAX_SAFE_INTEGER,refs:x.input.refs,mentions:x.input.mentions,pendingStatus:x.status,pendingError:x.error}))]
+    messages = [...older, ...(snapshot?.messages || []),...outbox.items.filter(x=>x.input.channelId===current&&!snapshot?.messages.some(m=>m.requestId===x.input.requestId)).map(x=>({id:'pending_'+x.input.requestId,requestId:x.input.requestId,body:x.input.body,authorId:'owner',type:'message',createdAt:x.createdAt,number:Number.MAX_SAFE_INTEGER,refs:x.input.refs,mentions:x.input.mentions,mentionAll:x.input.mentionAll,replyTo:x.input.replyTo,meetingId:x.input.meetingId,pendingStatus:x.status,pendingError:x.error}))]
       .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
@@ -412,9 +416,12 @@ export default function App() {
   function quoteObject(ref){setReferences(old=>({...old,[current]:[...(old[current]||[]).filter(r=>r.kind!==ref.kind||r.id!==ref.id),ref]}));document.querySelector('[aria-label="群消息"]')?.focus();}
   function openObject(ref){if(ref.kind==='meeting'){setMeetingPanel({id:ref.id,channelId:current});return;}if(ref.kind==='message'){jumpToSource(ref.id);return;}setMeetingPanel(null);setSide(true);setTab(ref.kind==='task'?'tasks':ref.kind==='memory'?'memory':'documents');setSpaceSelection({kind:ref.kind,id:ref.id,...(ref.version?{version:ref.version}:{})});}
   async function jumpToSource(id){
+    const epoch=historyEpoch.current,navigation=++sourceNavigation.current;
+    const stillHere=()=>currentRef.current===current&&historyEpoch.current===epoch&&sourceNavigation.current===navigation;
     savePosition();readingReturn.current={channelId:current,...positions.current[current]};setCanReturn(true);
     let el=document.getElementById(id);
-    if(!el){try{const m=await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id}));const d=await api('/v2/channel?'+new URLSearchParams({id:current,before:String(m.number+1)}));setOlder(old=>[...old,...d.messages]);setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'center'}),100);}catch(e){setError(e.message);}return;}
+    if(!el){try{const m=await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id}));if(!stillHere())return;const d=await api('/v2/channel?'+new URLSearchParams({id:current,before:String(m.number+1)}));if(!stillHere())return;sourceTarget.current=id;setOlder(old=>{const next=[...new Map([...old,...d.messages].map(m=>[m.id,m])).values()];olderCache.current.set(current,next);return next;});}catch(e){if(stillHere())setError(e.message);}return;}
+    nearBottom.current=false;
     el.scrollIntoView({behavior:'smooth',block:'center'});el.animate([{background:'#e8efff'},{background:'transparent'}],{duration:1800});
   }
   function createFromMessage(kind,m){setMeetingPanel(null);setSide(true);setTab(kind==='task'?'tasks':'memory');setSpaceEditor({kind,prefill:{title:m.body.slice(0,70),body:m.body,refs:[refOf('message',m)],...(kind==='task'?{sourceMessageId:m.id,meetingIds:m.meetingId?[m.meetingId]:[]}: {})}});}
@@ -443,17 +450,20 @@ export default function App() {
   }
 
   async function loadOlder() {
+    if(olderRequest.current!==null)return;
+    const epoch=historyEpoch.current;olderRequest.current=epoch;setLoadingOlder(true);
     try {
       const data = await api(
         "/v2/channel?" +
           new URLSearchParams({ id: current, before: String(moreCursor) }),
       );
+      if(historyEpoch.current!==epoch||currentRef.current!==current)return;
       oldHeight.current=scroll.current?.scrollHeight;
-      setOlder((old) => {const next=[...data.messages,...old];olderCache.current.set(current,next);return next;});
+      setOlder((old) => {const next=[...new Map([...data.messages,...old].map(m=>[m.id,m])).values()];olderCache.current.set(current,next);return next;});
       setMoreCursor(data.before);
     } catch (e) {
-      setError(e.message);
-    }
+      if(historyEpoch.current===epoch&&currentRef.current===current)setError(e.message);
+    } finally {if(olderRequest.current===epoch){olderRequest.current=null;setLoadingOlder(false);}}
   }
   const silentReaders=useMemo(()=>{
     const result=new Map();for(const t of snapshot?.activity||[]){if(t.status!=='silent')continue;
@@ -481,10 +491,11 @@ export default function App() {
                           {m.authorId === channel.coordinatorId && (
                             <span className="coordinator-tag">负责人</span>
                           )}
-                          <time>{time(m.createdAt)}</time>{m.editedAt&&<span className="message-edited" title="原版本保留；已执行的操作不会因编辑撤销">已编辑</span>}{m.pendingStatus&&<span className="message-send-status">{['queued','sending'].includes(m.pendingStatus)?'发送中…':<button onClick={()=>outbox.retry(m.requestId)} title={m.pendingError}>{m.pendingStatus==='waiting'?'等待网络 · 重试':'发送失败 · 重试'}</button>}</span>}{m.pendingStatus==='failed'&&<span className="failed-message-actions"><button onClick={()=>{const input=outbox.remove(m.requestId);if(input)setDrafts(old=>({...old,[current]:[old[current],input.body].filter(Boolean).join('\n')}));}}>修改</button><button onClick={()=>outbox.remove(m.requestId)}>取消发送</button></span>}
+                          <time>{time(m.createdAt)}</time>{m.editedAt&&<span className="message-edited" title="原版本保留；已执行的操作不会因编辑撤销">已编辑</span>}{m.pendingStatus&&<span className="message-send-status">{['queued','sending'].includes(m.pendingStatus)?'发送中…':<button onClick={()=>outbox.retry(m.requestId)} title={m.pendingError}>{m.pendingStatus==='waiting'?'等待网络 · 重试':'发送失败 · 重试'}</button>}</span>}{m.pendingStatus==='failed'&&<span className="failed-message-actions"><button onClick={()=>setEditing({id:m.id,body:m.body,requestId:m.requestId})}>修改</button><button onClick={()=>outbox.remove(m.requestId)}>取消发送</button></span>}
                           <button
                             aria-label={"回复 " + name(m.authorId)}
-                            title="回复"
+                            disabled={!!m.pendingStatus}
+                            title={m.pendingStatus?"发送成功后可回复":"回复"}
                             onClick={() => {
                               setReply(m);
                               if (m.authorId !== "owner")
@@ -496,19 +507,12 @@ export default function App() {
                           >
                             <Reply size={15} />
                           </button>
-                          <DropdownMenu><DropdownMenuTrigger asChild><button aria-label="消息更多操作"><MoreHorizontal size={15}/></button></DropdownMenuTrigger><DropdownMenuContent>{m.authorId==='owner'&&m.type==='message'&&!m.pendingStatus&&<DropdownMenuItem onSelect={()=>setEditing({id:m.id,body:m.body,version:m.version||1})}>编辑消息</DropdownMenuItem>}<DropdownMenuItem onSelect={()=>createFromMessage('task',m)}>留下 Todo</DropdownMenuItem><DropdownMenuItem onSelect={()=>createFromMessage('memory',m)}>记住这条</DropdownMenuItem><DropdownMenuItem onSelect={()=>quoteObject(refOf('message',m))}>引用到聊天</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                          <DropdownMenu><DropdownMenuTrigger asChild><button disabled={!!m.pendingStatus} aria-label="消息更多操作"><MoreHorizontal size={15}/></button></DropdownMenuTrigger><DropdownMenuContent>{m.authorId==='owner'&&m.type==='message'&&!m.pendingStatus&&<DropdownMenuItem onSelect={()=>setEditing({id:m.id,body:m.body,version:m.version||1})}>编辑消息</DropdownMenuItem>}<DropdownMenuItem onSelect={()=>createFromMessage('task',m)}>留下 Todo</DropdownMenuItem><DropdownMenuItem onSelect={()=>createFromMessage('memory',m)}>记住这条</DropdownMenuItem><DropdownMenuItem onSelect={()=>quoteObject(refOf('message',m))}>引用到聊天</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                         </header>
                         {m.replyTo && (
                           <button
                             className="reply-preview"
-                            onClick={() =>
-                              document
-                                .getElementById(m.replyTo)
-                                ?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "center",
-                                })
-                            }
+                            onClick={() => jumpToSource(m.replyTo)}
                           >
                             回复{" "}
                             {name(
@@ -530,7 +534,7 @@ export default function App() {
                         {m.obsoleteRequirement&&<div className="message-obsolete-requirement">这是旧要求下的结果；后续按用户的新要求继续</div>}
                         {!!m.refs?.length&&<div className="message-references">{m.refs.map(r=><ReferenceChip key={r.kind+r.id} value={r} onOpen={openObject}/>)}</div>}
                         {m.meetingId&&m.type==='message'&&<button className="message-meeting-link" onClick={()=>setMeetingPanel({id:m.meetingId,channelId:current})}><Video size={12}/>会议：{snapshot.meetings.find(x=>x.id===m.meetingId)?.title||'查看记录'}</button>}
-                        {editing?.id===m.id?<div className="message-editor"><Textarea aria-label="修改消息" value={editing.body} onChange={e=>setEditing({...editing,body:e.target.value})}/><div><Button size="sm" disabled={!editing.body.trim()||busy} onClick={async()=>{try{await perform(()=>command('channel.message.edit',{channelId:current,messageId:m.id,expectedVersion:editing.version,body:editing.body}));setEditing(null);}catch{}}}>保存修改</Button><Button size="sm" variant="ghost" onClick={()=>setEditing(null)}>取消</Button></div></div>:m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
+                        {editing?.id===m.id?<div className="message-editor"><Textarea aria-label="修改消息" value={editing.body} onChange={e=>setEditing({...editing,body:e.target.value})}/><div><Button size="sm" disabled={!editing.body.trim()||busy} onClick={async()=>{try{if(editing.requestId){if(!outbox.revise(editing.requestId,editing.body))return;}else await perform(()=>command('channel.message.edit',{channelId:current,messageId:m.id,expectedVersion:editing.version,body:editing.body}));setEditing(null);}catch(e){setError(e.message);}}}>{editing.requestId?'重新发送':'保存修改'}</Button><Button size="sm" variant="ghost" onClick={()=>setEditing(null)}>取消</Button></div></div>:m.type==='shared_file'?<FileCard file={m.fileName?{name:m.fileName,size:m.fileSize}:(snapshot.files||[]).find(f=>f.id===m.resourceId)||{name:m.body}} action={m.resourceAction} version={m.resourceVersion} onOpen={()=>setSharedFileId(m.resourceId)}/>:m.type==='handoff'?<HandoffCard handoff={(snapshot.handoffs||[]).find(h=>h.id===m.handoffId)} summary={m.body} name={name} onOpen={()=>setHandoffId(m.handoffId)}/>:['meeting_start','meeting_end','meeting_result_update'].includes(m.type) ? <MeetingCard meeting={snapshot.meetings.find(mt=>mt.id===m.meetingId)||{id:m.meetingId,title:m.body.split('\n')[0],status:m.type==='meeting_end'?'ended':'running'}} ended={m.type!=='meeting_start'} onOpen={()=>setMeetingPanel({id:m.meetingId,channelId:current})}/> : ["document", "delivery"].includes(m.type) ? (
                           <button
                             className="shared-document-card"
                             onClick={() => setDocumentId(m.documentId)}
@@ -764,8 +768,9 @@ export default function App() {
                       variant="ghost"
                       className="load-older"
                       onClick={loadOlder}
+                      disabled={loadingOlder}
                     >
-                      查看更早消息
+                      {loadingOlder?'正在加载历史…':'查看更早消息'}
                     </Button>
                   )}
                   {!messages.length && (

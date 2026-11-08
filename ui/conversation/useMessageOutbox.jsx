@@ -17,8 +17,12 @@ export default function useMessageOutbox(onCommitted){
  const enqueue=input=>{const entry={input:{...input,type:'channel.post',requestId:crypto.randomUUID()},createdAt:new Date().toISOString(),status:'queued'};update(all=>[...all,entry],true);return entry;};
  const retry=key=>{const e=rows.current.find(x=>x.input.requestId===key);if(e)void send(e);};
  const remove=key=>{const e=rows.current.find(x=>x.input.requestId===key);if(e?.status!=='failed'||active.current.has(key))return null;update(all=>all.filter(x=>x.input.requestId!==key));return e.input;};
+ // A definitive rejection can be edited in place. Keep the original audience
+ // and references; a changed payload must get a new idempotency key. Persist
+ // replacement atomically so storage failure cannot discard the failed draft.
+ const revise=(key,body)=>{const e=rows.current.find(x=>x.input.requestId===key);if(e?.status!=='failed'||active.current.has(key)||!body.trim())return false;const replacement={...e,input:{...e.input,body,requestId:crypto.randomUUID()},status:'queued',error:null};update(all=>all.map(x=>x.input.requestId===key?replacement:x),true);return true;};
  useEffect(()=>{const channels=new Set();for(const e of items){if(channels.has(e.input.channelId))continue;channels.add(e.input.channelId);if(e.status==='queued')void send(e);}},[items]);
  useEffect(()=>{const resume=()=>{for(const entry of rows.current)if(['sending','waiting'].includes(entry.status))void send(entry);};resume();window.addEventListener('online',resume);return()=>window.removeEventListener('online',resume);},[]);
  useEffect(()=>{const waiting=items.filter(x=>x.status==='waiting');if(!waiting.length)return;const timer=setTimeout(()=>{for(const x of rows.current)if(x.status==='waiting'&&x.retryAt<=Date.now())void send(x);},Math.max(500,Math.min(...waiting.map(x=>x.retryAt||Date.now()))-Date.now()));return()=>clearTimeout(timer);},[items]);
- return {items,enqueue,retry,remove};
+ return {items,enqueue,retry,remove,revise};
 }
