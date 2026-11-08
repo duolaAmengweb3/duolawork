@@ -97,7 +97,7 @@ export async function hook(runFile,input){
 }
 export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;
-  if(command==='monitor'){await runMonitor(args[0]);return;}
+  if(command==='monitor'){await runMonitor(args[0],args[1]==='--runtime-revision'?args[2]:undefined);return;}
   if(command==='monitor-mcp'){await serveMonitor(args[0]);return;}
   if(command==='monitor-stop'){try{await monitorStopped(args[0],await stdinJson(2000000));}catch{/* A hook must not interrupt the user's original turn; its durable marker retries. */}return;}
   if(command==='prepare-monitor'){
