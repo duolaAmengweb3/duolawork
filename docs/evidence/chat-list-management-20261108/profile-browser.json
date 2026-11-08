@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-08T03:24:25.889Z",
+  "browser": "installed full Chrome; non-default profile; session restore enabled",
+  "checks": [
+    "returning to an account preserves its current URL and unfinished draft",
+    "old runner process exits while the same Chrome PID and session cookie survive takeover",
+    "dedicated Chrome launch over loopback CDP",
+    "separate account cookies",
+    "persistent cookie survives close and reopen",
+    "session cookie survives close and reopen",
+    "localStorage and IndexedDB survive reopen",
+    "account rename keeps same profile",
+    "replacement application code reuses external profile with all markers intact",
+    "changing proxy preserves the same profile and login markers",
+    "real Chrome HTTPS requests reach the configured CONNECT proxy",
+    "offline proxy fails without direct fallback",
+    "proxy configuration rejects credentials and remote hosts",
+    "pinned browser cannot silently switch",
+    "missing registered profile fails without creating a blank profile",
+    "active instance limit enforced",
+    "owned PID recovery",
+    "real DOM send and completion observed",
+    "explicit logout is not undone by restore"
+  ],
+  "realCommercialAgentTested": false
+}
