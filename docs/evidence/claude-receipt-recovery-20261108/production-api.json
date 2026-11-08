@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-08T05:42:29.952Z",
+  "checks": [
+    {
+      "check": "production missing field controlled error",
+      "status": 400,
+      "code": "invalid_arguments",
+      "message": "工具 read_doc 缺少必要参数：documentId。请按工具定义补齐"
+    },
+    {
+      "check": "production alias read",
+      "id": "shared_doc_6f5e9538de4248f1affa3da02e545e2d",
+      "title": "2026-11-07｜全部 T01—T08 交付与独立验收记录",
+      "version": 2
+    }
+  ]
+}
