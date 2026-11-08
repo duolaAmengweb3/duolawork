@@ -103,6 +103,12 @@ test('persistent plugin uses official Monitor and ordinary MCP without launcher,
  assert.equal(monitors[0].when,'always');assert.match(monitors[0].command,/'\/node folder\/node'/);
  assert.equal(mcp.mcpServers.hub.args[1],'monitor-mcp');assert.doesNotMatch(JSON.stringify({manifest,mcp}),/dangerously|--resume|--continue|allowedTools|--model/);
  await assert.rejects(()=>writeMonitorPlugin({pluginDir,connectionDir:'/other',cli:'/app/c.cjs'}),/其他连接/);
+ const cli=path.join(root,'runtime.cjs');await fs.writeFile(cli,'// first runtime');
+ await writeMonitorPlugin({pluginDir,connectionDir,cli});
+ const first=await fs.readFile(path.join(pluginDir,'monitors/monitors.json'),'utf8'),mcpFirst=await fs.readFile(path.join(pluginDir,'.mcp.json'),'utf8');
+ await fs.writeFile(cli,'// updated runtime');await writeMonitorPlugin({pluginDir,connectionDir,cli});
+ assert.notEqual(await fs.readFile(path.join(pluginDir,'monitors/monitors.json'),'utf8'),first);
+ assert.notEqual(await fs.readFile(path.join(pluginDir,'.mcp.json'),'utf8'),mcpFirst,'native reloader sees a changed runtime, without changing member credentials');
 });
 
 test('unlinked native conversations stay inert; notifications and tool claims never share state files',async t=>{

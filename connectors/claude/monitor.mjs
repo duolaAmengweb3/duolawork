@@ -52,9 +52,12 @@ export async function writeMonitorPlugin({pluginDir,connectionDir,cli,node=proce
   const configFile=path.join(pluginDir,'connection.json');
   let prior;try{prior=await read(configFile);}catch(e){if(e.code!=='ENOENT')throw e;}
   if(prior&&prior.connectionDir!==connectionDir)throw Error('这个插件目录属于其他连接，原文件保留');
-  const command=[node,cli,'monitor',configFile].map(shellQuote).join(' ');
+  // The native reloader retains unchanged running commands. Include the actual
+  // bundle revision so an in-place update reloads our processes as well as hooks.
+  let revision='development';try{revision=hash(await fs.readFile(cli));}catch(e){if(e.code!=='ENOENT')throw e;}
+  const command=[node,cli,'monitor',configFile,'--runtime-revision',revision].map(shellQuote).join(' ');
   await privateJson(configFile,{connectionDir});
-  await privateJson(path.join(pluginDir,'.mcp.json'),{mcpServers:{hub:{command:node,args:[cli,'monitor-mcp',configFile]}}});
+  await privateJson(path.join(pluginDir,'.mcp.json'),{mcpServers:{hub:{command:node,args:[cli,'monitor-mcp',configFile],env:{DUOLAWORK_RUNTIME_REVISION:revision}}}});
   await privateJson(path.join(pluginDir,'monitors/monitors.json'),[{name:'messages',command,description:'DuolaWork 发给当前对话的消息',when:'always'}]);
   const endCommand=[node,cli,'monitor-stop',configFile].map(shellQuote).join(' ');
   await privateJson(path.join(pluginDir,'hooks/hooks.json'),{hooks:Object.fromEntries(['Stop','StopFailure','SessionEnd'].map(event=>[event,[{hooks:[{type:'command',command:endCommand,timeout:8}]}]]))});
