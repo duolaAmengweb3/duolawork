@@ -161,6 +161,7 @@ export default function App() {
     [sharedFileId,setSharedFileId]=useState(null),[handoffId,setHandoffId]=useState(null),
     [query, setQuery] = useState(saved.current.tabViews?.[saved.current.chatKind||"group"]?.query||""),[chatKind,setChatKind]=useState(saved.current.chatKind||"group"),[readThrough,setReadThrough]=useState(saved.current.readThrough||{}),
     [older, setOlder] = useState([]),
+    [reading, setReading] = useState(null),
     [moreCursor, setMoreCursor] = useState(null),
     [lastSync, setLastSync] = useState(null),[unread,setUnread]=useState({}),[editing,setEditing]=useState(null),[loadingOlder,setLoadingOlder]=useState(false);
   const reply = replies[current] || null;
@@ -180,6 +181,7 @@ export default function App() {
   const viewCache=useRef(new MessageSnapshots()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
   const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false),historyEpoch=useRef(0),sourceNavigation=useRef(0),sourceTarget=useRef(null),olderRequest=useRef(null);
   const scrollInteraction=useRef(null);
+  const trackReading=()=>setReading(old=>nearBottom.current?null:old?.channelId===currentRef.current?old:{channelId:currentRef.current,after:viewCache.current.get(currentRef.current)?.channel.messageSequence||0});
   const isUserInteracting=()=>scrollInteraction.current?.element===scroll.current&&scrollInteraction.current?.active;
   const tabViews=useRef(saved.current.tabViews||{}),listScroll=useRef(null),unreadRef=useRef(unread),firstUnread=useRef(null);unreadRef.current=unread;
   const switchChatKind=kind=>{if(kind===chatKind){setPage('chat');return;}savePosition();tabViews.current[chatKind]={query,channelId:current,top:listScroll.current?.scrollTop||0};setChatKind(kind);setQuery(tabViews.current[kind]?.query||'');const next=channels.find(c=>c.id===tabViews.current[kind]?.channelId&&!!c.direct===(kind==='direct'))||channels.find(c=>!!c.direct===(kind==='direct'));setCurrent(next?.id||'');setPage('chat');requestAnimationFrame(()=>{if(listScroll.current)listScroll.current.scrollTop=tabViews.current[kind]?.top||0;});};
@@ -199,9 +201,9 @@ export default function App() {
     let timer;
     // Position tracking is synchronous and independent of unread/focus tracking.
     // A refresh or ResizeObserver callback may run before the next animation frame.
-    const capture=()=>{if(scroll.current!==el)return;nearBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<4;savePosition();};
+    const capture=()=>{if(scroll.current!==el)return;nearBottom.current=el.scrollHeight-el.scrollTop-el.clientHeight<4;trackReading();savePosition();};
     const settle=()=>{clearTimeout(timer);if(state.pointer||state.touch)return;timer=setTimeout(()=>{if(scroll.current!==el)return;capture();state.active=false;},220);};
-    const begin=()=>{state.active=true;nearBottom.current=false;restorePosition.current=false;oldHeight.current=null;savePosition();settle();};
+    const begin=()=>{state.active=true;nearBottom.current=false;restorePosition.current=false;oldHeight.current=null;trackReading();savePosition();settle();};
     const editable=target=>target instanceof Element&&target.closest('button,a,input,textarea,select,[contenteditable="true"]');
     const pointerDown=e=>{if(editable(e.target))return;state.pointer=true;begin();};
     const pointerUp=()=>{if(!state.pointer)return;state.pointer=false;settle();};
@@ -255,9 +257,17 @@ export default function App() {
     return coalesceRead.current(id+':'+(chatOnly?'chat':'space'),async()=>{
     const readSequence=viewCache.current.beginRead(id);
     const data = await api("/v2/channel?id=" + id+(chatOnly?'&view=chat':''));
+    const previous=viewCache.current.get(id);
     const reconciled=viewCache.current.apply(id,data,readSequence);
     if(!reconciled)return;
     if (currentRef.current === id) {
+      // A moving latest-page window must not unmount the history being read.
+      // Retain only rows that leave that window; current rows stay authoritative.
+      if(!nearBottom.current&&data.before!=null&&reconciled.messages.length){
+        const first=Math.min(...reconciled.messages.map(m=>m.number));
+        const departed=(previous?.messages||[]).filter(m=>m.number<first);
+        if(departed.length){const retained=[...new Map([...(olderCache.current.get(id)||[]),...departed].map(m=>[m.id,m])).values()];olderCache.current.set(id,retained);setOlder(retained);}
+      }
       setSnapshot(reconciled);
       setLastSync(new Date().toISOString());
       setMoreCursor((old) => (old === undefined ? data.before : old));
@@ -305,7 +315,7 @@ export default function App() {
   }, [refreshWorkspace, refresh]);
   useLayoutEffect(() => {
     historyEpoch.current++;sourceNavigation.current++;sourceTarget.current=null;olderRequest.current=null;setLoadingOlder(false);oldHeight.current=null;
-    setSnapshot(viewCache.current.get(current)||null);restorePosition.current=true;firstUnread.current=!positions.current[current]?unreadRef.current[current]?.firstNumber:null;
+    setReading(null);setSnapshot(viewCache.current.get(current)||null);restorePosition.current=true;firstUnread.current=!positions.current[current]?unreadRef.current[current]?.firstNumber:null;
     setSpaceSelection(null);setSpaceEditor(null);
     setOlder(olderCache.current.get(current)||[]);
     setOlderMeetings([]);setMeetingCursor(undefined);
@@ -339,6 +349,7 @@ export default function App() {
     else if(nearBottom.current)el.scrollTop=el.scrollHeight;
     else {const pos=positions.current[current],anchor=pos?.id&&document.getElementById(pos.id);if(anchor)el.scrollTop+=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;}
     lastMessage.current=snapshot.messages.at(-1)?.id;
+    savePosition();
   },[snapshot,older,outbox.items,current]);
   useEffect(()=>{
     const el=scroll.current;if(!el)return;
@@ -354,7 +365,7 @@ export default function App() {
     for(const row of x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber&&!viewCache.current.covers(r.channelId,r.lastNumber)))void refresh({chatOnly:true,channelId:row.channelId}).then(()=>{if(alive&&viewCache.current.covers(row.channelId,row.lastNumber))setUnread(old=>(readRef.current[row.channelId]||0)<row.lastNumber?{...old,[row.channelId]:row}:old);}).catch(e=>{if(alive)setSyncError(e.message);});
     setReadThrough(old=>{let changed=false;const next={...old};for(const [id,n]of Object.entries(x.cursors||{}))if(next[id]===undefined||n>next[id]){next[id]=n;changed=true;}return changed?next:old;});
   }).catch(()=>{});},250);return()=>{alive=false;clearTimeout(timer);};},[readThrough,channels,refresh]);
-  useEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current||isUserInteracting())return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
+  useLayoutEffect(()=>{const el=scroll.current;if(!el||!snapshot)return;const observer=new ResizeObserver(()=>{if(restorePosition.current||isUserInteracting())return;const pos=positions.current[current];if(nearBottom.current){el.scrollTop=el.scrollHeight;return;}const anchor=pos?.id&&document.getElementById(pos.id);if(anchor){const delta=anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset;if(Math.abs(delta)>1)el.scrollTop+=delta;}});observer.observe(el);for(const child of el.children)observer.observe(child);return()=>observer.disconnect();},[current,snapshot]);
   const perform = async (fn) => {
     setBusy(true);
     setError("");
@@ -391,12 +402,14 @@ export default function App() {
       channel?.memberIds.includes(m.id),
     ),
     messages = [...older, ...(snapshot?.messages || []),...outbox.items.filter(x=>x.input.channelId===current&&!snapshot?.messages.some(m=>m.requestId===x.input.requestId)).map(x=>({id:'pending_'+x.input.requestId,requestId:x.input.requestId,body:x.input.body,authorId:'owner',type:'message',createdAt:x.createdAt,number:Number.MAX_SAFE_INTEGER,refs:x.input.refs,mentions:x.input.mentions,mentionAll:x.input.mentionAll,replyTo:x.input.replyTo,meetingId:x.input.meetingId,pendingStatus:x.status,pendingError:x.error}))]
-      .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
+      .filter((m, i, all) => all.findLastIndex((x) => x.id === m.id) === i)
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
+  const newMessageCount=reading?.channelId===current?messages.filter(m=>!m.pendingStatus&&m.number>reading.after).length:0;
+  const returnToLatest=()=>{sourceNavigation.current++;sourceTarget.current=null;setCanReturn(false);restorePosition.current=false;oldHeight.current=null;nearBottom.current=true;setReading(null);if(scroll.current)scroll.current.scrollTop=scroll.current.scrollHeight;savePosition();};
   async function pinChannel(c){
     const pinned=!c.pinnedAt;setPinChanges(old=>({...old,[c.id]:{pinnedAt:pinned?new Date().toISOString():null}}));
-    try{const updated=await command('channel.pin',{channelId:c.id,pinned});setChannels(old=>old.map(row=>row.id===c.id?updated:row));setSnapshot(old=>old?.channel.id===c.id?{...old,channel:updated}:old);}
+    try{const updated=await command('channel.pin',{channelId:c.id,pinned});const patch={pinnedAt:updated.pinnedAt,revision:updated.revision};setChannels(old=>old.map(row=>row.id===c.id?{...row,...patch}:row));setSnapshot(old=>old?.channel.id===c.id?{...old,channel:{...old.channel,...patch}}:old);}
     catch(e){setError(e.message);}finally{setPinChanges(old=>{const next={...old};delete next[c.id];return next;});}
   }
   async function openDeleted(){setError('');setDeletedChannels(null);setModal({type:'deleted-channels'});try{const result=await api('/v2/channels?deleted=1');setDeletedChannels(result.items);}catch(e){setError(e.message);}}
@@ -818,6 +831,7 @@ export default function App() {
                   )}
                   {messageNodes}
                 </div>
+                {newMessageCount>0&&<button className="new-message-jump" onClick={returnToLatest}><ChevronDown size={14}/>{newMessageCount} 条新消息 · 回到最新</button>}
                 {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{sourceNavigation.current++;sourceTarget.current=null;const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
                 {(pendingActivity.length>0||delivery.attention.length>0||delivery.recovering.length>0) && (
                   <div className="conversation-activity">

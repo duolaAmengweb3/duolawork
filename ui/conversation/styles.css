@@ -1429,3 +1429,5 @@
 .channel-list > button > .avatar-availability{flex:0 0 auto;overflow:visible}.channel-list > button > svg{flex-shrink:0}
 
 .sidebar-footer > .sidebar-deleted{justify-content:flex-start;gap:7px}
+
+.conversation-column{position:relative}.new-message-jump{position:absolute;right:24px;top:14px;z-index:5;display:flex;align-items:center;gap:6px;border:1px solid #d9e3f5;background:#fff;color:#365db1;border-radius:18px;padding:7px 12px;font-size:12px;box-shadow:0 2px 8px #203d6912}
