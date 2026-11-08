@@ -28,6 +28,7 @@ export class Repository {
     this.workspaceId = workspaceId;
   }
   async get(kind, key, necessary = true) {
+    required(kind,'记录类型',100);required(key,'记录编号',1000);
     const row = await this.db
       .prepare(
         "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind=? AND id=?",

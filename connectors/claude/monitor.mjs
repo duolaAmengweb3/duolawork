@@ -8,6 +8,7 @@ import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {CodingMemberClient} from '../../local/coding-client.mjs';
+import {flushNativeEnd,observeNativeEnd} from './end-observer.mjs';
 import {subscribeNativeChanges} from '../../local/native-delivery.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {ClaudeChannel,sessionLinkTools} from './channel.mjs';
@@ -55,6 +56,8 @@ export async function writeMonitorPlugin({pluginDir,connectionDir,cli,node=proce
   await privateJson(configFile,{connectionDir});
   await privateJson(path.join(pluginDir,'.mcp.json'),{mcpServers:{hub:{command:node,args:[cli,'monitor-mcp',configFile]}}});
   await privateJson(path.join(pluginDir,'monitors/monitors.json'),[{name:'messages',command,description:'DuolaWork 发给当前对话的消息',when:'always'}]);
+  const endCommand=[node,cli,'monitor-stop',configFile].map(shellQuote).join(' ');
+  await privateJson(path.join(pluginDir,'hooks/hooks.json'),{hooks:Object.fromEntries(['Stop','StopFailure','SessionEnd'].map(event=>[event,[{hooks:[{type:'command',command:endCommand,timeout:8}]}]]))});
   // No startup wrapper, channel opt-in flag, global permission or model setting.
   await privateJson(path.join(pluginDir,'.claude-plugin/plugin.json'),{
     name,version:'0.1.0',description:'在原 Claude 对话接收和回复 DuolaWork 协作消息',author:{name:'DuolaWork'},
@@ -96,6 +99,7 @@ export class MonitorBridge{
   }
   async tick(){
     const b=await this.select();if(!b)return;
+    await flushNativeEnd({client:this.client,session:this.session,connectionDir:this.connectionDir});
     if(Date.now()-this.heartbeatAt>20000){
       this.session=await refreshSessionInfo(this.session);b.session=this.session;
       await this.client.api('/v2/self/native-sessions',{method:'POST',body:this.session});this.heartbeatAt=Date.now();
@@ -128,6 +132,12 @@ export class MonitorBridge{
     return b.tool(name,args);
   }
   async close(){if(this.session&&this.kind==='monitor')await this.client.api('/v2/self/native-sessions',{method:'POST',body:{...this.session,status:'offline'}}).catch(()=>{});}
+}
+
+export async function monitorStopped(configFile,input,options={}){
+ const config=await read(configFile),bridge=new MonitorBridge({...config,...options,kind:'tools'}),b=await bridge.select();
+ if(!b||input.session_id!==bridge.session.sessionId)return {ignored:true};
+ return observeNativeEnd({client:bridge.client,session:bridge.session,connectionDir:bridge.connectionDir,claims:b.claims,work:()=>b.work(),input});
 }
 
 export async function runMonitor(configFile){

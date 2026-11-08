@@ -97,6 +97,9 @@ test('persistent plugin uses official Monitor and ordinary MCP without launcher,
  await writeMonitorPlugin({pluginDir,connectionDir,cli:'/app folder/connector.cjs',node:'/node folder/node'});
  const manifest=JSON.parse(await fs.readFile(path.join(pluginDir,'.claude-plugin/plugin.json'))),mcp=JSON.parse(await fs.readFile(path.join(pluginDir,'.mcp.json')));
  const monitors=JSON.parse(await fs.readFile(path.join(pluginDir,'monitors/monitors.json')));
+ const hooks=JSON.parse(await fs.readFile(path.join(pluginDir,'hooks/hooks.json')));
+ assert.deepEqual(Object.keys(hooks.hooks),['Stop','StopFailure','SessionEnd']);
+ for(const entries of Object.values(hooks.hooks)){assert.match(entries[0].hooks[0].command,/monitor-stop/);assert.equal(entries[0].hooks[0].timeout,8);}
  assert.equal(monitors[0].when,'always');assert.match(monitors[0].command,/'\/node folder\/node'/);
  assert.equal(mcp.mcpServers.hub.args[1],'monitor-mcp');assert.doesNotMatch(JSON.stringify({manifest,mcp}),/dangerously|--resume|--continue|allowedTools|--model/);
  await assert.rejects(()=>writeMonitorPlugin({pluginDir,connectionDir:'/other',cli:'/app/c.cjs'}),/其他连接/);

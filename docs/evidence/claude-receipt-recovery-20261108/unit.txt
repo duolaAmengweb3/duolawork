@@ -1,0 +1,13 @@
+✔ bad tool fields return controlled errors, observed aliases work, and another member remains forbidden (15.906875ms)
+✔ official native end frees the exact session after receipt failure without inventing a reply or replaying work (51.289083ms)
+✔ background tasks, another session, another member and stale lease cannot release an active turn (4.982042ms)
+✔ end report survives network loss using only its saved lease and never settles a newer execution (30.742ms)
+✔ old claim ledger can use current native ownership; successful receipts remain valid for continuation (45.862916ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 316.051709

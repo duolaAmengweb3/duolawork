@@ -11,7 +11,7 @@ import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {serve} from './channel.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
 import {claudeResumeAction} from '../../shared/claude-onboarding.mjs';
-import {runMonitor,serveMonitor,writeMonitorPlugin,nativeIdentity} from './monitor.mjs';
+import {runMonitor,serveMonitor,writeMonitorPlugin,nativeIdentity,monitorStopped} from './monitor.mjs';
 
 const base=process.env.AGENT_HUB_CLAUDE_DIR||path.join(os.homedir(),'.config','agent-hub-claude');
 const executable=path.resolve(process.argv[1]||'connector.cjs');
@@ -79,7 +79,7 @@ export async function setupMonitor({endpoint,code,alias,memberId}, {cli=executab
   await client.api('/v2/self/status',{method:'POST',body:{stage:'waiting_owner',action:'claude_reload',message:'接收插件已准备好。在当前 Claude 输入 /reload-plugins，加载后会自动验证。以后照常打开 Claude 即可。'}});
   return{stage:'waiting_owner',reloadCommand:'/reload-plugins',message:'准备好了。在这个 Claude 对话输入 /reload-plugins，之后会自动验证。无需退出或重新登录；以后照常打开 Claude。'};
 }
-async function stdinJson(){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>200000)throw Error('输入过大');}return JSON.parse(raw);}
+async function stdinJson(limit=200000){let raw='';for await(const part of process.stdin){raw+=part;if(raw.length>limit)throw Error('输入过大');}return JSON.parse(raw);}
 export async function prepareLaunch({alias,cwd=process.cwd(),cli=executable}){
   const dir=location(alias),grantFile=path.join(dir,'grant.json');await read(grantFile);
   const runDir=path.join(dir,'runs',randomUUID());await fs.mkdir(runDir,{recursive:true,mode:0o700});
@@ -99,6 +99,7 @@ export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;
   if(command==='monitor'){await runMonitor(args[0]);return;}
   if(command==='monitor-mcp'){await serveMonitor(args[0]);return;}
+  if(command==='monitor-stop'){try{await monitorStopped(args[0],await stdinJson(2000000));}catch{/* A hook must not interrupt the user's original turn; its durable marker retries. */}return;}
   if(command==='prepare-monitor'){
     const {connectionDir,pluginDir,sessionId}=await stdinJson();
     const current=await nativeIdentity();

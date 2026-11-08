@@ -9,6 +9,8 @@ import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
 import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
 import {mcpConnectorTool} from './mcp-connectors.mjs';
 import {finishConnectorOAuth} from './connector-oauth.mjs';
+import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
+import {validateToolArguments} from './tool-validation.mjs';
 import {connectorHostRequest} from './connector-hosts.mjs';
 import {bytes as toolHostBytes,sha256 as toolHostSHA} from './tool-host-download.mjs';
 import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
@@ -332,6 +334,20 @@ async function readDocument(repo, actor, documentId) {
   return { ...document, original, working, candidate };
 }
 export async function callTool(repo, identity, actor, name, args, env, options = {}) {
+  let canonical;
+  try{
+    canonical=normalizeToolArguments(name,args);
+    validateToolArguments(TOOLS.find(t=>t.name===name),canonical);
+    return await dispatchTool(repo,identity,actor,name,canonical,env,options);
+  }catch(error){
+    const turnId=canonical?.turnId||(name==='submit_work'&&canonical?.attemptId?.startsWith('turn_')?canonical.attemptId:null);
+    if(actor.memberId&&['stay_silent','post_message','submit_work'].includes(name)&&typeof turnId==='string')try{
+      await repo.transact(id('ack-error'),{},async tx=>{const turn=await tx.get('channel_turn',turnId,false);if(turn?.memberId!==actor.memberId||turn.status!=='active'||canonical.channelId&&turn.scopeId!==canonical.channelId)return {};return tx.put('channel_turn',{...turn,lastAckError:{code:typeof error.code==='string'?error.code:'server_error',message:'回执未成功保存，原消息与执行记录保留',at:tx.now}});});
+    }catch{/* Preserve the original controlled tool error even if diagnostics fail. */}
+    throw error;
+  }
+}
+async function dispatchTool(repo, identity, actor, name, args, env, options = {}) {
   if (!actor.memberId)
     fail(
       "member_required",

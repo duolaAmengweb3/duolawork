@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-08T05:25:56.044Z",
+  "isolated": true,
+  "cases": [
+    {
+      "name": "read_doc",
+      "status": 400
+    },
+    {
+      "name": "read_doc",
+      "status": 400
+    },
+    {
+      "name": "stay_silent",
+      "status": 400
+    },
+    {
+      "name": "stay_silent",
+      "status": 400
+    },
+    {
+      "name": "read_doc alias",
+      "status": 200
+    },
+    {
+      "name": "stay_silent alias",
+      "status": 200
+    }
+  ]
+}

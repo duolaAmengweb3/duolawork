@@ -1,4 +1,5 @@
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
+import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {manageChannel} from './channel-management.mjs';
 import {skillRefsSchema} from './skill-bindings.mjs';
 import {groupMemoryMaintenance} from './group-memory.mjs';
@@ -303,7 +304,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
   if (["done", "silent", "merged", "removed"].includes(turn.status)) { await rejectStaleResponse(tx, actor, turn); return; }
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
-  tx.put("channel_turn", { ...turn, status, reason, completedAt: tx.now });
+  tx.put("channel_turn", { ...turn, status, reason,lastAckError:null, completedAt: tx.now });
   await acknowledgeNativeContext(tx,turn);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
   const r = await tx.get("resource", turn.resourceKey, false);
@@ -320,16 +321,18 @@ export const receivableTurn = turn => turn.status === 'ready' ||
 export async function conversationRuntime(repo,actor,args){
   const turn=await repo.get('channel_turn',required(args.turnId,'通知'));
   if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能核对自己的通知',403);
-  const publicState=t=>({turnId:t.id,status:t.status,completedAt:t.completedAt||null,reason:t.reason||null});
+  if(args.expectedSessionId&&turn.nativeSessionId!==args.expectedSessionId)fail('session_changed','运行观察不属于这段原生会话',403);
+  const publicState=t=>({turnId:t.id,status:t.status,completedAt:t.completedAt||null,reason:t.reason||null,lease:t.lease||null,nativeSessionId:t.nativeSessionId||null,claimedAt:t.claimedAt||null,lastAckError:t.lastAckError||null});
   if(args.action==='read')return publicState(turn);
   if(!['running','ended','unreachable'].includes(args.state))fail('invalid_state','运行观察状态无效');
   return repo.transact(args.requestId,{...args,actor},async tx=>{
     const current=await tx.get('channel_turn',turn.id);
+    if(args.lease&&args.lease!==current.lease)return {...publicState(current),observationApplied:false};
     if(current.status==='ready'&&args.state==='ended')return publicState(tx.put('channel_turn',{...current,status:'stalled',nativeReceptionFailed:true,nativeObservedAt:tx.now,interruptedAt:tx.now,reason:'原 Agent 在接收消息前停止，尚未开始这条工作。消息已保留，恢复后可重试。'}));
     if(current.status!=='active')return publicState(current);
     if(args.state==='running')return publicState(tx.put('channel_turn',{...current,nativeObservedAt:tx.now,expiresAt:new Date(Date.parse(tx.now)+30*60000).toISOString()}));
     const reason=args.state==='ended'?'原对话已结束，但这条消息尚未回传；请在原环境检查。':'暂时无法确认原运行端状态，消息和原工作保留；未自动重做。';
-    const next=tx.put('channel_turn',{...current,status:'stalled',reason,nativeObservedAt:tx.now,interruptedAt:tx.now});
+    const next=tx.put('channel_turn',{...current,status:'stalled',reason,nativeObservedAt:tx.now,interruptedAt:tx.now,...(args.state==='ended'?{nativeEndedAt:tx.now,nativeEndEvent:args.nativeEvent||'observed_idle'}:{})});
     const resource=await tx.get('resource',current.resourceKey,false);
     if(resource?.turnId===current.id)tx.put('resource',{...resource,status:'idle',turnId:null});
     return publicState(next);
@@ -684,6 +687,7 @@ export async function conversationCommand(
   cmd,
   now = new Date().toISOString(),
 ) {
+  if(cmd.type==='channel.silent'){cmd=normalizeToolArguments('stay_silent',cmd);required(cmd.turnId,'turnId（消息通知编号）');}
   const { type } = cmd;
   if (type === "channel.claim")
     return claimConversation(repo, identity, actor, cmd, now);
@@ -1211,11 +1215,12 @@ const toolCommands = {
   board_task: "channel.task",
 };
 export async function conversationTool(repo, identity, actor, name, args) {
+  args=normalizeToolArguments(name,args);
   if (["search_memory","read_memory","read_todo","read_space_object"].includes(name)) return readSpaceObject(repo,actor,name==="read_todo"?{...args,kind:"task",grouped:true}:args);
   if (name === "read_channel") return readChannel(repo, identity, actor, args);
   if (name === 'meeting' && args.action === 'read') return meetingDetail(repo, identity, actor, args);
   if (name === "read_doc") {
-    const doc = await repo.get("channel_doc", args.documentId);
+    const doc = await repo.get("channel_doc", required(args.documentId,'documentId（文档编号）'));
     await channelAccess(repo, doc.scopeId, actor);
     if(doc.status==='deleted')fail('resource_deleted','这份资料已移入回收站',410);
     if(actor.memberId) await repo.transact(id('doc-read'),{documentId:doc.id,actor},tx=>tx.put('shared_read',{id:doc.id+':'+actor.memberId,parentId:doc.id,scopeId:doc.scopeId,memberId:actor.memberId,version:doc.version,createdAt:tx.now}));

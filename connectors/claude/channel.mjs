@@ -9,6 +9,7 @@ import {privateJson} from '../../local/storage.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
 import {claimNativeConversation} from '../../local/session-routing.mjs';
 import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from '../../local/native-delivery.mjs';
+import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 export const sessionLinkTools=[
  {name:'link_current_conversation',description:'Link this exact original Claude conversation using the instruction copied by the user from DuolaWork. Reuses the existing account.',inputSchema:{type:'object',properties:{id:{type:'string'},code:{type:'string'}},required:['id','code']}},
  {name:'confirm_current_conversation',description:'Confirm an original-conversation challenge received through this Claude channel.',inputSchema:{type:'object',properties:{id:{type:'string'},challenge:{type:'string'}},required:['id','challenge']}},
@@ -49,6 +50,7 @@ export class ClaudeChannel {
     catch(e){delete this.sent[w.stepId];await this.save();throw e;}
   })().finally(()=>{this.pending=null;if(this.tickAgain){this.tickAgain=false;void this.tick().catch(()=>{});}});}
   async tool(name,args){
+    args=normalizeToolArguments(name,args);
     if(name==='link_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'redeem',id:args.id,code:args.code,runtimeId:this.session.runtimeId,session:{id:this.session.sessionId,workspace:this.session.workspace,title:this.session.title},requestId:'claude-link-'+args.id+'-'+this.session.sessionId}});
     if(name==='confirm_current_conversation')return this.client.api('/v2/self/session-links',{method:'POST',body:{action:'confirm',id:args.id,challenge:args.challenge,sessionId:this.session.sessionId,requestId:'claude-link-confirm-'+args.id}});
     if(['setup_connection','check_connection','report_setup_status','receive_messages'].includes(name))throw Error('连接由本机接收器维护；请使用 list_work 与 claim_work');
@@ -75,7 +77,7 @@ export class ClaudeChannel {
         ?await claimNativeConversation(this.client,{...args,channelId,sessionId:this.session.sessionId})
         :await this.client.tool(name,{...args,...(channelId?{channelId,expectedSessionId:this.session.sessionId}:{})});
       const key=result.attemptId||result.turnId;
-      if(key){this.claims[key]={attemptId:result.attemptId,turnId:result.turnId,channelId:result.channelId||channelId};await this.save();}
+      if(key){this.claims[key]={attemptId:result.attemptId,turnId:result.turnId,channelId:result.channelId||channelId,lease:result.lease,claimedAtLocal:Date.now()};await this.save();}
       return result;
     }
     const r=await this.scope();
@@ -83,6 +85,8 @@ export class ClaudeChannel {
     if(args.attemptId&&!this.claims[args.attemptId])throw Error('当前会话没有领取此工作');
     if(args.turnId&&!Object.values(this.claims).some(c=>c.turnId===args.turnId))throw Error('当前会话没有领取这条消息');
     const result=await this.client.tool(name,args);
+    const acknowledged=args.turnId||(name==='submit_work'&&args.attemptId?.startsWith('turn_')?args.attemptId:null);
+    if(acknowledged&&['stay_silent','post_message','submit_work'].includes(name)&&!args.body?.startsWith('HUB_SHARED_TOOL_V1\n')){for(const claim of Object.values(this.claims))if(claim.turnId===acknowledged)claim.acknowledged=true;await this.save();}
     // Upgrade old stored claims when this session sends its actual reply.
     if(args.turnId&&args.channelId){const prior=Object.values(this.claims).find(c=>c.turnId===args.turnId);if(prior&&!prior.channelId){prior.channelId=args.channelId;await this.save();}}
     return result;
