@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-08T02:51:47.577Z",
+  "at": "2026-11-08T02:56:21.904Z",
   "scope": "Installed desktop with isolated data and real HTTP backend; no native model calls.",
   "results": [
     {
@@ -20,6 +20,10 @@
     },
     {
       "name": "定位原消息途中切群，迟到响应不污染另一个聊天",
+      "passed": true
+    },
+    {
+      "name": "等待原文时先返回，迟到响应不再把阅读位置拉走",
       "passed": true
     }
   ],

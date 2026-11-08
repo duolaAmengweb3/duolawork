@@ -786,7 +786,7 @@ export default function App() {
                   )}
                   {messageNodes}
                 </div>
-                {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
+                {canReturn&&readingReturn.current?.channelId===current&&<button className="reading-return" onClick={()=>{sourceNavigation.current++;sourceTarget.current=null;const pos=readingReturn.current,el=scroll.current,anchor=pos?.id&&document.getElementById(pos.id);if(el)el.scrollTop=anchor?el.scrollTop+anchor.getBoundingClientRect().top-el.getBoundingClientRect().top-pos.offset:pos.top;setCanReturn(false);}}><ArrowLeft size={14}/>回到原阅读位置</button>}
                 {(pendingActivity.length>0||delivery.attention.length>0||delivery.recovering.length>0) && (
                   <div className="conversation-activity">
                     {pendingActivity.map(item => <button type="button" key={item.memberId} className="pending-member" onClick={()=>{setTab('activity');setSide(true);}} title="查看对应消息"><i className={item.working?'working':''}/>{name(item.memberId)} {item.label}</button>)}

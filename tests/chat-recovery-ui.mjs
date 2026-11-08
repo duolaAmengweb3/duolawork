@@ -66,6 +66,12 @@ try{
   let started=false;await p.route('**/v2/space-object?*',async route=>{if(new URL(route.request().url()).searchParams.get('id')===root.id){started=true;await new Promise(r=>setTimeout(r,1200));}await route.continue();});
   await p.locator('#'+latest.id).locator('.reply-preview').click();await p.waitForTimeout(60);assert(started);await select('独立聊天 B');await p.waitForTimeout(1600);assert.equal(await p.locator('.chat-message').count(),1);assert.equal(await p.getByRole('button',{name:'回到原阅读位置',exact:true}).count(),0);
  });
+ await check('等待原文时先返回，迟到响应不再把阅读位置拉走',async()=>{
+  let started=false;await p.route('**/v2/space-object?*',async route=>{if(new URL(route.request().url()).searchParams.get('id')===root.id){started=true;await new Promise(r=>setTimeout(r,1200));}await route.continue();});
+  const top=await p.getByLabel('聊天记录').evaluate(el=>el.scrollTop);
+  await p.locator('#'+latest.id).locator('.reply-preview').click();await p.waitForTimeout(60);assert(started);await p.getByRole('button',{name:'回到原阅读位置',exact:true}).click();await p.waitForTimeout(1600);
+  assert.equal(await p.locator('#'+root.id).count(),0);assert(Math.abs(await p.getByLabel('聊天记录').evaluate(el=>el.scrollTop)-top)<3);
+ });
  assert.deepEqual(errors,[]);const report={at:new Date().toISOString(),scope:process.env.HUB_TEST_EXECUTABLE?'Installed desktop with isolated data and real HTTP backend; no native model calls.':'Actual browser UI and isolated real HTTP backend; no native model calls.',results,errors};
  const output=process.env.HUB_UX_EVIDENCE||'/tmp/chat-recovery-ui.json';await fs.writeFile(output,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));assert(results.every(r=>r.passed),'UX regression(s) failed; see '+output);
 }finally{await browser?.close();await app?.close();await local?.close();await h.stop();await fs.rm(directory,{recursive:true,force:true});}
