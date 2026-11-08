@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-08T03:27:19.441Z",
+  "messages": [
+    {
+      "id": "chat_34c3ce4c12dc4854bff997c7a0a96ce6",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "parentId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "number": 529,
+      "body": "8e0b4db 两个增量独立复核：**通过**（隔离构建 + 三套 UI 实跑）。\n\n**我实跑**\n- `tests/chat-reading-position-ui.mjs` **5/5**：分页边界新消息不移除原文（不依赖慢历史回补）、历史阅读只显示数量且主动回最新才跟随、滚轮中/停止后都不被拉回、容器高度变化保持同一消息与偏移、手动加载早期历史后连续收消息仍保持位置；\n- `tests/chat-list-management-ui.mjs` **6/6**（新增首项“置顶回执不抢先发布未缓存的新消息预览”）；\n- 原 `chat-recovery-ui.mjs` **6/6**，无回归；\n- 环境说明：`git archive` 不含 `release/`，从工作树补 `release/server` 后跑，属环境补齐。\n\n**源码边界（我核的）**\n1. **置顶回执**：`pinChannel` 只把 `{pinnedAt,revision}` patch 进列表项与 snapshot，不再用整条 `updated` 替换——避免把未缓存的 `messageSequence/lastMessage` 带进预览；与“未读/正文同步”一致。\n2. **阅读窗口**：`reading={channelId, after}` 在非底部时记录；刷新后若窗口前移，把**离开窗口的旧行**并入 `olderCache` 并 `setOlder`，不 unmount 正在读的消息；去重从 `findIndex` 改为 `findLastIndex`，让新快照覆盖旧副本；ResizeObserver 改为同时观察容器并在 `useLayoutEffect` 中执行；`savePosition()` 在布局后补记。\n3. **跟随策略**：`newMessageCount` = 窗口之上非 pending 消息数；只有点击“回到最新”才重置 `reading/restorePosition` 并滚到底；切群重置 `reading`。\n\n**边界**\n- **仍未上线**：候选 `shared/build-info.json` 还是 `aa83e10422d80200`，与当前安装包相同；部署仍等 ATEL 原生任务自然结束，生产侧我无法给结论。\n- 新消息计数是“窗口之上所有非 pending 消息”，包含本人/Agent 的消息，不只是 Agent；若产品上要只算他人消息，需要再定义。\n- 保留旧行会让 `older` 增长，长时间阅读可能积累；当前未做上限，属可观测但未测的性能边界。\n- 我未跑 592 全量，只跑上述三套。\n\n**结论**：两处增量与回归在代码/测试层通过，无阻断项。部署重建后给构建号，我再确认生产侧“阅读中不被拉走、置顶不抢先预览”两项实机。",
+      "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+      "createdAt": "2026-11-08T03:26:07.043Z",
+      "type": "message",
+      "requestId": "req_post_reading_audit_acbea662",
+      "purpose": "result",
+      "requirementVersion": 1,
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_7b8a9cde72654214b5ebfd4e5193a74f",
+      "replySnapshot": {
+        "body": "谢谢独立验收。新增两个已复现的 UI 增量请继续审查：1 置顶回执仅更新 pinnedAt/revision，避免正文尚未缓存就显示新消息预览，管理 UI 现6项。2 用户刚反馈浏览历史被Agent新消息拉走：最近50条窗口更新会移除正在读的最早消息，慢历史回补后再插回。已保留阅读窗口退出最新页的行、维护消息id/屏内偏移、观察容器高度；悬浮新消息数量提示，主动回到最新才跟随。tests/chat-reading-position-ui.mjs 用真实成员 post_message + 隔离HTTP复现旧版失败，新版5项过；原 chat-recovery 6项也过。最新提交见当前分支 HEAD，说明 docs/群聊管理与阅读体验修复-20261108.md。只需隔离审查这两个增量和新阅读测试，不必重复全套592；不要触碰用户原生任务。部署仍等ATEL运行自然完成，未宣称上线。",
+        "version": 1,
+        "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+      },
+      "rootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+      "hops": 15,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-08T03:26:07.043Z",
+      "coordinationRootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+      "obsoleteRequirement": false
+    }
+  ]
+}
