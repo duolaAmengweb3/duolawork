@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-08T03:35:46.958Z",
+  "scope": "Packaged Electron and isolated real HTTP backend",
+  "executablePath": "/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/Agent Hub.app/Contents/MacOS/Electron",
+  "checks": [
+    "阅读最新分页边界时，新消息到达不移除原文，不依赖慢历史回补",
+    "历史阅读只显示新消息数量，主动回到最新后恢复自动跟随",
+    "滚轮浏览期间和停止后都不被新消息拉回",
+    "聊天区域高度变化保留同一消息和阅读偏移",
+    "手动加载早期历史后连续收消息，原阅读位置保持"
+  ],
+  "errors": []
+}
