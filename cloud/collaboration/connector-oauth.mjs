@@ -50,7 +50,7 @@ export async function oauthProvider(repo,connection,env,{begin=false}={}){
    if(init.signal?.aborted)throw init.signal.reason;
    const row=await repo.get('service_oauth',key,false),latest=row?.sealed?await unseal(row.sealed,env.ADMIN_KEY):{};
    if(latest.tokens?.access_token&&(latest.tokens.refresh_token!==presented||latest.tokens.access_token!==initialAccess))return Response.json(latest.tokens);
-   const claim=await repo.transact(id('refreshclaim'),{},async tx=>{const lock=await tx.get('service_oauth_refresh',key,false);if(lock?.lease&&Date.parse(lock.expiresAt)>Date.now())return {acquired:false};tx.put('service_oauth_refresh',{id:key,lease,tokenHash:await digest(presented),expiresAt:new Date(Date.now()+35000).toISOString()});return {acquired:true};});
+   const claim=await repo.transact(id('refreshclaim'),{},async tx=>{const lock=await tx.get('service_oauth_refresh',key,false);if(lock?.lease&&Date.parse(lock.expiresAt)>Date.now())return {acquired:false};tx.put('service_oauth_refresh',{id:key,lease,tokenHash:await digest(presented),expiresAt:new Date(Date.now()+60000).toISOString()});return {acquired:true};});
    if(!claim.acquired){await new Promise(r=>setTimeout(r,400));continue;}
    try{
     // Re-read after acquiring: a previous rotation may have just committed.
