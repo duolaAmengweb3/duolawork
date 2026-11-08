@@ -14,7 +14,7 @@ export async function channelUnread(repo,cursors) {
   await repo.db.prepare(`INSERT INTO hub_human_read(workspace_id,user_id,channel_id,number,updated_at)
     SELECT r.workspace_id,'owner',r.id,MIN(CAST(c.value AS INTEGER),COALESCE(json_extract(r.body,'$.messageSequence'),0)),? FROM json_each(?) c JOIN hub_v2_records r ON r.workspace_id=? AND r.kind='channel' AND r.id=c.key
     ON CONFLICT(workspace_id,user_id,channel_id) DO UPDATE SET number=MAX(hub_human_read.number,excluded.number),updated_at=excluded.updated_at`).bind(now,JSON.stringify(cursors),repo.workspaceId).run();
-  const stored=await repo.db.prepare("SELECT channel_id,number FROM hub_human_read WHERE workspace_id=? AND user_id='owner'").bind(repo.workspaceId).all();
+  const stored=await repo.db.prepare("SELECT h.channel_id,h.number FROM hub_human_read h JOIN hub_v2_records ch ON ch.workspace_id=h.workspace_id AND ch.kind='channel' AND ch.id=h.channel_id AND ch.status!='deleted' WHERE h.workspace_id=? AND h.user_id='owner'").bind(repo.workspaceId).all();
   cursors=Object.fromEntries(stored.results.map(r=>[r.channel_id,r.number]));
   const rows=await repo.db.prepare(`SELECT r.scope_id AS channelId,COUNT(*) AS count,
     MIN(CAST(json_extract(r.body,'$.number') AS INTEGER)) AS firstNumber,
@@ -22,6 +22,7 @@ export async function channelUnread(repo,cursors) {
     MAX(CASE WHEN json_extract(r.body,'$.mentionAll')=1 OR EXISTS(SELECT 1 FROM json_each(r.body,'$.mentions') WHERE value='owner') THEN 1 ELSE 0 END) AS mentioned
     FROM hub_v2_records r JOIN json_each(?) c ON c.key=r.scope_id
     WHERE r.workspace_id=? AND r.kind='channel_message'
+    AND EXISTS(SELECT 1 FROM hub_v2_records ch WHERE ch.workspace_id=r.workspace_id AND ch.kind='channel' AND ch.id=r.scope_id AND ch.status!='deleted')
     AND CAST(json_extract(r.body,'$.number') AS INTEGER)>CAST(c.value AS INTEGER)
     AND COALESCE(json_extract(r.body,'$.hidden'),0)=0
     AND json_extract(r.body,'$.authorId') NOT IN ('owner','system')

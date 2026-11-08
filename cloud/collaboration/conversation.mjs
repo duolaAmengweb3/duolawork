@@ -1,4 +1,5 @@
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
+import {manageChannel} from './channel-management.mjs';
 import {skillRefsSchema} from './skill-bindings.mjs';
 import {groupMemoryMaintenance} from './group-memory.mjs';
 import {acknowledgeNativeContext} from './native-context.mjs';
@@ -220,6 +221,7 @@ async function channelMessage(tx, channel, actor, body, extra = {}) {
   return message;
 }
 async function enqueue(tx, identity, channel, message, memberId) {
+  if(channel.status==='deleted')return;
   const m = activeMember(identity, memberId),
     connection = await tx.get("connection", memberId, false);
   if (!m) return;
@@ -741,6 +743,8 @@ export async function conversationCommand(
       }
       const channel = await tx.get("channel", channelId);
       await scoped(channel, actor,tx);
+      if(['channel.pin','channel.delete','channel.restore'].includes(type))return manageChannel(tx,actor,cmd,channel);
+      if(channel.status==='deleted')fail('channel_deleted','这个群聊已删除；请由用户恢复后再继续',410);
       if (['channel.folder','channel.material.move'].includes(type)) return folderCommand(tx,actor,cmd,channel);
       if (['channel.task','channel.remember','channel.memory.update','channel.memory.review','channel.link'].includes(type)) return spaceCommand(tx,identity,actor,cmd,channel,meetingHelpers);
       if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);

@@ -536,6 +536,7 @@ export async function meetingMaintenance(repo, identity, helpers, now = new Date
     if (!(due(row, now) || phaseDue(row, now) || (status === 'running' && row.closingAt <= now))) continue;
     await repo.transact(`meeting-clock:${row.id}:${row.version}:${row.round}:${Math.floor(Date.parse(now) / 1000)}`, {}, async tx => {
       const m = await tx.get('channel_meeting', row.id), channel = await tx.get('channel', m.scopeId);
+      if(channel.status==='deleted'||!['running','closing'].includes(m.status))return {};
       if (due(m, tx.now)) return end(tx, channel, m, helpers, 'deadline');
       if (m.status === 'running' && m.closingAt <= tx.now) {
         await publish(tx, channel, m, (await tx.list('meeting_opinion', { parent: m.id })).filter(o => !o.publishedAt), helpers);

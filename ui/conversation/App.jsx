@@ -1,4 +1,6 @@
 import SecretaryDesk from './SecretaryDesk.jsx';
+import {ContextMenu} from 'radix-ui';
+import {compareChats} from './chat-list-order.mjs';
 import {notificationRecipients} from '../../shared/message-recipients.mjs';
 import {MessageSnapshots} from './message-snapshots.mjs';
 import {createReadCoalescer} from './read-coalescer.mjs';
@@ -49,6 +51,7 @@ import {
   Download,
   History,
   Send,
+  Pin,PinOff,Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,6 +145,7 @@ export default function App() {
     [references,setReferences]=useState(saved.current.references||{}),
     [side, setSide] = useState(()=>window.innerWidth>850),
     [modal, setModal] = useState(null),
+    [deletedChannels,setDeletedChannels]=useState(null),[pinChanges,setPinChanges]=useState({}),
     [error, setError] = useState(""),
     [syncError, setSyncError] = useState(""),
     [meetingPanel, setMeetingPanel] = useState(saved.current.meetingPanel || null),
@@ -172,6 +176,7 @@ export default function App() {
     pendingSend = useRef(null),
     lastMessage = useRef("");
   currentRef.current = current;
+  const chatKindRef=useRef(chatKind);chatKindRef.current=chatKind;
   const viewCache=useRef(new MessageSnapshots()),olderCache=useRef(new Map()),readRef=useRef(readThrough),positions=useRef(saved.current.positions||{}),restorePosition=useRef(true),oldHeight=useRef(null);
   const readingReturn=useRef(null),[canReturn,setCanReturn]=useState(false),historyEpoch=useRef(0),sourceNavigation=useRef(0),sourceTarget=useRef(null),olderRequest=useRef(null);
   const scrollInteraction=useRef(null);
@@ -242,7 +247,7 @@ export default function App() {
       setChannels(old=>{const next=old.map(c=>c.id===row.id?row:c);channelIndex.current=next;return next;});
     }).catch(e=>setSyncError(e.message));
 
-    if (!currentRef.current && c.items[0]) setCurrent(c.items[0].id);
+    if (!currentRef.current || !c.items.some(c=>c.id===currentRef.current)){setCurrent(c.items.find(c=>!!c.direct===(chatKindRef.current==='direct'))?.id||'');setSnapshot(null);}
   }), []);
   const refresh = useCallback(async ({chatOnly=false,channelId}={}) => {
     const id = channelId||currentRef.current;
@@ -342,7 +347,7 @@ export default function App() {
     return()=>{cancelAnimationFrame(frame);el.removeEventListener('scroll',mark);document.removeEventListener('visibilitychange',mark);window.removeEventListener('focus',mark);};
   },[current,snapshot,page]);
   useEffect(()=>{const save=()=>{savePosition();try{const prior=JSON.parse(localStorage.getItem('hub-communication')||'{}');localStorage.setItem('hub-communication',JSON.stringify({...prior,positions:positions.current,tabViews:tabViews.current}));}catch{}};window.addEventListener('pagehide',save);return()=>window.removeEventListener('pagehide',save);},[]);
-  useEffect(()=>{let alive=true;const timer=setTimeout(()=>{const cursors={...readRef.current};api('/v2/channel-unread',{cursors}).then(x=>{if(!alive)return;
+  useEffect(()=>{if(!channels.length)return;let alive=true;const timer=setTimeout(()=>{const visibleIds=new Set(channelIndex.current.map(c=>c.id)),cursors=Object.fromEntries(Object.entries(readRef.current).filter(([id])=>visibleIds.has(id)));api('/v2/channel-unread',{cursors}).then(x=>{if(!alive)return;
     // A badge and its message body become available together. A cache fill
     // never marks anything read; only the existing visible-message cursor does.
     setUnread(old=>Object.fromEntries(x.items.filter(r=>(readRef.current[r.channelId]||0)<r.lastNumber).map(r=>[r.channelId,viewCache.current.covers(r.channelId,r.lastNumber)?r:old[r.channelId]]).filter(([,r])=>r)));
@@ -389,6 +394,24 @@ export default function App() {
       .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
       .sort((a, b) => a.number - b.number),
     draft = drafts[current] || "";
+  async function pinChannel(c){
+    const pinned=!c.pinnedAt;setPinChanges(old=>({...old,[c.id]:{pinnedAt:pinned?new Date().toISOString():null}}));
+    try{const updated=await command('channel.pin',{channelId:c.id,pinned});setChannels(old=>old.map(row=>row.id===c.id?updated:row));setSnapshot(old=>old?.channel.id===c.id?{...old,channel:updated}:old);}
+    catch(e){setError(e.message);}finally{setPinChanges(old=>{const next={...old};delete next[c.id];return next;});}
+  }
+  async function openDeleted(){setError('');setDeletedChannels(null);setModal({type:'deleted-channels'});try{const result=await api('/v2/channels?deleted=1');setDeletedChannels(result.items);}catch(e){setError(e.message);}}
+  async function changeChannel(c,action){
+    setBusy(true);setError('');
+    try{const updated=await command('channel.'+action,{channelId:c.id,expectedVersion:c.revision});
+      if(action==='delete'){
+        const remaining=channels.filter(row=>row.id!==c.id);setChannels(remaining);channelIndex.current=remaining;
+        if(currentRef.current===c.id){savePosition();setSnapshot(null);setCurrent(remaining.find(row=>!!row.direct===(chatKind==='direct'))?.id||'');}
+        setNotice('已删除「'+c.name+'」，可从“已删除群聊”恢复');
+      }else{savePosition();setCurrent(updated.id);setChatKind('group');setPage('chat');setNotice('群聊已恢复；旧通知不会重新发送');}
+      setModal(null);await refreshWorkspace();
+    }catch(e){setError(e.message);if(e.code==='version_conflict')void api('/v2/channels'+(action==='restore'?'?deleted=1':'')).then(data=>{const latest=data.items.find(row=>row.id===c.id);if(action==='restore')setDeletedChannels(data.items);else if(latest)setModal(old=>old?.type==='delete-channel'?{...old,channel:latest}:old);}).catch(()=>{});}
+    finally{setBusy(false);}
+  }
   const allSelected = mentionAll;
   useEffect(()=>{
     if(snapshot?.channel.id!==current)return;
@@ -620,10 +643,13 @@ export default function App() {
         </div>
         <div className="channel-list" ref={listScroll}>
           {channels
+            .map(c=>pinChanges[c.id]?{...c,...pinChanges[c.id]}:c)
             .filter((c) => !!c.direct===(chatKind==='direct')&&c.name.toLowerCase().includes(query.toLowerCase()))
+            .sort(compareChats)
             .map((c) => (
+              <ContextMenu.Root key={c.id}><ContextMenu.Trigger asChild>
               <button
-                key={c.id}
+                title="右键管理聊天"
                 className={
                   page === "chat" && current === c.id ? "selected" : ""
                 }
@@ -637,14 +663,20 @@ export default function App() {
                   {c.name}
                   <small>{c.lastMessage || "开始一段对话"}</small>
                 </span>
+                {c.pinnedAt&&<Pin size={12} className="chat-pin" aria-label="已置顶"/>}
                 {!!unread[c.id]?.count&&<b className="chat-unread" aria-label="未读消息">{unread[c.id].mentioned?'@我':unread[c.id].count>99?'99+':unread[c.id].count}</b>}
               </button>
+              </ContextMenu.Trigger><ContextMenu.Portal><ContextMenu.Content className="chat-context-menu">
+                <ContextMenu.Item disabled={!!pinChanges[c.id]} onSelect={()=>pinChannel(c)}>{c.pinnedAt?<PinOff size={15}/>:<Pin size={15}/>} {c.pinnedAt?'取消置顶':'置顶聊天'}</ContextMenu.Item>
+                {!c.direct&&<ContextMenu.Item className="destructive" onSelect={()=>{setError('');setModal({type:'delete-channel',channel:c});}}><Trash2 size={15}/> 删除群聊</ContextMenu.Item>}
+              </ContextMenu.Content></ContextMenu.Portal></ContextMenu.Root>
             ))}
           {!channels.length && (
             <p className="sidebar-empty">建个群，把你和 Agent 们放在一起。</p>
           )}
         </div>
         <div className="sidebar-footer">
+          <button className="sidebar-deleted" onClick={openDeleted}><Trash2 size={12}/>已删除群聊</button>
           <button onClick={() => setModal({ type: "history" })}>
             历史工作区 <ExternalLink size={12} />
           </button>
@@ -940,6 +972,8 @@ export default function App() {
             {
               create: "新建群聊",
               group: "群设置",
+              'delete-channel':'删除「'+modal.channel?.name+'」？',
+              'deleted-channels':'已删除群聊',
               doc: "新建共享文档",
               task: "添加事项",
               meeting: "开始讨论",
@@ -952,7 +986,9 @@ export default function App() {
             }[modal.type] || "设置"
           }
           description={
-            modal.type === "group"
+            modal.type === 'delete-channel' ? '从聊天列表移除并停止未开始的通知。聊天和资料可恢复；不删除 Agent、原生项目或工作会话。'
+            : modal.type === 'deleted-channels' ? '误删的群可以恢复，原来的消息、资料和工作会话关联仍会保留。'
+            : modal.type === "group"
               ? "成员、负责人都由用户决定；更换不会删除聊天或登录资料。"
               : modal.type === "create"
                 ? "选好成员就可以开始，不必先想好流程。"
@@ -962,7 +998,9 @@ export default function App() {
           }
           onClose={() => setModal(null)}
         >
-          {modal.type === "disconnect" ? <div className="space-y-5">
+          {modal.type==='delete-channel'?<div className="channel-delete-actions"><Button variant="outline" disabled={busy} onClick={()=>setModal(null)}>取消</Button><Button variant="destructive" disabled={busy} onClick={()=>changeChannel(modal.channel,'delete')}>{busy?'正在删除…':'确认删除群聊'}</Button></div>
+          :modal.type==='deleted-channels'?<div className="deleted-channel-list">{deletedChannels===null?<p role="status">正在读取…</p>:!deletedChannels.length?<p>没有已删除的群聊</p>:deletedChannels.map(c=><div key={c.id}><div><strong>{c.name}</strong><small>删除于 {time(c.deletedAt)}</small></div><Button size="sm" variant="outline" disabled={busy} onClick={()=>changeChannel(c,'restore')} aria-label={'恢复 '+c.name}>恢复</Button></div>)}</div>
+          :modal.type === "disconnect" ? <div className="space-y-5">
             <p className="leading-7">解除后，{modal.member.name} 会从成员列表和当前群中移出，不能再访问 Hub 或接收新消息。聊天和交付记录会保留，原平台账号及登录不会退出，也不会影响其他成员。</p>
             <div className="flex justify-end gap-3"><Button variant="outline" onClick={()=>setModal(null)}>取消</Button><Button variant="destructive" disabled={busy} onClick={async()=>{try{await perform(()=>api('/action',{type:'member.disconnect',memberId:modal.member.id}));setModal(null);setNotice('已解除连接，聊天记录和原平台登录已保留。');}catch{}}}>确认解除连接</Button></div>
           </div> : modal.type === "history" ? (
@@ -980,6 +1018,9 @@ export default function App() {
               channel={modal.type === "group" ? channel : null}
               workspace={workspace}
               busy={busy}
+              onPin={modal.type==='group'?()=>pinChannel(channel):undefined}
+              pinning={!!pinChanges[channel?.id]}
+              onDelete={modal.type==='group'?()=>{setError('');setModal({type:'delete-channel',channel});}:undefined}
               onSave={async (values) => {
                 try {
                   const c = await perform(() =>
@@ -1134,7 +1175,7 @@ function Question({ question: q, busy, onAnswer }) {
     </div>
   );
 }
-function GroupForm({ channel, workspace, busy, onSave }) {
+function GroupForm({ channel, workspace, busy, onSave,onPin,onDelete,pinning }) {
   const [name, setName] = useState(channel?.name || ""),
     [ids, setIds] = useState(channel?.memberIds || []),
     [lead, setLead] = useState(channel?.coordinatorId || ""),[description,setDescription]=useState(channel?.description||"");
@@ -1211,6 +1252,7 @@ function GroupForm({ channel, workspace, busy, onSave }) {
       <Button type="submit" disabled={busy || !name.trim()}>
         {channel ? "保存群设置" : "创建并开始沟通"}
       </Button>
+      {channel&&<div className="group-list-actions"><Button type="button" variant="outline" disabled={pinning} onClick={onPin}>{channel.pinnedAt?<PinOff size={14}/>:<Pin size={14}/>} {channel.pinnedAt?'取消置顶':'置顶群聊'}</Button><Button type="button" variant="ghost" className="destructive" disabled={busy} onClick={onDelete}><Trash2 size={14}/>删除群聊</Button></div>}
     </form>
   );
 }

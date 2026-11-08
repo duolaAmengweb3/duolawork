@@ -1,0 +1,12 @@
+✔ pins survive backend reads and stay above newer messages; only owner can pin (13.198334ms)
+✔ delete keeps history and native binding, removes unread/queued delivery, restore never replays it (5.976708ms)
+✔ delete is owner-only, rejects stale versions, and never interrupts a claimed native turn (2.723916ms)
+✔ deleted groups do not consume the live list window; over 500 queued records are canceled safely (75.664166ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133.715875

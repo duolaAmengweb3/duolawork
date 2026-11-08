@@ -9,6 +9,7 @@ import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
 import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
 import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
 import {channelUnread} from './chat-experience.mjs';
+import {listChannels} from './channel-management.mjs';
 import {SHARED_TOOLS, SHARED_TOOL_ENVELOPE, sharedToolEnvelope, sharedTool, sharedCommand, listSharedFiles, fileDetails, fileBytes, uploadStatus, readHandoff} from './shared-space.mjs';
 import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
 import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
@@ -785,7 +786,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/secretary'){const result=request.method==='GET'?await secretaryOverview(repo,identity,actor):await secretaryCommand(repo,identity,actor,await readJSON(request));if(request.method!=='GET')kick();return json(result);}
   if(url.pathname==='/v2/management')return json(request.method==='GET'?await workspaceOverview(repo,identity,actor):await managementSettings(repo,identity,actor,await readJSON(request)));
   if(url.pathname==='/v2/channel-unread'&&request.method==='POST')return json(await channelUnread(repo,(await readJSON(request)).cursors));
-  if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await repo.list("channel",{order:"recent",limit:500})});
+  if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await listChannels(repo,{deleted:url.searchParams.get('deleted')==='1'})});
   if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),view:url.searchParams.get('view'),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
   if(url.pathname==='/v2/meeting'&&request.method==='GET') return json(await meetingDetail(repo,identity,actor,{meetingId:url.searchParams.get('id'),cursor:url.searchParams.get('cursor')||undefined}));
   if(url.pathname==='/v2/meetings'&&request.method==='GET'){

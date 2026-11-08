@@ -1,4 +1,5 @@
 import {secretaryManage} from './secretary.mjs';
+import {listChannels} from './channel-management.mjs';
 import {runtimeSkill} from './runtime-setup.mjs';
 import {claudeSkill} from './claude-setup.mjs';
 import {formsFor,nativeForm} from '../../shared/native-forms.mjs';
@@ -23,7 +24,7 @@ export async function managementSettings(repo,identity,actor,args){
 }
 export async function workspaceOverview(repo,identity,actor){
  await requireManager(repo,actor);
- return {secretary:await repo.get('workspace_secretary','current',false),channels:await repo.list('channel',{limit:500,order:'recent'}),members:identity.members.filter(m=>m.status!=='disabled').map(({id,name,platformId})=>({id,name,platformId})),connections:(await repo.list('connection',{limit:500})).map(({memberId,id,status,transport,verifiedAt})=>({memberId:memberId||id,status,transport,verifiedAt})),history:await repo.list('management_event',{order:'recent',limit:50})};
+ return {secretary:await repo.get('workspace_secretary','current',false),channels:await listChannels(repo),members:identity.members.filter(m=>m.status!=='disabled').map(({id,name,platformId})=>({id,name,platformId})),connections:(await repo.list('connection',{limit:500})).map(({memberId,id,status,transport,verifiedAt})=>({memberId:memberId||id,status,transport,verifiedAt})),history:await repo.list('management_event',{order:'recent',limit:50})};
 }
 export async function manageWorkspace(repo,identity,actor,args,env={}){
  const grant=await requireManager(repo,actor);

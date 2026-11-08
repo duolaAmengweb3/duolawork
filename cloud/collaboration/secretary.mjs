@@ -31,7 +31,7 @@ export async function secretaryOverview(repo,identity,actor) {
   ]);
   const questionMessages=questions.length?await repo.list('channel_message',{questionIds:questions.map(q=>q.id),limit:500,excludeHidden:true}):[];
   const pendingQuestions=questions.map(q=>({...q,messageId:questionMessages.find(m=>m.questionId===q.id)?.id}));
-  const groups=channels.filter(c=>!c.direct&&c.status!=='archived').map(c=>{
+  const groups=channels.filter(c=>!c.direct&&!['archived','deleted'].includes(c.status)).map(c=>{
     const scoped=tasks.filter(t=>t.scopeId===c.id),items=scoped.filter(t=>!t.parentTaskId),open=scoped.filter(t=>!['done','canceled'].includes(t.status));
     return {id:c.id,name:c.name,coordinatorId:c.coordinatorId,updatedAt:c.updatedAt,total:items.length,done:items.filter(t=>t.status==='done').length,
       blocked:new Set(open.filter(t=>t.status==='blocked').map(t=>t.parentTaskId||t.id)).size,overdue:new Set(open.filter(t=>t.dueDate&&Date.parse(t.dueDate)<Date.now()).map(t=>t.parentTaskId||t.id)).size,
