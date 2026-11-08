@@ -1,0 +1,20 @@
+{
+  "at": "2026-11-08T06:54:46.720Z",
+  "files": [
+    {
+      "file": "worker.mjs",
+      "matches": true,
+      "sha256": "4187bae58cb43103bd0c767b0f00f5521134ab4d7affeb4754886a93cc1c82b8"
+    },
+    {
+      "file": "main.mjs",
+      "matches": true,
+      "sha256": "c26237db55f92ed080df63db9fd6927a5f61b8e29ae0505b67e3a5f6e208bff4"
+    },
+    {
+      "file": "vault-key.mjs",
+      "matches": true,
+      "sha256": "eeafb157873b2ddcdb5a0ce2759fee59226fd877ca8657dfabed04edf18b4fcd"
+    }
+  ]
+}

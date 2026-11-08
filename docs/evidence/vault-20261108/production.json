@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-08T06:53:49.421Z",
+  "scope": "Production relay + original Codex member + installed native helper; random test credential only",
+  "build": "6245b66abc933d29",
+  "checks": [
+    "Original authenticated member sees only metadata and references from the deployed relay",
+    "Installed native helper starts a child with the exact test value; global environment remains untouched",
+    "Real public HTTPS echo confirms header injection and redaction, not a mocked fetch",
+    "Same reference uses the rotated value on the next real child execution",
+    "Post-hoc exclusion immediately denies the original member",
+    "Only this temporary credential was deleted and purged"
+  ],
+  "remainingCredentials": 0
+}
