@@ -135,3 +135,21 @@ test('full OAuth discovery, browser handoff, code exchange, reconnect and shared
  forceRefresh=true;const results=await Promise.all([f.tool({action:'call',connectionId:start.connection.id,requestId:'oauth-write',tool:'write',arguments:{text:'authorized'}},peer),f.tool({action:'call',connectionId:start.connection.id,requestId:'oauth-write-2',tool:'write',arguments:{text:'concurrent authorized'}})]);assert.ok(results.every(r=>r.status==='succeeded'),JSON.stringify(results));assert.equal(exchanged,2);assert.equal(base.writes,2);assert.equal(refreshRequests,1,'one-use refresh token must be rotated only once');
  await assert.rejects(finishConnectorOAuth(f.repo,f.env,new URLSearchParams({code:'test-code',state})));assert.equal(exchanged,2);
 });
+test('large provider catalogs retain full Unicode schemas, remain callable and reuse storage on recheck',async t=>{
+ const f=await setup(t),base=f.env.CONNECTOR_FETCH;
+ const schema={type:'object',properties:{text:{type:'string',description:'中文😀\\\n'.repeat(35000)}}};
+ const definitions=Array.from({length:40},(_,i)=>({name:i?'tool_'+i:'write',description:'provider tool '+i,inputSchema:i?{type:'object'}:schema}));
+ f.env.CONNECTOR_FETCH=async(raw,init={})=>{
+  const m=JSON.parse(init.body||'{}');
+  if(m.method==='tools/list')return Response.json({jsonrpc:'2.0',id:m.id,result:{tools:definitions}});
+  return base(raw,init);
+ };
+ const c=await f.save();assert.equal(c.health,'ready');assert.equal(c.toolCount,40);assert.ok(c.catalog);
+ assert.ok(Buffer.byteLength(JSON.stringify(await f.repo.get('service_connection',c.id)))<180000);
+ const chunks=await f.repo.list('service_catalog_chunk',{parent:c.id,limit:501});assert.ok(chunks.length>1);assert.ok(chunks.every(r=>Buffer.byteLength(JSON.stringify(r))<180000));
+ const listed=await f.tool({action:'tools',connectionId:c.id},peer);assert.equal(listed.tools.length,40);assert.deepEqual(listed.tools[0].inputSchema,schema);
+ const human=await f.settings({action:'tools',connectionId:c.id});assert.deepEqual(human.tools,listed.tools);
+ const called=await f.tool({action:'call',connectionId:c.id,requestId:'large-catalog-call',tool:'write',arguments:{text:'catalog retains callable tools'}});assert.equal(called.status,'succeeded');
+ await f.settings({action:'check',connectionId:c.id});assert.equal((await f.repo.list('service_catalog_chunk',{parent:c.id,limit:501})).length,chunks.length);
+ await f.settings({action:'access',connectionId:c.id,expectedVersion:c.version,blockedMemberIds:[peer.memberId]});await assert.rejects(f.tool({action:'tools',connectionId:c.id},peer));
+});

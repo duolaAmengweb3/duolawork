@@ -814,7 +814,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/skill-activity'&&request.method==='GET')return json(await skillTool(repo,actor,'skill_activity',Object.fromEntries(url.searchParams)));
   if(url.pathname==='/v2/connectors'){
     const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||'list'}:await readJSON(request);
-    if(request.method==='GET'&&!['list','activity','catalog','hosts'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    if(request.method==='GET'&&!['list','activity','catalog','hosts','tools'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
     return json(await connectorSettings(repo,identity,actor,args,env));
   }
   if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});

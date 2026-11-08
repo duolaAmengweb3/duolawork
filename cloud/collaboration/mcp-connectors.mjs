@@ -9,9 +9,10 @@ import {oauthProvider} from './connector-oauth.mjs';
 import {UnauthorizedError} from '@modelcontextprotocol/sdk/client/auth.js';
 import {resolveVaultConfig,assertVaultUses,recordVaultUse} from './vault.mjs';
 import {vaultReferences,concealSecrets} from '../../shared/vault-references.mjs';
+import {prepareToolCatalog,readToolCatalog} from './connector-catalog-storage.mjs';
 
 export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书等）。先 connections 查可用连接，tools 按需获取工具定义，再 call。使用原聊天 channelId；工具在连接指定位置执行，不复制账号登录。写操作须提供唯一 requestId，超时结果不明确时不要换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
-export const publicService=({credentials,...c})=>({...c,toolCount:c.tools?.length||0});
+export const publicService=({credentials,...c})=>({...c,toolCount:c.toolCount??c.tools?.length??0});
 const agentService=c=>{const value=publicService(c);return {...value,url:value.url?new URL(value.url).origin:null};};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function errorState(e){
@@ -66,7 +67,8 @@ async function perform(repo,c,actor,args,env){
 async function check(repo,c,env,{authorize=false}={}){
  try{
   const tools=c.transport==='stdio'?await perform(repo,c,{owner:true},{action:'tools'},env):await remote(repo,c,env,mcpTools,{authorize});
-  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);return tx.put('service_connection',{...c,tools,status:'connected',health:'ready',message:null,checkedAt:tx.now});});
+  const {chunks,...catalog}=await prepareToolCatalog(c.id,tools);
+  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);for(const chunk of chunks)tx.put('service_catalog_chunk',chunk);return tx.put('service_connection',{...c,...catalog,status:'connected',health:'ready',message:null,checkedAt:tx.now});});
   return {connection:publicService(await repo.get('service_connection',c.id))};
  }catch(e){
   env.CONNECTOR_DIAGNOSTICS?.(e);
@@ -114,7 +116,7 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
   }
   const refs=vaultReferences(secret);if(refs.some(r=>!r.location.startsWith('headers.')&&!r.location.startsWith('env.')))fail('invalid_vault_reference','凭证引用只能用于请求头或环境变量，不能写入命令行');
   if(JSON.stringify(secret).includes('vault://')&&!refs.length)fail('invalid_vault_reference','Vault 凭证引用格式不正确');
-  const row={...old,id:old?.id||'mcp_'+(await digest(required(args.requestId,'请求编号'))).slice(0,32),serviceType:'mcp',provider:args.provider||old?.provider||'custom',name:required(args.name||old?.name||preset?.name,'连接名称',120),transport,url:transport==='http'?publicMcpURL(args.url||old?.url||preset?.url):null,hostId:transport==='stdio'?(args.hostId||old?.hostId):null,authType:args.authType||old?.authType||(Object.keys(headers).length?'headers':'oauth'),callbackOrigin:env.CONNECTOR_ORIGIN,blockedMemberIds:old?.blockedMemberIds||[],blockedChannelIds:old?.blockedChannelIds||[],tools:[],status:'configured',health:'unchecked',version:(old?.version||0)+1,createdAt:old?.createdAt||new Date().toISOString()};
+  const row={...old,id:old?.id||'mcp_'+(await digest(required(args.requestId,'请求编号'))).slice(0,32),serviceType:'mcp',provider:args.provider||old?.provider||'custom',name:required(args.name||old?.name||preset?.name,'连接名称',120),transport,url:transport==='http'?publicMcpURL(args.url||old?.url||preset?.url):null,hostId:transport==='stdio'?(args.hostId||old?.hostId):null,authType:args.authType||old?.authType||(Object.keys(headers).length?'headers':'oauth'),callbackOrigin:env.CONNECTOR_ORIGIN,blockedMemberIds:old?.blockedMemberIds||[],blockedChannelIds:old?.blockedChannelIds||[],tools:[],toolCount:0,catalog:null,status:'configured',health:'unchecked',version:(old?.version||0)+1,createdAt:old?.createdAt||new Date().toISOString()};
   row.vaultReferences=refs;if(!['oauth','headers','none'].includes(row.authType))fail('invalid_auth','登录方式无效');
   if(row.authType==='none'||old&&old.authType!==row.authType&&args.headers===undefined)secret.headers={};
   row.vaultReferences=vaultReferences(secret);await resolveVaultConfig(repo,secret,{owner:true},null,env,{targetOrigin:row.url?new URL(row.url).origin:undefined});
@@ -123,6 +125,7 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
   return check(repo,await repo.get('service_connection',row.id),env,{authorize:row.authType==='oauth'});
  }
  const c=await repo.get('service_connection',required(args.connectionId,'连接'));
+ if(args.action==='tools'){if(c.status==='disconnected')fail('connection_changed','此连接已断开',409);const tools=await readToolCatalog(repo,c);await fresh(repo,c);return {tools};}
  if(args.action==='check'||args.action==='authorize')return check(repo,c,env,{authorize:args.action==='authorize'});
  if(args.action==='activity')return activityPage(repo,'connector_activity',{parent:c.id,after:args.after});
  if(args.action==='access'){
@@ -131,15 +134,15 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
   for(const ch of channels)await repo.get('channel',ch);
   return repo.transact(args.requestId,args,async tx=>{await fresh(tx,c);if(args.expectedVersion!==c.version)fail('version_conflict','连接已更新，请刷新',409);return publicService(tx.put('service_connection',{...c,blockedMemberIds:members,blockedChannelIds:channels,version:c.version+1}));});
  }
- if(args.action==='disconnect')return repo.transact(args.requestId,args,async tx=>{await fresh(tx,c);if(args.expectedVersion!==c.version)fail('version_conflict','连接已更新，请刷新',409);tx.put('service_oauth',{id:c.id,sealed:null,state:null});return publicService(tx.put('service_connection',{...c,status:'disconnected',credentials:null,tools:[],version:c.version+1}));});
+ if(args.action==='disconnect')return repo.transact(args.requestId,args,async tx=>{await fresh(tx,c);if(args.expectedVersion!==c.version)fail('version_conflict','连接已更新，请刷新',409);tx.put('service_oauth',{id:c.id,sealed:null,state:null});return publicService(tx.put('service_connection',{...c,status:'disconnected',credentials:null,tools:[],toolCount:0,catalog:null,version:c.version+1}));});
  fail('invalid_action','连接操作无效');
 }
 export async function mcpConnectorTool(repo,actor,args,env){
  await access(repo,args.channelId,actor);
  const all=(await repo.list('service_connection',{limit:500})).filter(c=>c.serviceType==='mcp'&&connectorAllowed(c,actor,args.channelId));
- if(args.action==='connections')return {items:all.map(({tools,...c})=>({...agentService(c),toolCount:tools?.length||0}))};
+ if(args.action==='connections')return {items:all.map(c=>{const {tools,...value}=agentService(c);return value;})};
  const c=all.find(c=>c.id===args.connectionId);if(!c)fail('forbidden','此聊天或成员不可使用该连接',403);
- if(args.action==='tools')return {connection:agentService({...c,tools:undefined}),tools:c.tools||[],health:c.health,message:c.message};
+ if(args.action==='tools'){const tools=await readToolCatalog(repo,c);await fresh(repo,c,actor,args.channelId);return {connection:agentService({...c,tools:undefined}),tools,health:c.health,message:c.message};}
  if(args.action==='result'){
   await fresh(repo,c,actor,args.channelId);
   const r=await repo.get('service_invocation',required(args.invocationId,'调用记录'));
@@ -150,7 +153,8 @@ export async function mcpConnectorTool(repo,actor,args,env){
   return r;
  }
  if(args.action!=='call')fail('invalid_action','工具操作无效');
- if(!c.tools?.some(t=>t.name===args.tool))fail('unknown_tool','此连接没有该工具，请先查看工具目录');
+ const tools=c.catalog&&c.tools.length!==c.toolCount?await readToolCatalog(repo,c):c.tools;
+ if(!tools?.some(t=>t.name===args.tool))fail('unknown_tool','此连接没有该工具，请先查看工具目录');
  required(args.requestId,'请求编号',160);
  const invocationId='invoke_'+await digest(c.id+':'+actor.memberId+':'+args.requestId),fingerprint=await digest(JSON.stringify({tool:args.tool,arguments:args.arguments||{},channelId:args.channelId}));
  const claim=await repo.transact(id('invocationclaim'),{fingerprint},async tx=>{const old=await tx.get('service_invocation',invocationId,false);if(old){if(old.fingerprint!==fingerprint)fail('idempotency_conflict','同一编号不能执行不同操作',409);return {started:false};}await fresh(tx,c,actor,args.channelId);tx.put('service_invocation',{id:invocationId,scopeId:c.id,channelId:args.channelId,memberId:actor.memberId,fingerprint,status:'running',tool:args.tool,createdAt:tx.now});tx.put('connector_activity',{id:invocationId,parentId:c.id,scopeId:args.channelId,memberId:actor.memberId,event:'call',tool:args.tool,status:'running',invocationId,message:'工具正在执行',createdAt:tx.now});return {started:true};});
