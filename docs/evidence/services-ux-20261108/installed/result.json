@@ -1,0 +1,96 @@
+{
+  "at": "2026-11-08T07:41:48.089Z",
+  "scope": "Actual packaged Electron + isolated backend",
+  "networkDelayMs": 1100,
+  "directoryMs": 31,
+  "samples": [
+    {
+      "page": "连接器",
+      "ms": 37
+    },
+    {
+      "page": "Vault",
+      "ms": 28
+    },
+    {
+      "page": "技能",
+      "ms": 22
+    },
+    {
+      "page": "连接器",
+      "ms": 25
+    },
+    {
+      "page": "Vault",
+      "ms": 24
+    }
+  ],
+  "requests": {
+    "connectors": 3,
+    "hosts": 0,
+    "vault": 1,
+    "skills": 3
+  },
+  "logos": [
+    {
+      "name": "GitHub",
+      "width": 32,
+      "local": true
+    },
+    {
+      "name": "GitHub",
+      "width": 32,
+      "local": true
+    },
+    {
+      "name": "Cloudflare",
+      "width": 99,
+      "local": true
+    },
+    {
+      "name": "Vercel",
+      "width": 48,
+      "local": true
+    },
+    {
+      "name": "飞书",
+      "width": 48,
+      "local": true
+    },
+    {
+      "name": "Notion",
+      "width": 64,
+      "local": true
+    },
+    {
+      "name": "Google Drive",
+      "width": 32,
+      "local": true
+    },
+    {
+      "name": "Gmail",
+      "width": 256,
+      "local": true
+    },
+    {
+      "name": "Google Calendar",
+      "width": 32,
+      "local": true
+    },
+    {
+      "name": "Figma",
+      "width": 16,
+      "local": true
+    }
+  ],
+  "checks": [
+    "冷启动直接展示目录，慢网络只影响已连接数据；运行端不阻塞目录",
+    "已连接与未连接分区、同服务两个账号、继续添加账号语义正确",
+    "九个服务均使用可解码的官网原始 Logo，全部随包加载，无外网图片和裂图",
+    "分类、搜索和卡片直接进入正确服务的连接表单",
+    "三类服务页重复切换保留列表，缓存有效期间零重复请求，均小于500ms",
+    "刷新及断网失败保留已有内容，恢复后正常更新，不变成白屏",
+    "窄屏卡片、搜索和按钮无横向溢出；凭证值不进入列表或持久缓存"
+  ],
+  "errors": []
+}

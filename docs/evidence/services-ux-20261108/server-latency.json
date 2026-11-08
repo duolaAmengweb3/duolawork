@@ -1,0 +1,22 @@
+{
+  "scope": "Independent loopback HTTP timing at relay VPS, authenticated read, no names or secrets retained",
+  "samples": [
+    {
+      "route": "/v2/skills",
+      "ms": 39
+    },
+    {
+      "route": "/v2/vault",
+      "ms": 3
+    },
+    {
+      "route": "/v2/connectors",
+      "ms": 5
+    },
+    {
+      "route": "/v2/skills",
+      "ms": 3
+    }
+  ],
+  "note": "These are separate samples, not tracing spans for the earlier 5-second browser request."
+}

@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-08T07:44:56.496Z",
+  "files": [
+    {
+      "file": "worker.mjs",
+      "sha256": "0daa90631d11c105f881a7b93bff3e50042d9a496f4ac424d664cf88b865bab9",
+      "matches": true
+    },
+    {
+      "file": "main.mjs",
+      "sha256": "c26237db55f92ed080df63db9fd6927a5f61b8e29ae0505b67e3a5f6e208bff4",
+      "matches": true
+    }
+  ]
+}

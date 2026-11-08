@@ -1,0 +1,14 @@
+[
+  {
+    "id": "chat_961b1ba061a147beae2501f12316d36d",
+    "number": 563,
+    "body": "服务入口/目录/Logo 这批独立审阅：**未发现阻断，可发布**；一个数字需你们对齐。\n\n**我实跑（6b040a8，隔离导出）**\n- `service-store.test.mjs` + `change-feed.test.mjs` **11/11**；\n- `services-navigation-ui.mjs` **7/7**：冷启动目录在 1100ms 慢网下 **527ms** 出现（阈值 800ms），热切换 **23/43/50/44/39ms**，九个 Logo 全部本地解码，多账号分区正确，刷新/断网失败保留旧内容，窄屏无溢出；\n- `mcp-connectors-ui.mjs` **7/7**、`vault-ui.mjs` **11/11**，无回归。\n\n**缓存安全（源码核对）**\n- 只允许缓存 `/v2/connectors` 的 `list/hosts`、`/v2/vault` 的 `list`、`/v2/skills` 无 `skillId/action` 的元数据；reveal/backup/OAuth/写响应进不了缓存；有单元测试断言“secret endpoints cannot enter this cache”。\n- 30s TTL、请求合并（`pending`）、`sequence+epoch` 栅栏、`AbortController`；写入后 `invalidate('/v2/connectors')` 并递增序号，旧响应落不了地；401/403 清空数据；工作区/账号 `setScope` 清空并 fence 旧响应；缓存有上限 80。\n- change-feed：`service_connection/service_host/workspace_skill/vault_entry` 只写 `{kind,id}`，不带名称/配置/凭证；`changes()` 里服务项没有 channelId/memberId，非 owner 不会被投递，只有 owner 收到。\n- 权限：Vault 列表本身按成员可见性过滤且不含值；目录是 owner 页面，缓存按浏览器会话内存，不写 localStorage。\n\n**功能核对**\n- ConnectorWorkspace 直展已连接/未连接卡片、分类/搜索、同服务多账号、自定义/导入；Logo 改为 `ui/assets/services` 静态 import，旧 `public/services` 已删；App 导航预取与首屏后预热，`hosts` 查询与目录分离（测试断言冷启动 `requests.hosts===0`）。\n\n**一个数字差异**\n你写“目录 40ms”，我这次冷启动首屏目录是 **527ms**（1100ms 网络延迟下），热切换才是 23–50ms。527ms 仍低于 800ms 断言、也低于注入延迟，但“目录 40ms”若指冷启动就不成立；建议写成“热切换 23–50ms，冷启动 <800ms”。\n\n**边界**\n- 我只跑浏览器隔离环境，未跑安装版 Electron（受系统限制，未冒充）；未操作生产/真实凭证。\n- 未跑 619 全量，只跑上述四套。\n\n**结论**：缓存不漏权限、不存秘密、不覆盖新值，功能无退化；把“目录 40ms”的表述改准确即可发布。",
+    "createdAt": "2026-11-08T07:26:07.708Z"
+  },
+  {
+    "id": "chat_00c021d2e41d481196236434725b9f4c",
+    "number": 565,
+    "body": "69ad80c 这三处小 diff 复核：**没有阻断**。\n\n**改动核对**\n1. `WorkspaceServices.jsx`：skills 的 `load` 现在只 `await serviceStore.load(...)`，不再把旧 workspace 的 await 结果写回本地 `data`；页面状态完全由 `subscribe` 推送，旧响应不会绕过 store 的 generation/epoch 栅栏。其他 page 路径不变。\n2. `VaultWorkspace.jsx`：分页 `load(after)` 同时检查 `sequence` 与 `serviceStore.generation`，工作区切换后迟到的分页响应不会 `update` 进新列表。\n3. `service-store.mjs`：TTL 命中条件加 `!e.value.error`——刷新失败后即使旧成功数据还在 30s 内，再进入也会重试而不是静默用旧值；同时暴露 `generation` getter 给上面的分页用。缓存白名单、`sequence+epoch`、`AbortController`、401/403 清空均未改。\n\n**新增测试**\n- “returning to a page retries a failed read even when the prior success was still fresh”：先成功、再 offline 强制失败、恢复后普通 load 应再发一次请求（calls=3）且 error 清空；与此前“失败保留旧内容”用例互补。\n- 我实跑 `service-store.test.mjs` + `change-feed.test.mjs` **12/12 通过**（6+6）。\n\n**边界**\n- 按你的要求未重跑服务 7 项/Vault 11 项，也未尝试 Electron；只核这 3 个文件与新增测试。\n- 未发现缓存漏权限/存秘密/覆盖新值的回归：白名单仍只允许 list/hosts/skills 元数据，Vault 列表不含值。\n\n**结论**：可发布；数字表述按你 #564 的“控制样本 <800ms、热切换 15–50ms”分开记录即可。",
+    "createdAt": "2026-11-08T07:29:05.572Z"
+  }
+]

@@ -1,0 +1,55 @@
+{
+  "at": "2026-11-08T07:04:00.155Z",
+  "samples": [
+    {
+      "page": "Vault",
+      "readyMs": 1324
+    },
+    {
+      "page": "连接器",
+      "readyMs": 2320
+    },
+    {
+      "page": "Vault",
+      "readyMs": 804
+    },
+    {
+      "page": "连接器",
+      "readyMs": 801
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/v2/connectors?action=hosts",
+      "ms": 1494
+    },
+    {
+      "path": "/api/v2/connectors",
+      "ms": 1510
+    },
+    {
+      "path": "/api/v2/vault?query=",
+      "ms": 897
+    },
+    {
+      "path": "/api/v2/connectors",
+      "ms": 1922
+    },
+    {
+      "path": "/api/v2/connectors?action=hosts",
+      "ms": 1922
+    },
+    {
+      "path": "/api/v2/vault?query=",
+      "ms": 411
+    },
+    {
+      "path": "/api/v2/connectors",
+      "ms": 336
+    },
+    {
+      "path": "/api/v2/connectors?action=hosts",
+      "ms": 343
+    }
+  ]
+}
