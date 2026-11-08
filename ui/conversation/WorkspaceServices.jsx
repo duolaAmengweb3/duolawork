@@ -11,16 +11,17 @@ import {api,time} from '../v1/api.mjs';
 import './services.css';
 import ConnectorWorkspace from './ConnectorWorkspace.jsx';
 import VaultWorkspace from './VaultWorkspace.jsx';
+import {serviceStore} from './service-data.jsx';
 const definitions={secretary:{title:'秘书',description:'一位熟悉你工作安排的全局助手。',icon:Headset,endpoint:'/v2/management'},connectors:{title:'连接器',description:'把外部资料和工具带进团队，授权一次，按范围使用。',icon:Plug,endpoint:'/v2/connectors'},skills:{title:'技能',description:'把验证过的做事方法留下，需要时再取用。',icon:Sparkles,endpoint:'/v2/skills'}};
 export default function WorkspaceServices(props){return props.page==='vault'?<VaultWorkspace {...props}/>:props.page==='connectors'?<ConnectorWorkspace {...props}/>:<ExistingServices {...props}/>;}
 function ExistingServices({page,workspace,channels,onChat,onChannel}){
  const def=definitions[page],Icon=def.icon;
- const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[editor,setEditor]=useState(null),[secretaryChoice,setSecretaryChoice]=useState(''),[detail,setDetail]=useState(null),[checking,setChecking]=useState('');
+ const [data,setData]=useState(()=>page==='skills'?serviceStore.snapshot(def.endpoint).data:null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[editor,setEditor]=useState(null),[secretaryChoice,setSecretaryChoice]=useState(''),[detail,setDetail]=useState(null),[checking,setChecking]=useState('');
  const members=workspace.members||[],name=id=>id==='owner'?'你':members.find(m=>m.id===id)?.name||'成员';
  const sequence=useRef(0);
- const load=async()=>{const seq=++sequence.current;setLoading(true);try{const next=await api(def.endpoint);if(sequence.current===seq){setData(next);setError('');}}catch(e){if(sequence.current===seq)setError(e.message);}finally{if(sequence.current===seq)setLoading(false);}};
- useEffect(()=>{setData(null);setEditor(null);setDetail(null);void load();return()=>{sequence.current++;};},[page]);
- const change=async args=>{const result=await api(def.endpoint,{requestId:crypto.randomUUID(),...args});await load();return result;};
+ const load=async({force=true}={})=>{const seq=++sequence.current;setLoading(true);try{const next=page==='skills'?await serviceStore.load(def.endpoint,{force}):await api(def.endpoint);if(sequence.current===seq){setData(next);setError('');}}catch(e){if(sequence.current===seq)setError(e.message);}finally{if(sequence.current===seq)setLoading(false);}};
+ useEffect(()=>{const unsubscribe=page==='skills'?serviceStore.subscribe(def.endpoint,()=>{const s=serviceStore.snapshot(def.endpoint);setData(s.data);setLoading(s.loading);setError(s.error);}):()=>{};setEditor(null);setDetail(null);void load({force:false});return()=>{sequence.current++;unsubscribe();};},[page]);
+ const change=async args=>{const result=await api(def.endpoint,{requestId:crypto.randomUUID(),...args});if(page==='skills')serviceStore.invalidate(def.endpoint);await load();return result;};
  const secretary=members.find(m=>m.id===data?.secretary?.memberId);
  const scope=s=>[s.channelIds?.length?s.channelIds.map(id=>channels.find(c=>c.id===id)?.name||'已移除聊天').join('、'):'所有聊天（含新增）',s.memberIds?.length?s.memberIds.map(name).join('、'):'所有成员（含新增）'].join(' · ');
  return <section className="workspace-services"><header className="services-header"><div><span className="service-heading-icon"><Icon size={23}/></span><h1>{def.title}</h1></div><p>{def.description}</p><div className="services-header-actions"><Button variant="ghost" size="icon" aria-label="刷新" disabled={loading} onClick={load}><RefreshCw size={16} className={loading?'animate-spin':''}/></Button>{page!=='secretary'&&<Button onClick={()=>setEditor({})}><Plus size={15}/>{page==='skills'?'添加技能':'连接 GitHub'}</Button>}</div></header>

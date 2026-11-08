@@ -7,6 +7,7 @@ import {createReadCoalescer} from './read-coalescer.mjs';
 import {watchChanges} from '../../local/change-watcher.mjs';
 import BrandMark from './BrandMark.jsx';
 import WorkspaceServices from './WorkspaceServices.jsx';
+import {serviceStore} from './service-data.jsx';
 import MessageActivity from './MessageActivity.jsx';
 import CollaborationSpace,{ReferenceChip,refOf,MeetingStart} from './CollaborationSpace.jsx';
 import {SharedFiles,UploadFiles,FileCard,FileDialog,HandoffCard,HandoffDialog} from './SharedSpace.jsx';
@@ -229,6 +230,13 @@ export default function App() {
     id === 'system' ? '会议记录' : id === "owner"
       ? "我"
       : workspace.members.find((m) => m.id === id)?.name || workspace.formerMembers?.find(m=>m.id===id)?.name || "已移出成员";
+  useEffect(()=>{
+    if(!workspace.accounts[0]?.id)return;
+    // Let the initial conversation paint first; warm only the three small
+    // metadata lists once per workspace, never values or platform logins.
+    const timer=setTimeout(()=>{for(const view of ['connectors','vault','skills'])serviceStore.prefetch(view);},800);
+    return()=>clearTimeout(timer);
+  },[workspace.accounts[0]?.id]);
   const refreshWorkspace = useCallback(() => coalesceRead.current('workspace',async () => {
     const results = await Promise.allSettled([
       api("/v2/workspace"),
@@ -237,6 +245,7 @@ export default function App() {
     const failure = results.find(result => result.status === "rejected");
     if (failure) throw failure.reason;
     const [w, c] = results.map(result => result.value);
+    serviceStore.setScope((w.members[0]?.ownerId||'owner')+':'+(w.accounts[0]?.id||'empty'));
     setWorkspace(w);
     const generation=++indexGeneration.current,previous=new Map(channelIndex.current.map(row=>[row.id,row]));
     const changed=c.items.filter(row=>previous.has(row.id)&&!viewCache.current.covers(row.id,row.messageSequence||0)&&(row.messageSequence||0)>(previous.get(row.id).messageSequence||0));
@@ -293,6 +302,8 @@ export default function App() {
   useEffect(() => {
     const report=e=>setSyncError(e.message);
     const watcher=watchChanges({request:(route,signal)=>api(route,undefined,undefined,{signal}),onError:report,onChange:async page=>{
+      if(page.reset)for(const prefix of ['/v2/connectors','/v2/vault','/v2/skills'])serviceStore.invalidate(prefix,{onlyCached:true});
+      else{const kinds=new Set(page.changes.map(c=>c.kind));if(kinds.has('service_connection'))serviceStore.invalidate('/v2/connectors');if(kinds.has('service_host'))serviceStore.invalidate('/v2/connectors?action=hosts');if(kinds.has('vault_entry'))serviceStore.invalidate('/v2/vault');if(kinds.has('workspace_skill'))serviceStore.invalidate('/v2/skills');}
       const affected=page.changes.filter(c=>c.channelId===currentRef.current);
       const fast=page.reset||affected.length?refresh({chatOnly:true}):Promise.resolve();
       for(const id of new Set(page.changes.filter(c=>c.kind==='channel_message'&&c.channelId!==currentRef.current).map(c=>c.channelId)))void refresh({chatOnly:true,channelId:id}).catch(report);
@@ -645,7 +656,7 @@ export default function App() {
           <Users size={17} />
           成员与连接<span>{workspace.members.length}</span>
         </button>
-        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["vault","Vault",KeyRound],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} aria-label={label} title={label} className={"nav-home "+((key==="secretary"?secretaryOpen:page===key)?"selected":"")} onClick={()=>key==="secretary"?setSecretaryOpen(v=>!v):setPage(key)}>{key==="secretary"?<BrandMark motion="hand" size={22} alt=""/>:<Icon size={17}/>}{label}</button>)}
+        {[["secretary","秘书",Headset],["connectors","连接器",Plug],["vault","Vault",KeyRound],["skills","技能",Sparkles]].map(([key,label,Icon])=><button key={key} aria-label={label} title={label} className={"nav-home "+((key==="secretary"?secretaryOpen:page===key)?"selected":"")} onPointerEnter={()=>serviceStore.prefetch(key)} onFocus={()=>serviceStore.prefetch(key)} onClick={()=>key==="secretary"?setSecretaryOpen(v=>!v):setPage(key)}>{key==="secretary"?<BrandMark motion="hand" size={22} alt=""/>:<Icon size={17}/>}{label}</button>)}
         <div className="sidebar-caption">
           <div className="chat-kind-tabs" role="group" aria-label="聊天类型">{[['direct','单聊'],['group','群聊']].map(([kind,label])=><button key={kind} aria-pressed={chatKind===kind} onClick={()=>switchChatKind(kind)}>{label}{channels.some(c=>!!c.direct===(kind==='direct')&&!!unread[c.id]?.count)&&<i/>}</button>)}</div>
           <button

@@ -4,9 +4,14 @@ import {HubError} from '../../shared/domain.mjs';
 // names enter the journal; credentials, document contents and native history do not.
 const channelKinds = new Set(['channel','channel_message','channel_turn','channel_doc','channel_task','channel_memory','channel_question','channel_meeting','channel_suggestion','channel_coordination','channel_delivery_issue','channel_link','shared_file','shared_handoff','channel_folder','material_placement','execution_binding','outbox']);
 const memberKinds = new Set(['connection','native-command','session-link','step']);
+const serviceKinds = new Set(['service_connection','service_host','workspace_skill','vault_entry']);
 export function changeDescriptor(record) {
   if(channelKinds.has(record.kind))return {kind:record.kind,id:record.id,channelId:record.kind==='channel'?record.id:record.scopeId||'',memberId:record.memberId||record.parentId||''};
   if(memberKinds.has(record.kind))return {kind:record.kind,id:record.id,memberId:record.kind==='connection'?record.id:record.memberId||record.parentId||''};
+  // Workspace-wide UI lists are owner-only hints: no credential fields,
+  // connector configuration, names, or bodies enter this journal. Non-owner
+  // delivery below already requires channel membership or an exact memberId.
+  if(serviceKinds.has(record.kind))return {kind:record.kind,id:record.id};
   return null;
 }
 const buses = new WeakMap();

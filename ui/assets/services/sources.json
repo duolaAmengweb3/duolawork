@@ -1,0 +1,56 @@
+{
+  "github": {
+    "file": "github.svg",
+    "source": "https://github.githubassets.com/favicons/favicon.svg",
+    "sha256": "6a9577cd4f7fa6b75bde1025af85b944e9dd1388373b55ccba6e9f80ac2eae60",
+    "bytes": 959
+  },
+  "cloudflare": {
+    "file": "cloudflare.png",
+    "source": "https://www.cloudflare.com/favicon.ico",
+    "sha256": "5414bc6e4b3f6e10f99b5d37abf4420da4dcaece66f8f2c08e090e87267adbc5",
+    "bytes": 908
+  },
+  "vercel": {
+    "file": "vercel.ico",
+    "source": "https://vercel.com/favicon.ico",
+    "sha256": "6d03f17164357abb5dc49e90a572f94c4f5e6004e659d3efed6a9e947670d81b",
+    "bytes": 15086
+  },
+  "notion": {
+    "file": "notion.ico",
+    "source": "https://www.notion.so/images/favicon.ico",
+    "sha256": "541fc85f92e348bcf46f70944b95fd558d16adbc5a0698eaa1239dccd8c9e455",
+    "bytes": 32038
+  },
+  "figma": {
+    "file": "figma.svg",
+    "source": "https://static.figma.com/app/icon/1/favicon.svg",
+    "sha256": "d1d4fc27b66a1b86b28b0d3be9bcb051f055da4a914e24c59f63aa9ee4cf303f",
+    "bytes": 1049
+  },
+  "googledrive": {
+    "file": "googledrive.png",
+    "source": "https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png",
+    "sha256": "2ab9cd0ffdddf7bf060620ae328fe626bfa2c004739adedb74ec894faf9bee31",
+    "bytes": 1594
+  },
+  "gmail": {
+    "file": "gmail.ico",
+    "source": "https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico",
+    "sha256": "2a5c83dd7f4634810218ba70e3fe9550fb5d887e349cb46d77419eb1c74bc299",
+    "bytes": 26068
+  },
+  "googlecalendar": {
+    "file": "googlecalendar.ico",
+    "source": "https://calendar.google.com/googlecalendar/images/favicons_2020q4/calendar_31.ico",
+    "sha256": "4b08278e69975910e73fced1604a0bcc1283451d9fe85f7b6b11e03f019fbc7c",
+    "bytes": 4414
+  },
+  "feishu": {
+    "file": "feishu.ico",
+    "source": "https://www.feishu.cn/favicon.ico",
+    "sha256": "69da9be6053530750202e4f674d621274bd86a9fc23f44a16c5e6c7aa56dfd9e",
+    "bytes": 9662
+  }
+}

@@ -10,6 +10,12 @@ async function fixture(t){const db=database();t.after(()=>db.close());const repo
 });return {db,repo,cursor:(await changes(repo,{owner:true})).cursor};}
 const save=(repo,id,channelId='public')=>repo.transact(id,{id},tx=>tx.put('channel_message',{id,scopeId:channelId,body:'message body must never enter the journal'}));
 
+test('service-list changes invalidate the owner UI without exposing even resource IDs to members',async t=>{
+ const {repo,cursor}=await fixture(t);await repo.transact('service-metadata',{},tx=>{for(const kind of['service_connection','service_host','workspace_skill','vault_entry'])tx.put(kind,{id:kind+'-private',name:'private service name',fields:{token:'not-for-journal'}});return {};});
+ const owner=await changes(repo,{owner:true},{after:cursor,waitMs:0});assert.equal(owner.changes.length,4);assert.ok(!JSON.stringify(owner).includes('private service name'));assert.ok(!JSON.stringify(owner).includes('not-for-journal'));
+ assert.deepEqual((await changes(repo,{memberId:'alice'},{after:cursor,waitMs:0})).changes,[]);
+});
+
 test('committed invalidations wake immediately, idempotent writes emit once, failed transactions emit nothing',async t=>{
  const {repo,db,cursor}=await fixture(t);
  const waiting=changes(repo,{memberId:'alice'},{after:cursor});await new Promise(r=>setImmediate(r));
