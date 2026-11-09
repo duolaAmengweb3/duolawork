@@ -400,6 +400,8 @@ export async function receiveDelivery(repo,actor,args){
   await scoped(await repo.get('channel',existing.scopeId),actor,repo);
   if(currentConnection.status!=='verified')fail('disconnected','接收连接已解除',403);
   if(await executionResource(repo,currentConnection,existing.scopeId)!=='native-session:'+actor.memberId+':'+sessionKey)fail('session_changed','会话选择已变更，旧回执未应用',409);
+  const activeReceiver=(await repo.get('native-source',actor.memberId,false))?.sessions?.[args.sessionId];
+  if(activeReceiver?.receiverInstanceId&&activeReceiver.receiverInstanceId!==args.receiverInstanceId)return{applied:false,status:existing.status,reason:'receiver_replaced'};
   if(args.attempt!==(existing.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
   if(args.sourceVersion!==((await repo.get('channel_message',existing.messageId)).version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
   if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
@@ -416,6 +418,8 @@ export async function receiveDelivery(repo,actor,args){
     await scoped(channel,actor,tx);
     if(connection.status!=='verified')fail('disconnected','接收连接已解除',403);
     if(await executionResource(tx,connection,channel.id)!=='native-session:'+actor.memberId+':'+await digest(required(args.sessionId,'原工作会话',200)))fail('session_changed','会话选择已变更，旧回执未应用',409);
+    const native=await tx.get('native-source',actor.memberId,false),receiver=native?.sessions?.[args.sessionId];
+    if(receiver?.receiverInstanceId&&receiver.receiverInstanceId!==args.receiverInstanceId)return{applied:false,status:turn.status,reason:'receiver_replaced'};
     if(args.attempt!==(turn.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
     const message=await tx.get('channel_message',turn.messageId);
     if(args.sourceVersion!==(message.version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
@@ -425,11 +429,11 @@ export async function receiveDelivery(repo,actor,args){
     if(!(turn.status==='active'||receivableTurn(turn)))return {applied:false,status:turn.status};
     const field={received:'connectorReceivedAt',accepted:'nativeAcceptedAt',started:'nativeStartedAt',public_output:'firstPublicOutputAt'}[args.phase];
     const sessionKey=await digest(args.sessionId);
-    if(turn.receiptAttempt!==args.attempt||turn.receiptSessionKey!==sessionKey||turn.receiptSourceVersion!==args.sourceVersion){
+    if(turn.receiptAttempt!==args.attempt||turn.receiptSessionKey!==sessionKey||turn.receiptSourceVersion!==args.sourceVersion||(turn.receiptReceiverInstanceId||null)!==(args.receiverInstanceId||null)){
       for(const key of ['connectorReceivedAt','nativeAcceptedAt','nativeStartedAt','firstPublicOutputAt'])delete turn[key];
     }
     if(args.phase!=='received'&&!turn.connectorReceivedAt)fail('receipt_required','需先保存并回传消息接收回执',409);
-    if(!turn[field])tx.put('channel_turn',{...turn,[field]:tx.now,receiptSessionKey:sessionKey,receiptAttempt:args.attempt,receiptSourceVersion:args.sourceVersion});
+    if(!turn[field])tx.put('channel_turn',{...turn,[field]:tx.now,receiptSessionKey:sessionKey,receiptAttempt:args.attempt,receiptSourceVersion:args.sourceVersion,receiptReceiverInstanceId:args.receiverInstanceId||null});
     return {applied:true,phase:args.phase,at:turn[field]||tx.now};
   });
 }

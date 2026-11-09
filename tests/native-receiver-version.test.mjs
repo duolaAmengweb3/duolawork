@@ -44,6 +44,26 @@ test('invalid native revision is rejected without changing the previous heartbea
  await assert.rejects(f.beat({receiverRevision:'not-a-code-hash'}),e=>e.code==='invalid_revision');assert.deepEqual(await f.repo.get('native-source','grok'),prior);
 });
 
+test('new receiver takes over with a current-owner comparison; old heartbeat, retry and offline cannot overwrite it',async t=>{
+ const f=await setup(t);
+ await f.beat({receiverInstanceId:'receiver-old',receiverRegister:true,receiverPreviousId:null,receiverRevision:'0'.repeat(64)});
+ await f.beat({receiverInstanceId:'receiver-new',receiverRegister:true,receiverPreviousId:'receiver-old',receiverRevision:currentRevision});
+ const before=await f.repo.get('native-source','grok');
+ for(const extra of [
+  {receiverInstanceId:'receiver-old',status:'offline'},
+  {receiverInstanceId:'receiver-old',receiverRevision:'0'.repeat(64)},
+  {receiverInstanceId:'receiver-old',receiverRegister:true,receiverPreviousId:null},
+  {status:'offline'},
+ ]){const result=await f.beat(extra);assert.equal(result.applied,false);assert.deepEqual(await f.repo.get('native-source','grok'),before);}
+ assert.equal((await f.read()).items[0].online,true);assert.equal((await f.read()).items[0].receiverInstanceId,'receiver-new');
+ await f.beat({receiverInstanceId:'receiver-new',receiverRevision:currentRevision});assert.equal((await f.read()).record.revisionState,'current');
+ await f.beat({receiverInstanceId:'receiver-new',status:'offline'});
+ await f.beat({instanceId:'new-native-process',receiverInstanceId:'receiver-next',receiverRegister:true,receiverPreviousId:'receiver-new',receiverRevision:currentRevision});
+ await f.beat({instanceId:'new-native-process',receiverInstanceId:'receiver-next',status:'offline'});
+ const offline=await f.repo.get('native-source','grok');
+ assert.equal((await f.beat({receiverInstanceId:'receiver-old',status:'offline'})).applied,false);assert.deepEqual(await f.repo.get('native-source','grok'),offline);
+});
+
 test('monitor heartbeat uses its startup version instead of rereading a replaced installation',async t=>{
  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'hub-receiver-version-'));t.after(()=>fs.rm(directory,{recursive:true,force:true}));
  await privateJson(path.join(directory,'monitor-sessions.json'),{runtimeId:'runtime',sessionIds:['native']});

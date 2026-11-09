@@ -31,21 +31,27 @@ export async function remoteSessions(repo,identity,actor,input={},write=false){
     const sessionId=required(input.sessionId,'原生会话编号',100),instanceId=required(input.instanceId,'运行实例',100);
     if(!/^[a-zA-Z0-9_-]+$/.test(sessionId)||!/^[a-zA-Z0-9_-]+$/.test(instanceId))fail('invalid_session','会话编号无效');
     if(input.receiverRevision!==undefined&&input.receiverRevision!==null&&!/^[a-f0-9]{64}$/.test(input.receiverRevision))fail('invalid_revision','接收器版本需要有效的 SHA-256');
-    await repo.transact(id('native-heartbeat'),{memberId,sessionId,instanceId},async tx=>{
+    if(input.receiverInstanceId!==undefined&&!/^[a-zA-Z0-9_-]{1,100}$/.test(input.receiverInstanceId))fail('invalid_receiver','接收进程编号无效');
+    const receipt=await repo.transact(id('native-heartbeat'),{memberId,sessionId,instanceId},async tx=>{
       const r=await tx.get('native-source',memberId,false)||{id:memberId,sessions:{},bindings:{}};
       const prior=r.sessions[sessionId];
       if(live(prior)&&prior.instanceId!==instanceId)fail('session_busy','同一原生会话已有连接器，请先关闭重复终端',409);
+      if(prior?.receiverInstanceId&&prior.receiverInstanceId!==input.receiverInstanceId){
+        if(input.status==='offline'||input.receiverRegister!==true||input.receiverPreviousId!==prior.receiverInstanceId)return{applied:false,reason:'receiver_replaced'};
+      }else if(input.receiverInstanceId&&prior?.receiverInstanceId!==input.receiverInstanceId&&input.receiverRegister!==true)return{applied:false,reason:'receiver_registration_required'};
+      if(input.receiverRegister===true&&input.receiverInstanceId!==prior?.receiverInstanceId&&(input.receiverPreviousId||null)!==(prior?.receiverInstanceId||null))return{applied:false,reason:'receiver_replaced'};
       const other=await tx.list('native-source',{limit:501});
       const runtimeId=required(input.runtimeId,'运行端编号',100);
       if(other.some(x=>x.id!==memberId&&Object.values(x.sessions||{}).some(s=>s.runtimeId===runtimeId&&s.id===sessionId&&live(s))))fail('session_owned','此会话已经属于另一位 Hub 成员',409);
       if(!prior&&Object.keys(r.sessions).length>=100)fail('session_limit','会话登记已达上限，请整理离线会话');
       // An installation on disk is not proof that this native process loaded it.
       // Retain an omitted version only for the exact same running instance.
-      const receiverRevision=input.receiverRevision===undefined?(prior?.instanceId===instanceId?prior.receiverRevision||null:null):input.receiverRevision;
-      r.sessions[sessionId]={id:sessionId,instanceId,runtimeId,title:required(input.title,'会话名称',200),workspace:required(input.workspace,'项目目录',1000),createdAt:prior?.createdAt||tx.now,seenAt:tx.now,status:input.status==='offline'?'offline':'online',canCreate:input.canCreate===true,receiverRevision};
+      const receiverRevision=input.receiverRevision===undefined?(prior?.instanceId===instanceId&&(!prior.receiverInstanceId||prior.receiverInstanceId===input.receiverInstanceId)?prior.receiverRevision||null:null):input.receiverRevision;
+      r.sessions[sessionId]={id:sessionId,instanceId,runtimeId,title:required(input.title,'会话名称',200),workspace:required(input.workspace,'项目目录',1000),createdAt:prior?.createdAt||tx.now,seenAt:tx.now,status:input.status==='offline'?'offline':'online',canCreate:input.canCreate===true,receiverRevision,...(input.receiverInstanceId?{receiverInstanceId:input.receiverInstanceId}:{})};
       if(!r.verificationSessionId||connection?.status!=='verified'&&!live(r.sessions[r.verificationSessionId]))r.verificationSessionId=sessionId;
-      tx.put('native-source',r);return{};
+      tx.put('native-source',r);return{applied:true};
     });
+    if(receipt.applied===false)return receipt;
   }
   const r=await repo.get('native-source',memberId,false),items=Object.values(r?.sessions||{}).map(({instanceId,runtimeId,...s})=>({...s,online:live(s),...receiverVersion(s.receiverRevision,currentReceiverRevision)}));
   const canCreate=items.some(s=>s.online&&s.canCreate);

@@ -11,12 +11,12 @@ export function subscribeNativeChanges(client,listener){
 }
 export const readNativeInbox=client=>typeof client.inbox==='function'?client.inbox():client.tool('list_work');
 export const deliveryIsCurrent=receipt=>receipt?.applied!==false;
-export async function deliveryReceipt(client,work,sessionId,phase='received'){
+export async function deliveryReceipt(client,work,sessionId,phase='received',receiverInstanceId){
   if(!work.delivery||!sessionId)return; // Older server / formal verification has no transport envelope.
   const attempt=work.delivery.attempt;
   const sourceVersion=work.delivery.message?.version||1;
-  const requestId='delivery-'+createHash('sha256').update(JSON.stringify([work.stepId,sessionId,attempt,sourceVersion,phase])).digest('hex');
-  return client.api('/v2/self/delivery',{method:'POST',body:{requestId,turnId:work.stepId,sessionId,attempt,phase,sourceVersion}});
+  const requestId='delivery-'+createHash('sha256').update(JSON.stringify([work.stepId,sessionId,attempt,sourceVersion,phase,...(receiverInstanceId?[receiverInstanceId]:[])])).digest('hex');
+  return client.api('/v2/self/delivery',{method:'POST',body:{requestId,turnId:work.stepId,sessionId,attempt,phase,sourceVersion,...(receiverInstanceId?{receiverInstanceId}:{})}});
 }
 // Shared wording for native interactive adapters. A notification is a bounded
 // side conversation, not permission to abandon an already authorized user task.

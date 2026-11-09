@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Server} from '@modelcontextprotocol/sdk/server/index.js';
@@ -69,8 +69,8 @@ export async function writeMonitorPlugin({pluginDir,connectionDir,cli,node=proce
 }
 
 export class MonitorBridge{
-  constructor({connectionDir,identity=nativeIdentity,output=line=>process.stdout.write(line+'\n'),client,kind='monitor',launcher=nativeLauncher,receiverRevision=null}){
-    Object.assign(this,{connectionDir,identity,output,kind,launcher,receiverRevision});this.client=client||new CodingMemberClient(path.join(connectionDir,'grant.json'));
+  constructor({connectionDir,identity=nativeIdentity,output=line=>process.stdout.write(line+'\n'),client,kind='monitor',launcher=nativeLauncher,receiverRevision=null,receiverInstanceId=randomUUID()}){
+    Object.assign(this,{connectionDir,identity,output,kind,launcher,receiverRevision,receiverInstanceId});this.client=client||new CodingMemberClient(path.join(connectionDir,'grant.json'));
   }
   async current(){
     const source=await this.identity();if(!source)return null;
@@ -85,10 +85,11 @@ export class MonitorBridge{
     const next=await this.current();
     if(next&&next.sessionId===this.session?.sessionId&&next.instanceId===this.session?.instanceId)return this.bridge;
     if(this.session&&this.kind==='monitor')await this.client.api('/v2/self/native-sessions',{method:'POST',body:{...this.session,status:'offline'}}).catch(()=>{});
-    this.session=next;this.bridge=null;this.heartbeatAt=0;this.checkId=null;this.creator=null;
+    this.session=next;this.bridge=null;this.heartbeatAt=0;this.checkId=null;this.creator=null;this.registered=false;
     if(!next)return null;
     if(this.kind==='monitor'){
       next.receiverRevision=this.receiverRevision;
+      next.receiverInstanceId=this.receiverInstanceId;
       const launcher=await this.launcher(next);next.canCreate=!!launcher;this.nativeBinary=launcher?.binary;
       if(launcher)this.creator=new NativeSessionCreator({connectionDir:this.connectionDir,client:this.client,launcher});
     }
@@ -106,7 +107,10 @@ export class MonitorBridge{
     await flushNativeEnd({client:this.client,session:this.session,connectionDir:this.connectionDir,nativeState:()=>nativeExecutionState(this.session,{binary:this.nativeBinary})});
     if(Date.now()-this.heartbeatAt>20000){
       this.session=await refreshSessionInfo(this.session);b.session=this.session;
-      await this.client.api('/v2/self/native-sessions',{method:'POST',body:this.session});this.heartbeatAt=Date.now();
+      const scope=this.registered?null:await b.scope();
+      const receipt=await this.client.api('/v2/self/native-sessions',{method:'POST',body:{...this.session,...(!this.registered?{receiverRegister:true,receiverPreviousId:scope?.items?.find(s=>s.id===this.session.sessionId)?.receiverInstanceId||null}:{})}});
+      if(receipt.applied===false){this.replaced=true;return;}
+      this.registered=true;this.heartbeatAt=Date.now();
       const s=await this.client.api('/v2/self/status');
       if(!s.complete&&!this.checkId){const r=await b.scope();if(r.verificationSessionId===this.session.sessionId){
         const requestId='claude-monitor-check-'+this.session.sessionId;
@@ -157,7 +161,7 @@ export async function runMonitor(configFile,expectedRevision){
     // Rewriting the installed plugin does not mean its replacement is running.
     // Keep this loaded receiver alive until the native host actually reloads or
     // stops it; continue reporting this process's startup revision throughout.
-    if(!closed)await bridge.tick();
+    if(!closed){await bridge.tick();if(bridge.replaced)close();}
   })().catch(failure).finally(()=>pending=null);
   await tick();
   const stopWatching=subscribeNativeChanges(bridge.client,page=>{

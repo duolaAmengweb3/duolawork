@@ -5,6 +5,7 @@ import {conversationCommand,conversationWork,receiveDelivery,readChannel} from '
 import {putExecutionBinding} from '../cloud/collaboration/execution-bindings.mjs';
 import {digest} from '../cloud/collaboration/repository.mjs';
 import {pendingTurnState} from '../shared/chat-activity.mjs';
+import {deliveryReceipt} from '../local/native-delivery.mjs';
 
 async function setup(t){const f=await fixture(t);let n=0;const send=(type,args)=>conversationCommand(f.repo,f.identity,{owner:true},{type,requestId:'receipt-'+ ++n,...args});
  const channel=await send('channel.create',{name:'Delivery fences',memberIds:['grok','check']});
@@ -59,4 +60,22 @@ test('a late native receiver can ACK an unclaimed notification timeout without r
  assert.equal((await f.receipt()).applied,true);assert.equal((await conversationWork(f.repo,f.identity,'grok'))[0].status,'ready');
  const current=await f.repo.get('channel_turn',turn.id);await f.repo.transact('native-stopped',{},tx=>tx.put('channel_turn',{...current,nativeReceptionFailed:true}));
  assert.equal((await f.receipt({requestId:'after-native-stopped'})).applied,false);
+});
+
+test('receiver takeover fences old and cached receipts before a duplicate model wake; the new receiver has its own receipt identity',async t=>{
+ const f=await setup(t);
+ await f.repo.transact('old-receiver',{},tx=>tx.put('native-source',{id:'grok',sessions:{'native-one':{receiverInstanceId:'old-process'}}}));
+ const old={...f.input,requestId:'old-receive',receiverInstanceId:'old-process'};
+ assert.equal((await receiveDelivery(f.repo,{memberId:'grok'},old)).applied,true);
+ await receiveDelivery(f.repo,{memberId:'grok'},{...old,requestId:'old-accepted',phase:'accepted'});
+ await f.repo.transact('new-receiver',{},tx=>tx.put('native-source',{id:'grok',sessions:{'native-one':{receiverInstanceId:'new-process'}}}));
+ const before=await f.repo.get('channel_turn',f.work.stepId);
+ assert.equal((await receiveDelivery(f.repo,{memberId:'grok'},old)).applied,false,'Cached success is not permission for a replaced receiver to notify');
+ assert.equal((await f.receipt()).applied,false,'Legacy receivers cannot notify after a new owner has registered');
+ assert.deepEqual(await f.repo.get('channel_turn',f.work.stepId),before);
+ const requests=[],client={api:async(_route,{body})=>{requests.push(body);return receiveDelivery(f.repo,{memberId:'grok'},body);}};
+ assert.equal((await deliveryReceipt(client,f.work,'native-one','received','old-process')).applied,false);
+ assert.equal((await deliveryReceipt(client,f.work,'native-one','received','new-process')).applied,true);
+ assert.notEqual(requests[0].requestId,requests[1].requestId);assert.equal(requests[1].receiverInstanceId,'new-process');
+ const fresh=await f.repo.get('channel_turn',f.work.stepId);assert.equal(fresh.receiptReceiverInstanceId,'new-process');assert.equal(fresh.nativeAcceptedAt,undefined);assert.equal(fresh.status,'ready');assert.equal(fresh.claimedAt,undefined);
 });
