@@ -1,0 +1,49 @@
+{
+  "at": "2026-11-09T06:08:23.841Z",
+  "rootId": "board_56d5e10530dd4fe5b65f14de741e203a",
+  "version": 3,
+  "status": "done",
+  "valid": true,
+  "acceptedSubmissionId": "submission_6697a315d54d4b0f9185c7f7684a081c",
+  "check": {
+    "taskId": "board_56d5e10530dd4fe5b65f14de741e203a",
+    "submissionId": "submission_6697a315d54d4b0f9185c7f7684a081c",
+    "workSpecVersion": 1,
+    "requirementVersion": null,
+    "verdict": "accept",
+    "reason": "三条必要标准均有实际依据：代码已提交且我复跑 16/16；安装版构建与 activation/installed 证据一致、资料未变；三个语义夹具由我实际核对并写入 check（A/B 退回、C 通过）。此前提出的通知边界（退回再接受需新 check 通知后项、旧 ready 不能推进新版）与 JSON 键序重传已修并有测试覆盖。边界：672 全量和安装版 Electron 由 Codex 执行，我未重跑全量，也未把 A/B 坏夹具当作通过。",
+    "criterionResults": [
+      {
+        "id": "code",
+        "result": "met",
+        "evidence": "实现已提交 7404443，task-deliverables.mjs 与测试均已被 git 跟踪；我在当前 HEAD 重跑 tests/task-deliverables.test.mjs 16/16。此前 P2 已修：ready 通知改用 checkId，taskTurnAllowed 会核对上游 currentCheckId 与有效状态；JSON 键序重传用 canonical/duplicate 处理，旧指纹格式仍能识别。"
+      },
+      {
+        "id": "ui",
+        "result": "met",
+        "evidence": "安装包 build-info=eeafd146c0dc90b9，与 activation.json/installed.json 的 desktopBuildId、buildId 一致；activation 记录 backendAndDesktopMatch=true、protectedLocalDataUnchanged/workspaceDataUnchanged=true；installed.json 5 项由 Codex 在真实 Electron 隔离数据下实跑，我本机受硬化 Electron 启动限制未能亲手复跑，已按证据边界记录。"
+      },
+      {
+        "id": "native",
+        "result": "met",
+        "evidence": "我本人对三个受控夹具写了 check：A check_fbb5da51… changes_requested（条件漏掉五项清单）、B check_ab3703e8… changes_requested（产物仍写10）、C check_bfc2aec2… accept（2+3=5，错误质疑不成立）；native-cases.json 与 live-deduplication.json 记录与这些结果一致，未把坏夹具写成通过。"
+      }
+    ],
+    "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+    "id": "check_97c66b70b0bf4f7cbaeb8730d8b73d5a",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "board_56d5e10530dd4fe5b65f14de741e203a",
+    "fingerprint": "bb37d7800b2c7c778f8fa1eb862dba5e2d954e29e56b3a8d2f124ca5fee8b6e7",
+    "createdAt": "2026-11-09T06:06:34.373Z",
+    "kind": "channel_task_check",
+    "revision": 1,
+    "updatedAt": "2026-11-09T06:06:34.373Z"
+  },
+  "subtasks": {
+    "total": 4,
+    "done": 2,
+    "canceled": 2,
+    "blocked": 0,
+    "active": 0
+  }
+}
