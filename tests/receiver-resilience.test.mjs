@@ -8,12 +8,12 @@ import {dispatchOne,maintenance} from '../cloud/collaboration/dispatcher.mjs';
 import {seal} from '../cloud/collaboration/security.mjs';
 const secret='isolated-receiver-recovery',signing='whsec_'+Buffer.alloc(32,21).toString('base64');
 const base=Date.parse('2026-11-09T15:00:00Z'),at=s=>new Date(base+s*1000).toISOString();
-async function setup(t,transport='dots-events'){
+async function setup(t,transport='dots-events',receiverToken=signing){
  const f=await fixture(t),calls=[],accepted=new Set();let seq=0;
  const send=(type,args={},actor={owner:true},s=0)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'resilience-'+ ++seq,...args},at(s));
  const channel=await send('channel.create',{name:'Receiver resilience',memberIds:['grok','check'],coordinatorId:'check'});
- await f.repo.transact('configure-receiver',{},async tx=>{const c=await tx.get('connection','grok');tx.put('connection',{...c,transport,credentials:await seal({url:'https://grok.com/webhook/automation/resilience',token:signing},secret)});return{};},at(0));
- const fetcher=async(url,options)=>{const body=JSON.parse(options.body);if(body.type==='verification')return Response.json({challenge:body.challenge});calls.push({body,headers:options.headers});accepted.add(body.eventId||body.delivery_id);return new Response('{}',{status:transport==='grok-webhook'?202:200});};
+ await f.repo.transact('configure-receiver',{},async tx=>{const c=await tx.get('connection','grok');tx.put('connection',{...c,transport,credentials:await seal({url:receiverToken.startsWith('whsec_')?'https://grok.com/webhook/automation/resilience':'https://api2.cursor.sh/automations/webhook/resilience',token:receiverToken},secret)});return{};},at(0));
+ const fetcher=async(url,options)=>{const body=JSON.parse(options.body);if(body.type==='verification')return Response.json({challenge:body.challenge});calls.push({body,headers:options.headers});accepted.add(body.eventId||body.delivery_id);return new Response('{}',{status:transport==='grok-webhook'&&receiverToken.startsWith('whsec_')?202:200});};
  if(transport==='dots-events')await eventMethod(f.repo,'grok','events/subscribe',{name:'work.ready',arguments:{member_id:'grok'},delivery:{mode:'webhook',url:'https://chatgpt.com/receiver-resilience',secret:signing}},secret,fetcher,at(0));
  const post=async(body,s=0)=>{const message=await send('channel.post',{channelId:channel.id,body,mentions:['grok']},{owner:true},s);return{message,turnId:`turn_${message.id}_grok`,noticeId:`notice_turn_${message.id}_grok`};};
  const tick=s=>maintenance(f.repo,f.identity,{ADMIN_KEY:secret},fetcher,at(s));
@@ -89,4 +89,15 @@ test('signed platform automations get their asynchronous startup window; Bot rou
  await f.tick(120);await f.tick(599);assert.equal(f.calls.length,1,'do not report an asynchronous platform offline after two minutes');
  await f.tick(600);assert.equal(f.calls.length,2);assert.equal(f.calls[1].body.member_id,'grok');
  assert.notEqual(f.calls[0].body.delivery_id,f.calls[1].body.delivery_id);
+});
+test('legacy accepted Grok receipts without receiver kind do not misclassify a slow platform as a fast Bot',async t=>{
+ const f=await setup(t,'grok-webhook'),a=await f.post('Pre-upgrade accepted invitation');await f.tick(0);
+ await f.repo.transact('legacy-no-receiver-kind',{},async tx=>{const n=await tx.get('outbox',a.noticeId);delete n.receiverKind;tx.put('outbox',n);return{};});
+ await f.tick(120);await f.tick(599);assert.equal(f.calls.length,1);
+ await f.tick(600);assert.equal(f.calls.length,2);assert.equal((await f.repo.get('outbox',a.noticeId)).receiverKind,'platform-automation');
+});
+test('Bearer Bot routines retain their two-minute recovery window independently of legacy platform automations',async t=>{
+ const f=await setup(t,'grok-webhook','crsr_isolated_routine'),a=await f.post('Native Bot invitation');await f.tick(0);
+ assert.equal((await f.repo.get('outbox',a.noticeId)).receiverKind,'bot-routine');
+ await f.tick(119);assert.equal(f.calls.length,1);await f.tick(120);assert.equal(f.calls.length,2);
 });
