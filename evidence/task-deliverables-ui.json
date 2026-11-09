@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-09T05:39:35.010Z",
+  "at": "2026-11-09T05:52:09.806Z",
   "scope": "isolated HTTP and browser, not native model acceptance",
   "checks": [
     "当前详情直接展示用户原话，不只显示负责人摘要",

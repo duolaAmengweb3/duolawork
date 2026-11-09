@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-09T06:04:17.466Z",
+  "implementationCommit": "7404443b1320dac629a1d00938687ee3a629f6d7",
+  "origin": "https://hub.manyaitool.com",
+  "serverWorkerSha256": "d5f67f2b54323dbd36a2e7579d5731e5e93f78bf85b3a887ae47adeb3f51bd6b",
+  "serverBytesMatchCandidate": true,
+  "desktopBuild": "eeafd146c0dc90b9",
+  "viewBuild": "eeafd146c0dc90b9",
+  "cloudOnline": true
+}

@@ -1,0 +1,136 @@
+{
+  "at": "2026-11-09T05:57:36.211Z",
+  "scope": "Actual original DeepSeek native member and deployed service, authenticated Codex submission through old catalog envelope; three controlled fixtures, not proof over all domains/models",
+  "setup": {
+    "at": "2026-11-09T05:54:36.164Z",
+    "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "rootId": "board_56d5e10530dd4fe5b65f14de741e203a",
+    "sourceMessageId": "chat_75f2e50c09734a81a83e27d243db674e",
+    "fixtureMessageId": "chat_066fc87cb0bd4849916e7e1d8f1110d0",
+    "items": [
+      {
+        "label": "A · 目标被完成条件遗漏",
+        "id": "board_446ac2a09e854946bf601373fbc6bd38",
+        "submissionId": "submission_2cfc8ca3d9ce42e0a5febcaaf3e80990",
+        "version": 2,
+        "status": "doing"
+      },
+      {
+        "label": "B · 采纳说明未落实到产物",
+        "id": "board_28119177a2a24e6caad7882ab5ff3f15",
+        "submissionId": "submission_7e3edebca35245789177ed46709b94d9",
+        "version": 2,
+        "status": "doing"
+      },
+      {
+        "label": "C · 保留受到错误质疑的正确结果",
+        "id": "board_70cb2b7b50324198ba6dcadc2d10dcfb",
+        "submissionId": "submission_370b78d6b3e54c4485f32124621c4159",
+        "version": 2,
+        "status": "doing"
+      }
+    ],
+    "scope": "Actual authenticated Codex CLI and cached-catalog envelope on deployed service; semantic checks pending actual DeepSeek"
+  },
+  "results": [
+    {
+      "id": "board_446ac2a09e854946bf601373fbc6bd38",
+      "label": "A · 目标被完成条件遗漏",
+      "version": 3,
+      "status": "doing",
+      "stage": "changes_requested",
+      "submissionId": "submission_2cfc8ca3d9ce42e0a5febcaaf3e80990",
+      "check": {
+        "taskId": "board_446ac2a09e854946bf601373fbc6bd38",
+        "submissionId": "submission_2cfc8ca3d9ce42e0a5febcaaf3e80990",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "verdict": "changes_requested",
+        "reason": "原用户目标是交付完整的五项清单，但当前 workSpec 的唯一条件被写成“写出后续计划”，漏掉了真正的交付物；提交也只有计划，没有清单。请 configure 修正完成条件（至少包含五项清单本身），再提交清单正文或原件。仅写计划不能算完成。",
+        "criterionResults": [
+          {
+            "id": "outcome",
+            "result": "met",
+            "evidence": "提交写有“后续计划：之后整理并提交五项清单”，字面满足当前条件。"
+          }
+        ],
+        "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+        "id": "check_fbb5da5179b94db5a731550d2ef3187b",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_446ac2a09e854946bf601373fbc6bd38",
+        "fingerprint": "10099424832ea73ac6f05abd8a16232c077a1c30c00ab3f53162f6ec15031599",
+        "createdAt": "2026-11-09T05:55:14.694Z",
+        "kind": "channel_task_check",
+        "revision": 1,
+        "updatedAt": "2026-11-09T05:55:14.694Z"
+      },
+      "gaps": []
+    },
+    {
+      "id": "board_28119177a2a24e6caad7882ab5ff3f15",
+      "label": "B · 采纳说明未落实到产物",
+      "version": 3,
+      "status": "doing",
+      "stage": "changes_requested",
+      "submissionId": "submission_7e3edebca35245789177ed46709b94d9",
+      "check": {
+        "taskId": "board_28119177a2a24e6caad7882ab5ff3f15",
+        "submissionId": "submission_7e3edebca35245789177ed46709b94d9",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "verdict": "changes_requested",
+        "reason": "“已采纳”不能替代产物落实：实际综合产物仍写样本数10。请直接把综合产物中的样本数改为20，并在重新提交的 body/refs 中给出改动后的实际内容；只改处理说明仍不通过。",
+        "criterionResults": [
+          {
+            "id": "outcome",
+            "result": "not_met",
+            "evidence": "提交正文写“实际综合产物：样本数10”，与条件要求的20不一致；处理说明声称已采纳20，但产物本身未改。"
+          }
+        ],
+        "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+        "id": "check_ab3703e830974f2d880e475cf6a101a4",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_28119177a2a24e6caad7882ab5ff3f15",
+        "fingerprint": "89ba6089fbc546025ede501f4403430cbd9e5b743ec29465d8ebf63ac0fcb4c0",
+        "createdAt": "2026-11-09T05:55:18.924Z",
+        "kind": "channel_task_check",
+        "revision": 1,
+        "updatedAt": "2026-11-09T05:55:18.924Z"
+      },
+      "gaps": []
+    },
+    {
+      "id": "board_70cb2b7b50324198ba6dcadc2d10dcfb",
+      "label": "C · 保留受到错误质疑的正确结果",
+      "version": 3,
+      "status": "done",
+      "stage": "accepted",
+      "submissionId": "submission_370b78d6b3e54c4485f32124621c4159",
+      "check": {
+        "taskId": "board_70cb2b7b50324198ba6dcadc2d10dcfb",
+        "submissionId": "submission_370b78d6b3e54c4485f32124621c4159",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "verdict": "accept",
+        "reason": "对照原目标“正确计算2+3”，提交的 2+3=5 正确；错误质疑没有证据，保留原正确结果，不要求改写为6。",
+        "criterionResults": [
+          {
+            "id": "outcome",
+            "result": "met",
+            "evidence": "提交写 2+3=5，算术正确；同伴称应为6但未提供任何依据，错误质疑不成立，不应据此修改。"
+          }
+        ],
+        "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+        "id": "check_bfc2aec2277a4ebb9ac54338b8475a27",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_70cb2b7b50324198ba6dcadc2d10dcfb",
+        "fingerprint": "0bdb4568b54136bb3519a3897e71e83515575c06b184a534b44b99d76d751abd",
+        "createdAt": "2026-11-09T05:55:23.404Z",
+        "kind": "channel_task_check",
+        "revision": 1,
+        "updatedAt": "2026-11-09T05:55:23.404Z"
+      },
+      "gaps": []
+    }
+  ]
+}
