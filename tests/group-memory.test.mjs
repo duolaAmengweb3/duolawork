@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture} from './collaboration-helper.mjs';
-import {conversationCommand,meetingHelpers,readChannel} from '../cloud/collaboration/conversation.mjs';
+import {conversationCommand,meetingHelpers,readChannel,conversationWork} from '../cloud/collaboration/conversation.mjs';
 import {groupMemoryTool,readGroupMemory,groupMemoryMaintenance,memoryEvents} from '../cloud/collaboration/group-memory.mjs';
 import {memoryTool,recallMemory} from '../cloud/collaboration/memory-context.mjs';
 import {callTool} from '../cloud/collaboration/api.mjs';
@@ -128,4 +128,66 @@ for(const legacy of [false,true])test(`later episodes preserve earlier source de
  const fixed=await f.write({topicId:first.topic.id,expectedVersion:2,phase:'correction',summary:'预算600，场地仍未定',body:'读取新原话后修正预算；保留场地问题',refs:[{kind:'message',id:a.id,version:2}]});
  assert.equal(fixed.topic.refs.find(r=>r.id===a.id).version,2);assert.ok(fixed.topic.refs.some(r=>r.id===b.id));assert.ok(fixed.topic.unresolvedEpisodeIds.includes(next.episode.id));
  const current=await readGroupMemory(f.repo,f.actor,{channelId,topicId:first.topic.id});assert.equal(current.sourceUnavailable,false);assert.match(current.body,/600/);assert.ok((await recallMemory(f.repo,f.actor,{channelId,query:'预算'},null)).items.some(m=>m.id===first.topic.id));
+});
+
+async function maintenanceFixture(t){
+ const f=await setup(t),channelId=f.channel.id,source=await f.send('channel.post',{channelId,body:'一个需要整理的实际决定'});
+ const claim=await f.send('channel.claim',{channelId,stepId:'turn_'+source.id+'_grok'},f.actor);
+ await f.send('channel.silent',{channelId,turnId:claim.turnId,reason:'fixture original processed'},f.actor);
+ await groupMemoryMaintenance(f.repo,f.identity,meetingHelpers,new Date(Date.now()+60000).toISOString());
+ const message=(await f.repo.list('channel_message',{scope:channelId})).find(m=>m.memoryMaintenance);
+ return {...f,channelId,source,message,stepId:'turn_'+message.id+'_grok'};
+}
+test('background memory freezes its event batch and yields on tool boundaries without consuming foreground work',async t=>{
+ const f=await maintenanceFixture(t),claim=await f.send('channel.claim',{channelId:f.channelId,stepId:f.stepId},f.actor);
+ assert.deepEqual(claim.input.backgroundWork.eventIds,f.message.maintenanceEventIds);
+ const later=await f.send('channel.post',{channelId:f.channelId,replyTo:f.source.id,mentions:['owner'],body:'之后到达的普通成员信息'}, {memberId:'check'});
+ const laterEvent=(await memoryEvents(f.repo,f.channelId)).events.find(e=>e.sourceId===later.id);
+ const batch=await groupMemoryTool(f.repo,f.actor,{channelId:f.channelId,action:'list'});
+ assert.ok(!batch.coverage.events.some(e=>e.id===laterEvent.id),'new sources cannot extend the running background batch');
+ const outside=await memoryTool(f.repo,f.actor,'review_memory_events',{requestId:'outside-snapshot',channelId:f.channelId,eventIds:[laterEvent.id],summary:'不得冒充本次覆盖'});
+ assert.equal(outside.deferred,true);assert.equal((await f.repo.get('memory_event',laterEvent.id)).status,'pending');
+ const owner=await f.send('channel.post',{channelId:f.channelId,body:'我现在需要你回答，后台先让开'});
+ const before=await f.repo.get('channel_turn',claim.turnId);
+ const yieldRead=await groupMemoryTool(f.repo,f.actor,{channelId:f.channelId,action:'list'});assert.equal(yieldRead.backgroundWork.yieldToForeground,true);
+ const review=await memoryTool(f.repo,f.actor,'review_memory_events',{requestId:'yield-snapshot',channelId:f.channelId,eventIds:f.message.maintenanceEventIds,summary:'不要覆盖'});assert.equal(review.deferred,true);
+ assert.deepEqual(await f.repo.get('channel_turn',claim.turnId),before,'no forced native cancellation or early lease release');
+ assert.ok((await memoryEvents(f.repo,f.channelId)).events.some(e=>e.sourceId===f.source.id));
+ await f.send('channel.silent',{channelId:f.channelId,turnId:claim.turnId,reason:'让出前台'},f.actor);
+ assert.equal((await f.repo.get('memory_maintenance',f.channelId)).status,'deferred');
+ const next=await f.send('channel.claim',{channelId:f.channelId,stepId:'turn_'+owner.id+'_grok'},f.actor);
+ assert.deepEqual(next.input.triggerMessageIds,[owner.id]);assert.equal(next.input.backgroundWork,undefined);
+ await memoryTool(f.repo,f.actor,'review_memory_events',{requestId:'foreground-normal-memory',channelId:f.channelId,eventIds:[laterEvent.id],summary:'前台照常处理记忆'});
+ assert.equal((await f.repo.get('memory_event',laterEvent.id)).status,'reviewed','foreground tools keep their existing abilities');
+});
+test('foreground wins over an unclaimed background batch, and the batch is not merged or falsely completed',async t=>{
+ const f=await maintenanceFixture(t),owner=await f.send('channel.post',{channelId:f.channelId,body:'前台新需求'});
+ const ready=await conversationWork(f.repo,f.identity,'grok');assert.equal(ready.find(w=>w.status==='ready').messageId,owner.id);
+ const deferred=await f.send('channel.claim',{channelId:f.channelId,stepId:f.stepId},f.actor);assert.equal(deferred.claimed,false);assert.equal(deferred.status,'obsolete');
+ assert.equal((await f.repo.get('channel_turn',f.stepId)).resolution,'background_deferred');assert.equal((await f.repo.get('memory_maintenance',f.channelId)).status,'deferred');
+ const foreground=await f.send('channel.claim',{channelId:f.channelId,stepId:'turn_'+owner.id+'_grok'},f.actor);
+ assert.deepEqual(foreground.input.triggerMessageIds,[owner.id]);assert.ok((await memoryEvents(f.repo,f.channelId)).events.some(e=>e.sourceId===f.source.id));
+ await f.send('channel.silent',{channelId:f.channelId,turnId:foreground.turnId,reason:'本次前台已处理'},f.actor);
+ await groupMemoryMaintenance(f.repo,f.identity,meetingHelpers,new Date(Date.now()+120000).toISOString());
+ assert.equal((await f.repo.list('channel_message',{scope:f.channelId})).filter(m=>m.memoryMaintenance).length,2,'deferred batch can resume once idle');
+});
+test('background scheduling respects shared native execution across groups without blocking independent sessions',async t=>{
+ const f=await setup(t),a=f.channel.id,source=await f.send('channel.post',{channelId:a,body:'待整理的决定'});
+ await f.repo.transact('settle-first',{},async tx=>{for(const turn of await tx.list('channel_turn',{scope:a}))tx.put('channel_turn',{...turn,status:'done'});});
+ const other=await f.send('channel.create',{name:'同一原会话另一个群',memberIds:['grok'],coordinatorId:'grok'});
+ await f.send('channel.post',{channelId:other.id,body:'另一个群的前台工作'});
+ const now=new Date(Date.now()+60000).toISOString();await groupMemoryMaintenance(f.repo,f.identity,meetingHelpers,now);
+ assert.equal((await f.repo.list('memory_maintenance')).length,0,'shared execution stays with foreground work');
+ await f.repo.transact('separate-sessions',{},async tx=>{for(const [scopeId,sessionKey]of[[a,'separate-a'],[other.id,'separate-b']])tx.put('execution_binding',{id:'grok:'+scopeId,parentId:'grok',scopeId,sessionKey,status:'active'});});
+ await groupMemoryMaintenance(f.repo,f.identity,meetingHelpers,now);
+ assert.ok((await f.repo.list('memory_maintenance')).some(m=>m.id===a),'another session need not block this independent background work');
+});
+
+test('legacy queued maintenance also yields to foreground in receiveNext without merging the hidden instruction',async t=>{
+ const f=await maintenanceFixture(t);
+ await f.repo.transact('legacy-maintenance-fields',{},async tx=>{const turn=await tx.get('channel_turn',f.stepId);delete turn.background;tx.put('channel_turn',turn);const source=await tx.get('channel_message',f.message.id);delete source.maintenanceEventIds;tx.put('channel_message',source);});
+ const owner=await f.send('channel.post',{channelId:f.channelId,body:'正常前台先处理'});
+ const claim=await f.send('channel.claim',{channelId:f.channelId,receiveNext:true},f.actor);
+ assert.deepEqual(claim.input.triggerMessageIds,[owner.id]);assert.equal(claim.input.backgroundWork,undefined);
+ assert.equal((await f.repo.get('channel_turn',f.stepId)).status,'ready','legacy background remains pending, never pretends it was processed');
 });

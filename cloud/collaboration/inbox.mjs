@@ -20,7 +20,7 @@ export async function withConversationContext(repo, identity, actor, claim,optio
     meetingTurnContext(repo, identity, actor, turn),
     workspaceGrant(repo,actor),
     recallMemory(repo,actor,{channelId:claim.channelId,query:(claim.input.triggerMessages||[]).map(m=>m.body).join('\n')},repo.memoryService),
-    pendingMemoryEvents(repo,claim.channelId),
+    pendingMemoryEvents(repo,claim.channelId,{eventIds:claim.input.backgroundWork?.eventIds}),
     skillCatalog(repo,actor,claim.channelId),
   ]);
   const secretaryRequests=secretaryGrant?(await repo.list('secretary_request',{scope:claim.channelId,parent:actor.memberId,order:'recent',limit:40})).filter(r=>r.grantVersion===secretaryGrant.version&&((claim.input.triggerMessages||[]).some(m=>m.id===r.messageId)||!['done'].includes(r.status))):[];

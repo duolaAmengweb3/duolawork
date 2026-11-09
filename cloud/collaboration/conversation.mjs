@@ -1,3 +1,4 @@
+import {isMemoryMaintenance,foregroundWaiting,memoryBatch} from './background-memory.mjs';
 import {taskDeliveryProperties,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
@@ -242,6 +243,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     memberId,
     messageId: message.id,
     queuedResourceKey: connection ? await executionResource(tx,connection,channel.id) : null,
+    ...(message.memoryMaintenance?{background:'memory'}:{}),
     ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
     ...(message.taskId?{taskId:message.taskId,taskEvent:message.taskEvent}:{}),
     ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
@@ -311,6 +313,10 @@ async function finishTurn(tx, actor, turnId, status, reason, responseRef) {
   await acknowledgeNativeContext(tx,turn);
   await acknowledgeProductContext(tx,turn,status);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
+  if(await isMemoryMaintenance(tx,turn)&&await foregroundWaiting(tx,turn.memberId,turn.resourceKey,turn.id)){
+    const maintenance=await tx.get('memory_maintenance',turn.scopeId,false);
+    if(maintenance?.messageId===turn.messageId)tx.put('memory_maintenance',{...maintenance,status:'deferred'});
+  }
   const r = await tx.get("resource", turn.resourceKey, false);
   if (r?.turnId === turn.id)
     tx.put("resource", { ...r, status: "idle", turnId: null });
@@ -380,13 +386,13 @@ export async function conversationWork(repo, identity, memberId,{delivery=false}
       kind: "conversation",
       messageId: turn.messageId,
       deliveryAttempt: turn.recoveryCount||0,
-      createdAt:turn.createdAt,
+      createdAt:turn.createdAt,background:turn.background||((await isMemoryMaintenance(repo,turn))?'memory':null),
       ...(delivery?{delivery:{turnId:turn.id,channelId:turn.scopeId,attempt:turn.recoveryCount||0,message:await repo.get('channel_message',turn.messageId,false)}}:{}),
       instruction:
         "这是群聊新消息，不是正式任务。领取后读取上下文，自主决定回复、@、用工具或静默。",
     });
   }
-  return result.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||'')||a.stepId.localeCompare(b.stepId));
+  return result.sort((a,b)=>Number(!!a.background)-Number(!!b.background)||(a.createdAt||'').localeCompare(b.createdAt||'')||a.stepId.localeCompare(b.stepId));
 }
 
 // Transport receipts do not acquire a model lease. The receiving process saves
@@ -466,7 +472,9 @@ export async function claimConversation(
           parent: actor.memberId,
           ...(args.channelId ? { scope: args.channelId } : {}),
           limit: 500,
-        })).sort((a, b) => Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+        }));
+        for(const candidate of pending)if(await isMemoryMaintenance(tx,candidate))candidate.background='memory';
+        pending.sort((a, b) => Number(!!a.background)-Number(!!b.background)||Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
         const selecting=pending.length?new Set([...await tx.list('native-command',{parent:actor.memberId,status:'pending',limit:501}),...await tx.list('native-command',{parent:actor.memberId,status:'prepared',limit:501})].map(c=>c.channelId)):new Set();
         for (const candidate of pending) {
           if(selecting.has(candidate.scopeId))continue;
@@ -512,6 +520,12 @@ export async function claimConversation(
       if(selecting)fail('binding_pending','正在为这个聊天准备工作对话，消息已保存，准备完成后自动继续',409);
       const resourceKey=await executionResource(tx,c,channel.id);
       if(args.expectedSessionId&&resourceKey!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);
+      if(await isMemoryMaintenance(tx,turn)&&await foregroundWaiting(tx,actor.memberId,resourceKey,turn.id)){
+       tx.put('channel_turn',{...turn,status:'removed',resolution:'background_deferred',reason:'前台工作优先，未开始后台整理',completedAt:tx.now});
+       const notice=await tx.get('outbox','notice_'+turn.id,false);if(notice)tx.put('outbox',{...notice,status:'canceled',completedAt:tx.now});
+       const maintenance=await tx.get('memory_maintenance',channel.id,false);if(maintenance?.messageId===turn.messageId)tx.put('memory_maintenance',{...maintenance,status:'deferred'});
+       return {status:'obsolete',claimed:false,needsResponse:false,turnId:turn.id,channelId:channel.id,instruction:'后台整理已让位，原事件仍待整理。结束本轮，不要领取其他通知；前台工作由连接器正常投递。'};
+      }
       const legacyResource=await tx.get("resource",c.resourceKey,false);
       if(resourceKey!==c.resourceKey&&legacyResource?.status==='busy')fail('resource_busy','旧版接收的工作正在结束，消息已保留',409);
       const resource = await tx.get("resource", resourceKey, false);
@@ -522,7 +536,8 @@ export async function claimConversation(
         scope: channel.id,
         parent: actor.memberId,
       })).filter(t => (t.deliveryReview || null) === (turn.deliveryReview || null) && (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
-      const pending=[];for(const candidate of candidates)if((await reconcileTaskNotification(tx,candidate)).state==='current')pending.push(candidate);
+      const background=await isMemoryMaintenance(tx,turn);
+      const pending=[];for(const candidate of candidates)if(await isMemoryMaintenance(tx,candidate)===background&&(await reconcileTaskNotification(tx,candidate)).state==='current')pending.push(candidate);
       const requirementVersions={};
       for(const root of new Set(pending.map(t=>t.coordinationRootId).filter(Boolean))){const r=await tx.get("channel_coordination",channel.id+":"+root,false);if(r)requirementVersions[root]=r.requirementVersion||1;}
       const lease = id("lease");
@@ -577,6 +592,7 @@ export async function claimConversation(
         channelId: channel.id,
         input: {
           kind: "conversation",
+          ...(background?{backgroundWork:await memoryBatch(tx,actor,channel.id)}:{}),
           ...(turn.deliveryReview?{deliveryReview:await deliveryIssueDetail(tx,channel,await tx.get('channel_delivery_issue',turn.deliveryReview))}:{}),
           ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
           channelId: channel.id,

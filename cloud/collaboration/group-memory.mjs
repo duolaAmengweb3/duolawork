@@ -1,3 +1,5 @@
+import {memoryBatch,backgroundYield,foregroundWaiting} from './background-memory.mjs';
+import {executionResource} from './execution-bindings.mjs';
 import {fail,id,required,digest} from './repository.mjs';
 import {access,validateRefs,publicMemory} from './workspace-objects.mjs';
 import {queueMemoryIndex,sourcesAvailable,memoryRows,currentMemoryRefs,mergeMemoryRefs} from './memory-context.mjs';
@@ -10,8 +12,8 @@ export const GROUP_MEMORY_TOOLS=[{
  inputSchema:{type:'object',properties:{requestId:string,channelId:string,action:{type:'string',enum:['list','read','record','link','merge','split']},topicId:string,topicKey:string,expectedVersion:number,title:string,summary:string,body:string,phase:{type:'string',enum:['goal','change','evidence','decision','result','question','dissent','correction']},refs,eventIds:{type:'array',items:string,maxItems:50},relatedTopicIds:{type:'array',items:string,maxItems:20},resolvedEpisodeIds:{type:'array',items:string,maxItems:50},episodeIds:{type:'array',items:string,maxItems:50},supersededEpisodeIds:{type:'array',items:string,maxItems:50},query:string,after:string,eventAfter:string},required:['channelId','action'],additionalProperties:false}
 }];
 
-export async function memoryEvents(repo,channelId,{after='',limit=50}={}){
- const rows=await repo.list('memory_event',{scope:channelId,status:'pending',after,limit:limit+1});
+export async function memoryEvents(repo,channelId,{after='',limit=50,eventIds}={}){
+ const rows=eventIds?(await Promise.all(eventIds.map(id=>repo.get('memory_event',id,false)))).filter(e=>e?.scopeId===channelId&&e.status==='pending'&&e.id>after).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,limit+1):await repo.list('memory_event',{scope:channelId,status:'pending',after,limit:limit+1});
  const events=[];
  const kinds={message:'channel_message',task:'channel_task',meeting:'channel_meeting',document:'channel_doc'};
  for(const e of rows.slice(0,limit)){
@@ -36,6 +38,8 @@ async function safeTopic(repo,actor,m){
 }
 export async function readGroupMemory(repo,actor,args){
  await access(repo,args.channelId,actor);
+ const batch=await memoryBatch(repo,actor,args.channelId);
+ if(batch?.yieldToForeground)return {items:[],...backgroundYield(batch)};
  if(args.topicId){
   const m=await topicRecord(repo,args.channelId,args.topicId);
   const rows=await repo.list('memory_episode',{scope:args.channelId,parent:m.id,after:args.after||'',limit:101});
@@ -48,13 +52,14 @@ export async function readGroupMemory(repo,actor,args){
  const rows=await database.prepare("SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind='channel_memory' AND scope_id=? AND id>? AND status!='deleted' AND json_extract(body,'$.memoryType')='topic' AND (?='' OR instr(lower(COALESCE(json_extract(body,'$.title'),'')||' '||COALESCE(json_extract(body,'$.body'),'')),?)>0) ORDER BY id LIMIT 101").bind(workspaceId,args.channelId,args.after||'',q,q).all();
  const items=[];
  for(const {body} of rows.results.slice(0,100)){const m=await safeTopic(repo,actor,JSON.parse(body));if(!q||(m.title+' '+m.body).toLowerCase().includes(q))items.push(m);}
- return {items,next:rows.results.length>100?JSON.parse(rows.results[99].body).id:null,...(args.includeCoverage===false?{}:{coverage:await memoryEvents(repo,args.channelId,{after:args.eventAfter})})};
+ return {items,next:rows.results.length>100?JSON.parse(rows.results[99].body).id:null,...(args.includeCoverage===false?{}:{coverage:await memoryEvents(repo,args.channelId,{after:args.eventAfter,eventIds:batch?.eventIds})}),...(batch?{backgroundWork:batch}:{})};
 }
 
 export async function groupMemoryTool(repo,actor,args){
  await access(repo,args.channelId,actor);
+ const batch=await memoryBatch(repo,actor,args.channelId);if(batch?.yieldToForeground)return backgroundYield(batch);
  if(['list','read'].includes(args.action)){
-  const result=await readGroupMemory(repo,actor,args),items=args.topicId?[result]:result.items;
+  const result=await readGroupMemory(repo,actor,args);if(result.deferred)return result;const items=args.topicId?[result]:result.items;
   if(actor.memberId&&items.some(m=>!m.sourceUnavailable))await repo.transact('topic-read:'+id('r'),{actor,ids:items.map(m=>m.id)},async tx=>{
    await access(tx,args.channelId,actor);
    for(const m of items){const current=await tx.get('channel_memory',m.id,false);if(!m.sourceUnavailable&&current?.status!=='deleted'&&current?.version===m.version)tx.put('shared_read',{id:m.id+':'+actor.memberId+':'+args.channelId,parentId:m.id,scopeId:args.channelId,memberId:actor.memberId,version:m.version,createdAt:tx.now});}
@@ -64,6 +69,8 @@ export async function groupMemoryTool(repo,actor,args){
  required(args.requestId,'请求编号',150);
  return repo.transact(args.requestId,{actor,args},async tx=>{
   const channel=await access(tx,args.channelId,actor),authorId=actor.memberId||'owner';
+  const batch=await memoryBatch(tx,actor,args.channelId);if(batch?.yieldToForeground)return backgroundYield(batch);
+  if(batch&&args.eventIds?.some(id=>!batch.eventIds.includes(id)))return {...backgroundYield(batch),instruction:'新增事件留给下次后台批次，不在本次追读或覆盖；完成本批后 stay_silent。'};
   if(['merge','split','link'].includes(args.action)){
    const original=await topicRecord(tx,channel.id,args.topicId);
    if(args.expectedVersion!==original.version)fail('version_conflict','话题已有更新，请重新读取',409);
@@ -128,7 +135,7 @@ export async function groupMemoryMaintenance(repo,identity,helpers,now){
  const rows=await repo.db.prepare("SELECT scope_id FROM hub_v2_records WHERE workspace_id=? AND kind='memory_event' AND status='pending' GROUP BY scope_id LIMIT 100").bind(repo.workspaceId).all();
  for(const row of rows.results){
   const c=await repo.get('channel',row.scope_id,false);if(!c?.coordinatorId||c.status!=='active'||!c.memoryAutomatic)continue;
-  const blocked=async r=>{for(const status of ['ready','active','stalled','limited','unavailable'])if((await r.list('channel_turn',{scope:c.id,status,limit:1,page:true})).length)return true;return false;};
+  const blocked=async r=>{const connection=await r.get('connection',c.coordinatorId,false);if(connection&&await foregroundWaiting(r,c.coordinatorId,await executionResource(r,connection,c.id)))return true;for(const status of ['ready','active','stalled','limited','unavailable'])if((await r.list('channel_turn',{scope:c.id,status,limit:1,page:true})).length)return true;return false;};
   if(await blocked(repo))continue;
   const meetings=await memoryRows(repo,'channel_meeting',{scope:c.id});
   if(meetings.some(m=>['preparing','running','closing'].includes(m.status)))continue;
@@ -137,7 +144,7 @@ export async function groupMemoryMaintenance(repo,identity,helpers,now){
   const pending=await repo.list('memory_event',{scope:c.id,status:'pending',limit:50});
   if(!pending.length||pending.some(e=>Date.parse(now)-Date.parse(e.createdAt)<30000))continue;
   const signature=await digest(pending.map(e=>e.id).sort().join('|')),prior=await repo.get('memory_maintenance',c.id,false);
-  if(prior?.signature===signature)continue;
+  if(prior?.signature===signature&&prior.status!=='deferred')continue;
   await repo.transact('memory-maintenance:'+c.id+':'+now,{},async tx=>{
    const channel=await tx.get('channel',c.id),events=await tx.list('memory_event',{scope:c.id,status:'pending',limit:50,page:true});
    if(!events.length||events.some(e=>Date.parse(now)-Date.parse(e.createdAt)<30000))return {};
@@ -145,10 +152,10 @@ export async function groupMemoryMaintenance(repo,identity,helpers,now){
    const connection=await tx.get('connection',channel.coordinatorId,false),member=identity.members.find(m=>m.id===channel.coordinatorId);
    if(!member||member.paused||member.status==='disabled'||connection?.status!=='verified')return {};
    const signature=await digest(events.map(e=>e.id).sort().join('|')),previous=await tx.get('memory_maintenance',c.id,false);
-   if(previous?.signature===signature)return {};
-   const message=await helpers.channelMessage(tx,channel,{memberId:'system'},'整理本群尚未记录的关键经历。先用 group_memory list 读覆盖信息，按来源读取未整理事件；同话题复用原 topicId，重要变化与分歧用 record，长期知识用 remember；无长期价值的用 review_memory_events 标明。不要新建任务或唤醒其他成员，不改任何原生项目；完成后 stay_silent，不向用户发送整理报告。',{hidden:true,type:'memory_review',memoryMaintenance:true,mentions:[channel.coordinatorId],hops:0});
+   if(previous?.signature===signature&&previous.status!=='deferred')return {};
+   const message=await helpers.channelMessage(tx,channel,{memberId:'system'},'整理本群尚未记录的关键经历。先用 group_memory list 读覆盖信息，按来源读取未整理事件；同话题复用原 topicId，重要变化与分歧用 record，长期知识用 remember；无长期价值的用 review_memory_events 标明。不要新建任务或唤醒其他成员，不改任何原生项目；完成后 stay_silent，不向用户发送整理报告。',{hidden:true,type:'memory_review',memoryMaintenance:true,maintenanceEventIds:events.map(e=>e.id),mentions:[channel.coordinatorId],hops:0});
    await helpers.enqueue(tx,identity,channel,message,channel.coordinatorId);
-   tx.put('memory_maintenance',{id:c.id,scopeId:c.id,signature,messageId:message.id,createdAt:now});return {};
+   tx.put('memory_maintenance',{id:c.id,scopeId:c.id,signature,messageId:message.id,createdAt:now,status:'scheduled'});return {};
   },now);
  }
 }

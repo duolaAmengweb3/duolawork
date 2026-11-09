@@ -1,3 +1,4 @@
+import {memoryBatch,backgroundYield} from './background-memory.mjs';
 import {fail,digest,id,required} from './repository.mjs';
 import {access,publicMemory} from './workspace-objects.mjs';
 import {workspaceGrant} from './delegation.mjs';
@@ -88,6 +89,8 @@ export async function memoryTool(repo,actor,name,args,identity){
  const result=await repo.transact(args.requestId,{actor,args,name},async tx=>{
   await access(tx,args.channelId,actor);
   if(name==='review_memory_events'){
+   const batch=await memoryBatch(tx,actor,args.channelId);if(batch?.yieldToForeground)return backgroundYield(batch);
+   if(batch&&args.eventIds?.some(id=>!batch.eventIds.includes(id)))return {...backgroundYield(batch),instruction:'只处理本批快照；新事件未标为已整理，留给下次。完成后 stay_silent。'};
    if(!Array.isArray(args.eventIds)||args.eventIds.length>50)fail('invalid_events','记忆事件无效');
    for(const key of args.eventIds){const e=await tx.get('memory_event',key);if(e.scopeId!==args.channelId)fail('forbidden','事件不在当前聊天',403);tx.put('memory_event',{...e,status:'reviewed',reviewedBy:actor.memberId||'owner',summary:required(args.summary,'整理说明',1000)});}return {reviewed:args.eventIds.length};
   }
