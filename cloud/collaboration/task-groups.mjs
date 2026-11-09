@@ -1,10 +1,11 @@
+import {enrichTask} from './task-deliverables.mjs';
 import {fail} from './repository.mjs';
 
 // One task and its concrete Todos. Existing ungrouped records remain standalone.
 export async function childrenOf(repo, taskId) {
   const items=[];let after='';
   for (;;) {
-    const page=await repo.list('channel_task',{parent:taskId,after,limit:500});
+    const page=await repo.list('channel_task',{parent:taskId,after,limit:500,page:true});
     items.push(...page);if(page.length<500)return items;after=page.at(-1).id;
   }
 }
@@ -63,5 +64,5 @@ export async function listTaskGroups(repo, channelId, args={}) {
     params.push(query,query);
   }
   const rows=(await repo.db.prepare(sql+' ORDER BY t.id LIMIT 101').bind(...params).all()).results.map(r=>JSON.parse(r.body));
-  return {items:await taskSummaries(repo,rows.slice(0,100)),next:rows.length>100?rows[99].id:null};
+  return {items:await Promise.all((await taskSummaries(repo,rows.slice(0,100))).map(t=>enrichTask(repo,t))),next:rows.length>100?rows[99].id:null};
 }

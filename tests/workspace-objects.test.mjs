@@ -30,7 +30,7 @@ test('Todo assignment delivers once, assignee accepts and reports blockers and r
  await assert.rejects(f.send('channel.task',{channelId,taskId:task.id,action:'update',expectedVersion:1,status:'done'}),e=>e.code==='version_conflict');
  await assert.rejects(f.send('channel.task',{channelId,taskId:task.id,action:'update',status:'blocked'}),e=>e.code==='blocker_required');
  current=await f.send('channel.task',{channelId,taskId:task.id,action:'update',status:'blocked',blocker:'缺少验收文件'},{memberId:'check'});
- current=await f.send('channel.task',{channelId,taskId:task.id,action:'update',status:'done',result:'修复已提交，回归通过'},{memberId:'check'});
+ current=await f.send('channel.task',{channelId,taskId:task.id,action:'submit',expectedVersion:current.version,workSpecVersion:1,submission:{body:'修复已提交，回归通过',coverage:[{id:'outcome',location:'正文'}]},selfCheck:{verdict:'accept',reason:'已核对修复与回归',criterionResults:[{id:'outcome',result:'met',evidence:'回归结果'}]}},{memberId:'check'});
  const read=await conversationTool(f.repo,f.identity,owner,'read_todo',{channelId,taskId:task.id});
  assert.equal(read.versions.length,4);assert.equal(read.completedBy,'check');assert.deepEqual(read.meetingIds,[meeting.id]);assert.equal(read.sourceMessageId,source.id);
  assert.equal((await f.repo.list('channel_turn')).filter(t=>t.messageId===task.notificationMessageId).length,1);

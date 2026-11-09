@@ -179,8 +179,10 @@ try {
   await p.getByRole('button',{name:'取消提及全员',exact:true}).click();
   assert.equal(await p.getByRole('button',{name:'提及全员',exact:true}).getAttribute('aria-pressed'),'false');
   await p.getByRole('textbox',{name:'群消息',exact:true}).fill('@Grok 只请你核对');
+  const sentReceipt=p.waitForResponse(r=>r.url().endsWith('/api/v2/commands')&&r.request().method()==='POST'&&r.request().postDataJSON()?.body==='@Grok 只请你核对');
   await p.getByRole('button',{name:'发送消息',exact:true}).click();
   await p.getByText('@Grok 只请你核对',{exact:true}).waitFor();
+  assert.ok((await sentReceipt).ok()); // optimistic rendering precedes the actual server receipt
   assert.deepEqual((await h.request('/v2/channel?id='+c.id)).messages.at(-1).recipientIds,[grok.id]);
   await h.command('channel.update',{channelId:c.id,coordinatorId:null});
   await p.reload();
@@ -194,9 +196,9 @@ try {
   assert.equal((await h.request('/v2/channel?id='+c.id)).messages.at(-1).mentionAll,true);
   await h.command('channel.update',{channelId:c.id,coordinatorId:dot.id});
   await p.reload();
-  await p.locator('.pending-member').filter({hasText:'Dot 已回复'}).click();
-  await p.getByRole('heading',{name:'消息处理记录',exact:true}).waitFor();
-  assert.ok(await p.locator('.activity-source').filter({hasText:'暂未指定负责人'}).count());
+  await p.locator('.pending-member').filter({hasText:'Dot'}).click();
+  await p.getByRole('heading',{name:'消息进度',exact:true}).waitFor();
+  assert.ok(await p.locator('.delivery-source').filter({hasText:'暂未指定负责人'}).count());
   await p.getByRole('button',{name:'返回',exact:true}).click();
   await p.getByRole('button',{name:'提及成员',exact:true}).click();
   await fs.mkdir('evidence/screenshots',{recursive:true});
@@ -250,7 +252,7 @@ try {
   failReads = true;
   await p.getByRole('textbox', { name: '群消息', exact: true }).fill('写入确认后的读取故障');
   await p.getByRole('button', { name: '发送消息', exact: true }).click();
-  await p.waitForFunction(() => document.querySelector('textarea[aria-label="群消息"]')?.value === '');
+  await p.waitForFunction(() => !document.querySelector('.message-send-status'));
   assert.equal((await h.request('/v2/channel?id=' + c.id)).messages.filter(m => m.body === '写入确认后的读取故障').length, 1);
   assert.equal(await p.getByRole('alert').count(), 0);
   failReads = false;
@@ -260,16 +262,16 @@ try {
   postRequests = 0;
   await p.getByRole('textbox', { name: '群消息', exact: true }).fill('响应丢失后的幂等重试');
   await p.getByRole('button', { name: '发送消息', exact: true }).click();
-  await p.getByRole('alert').getByText(/操作结果尚未确认/).waitFor();
-  assert.equal(postRequests, 1, '写入失败不自动重发');
-  assert.equal(await p.getByRole('textbox', { name: '群消息', exact: true }).inputValue(), '响应丢失后的幂等重试');
-  await p.getByRole('button', { name: '发送消息', exact: true }).click();
+  await p.waitForFunction(()=>JSON.parse(localStorage.getItem('duolawork-outbox-v1')||'[]').length===0);
+  assert.equal(await p.getByRole('textbox', { name: '群消息', exact: true }).inputValue(), '');
+  // A lost ACK is reconciled using the same saved message ID; a duplicate body is never created.
+  assert.ok(postRequests<=2);
   await p.waitForFunction(() => document.querySelector('textarea[aria-label="群消息"]')?.value === '');
-  assert.equal(postRequests, 2);
+  assert.ok(postRequests<=2);
   assert.equal((await h.request('/v2/channel?id=' + c.id)).messages.filter(m => m.body === '响应丢失后的幂等重试').length, 1);
   await p.getByRole('textbox', { name: '群消息', exact: true }).fill('未发送的草稿');
   await p.unroute('**/api/v2/**');
-  checks.push('服务端已收消息但回执丢失时保留草稿，用户重试沿用原编号、不重复落消息');
+  checks.push('服务端已收消息但回执丢失时按已保存编号核对结果，不重复落消息，也不占住输入框');
   await fs.mkdir("evidence/screenshots", { recursive: true });
   await p.screenshot({
     path: "evidence/screenshots/conversation-desktop.png",

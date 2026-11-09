@@ -1,3 +1,4 @@
+import {taskDeliveryProperties,taskTurnAllowed} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {manageChannel} from './channel-management.mjs';
@@ -127,7 +128,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "board_task",
-    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。create/update/accept。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
+    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。create/update/accept/configure/submit/check/bind_execution_decision。新任务有轻量交付约定 workSpec；先 read_todo 查看条件、原要求和版本。submit 带 expectedVersion、workSpecVersion、submission（body/sections/data/refs/coverage）；普通事项可附 selfCheck 一次完成，指定核对由真实核对人 check 当前 submissionId。核对给 criterionResults(id,result=met/not_met/unknown,evidence)、verdict=accept/changes_requested、reason。满足清单不代表满足原要求，核对实际产物。dependsOn 只连同任务下的前置 Todo。旧 done 只保存待核对成果，不伪造核对通过。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
     {
       requestId: "string",
       channelId: "string",
@@ -140,7 +141,7 @@ const BASIC_CHANNEL_TOOLS = [
       notifyAssignee: "boolean",
       body: "string", progress: "string", blocker: "string", result: "string",
       dueDate: "string", expectedVersion: "number", sourceMessageId: "string",
-      meetingIds: "array", refs: referenceSchema, skillRefs:skillRefsSchema,
+      meetingIds: "array", refs: referenceSchema, skillRefs:skillRefsSchema, ...taskDeliveryProperties,
     },
     ["requestId", "channelId", "action"],
   ],
@@ -241,6 +242,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
     messageId: message.id,
     queuedResourceKey: connection ? await executionResource(tx,connection,channel.id) : null,
     ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
+    ...(message.taskId?{taskId:message.taskId,taskEvent:message.taskEvent}:{}),
     ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
     ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1,requirementVersion:message.requirementVersion||1}:{}),
     wakeSource: message.authorId === "owner" ? "user" : "agent",
@@ -451,6 +453,7 @@ export async function claimConversation(
           const group = await tx.get("channel", candidate.scopeId, false);
           if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
           const occupied=await tx.get('resource',await executionResource(tx,connection,group.id),false);if(occupied?.status==='busy')continue;
+          if (!await taskTurnAllowed(tx,candidate)){tx.put('channel_turn',{...candidate,status:'removed',reason:'Todo 已取消、前置未就绪或成果已有新版'});const notice=await tx.get('outbox','notice_'+candidate.id,false);if(notice)tx.put('outbox',{...notice,status:'canceled'});continue;}
           if (!await meetingTurnAllowed(tx, candidate)) { tx.put('channel_turn', { ...candidate, status: 'removed', reason: '会议阶段已经变化或结束' }); continue; }
           turn = candidate;
           channel = group;
@@ -468,6 +471,7 @@ export async function claimConversation(
         fail("forbidden", "通知不属于此成员", 403);
       if (!receivableTurn(turn))
         fail("turn_unavailable", "通知已处理或尚不可领取", 409);
+      if (!await taskTurnAllowed(tx,turn))fail('task_not_ready','Todo 已取消、前置未就绪或成果已有新版；请 read_todo',409);
       if (!await meetingTurnAllowed(tx, turn)) fail('meeting_changed', '会议阶段已变化或结束，原消息保留', 409);
       const member = activeMember(identity, actor.memberId),
         c = await tx.get("connection", actor.memberId);

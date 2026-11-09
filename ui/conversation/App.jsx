@@ -437,13 +437,13 @@ export default function App() {
     }catch(e){setError(e.message);if(e.code==='version_conflict')void api('/v2/channels'+(action==='restore'?'?deleted=1':'')).then(data=>{const latest=data.items.find(row=>row.id===c.id);if(action==='restore')setDeletedChannels(data.items);else if(latest)setModal(old=>old?.type==='delete-channel'?{...old,channel:latest}:old);}).catch(()=>{});}
     finally{setBusy(false);}
   }
-  const allSelected = mentionAll;
+  const allSelected = mentionAll || hasAllMention(draft);
   useEffect(()=>{
     if(snapshot?.channel.id!==current)return;
     const closed=snapshot.meetings?.find(m=>m.id===meetingScopes[current]&&['ended','closed'].includes(m.status));
     if(closed)setMeetingScopes(old=>old[current]===closed.id?{...old,[current]:null}:old);
   },[snapshot,current,meetingScopes]);
-  const addressedMembers = mentions;
+  const addressedMembers = [...new Set([...mentions,...namedMentions(draft,groupMembers)])];
   const recipients = channel ? messageRecipients(channel, { owner: true, mentions: addressedMembers, mentionAll: allSelected }) : [];
   const pendingActivity = pendingMemberActivity(snapshot?.activity?.filter(t=>!t.deliveryReview), snapshot?.notifications, codingStatus.members);
   const delivery = deliveryView(snapshot||{},workspace.members,codingStatus.members);

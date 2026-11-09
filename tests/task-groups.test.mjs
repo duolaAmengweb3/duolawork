@@ -5,7 +5,7 @@ import {conversationCommand,conversationTool} from '../cloud/collaboration/conve
 import {secretaryOverview} from '../cloud/collaboration/secretary.mjs';
 import {callTool} from '../cloud/collaboration/api.mjs';
 const owner={owner:true},agent={memberId:'grok'};
-async function setup(t){const f=await fixture(t);let n=0;const send=(type,args={},actor=owner)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'group-'+(++n),...args});const c=await send('channel.create',{name:'任务归组',memberIds:['grok','check'],coordinatorId:'grok'});const task=(args,actor)=>send('channel.task',{channelId:c.id,action:'create',notifyAssignee:false,...args},actor);const list=args=>conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,...args});return {...f,c,send,task,list};}
+async function setup(t){const f=await fixture(t);let n=0;const send=(type,args={},actor=owner)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'group-'+(++n),...args});const c=await send('channel.create',{name:'任务归组',memberIds:['grok','check'],coordinatorId:'grok'});const task=async(args,actor=owner)=>{if(args.status!=='done')return send('channel.task',{channelId:c.id,action:'create',notifyAssignee:false,...args},actor);const initial=args.action==='update'?await conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,taskId:args.taskId}):await send('channel.task',{channelId:c.id,action:'create',notifyAssignee:false,...args,status:'todo'},actor);return send('channel.task',{channelId:c.id,action:'submit',taskId:initial.id,expectedVersion:initial.version,workSpecVersion:initial.workSpec.version,submission:{body:args.result,coverage:initial.workSpec.criteria.map(x=>({id:x.id,location:'实际交付结果'}))},selfCheck:{verdict:'accept',reason:'已核对实际交付结果',criterionResults:initial.workSpec.criteria.map(x=>({id:x.id,result:'met',evidence:'实际交付结果'}))}},actor);};const list=args=>conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,...args});return {...f,c,send,task,list};}
 
 test('existing tasks move without losing history, identity, result, assignee or meeting; listing searches child and groups roots',async t=>{
  const f=await setup(t),channelId=f.c.id;
@@ -13,19 +13,19 @@ test('existing tasks move without losing history, identity, result, assignee or 
  const root=await f.task({title:'记忆系统'}),other=await f.task({title:'通信修复'});
  const old=await f.task({title:'验收来源完整性',status:'done',result:'已核验三条来源',assigneeId:'check',meetingIds:[meeting.id]});
  const before=(await f.repo.list('channel_message')).length;
- const moved=await f.task({action:'update',taskId:old.id,parentTaskId:root.id,expectedVersion:1},agent);
- assert.equal(moved.id,old.id);assert.equal(moved.version,2);assert.equal(moved.assigneeId,'check');assert.equal(moved.result,old.result);assert.equal(moved.status,'done');assert.deepEqual(moved.meetingIds,[meeting.id]);assert.equal((await f.repo.list('channel_message')).length,before);
+ const moved=await f.task({action:'update',taskId:old.id,parentTaskId:root.id,expectedVersion:old.version},agent);
+ assert.equal(moved.id,old.id);assert.equal(moved.version,old.version+1);assert.equal(moved.assigneeId,'check');assert.equal(moved.result,old.result);assert.equal(moved.status,'done');assert.deepEqual(moved.meetingIds,[meeting.id]);assert.equal((await f.repo.list('channel_message')).length,before);
  assert.equal(moved.completedBy,old.completedBy);assert.equal(moved.completedAt,old.completedAt);assert.equal(moved.lastEditorId,'grok');
  const roots=await f.list({});assert.equal(roots.items.length,2);assert.equal(roots.items.find(x=>x.id===root.id).subtasks.done,1);
  assert.equal((await f.list({query:'来源完整性'})).items[0].id,root.id);
  assert.equal((await f.list({parentTaskId:root.id})).items[0].id,old.id);
- const detail=await f.list({taskId:old.id});assert.equal(detail.parentTask.id,root.id);assert.equal(detail.versions.length,2);
- await f.task({action:'update',taskId:old.id,parentTaskId:other.id,expectedVersion:2});
+ const detail=await f.list({taskId:old.id});assert.equal(detail.parentTask.id,root.id);assert.equal(detail.versions.length,old.version+1);
+ await f.task({action:'update',taskId:old.id,parentTaskId:other.id,expectedVersion:moved.version});
  assert.equal((await f.list({taskId:root.id})).subtasks.total,0);assert.equal((await f.list({taskId:other.id})).subtasks.total,1);
  const historic=await conversationTool(f.repo,f.identity,owner,'read_space_object',{channelId,kind:'task',id:old.id,version:1});assert.equal(historic.parentTask,null);assert.equal(historic.subtasks,null);
- const priorGroup=await conversationTool(f.repo,f.identity,owner,'read_space_object',{channelId,kind:'task',id:old.id,version:2});assert.equal(priorGroup.parentTask.id,root.id);
- await assert.rejects(f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:2}),e=>e.code==='version_conflict');
- await f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:3});assert.equal((await f.list({})).items.length,3);
+ const priorGroup=await conversationTool(f.repo,f.identity,owner,'read_space_object',{channelId,kind:'task',id:old.id,version:moved.version});assert.equal(priorGroup.parentTask.id,root.id);
+ await assert.rejects(f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:moved.version}),e=>e.code==='version_conflict');
+ await f.task({action:'update',taskId:old.id,parentTaskId:'',expectedVersion:moved.version+1});assert.equal((await f.list({})).items.length,3);
 });
 
 test('editing completed work preserves completion attribution; reopening and completing records the new finisher',async t=>{
@@ -46,7 +46,7 @@ test('completion remains explicit, requires all Todos resolved plus result; clos
  await assert.rejects(f.task({action:'update',taskId:root.id,status:'done'}),e=>e.code==='result_required');
  await f.task({action:'update',taskId:root.id,status:'done',result:'产物已核对并发布'});
  await assert.rejects(f.task({title:'新需求',parentTaskId:root.id}),e=>e.code==='task_closed');
- await assert.rejects(f.task({action:'update',taskId:child.id,status:'todo'}),e=>e.code==='task_closed');
+ await f.task({action:'update',taskId:child.id,status:'todo'});assert.equal((await f.list({taskId:root.id})).status,'todo'); // reopening actual work reopens the adopted parent atomically
  await f.task({action:'update',taskId:root.id,status:'doing'});await f.task({action:'update',taskId:child.id,status:'todo'});
  assert.equal((await f.list({filter:'active'})).items.length,1);
 });

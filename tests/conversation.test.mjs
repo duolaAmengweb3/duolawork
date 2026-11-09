@@ -316,9 +316,9 @@ test("shared tools use conflict-safe versions, user decisions and approved memor
     channelId: c,
     action: "update",
     taskId: task.id,
-    status: "done",
+    status: "done",result:"实际交付结果",
   });
-  assert.equal((await f.repo.get("channel_task", task.id)).status, "done");
+  assert.equal((await f.repo.get("channel_task", task.id)).status, "doing"); // old done does not manufacture a content check
 });
 test("native legacy envelope keeps ordinary replies as chat, with actual scoped context", async (t) => {
   const f = await setup(t);

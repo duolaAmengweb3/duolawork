@@ -1,3 +1,4 @@
+import {taskDelivery,invalidateCoordinationTasks} from './task-deliverables.mjs';
 import {fail,required} from './repository.mjs';
 
 export const COORDINATION_TOOLS=[{
@@ -89,6 +90,7 @@ export async function coordinationCommand(tx,channel,actor,cmd,identity,helpers)
  const refs=cmd.refs??r.refs??[];
  if(!Array.isArray(refs)||refs.length>100)fail('invalid_refs','关联资料无效');
  for(const ref of refs){const kind={document:'channel_doc',file:'shared_file',task:'channel_task',meeting:'channel_meeting'}[ref.kind];if(!kind)fail('invalid_refs','资料类型无效');const item=await tx.get(kind,ref.id);if(item.scopeId!==channel.id||item.status==='deleted')fail('forbidden','资料不属于本群',403);}
+ if(status==='completed'){let after='';for(;;){const page=await tx.list('channel_task',{scope:channel.id,after,limit:500,page:true});for(const task of page)if(task.workSpec&&task.status!=='canceled'&&(task.coordinationRef?.id===r.id||refs.some(ref=>ref.kind==='task'&&ref.id===task.id))&&(task.status!=='done'||!(await taskDelivery(tx,task)).valid))fail('unfinished_tasks','此事项仍有未核对的任务，会议可以结束，任务不能误结案',409);if(page.length<500)break;after=page.at(-1).id;}}
  for(const event of await tx.list('coordination_event',{parent:r.id,status:'pending',limit:500}))tx.put('coordination_event',{...event,status:'handled',handledBy:actor.memberId||'owner',handledAt:tx.now});
  return tx.put('channel_coordination',{...r,version:r.version+1,coordinatorId:channel.coordinatorId,appointment:channel.coordinatorVersion||1,status,summary,refs,interruption,completedAt:status==='completed'?tx.now:null});
 }
@@ -98,6 +100,7 @@ export async function reviseRequirement(tx,identity,channel,r,source,helpers,{ed
  if(revisions[stamp])return r;
  if(!editing&&source.number<(r.latestRequirementNumber||0))fail('older_requirement','已有更新的用户要求，不能用旧消息替换；请读取当前需求',409);
  const next=tx.put('channel_coordination',{...r,version:r.version+1,requirementVersion:(r.requirementVersion||1)+1,latestRequirementNumber:Math.max(source.number,r.latestRequirementNumber||0),requirementMessageIds:[...new Set([...(r.requirementMessageIds||[r.sourceMessageId]),source.id])],requirementRevisions:{...revisions,[stamp]:true},status:'working'});
+ await invalidateCoordinationTasks(tx,channel,next);
  const notice=await helpers.channelMessage(tx,channel,{memberId:'owner'},`用户更新了此项要求：\n${source.body}\n请按新要求检查当前工作；旧结果需说明适用版本。`,{hidden:true,type:'coordination',replyTo:source.id,coordinationRootId:r.sourceMessageId,requirementVersion:next.requirementVersion,hops:0});
  for(const mid of new Set([channel.coordinatorId,...(r.participantIds||[])]))if(channel.memberIds.includes(mid))await helpers.enqueue(tx,identity,channel,notice,mid);
  return next;
