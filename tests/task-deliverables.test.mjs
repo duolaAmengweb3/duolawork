@@ -150,3 +150,14 @@ test('T09 equivalent structured JSON with reordered object keys is the same deli
  const again=await f.submit(first,{submission:{data:{beta:{y:3,x:2},alpha:1},coverage:[{location:'结构数据',id:'outcome'}]},selfCheck:passed});
  assert.equal(again.currentSubmissionId,first.currentSubmissionId);assert.equal(again.currentCheckId,first.currentCheckId);assert.equal(again.version,first.version);assert.equal((await f.repo.list('channel_task_submission')).length,1);
 });
+
+test('a structural parent reference survives parent progress, submission and acceptance; real artifact edits still invalidate the child',async t=>{
+ const f=await setup(t),root=await f.task({title:'有子成果的最终交付',workSpec:spec()}),child=await f.task({parentTaskId:root.id,workSpec:spec()});
+ const doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'实际输入原件',body:'当前版本'});
+ const childDone=await f.submit(child,{submission:{body:'实际子成果',refs:[{kind:'task',id:root.id,version:root.version},{kind:'document',id:doc.id,version:1}],coverage:[{id:'outcome',location:'正文'}]},selfCheck:passed});
+ const progress=await f.act(await f.read(root.id),'update',{status:'doing',progress:'正在收尾'});
+ assert.equal((await f.read(child.id)).delivery.valid,true,'parent metadata is context, not an upstream deliverable');
+ const rootDone=await f.submit(progress,{selfCheck:passed});assert.equal(rootDone.delivery.valid,true);assert.equal((await f.read(child.id)).delivery.valid,true,'aggregate acceptance cannot invalidate its own accepted input');
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:1,body:'真正的来源有了修改',reason:'原件实际修改'});
+ assert.equal((await f.read(child.id)).delivery.valid,false);assert.equal((await f.read(root.id)).delivery.valid,false,'real source changes still propagate');
+});

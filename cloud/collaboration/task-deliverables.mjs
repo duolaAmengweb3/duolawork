@@ -65,7 +65,10 @@ export async function taskDelivery(repo,task,{seen=new Set(),historical=false}={
   if(!same(submission.inputs,basis.inputs))gaps.push('上游成果已有变化');
   if(submission.requirementVersion!==basis.requirementVersion)gaps.push('成果基于旧需求');
   if(!historical&&submission.sourceVersions&&!same(submission.sourceVersions,(await sourceMessages(repo,{id:task.scopeId},task)).map(m=>({id:m.id,version:m.version}))))gaps.push('原始要求已编辑，请核对当前原话');
-  if(!historical)for(const ref of submission.refs||[]){const r=await repo.get(identityRefs[ref.kind],ref.id,false);if(!r||r.scopeId!==task.scopeId||r.hidden||r.status==='deleted'||(r.version||1)!==ref.version)gaps.push(`产物已有新版或不可访问：${ref.title||ref.id}`);}
+  // The structural parent is context, never an upstream artifact: accepting an
+  // aggregate must not stale the child it just consumed. Explicit basisRefs,
+  // actual documents and other task outputs retain their version fences.
+  if(!historical)for(const ref of submission.refs||[]){const r=await repo.get(identityRefs[ref.kind],ref.id,false);if(!r||r.scopeId!==task.scopeId||r.hidden||r.status==='deleted'||(!(ref.kind==='task'&&ref.id===task.parentTaskId)&&(r.version||1)!==ref.version))gaps.push(`产物已有新版或不可访问：${ref.title||ref.id}`);}
   for(const criterion of task.workSpec.criteria.filter(c=>c.required))if(!submission.coverage.some(c=>c.id===criterion.id&&c.location&&!c.gap))gaps.push(`成果未覆盖：${criterion.text}`);
  }
  const valid=!!submission&&check?.verdict==='accept'&&check.submissionId===submission.id&&check.workSpecVersion===task.workSpec.version&&task.acceptedSubmissionId===submission.id&&!gaps.length;
