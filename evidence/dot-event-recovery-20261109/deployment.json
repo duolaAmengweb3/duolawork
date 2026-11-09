@@ -1,0 +1,7 @@
+{
+  "at": "2026-11-09T09:52:25.180Z",
+  "sourceCommit": "78557d5c3cda2f8dc527cc82a20d60a21b2c7f9f",
+  "builtWorkerSha256": "2c3d6fd2f0443b6d06f5a544c9c23c3a02272b5bcfd25f2e9e3e4b6d992cc7a5",
+  "productionWorkerSha256": "2c3d6fd2f0443b6d06f5a544c9c23c3a02272b5bcfd25f2e9e3e4b6d992cc7a5",
+  "match": true
+}

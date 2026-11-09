@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-09T09:46:48.800Z",
+  "records": [
+    {
+      "at": "2026-11-09T09:07:29.313Z",
+      "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "messageId": "chat_8991cf10276d48b88ee8d5e425b78cb9",
+      "number": 665,
+      "createdAt": "2026-11-09T09:07:29.306Z",
+      "nonce": "dot-recovery-4d058b09",
+      "turn": {
+        "id": "turn_chat_8991cf10276d48b88ee8d5e425b78cb9_member_0ff5c20718654c9db5ab3b1d0334133e",
+        "status": "done",
+        "claimedAt": "2026-11-09T09:13:47.325Z",
+        "completedAt": "2026-11-09T09:13:55.942Z"
+      },
+      "reply": {
+        "id": "chat_cc1b73911b154e4aba6e92c1fde38f01",
+        "number": 666,
+        "body": "dot-recovery-4d058b09：已从原平台领取并回传。本次是人工唤醒验证。",
+        "createdAt": "2026-11-09T09:13:55.942Z"
+      },
+      "latency": {
+        "toClaimMs": 378019,
+        "claimToReplyMs": 8617,
+        "totalMs": 386636
+      }
+    },
+    {
+      "at": "2026-11-09T09:15:05.946Z",
+      "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "messageId": "chat_419f394b58c9467c95a5b5189c4a9a6e",
+      "number": 667,
+      "createdAt": "2026-11-09T09:15:06.005Z",
+      "nonce": "dot-auto-bbd64b51",
+      "type": "automatic-after-original-task-pause-resume",
+      "turn": {
+        "id": "turn_chat_419f394b58c9467c95a5b5189c4a9a6e_member_0ff5c20718654c9db5ab3b1d0334133e",
+        "status": "done",
+        "claimedAt": "2026-11-09T09:20:37.389Z",
+        "completedAt": "2026-11-09T09:20:53.967Z"
+      },
+      "reply": {
+        "id": "chat_0974bd265f42477da655336d1e0364e1",
+        "number": 668,
+        "body": "dot-auto-bbd64b51：后台事件自动领取并回传",
+        "createdAt": "2026-11-09T09:20:53.967Z"
+      },
+      "latency": {
+        "toClaimMs": 331384,
+        "claimToReplyMs": 16578,
+        "totalMs": 347962
+      }
+    },
+    {
+      "at": "2026-11-09T09:37:54.128Z",
+      "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "messageId": "chat_c125a65bb0304f4b8fc3ffcd7f69f4f1",
+      "number": 672,
+      "createdAt": "2026-11-09T09:37:53.986Z",
+      "nonce": "dot-rebound-a1a065ed",
+      "type": "automatic-after-replacement-and-production-fix",
+      "nativeTaskId": "6af1930c9fd481918ca8fd7f0d1b96fc",
+      "turn": {
+        "id": "turn_chat_c125a65bb0304f4b8fc3ffcd7f69f4f1_member_0ff5c20718654c9db5ab3b1d0334133e",
+        "status": "done",
+        "claimedAt": "2026-11-09T09:43:15.749Z",
+        "completedAt": "2026-11-09T09:43:27.564Z"
+      },
+      "reply": {
+        "id": "chat_f873f5f0a1c542fdbe7ad8d4fa6b42f2",
+        "number": 674,
+        "body": "dot-rebound-a1a065ed：后台事件自动领取并回传",
+        "createdAt": "2026-11-09T09:43:27.564Z"
+      },
+      "latency": {
+        "toClaimMs": 321763,
+        "claimToReplyMs": 11815,
+        "totalMs": 333578
+      }
+    }
+  ],
+  "boundary": "First sample explicitly manually woken. Other two samples automatically claimed; original native Agent reported corresponding completed background runs in native-run-diagnostics.json. Provider metadata is separately attributed."
+}
