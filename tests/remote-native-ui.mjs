@@ -18,7 +18,7 @@ try{
  const input=JSON.parse(setup.skill.match(/setup：(\{.+?\})。/)[1]);const grant=await h.request('/v2/connect/redeem',{code:input.code,attemptId:randomUUID()});const token=grant.access_token;
  await h.request('/v2/self/connection',{requestId:randomUUID(),transport:'pull',pollSeconds:15},token);
  const runtimeId=randomUUID(),instanceId=randomUUID(),post=body=>h.request('/v2/self/runtime',{runtimeId,instanceId,...body},token);
- const heartbeat={action:'heartbeat',form:'antigravity-cli',label:'VPS-01',sourceReady:true,status:'idle',message:'原环境已连接，请选择工作对话',items:[{id:'original-session-id',title:'修复官网登录',workspace:'/srv/website',updatedAt:new Date().toISOString()}],projects:[]};await post(heartbeat);
+ const heartbeat={action:'heartbeat',form:'antigravity-cli',label:'VPS-01',sourceReady:true,status:'idle',message:'原环境已连接，请选择工作对话',receiverRevision:'0'.repeat(64),items:[{id:'original-session-id',title:'修复官网登录',workspace:'/srv/website',updatedAt:new Date().toISOString()}],projects:[]};await post(heartbeat);
  await dialog.getByText('✓ 原环境已连接',{exact:true}).waitFor({timeout:15000});assert.equal((await h.request('/v2/self/status',undefined,token)).complete,false);assert.equal(await dialog.getByText('✓ 已接入，可以聊天',{exact:true}).count(),0);
  await page.screenshot({path:'evidence/screenshots/remote-native-connected.png'});
  await dialog.getByRole('button',{name:'复制更新说明',exact:true}).click();const updateText=await page.evaluate(()=>navigator.clipboard.readText());assert.match(updateText,/复用原授权/);assert.doesNotMatch(updateText,/"code":/);

@@ -5,6 +5,7 @@ import {nativeForm} from '../../shared/native-forms.mjs';
 import {revision as currentRevision} from './runtime-download.mjs';
 import {conversationCommand} from './conversation.mjs';
 import {runtimeUpdateSkill} from './runtime-setup.mjs';
+import {receiverVersion} from '../../shared/receiver-revision.mjs';
 
 const live=r=>!!r&&Date.now()-Date.parse(r.seenAt)<90000;
 const key=value=>required(value,'编号',120);
@@ -21,7 +22,7 @@ function publicRuntime(r,m){
 export async function runtimeOwner(repo,identity,actor,input={},write=false,origin=''){
   if(!actor.owner)fail('forbidden','只有用户可以选择工作对话',403);
   const m=member(identity,actor,input.memberId),r=await repo.get('remote-runtime',m.id,false);
-  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if(r){result.record.receiverRevision=r.receiverRevision||null;result.record.updateAvailable=r.receiverRevision!==currentRevision;if(origin&&result.record.updateAvailable){result.updateSkill=runtimeUpdateSkill({origin,member:m,form:r.form});result.record.canRequestUpdate=live(r)&&r.sourceReady&&Object.keys(r.bindings||{}).length>0;result.record.updateRequest=await repo.get('native-update',m.id,false);}}if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
+  if(!write){if(input.commandId){const c=await repo.get('native-command',input.commandId);if(c.memberId!==m.id)fail('forbidden','请求属于其他成员',403);return c;}const result=publicRuntime(r,m);if(r){Object.assign(result.record,receiverVersion(r.receiverRevision,currentRevision));if(origin&&result.record.updateAvailable){result.updateSkill=runtimeUpdateSkill({origin,member:m,form:r.form});result.record.canRequestUpdate=live(r)&&r.sourceReady&&Object.keys(r.bindings||{}).length>0;result.record.updateRequest=await repo.get('native-update',m.id,false);}}if((await repo.get('connection',m.id,false))?.status==='disconnected')Object.assign(result.record,{enabled:false,sourceReady:false,status:'disconnected',message:'已解除连接，原项目和对话保留'});return result;}
   if((await repo.get('connection',m.id,false))?.status==='disconnected')fail('disconnected','请先重新连接这个账号',409);
   if(input.action==='update'){
     if(!r||!origin)fail('runtime_missing','请先连接原环境',409);

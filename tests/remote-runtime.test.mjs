@@ -28,8 +28,10 @@ test('remote account setup is reusable; native catalog, commands and routing sur
  assert.equal((await install({...input,form:'gemini-cli'})).code,1);assert.deepEqual(await fs.readFile(file),bytes);
  const client=new CodingMemberClient(file),config=JSON.parse(await fs.readFile(path.join(remoteDir,input.alias,'runtime.json'))),instanceId=randomUUID();
  const post=b=>client.api('/v2/self/runtime',{method:'POST',body:{runtimeId:config.runtimeId,instanceId,...b}});
- const heartbeat={action:'heartbeat',form:'antigravity-cli',label:'VPS fixture',sourceReady:true,status:'idle',message:'connected',items:[{id:'native-one',title:'网站',workspace:'/srv/site'},{id:'native-two',title:'App',workspace:'/srv/app'}],projects:[]};
- await post(heartbeat);assert.equal((await client.api('/v2/self/status')).complete,false,'Inventory cannot verify native model execution');
+ const heartbeat={action:'heartbeat',form:'antigravity-cli',label:'VPS fixture',sourceReady:true,status:'idle',message:'connected',receiverRevision:'0'.repeat(64),items:[{id:'native-one',title:'网站',workspace:'/srv/site'},{id:'native-two',title:'App',workspace:'/srv/app'}],projects:[]};
+ const {receiverRevision,...legacyHeartbeat}=heartbeat;await post(legacyHeartbeat);assert.equal((await client.api('/v2/self/status')).complete,false,'Inventory cannot verify native model execution');
+ const unknown=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(unknown.record.revisionState,'unknown');assert.equal(unknown.record.updateAvailable,false);assert.equal(unknown.updateSkill,undefined);
+ await post(heartbeat);
  const outdated=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(outdated.record.updateAvailable,true);assert.match(outdated.updateSkill,/更新/);assert.doesNotMatch(outdated.updateSkill,/"code":|ahv1_/);
  await post({...heartbeat,receiverRevision:currentRevision,status:'syncing'});const upgraded=await h.request('/v2/native-runtime?memberId='+member.id);assert.equal(upgraded.record.updateAvailable,false);assert.equal(upgraded.updateSkill,undefined);assert.equal(upgraded.record.status,'syncing','Queued original work must not become offline');
  await assert.rejects(()=>post({...heartbeat,instanceId:'another'}),/另一个环境/);

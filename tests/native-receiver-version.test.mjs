@@ -8,6 +8,9 @@ import {sha256 as currentRevision} from '../cloud/collaboration/claude-download.
 import {MonitorBridge} from '../connectors/claude/monitor.mjs';
 import {privateJson} from '../local/storage.mjs';
 import os from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {fileURLToPath} from 'node:url';
 
 async function setup(t){
  const f=await fixture(t);f.identity.members[0].platformId='claude-code';
@@ -25,7 +28,7 @@ test('native session reports the running receiver revision separately from the p
 test('legacy and restarted receivers cannot inherit proof that another process loaded the new code',async t=>{
  const f=await setup(t);await f.beat();let r=await f.read();assert.equal(r.items[0].receiverRevision,null);assert.equal(r.record.revisionKnown,false);
  await f.beat({receiverRevision:currentRevision});await f.beat();r=await f.read();assert.equal(r.items[0].receiverRevision,currentRevision);
- await f.beat({status:'offline'});await f.beat({instanceId:'replacement-without-version'});r=await f.read();assert.equal(r.items[0].receiverRevision,null);assert.equal(r.record.revisionKnown,false);assert.equal(r.record.updateAvailable,true);
+ await f.beat({status:'offline'});await f.beat({instanceId:'replacement-without-version'});r=await f.read();assert.equal(r.items[0].receiverRevision,null);assert.equal(r.record.revisionKnown,false);assert.equal(r.record.revisionState,'unknown');assert.equal(r.record.updateAvailable,false);
 });
 
 test('mixed active native versions remain visible; offline old receivers do not make healthy sessions obsolete',async t=>{
@@ -55,4 +58,9 @@ test('monitor heartbeat uses its startup version instead of rereading a replaced
  const loaded='1'.repeat(64),monitor=new MonitorBridge({connectionDir:directory,receiverRevision:loaded,client,launcher:async()=>null,identity:async()=>({sessionId:'native',instanceId:'process',workspace:directory,title:'Original'}),output:()=>{}});
  await privateJson(path.join(directory,'connection.json'),{runtimeRevision:'2'.repeat(64)});
  await monitor.tick();assert.equal(beats[0].receiverRevision,loaded);await monitor.close();
+});
+
+test('native monitor refuses a registration hash that differs from its startup bundle before opening a connection',async()=>{
+ const entry=fileURLToPath(new URL('../connectors/claude/cli.mjs',import.meta.url));
+ await assert.rejects(promisify(execFile)(process.execPath,[entry,'monitor',path.join(os.tmpdir(),'not-a-real-hub-config'),'--runtime-revision','0'.repeat(64)],{env:{...process.env,AGENT_HUB_CONNECTOR_IMPORT:'0'},timeout:10000}),error=>error.code===1&&/启动版本与插件登记不同/.test(error.stderr)&&!error.stderr.includes('ENOENT'));
 });
