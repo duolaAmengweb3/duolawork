@@ -58,3 +58,14 @@ test('subscription recovery covers all pages of still-unclaimed work without a f
  await f.repo.transact('queued-pages',{},async tx=>{const template=await tx.get('outbox',source.noticeId);for(let i=0;i<501;i++){const stepId='paged-turn-'+String(i).padStart(4,'0');tx.put('channel_turn',{id:stepId,scopeId:f.channel.id,parentId:'grok',memberId:'grok',messageId:source.message.id,status:'ready'});tx.put('outbox',{...template,id:'paged-notice-'+String(i).padStart(4,'0'),stepId,status:'accepted'});}return{};});
  await f.subscribe('new');assert.equal((await f.repo.get('outbox','paged-notice-0500')).status,'pending');assert.equal((await f.repo.get('channel_turn','paged-turn-0500')).status,'ready');
 });
+test('new messages cannot coalesce behind a historical receipt belonging only to a replaced receiver',async t=>{
+ const f=await setup(t);await f.subscribe('old');const a=await f.post('Historical pending source');await f.dispatch(a);
+ await f.subscribe('old','events/unsubscribe');await f.subscribe('new');
+ // A pre-upgrade accepted record can survive a receiver replacement. No receipt
+ // exists for that receiver; a newly published message must still reach it.
+ await f.repo.transact('old-version-accepted-state',{},async tx=>{const notice=await tx.get('outbox',a.noticeId);tx.put('outbox',{...notice,status:'accepted'});return{};});
+ const b=await f.post('New input after receiver replacement');await f.dispatch(b);
+ assert.equal(f.events.filter(e=>e.url.endsWith('fixture-new')).length,1);
+ assert.equal((await f.repo.get('outbox',b.noticeId)).status,'accepted');assert.equal((await f.repo.get('channel_turn',a.turnId)).status,'ready');
+ const c=await f.post('Healthy coalesced supplement');await f.dispatch(c);assert.equal((await f.repo.get('outbox',c.noticeId)).status,'coalesced');assert.equal(f.events.filter(e=>e.url.endsWith('fixture-new')).length,1);
+});

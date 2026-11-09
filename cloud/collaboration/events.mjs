@@ -32,6 +32,23 @@ export const EVENT = {
   },
 };
 
+// A platform receipt can cover only the currently active destinations. This is
+// also checked when new messages would otherwise coalesce behind an old wake.
+export async function eventReceiptCurrent(repo,row,now){
+  let after='',found=false;
+  for(;;){
+    const page=await repo.list('subscription',{parent:row.memberId,status:'active',after,limit:500,page:true});
+    for(const sub of page){
+      if(sub.expiresAt<=now)continue;
+      found=true;
+      if((await repo.get('event_delivery',`${row.id}:${sub.id}`,false))?.status!=='accepted')return false;
+    }
+    if(page.length<500)break;
+    after=page.at(-1).id;
+  }
+  return found;
+}
+
 export async function eventMethod(
   repo,
   memberId,

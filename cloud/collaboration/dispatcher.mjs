@@ -3,7 +3,7 @@ import {executionResource} from './execution-bindings.mjs';
 import { signedHeaders } from "./security.mjs";
 import { fail, id } from "./repository.mjs";
 import { platformURL, unseal } from "./security.mjs";
-import { deliverEvents } from "./events.mjs";
+import { deliverEvents,eventReceiptCurrent } from "./events.mjs";
 import { command } from "./engine.mjs";
 import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
@@ -128,6 +128,7 @@ export async function dispatchOne(
         const outstanding=(await Promise.all(["accepted","sending"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat();
         for(const notice of outstanding){
           if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
+          if(notice.status==='accepted'&&row.transport==='dots-events'&&!await eventReceiptCurrent(tx,notice,now))continue;
           const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
           if(notifiedTurn?.status!=="ready")continue;
           if((await reconcileTaskNotification(tx,notifiedTurn)).state!=='current')continue;
