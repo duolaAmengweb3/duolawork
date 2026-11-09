@@ -1,6 +1,6 @@
 import {lookup} from 'node:dns/promises';
 import {isIP} from 'node:net';
-import {Agent,fetch as networkFetch} from 'undici';
+import {Agent,FormData as NetworkFormData,fetch as networkFetch} from 'undici';
 // Resolve at connection time and pin the checked answer for the socket. The
 // shared remote client must never become a proxy to this server's local network.
 function publicAddress(ip){
@@ -16,5 +16,13 @@ export function connectorResponse(response){
  Object.defineProperty(result,'url',{value:response.url});
  return result;
 }
-export const connectorFetch=async(url,init={})=>connectorResponse(await networkFetch(url,{...init,redirect:'error',dispatcher}));
+export function connectorRequest(init={}){
+ // npm undici 8 does not recognize Node's built-in FormData constructor.
+ // Without normalization it sends the literal text "[object FormData]".
+ // Preserve filenames, binary bytes and repeated fields using its own class.
+ if(!(init.body instanceof FormData)||init.body instanceof NetworkFormData)return init;
+ const body=new NetworkFormData();for(const [name,value]of init.body){if(typeof value==='string')body.append(name,value);else body.append(name,value,value.name);}
+ return {...init,body};
+}
+export const connectorFetch=async(url,init={})=>connectorResponse(await networkFetch(url,{...connectorRequest(init),redirect:'error',dispatcher}));
 export {publicAddress};

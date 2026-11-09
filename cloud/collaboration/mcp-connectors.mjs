@@ -12,12 +12,14 @@ import {vaultReferences,concealSecrets} from '../../shared/vault-references.mjs'
 import {prepareToolCatalog,readToolCatalog} from './connector-catalog-storage.mjs';
 import {saveApplication} from './connector-applications.mjs';
 import {prepareConnectorResult,readConnectorResult} from './connector-result-storage.mjs';
+import {saveWechat,checkWechat,performWechat,wechatIssue} from './wechat-connector.mjs';
 
-export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书等）。先 connections 查可用连接，tools 按需获取工具定义，再 call。使用原聊天 channelId；工具在连接指定位置执行，不复制账号登录。写操作须提供唯一 requestId，超时结果不明确时不要换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
+export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书、微信公众号等）。先 connections 查连接，再 tools、call。公众号可先将 app_id/app_secret 保存到 Vault，再 connect(provider=wechat-mp,appId,credentialId,name,requestId) 直接接入，默认团队共享，不要求秘书身份。使用原聊天 channelId；写操作须提供唯一 requestId，结果不明查 result，不换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result','connect']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'},provider:{type:'string',enum:['wechat-mp']},appId:{type:'string'},credentialId:{type:'string'},name:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
 export const publicService=({credentials,...c})=>({...c,toolCount:c.toolCount??c.tools?.length??0});
 const agentService=c=>{const value=publicService(c);return {...value,url:value.url?new URL(value.url).origin:null};};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function errorState(e){
+ const providerIssue=wechatIssue(e);if(providerIssue)return providerIssue;
  if(typeof e.code==='string'&&e.code.startsWith('vault_'))return {code:e.code,message:e.message,state:'attention'};
  if(/does not support dynamic client registration/i.test(e.message||''))return {code:'oauth_app_required',message:'此服务需要先由 DuolaWork 配置官方登录应用，尚未接通；无需重复点击登录',state:'attention'};
  if(e.code==='host_offline')return {code:e.code,message:'工具所在电脑或 VPS 不在线，连接配置已保留',state:'offline'};
@@ -67,14 +69,16 @@ async function hostRequest(repo,c,actor,args){
  fail('outcome_unknown','运行端尚未返回明确结果',504);
 }
 async function perform(repo,c,actor,args,env){
+ if(c.transport==='wechat')return performWechat(repo,c,actor,args,env);
  if(c.transport==='stdio')return hostRequest(repo,c,actor,args);
  return remote(repo,c,env,async client=>args.action==='tools'?mcpTools(client):client.callTool({name:args.tool,arguments:args.arguments||{}},undefined,{timeout:30000}),{actor,channelId:args.channelId});
 }
-async function check(repo,c,env,{authorize=false}={}){
+async function check(repo,c,env,{authorize=false,actor={owner:true},channelId}={}){
  try{
-  const tools=c.transport==='stdio'?await perform(repo,c,{owner:true},{action:'tools'},env):await remote(repo,c,env,mcpTools,{authorize});
+  const native=c.transport==='wechat'?await checkWechat(repo,c,env,{actor,channelId}):null;
+  const tools=native?native.tools:c.transport==='stdio'?await perform(repo,c,actor,{action:'tools',channelId},env):await remote(repo,c,env,mcpTools,{authorize,actor,channelId});
   const {chunks,...catalog}=await prepareToolCatalog(c.id,tools);
-  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);for(const chunk of chunks)tx.put('service_catalog_chunk',chunk);return tx.put('service_connection',{...c,...catalog,status:'connected',health:'ready',issueCode:null,message:null,checkedAt:tx.now});});
+  await repo.transact(id('connectorcheck'),{},async tx=>{await fresh(tx,c);for(const chunk of chunks)tx.put('service_catalog_chunk',chunk);return tx.put('service_connection',{...c,...catalog,status:'connected',health:'ready',issueCode:null,message:native?.message||null,...(native?{capabilities:native.capabilities}:{}),checkedAt:tx.now});});
   return {connection:publicService(await repo.get('service_connection',c.id))};
  }catch(e){
   env.CONNECTOR_DIAGNOSTICS?.(e);
@@ -85,7 +89,10 @@ async function check(repo,c,env,{authorize=false}={}){
  }
 }
 export async function mcpConnectorSettings(repo,identity,actor,args,env){
- await requireManager(repo,actor);
+ const nativeAccountSave=args.action==='save'&&args.provider==='wechat-mp'&&!actor.owner;
+ if(nativeAccountSave)await access(repo,required(args.channelId,'聊天'),actor);else await requireManager(repo,actor);
+ if(args.action==='setup')return {wechat:{execution:'DuolaWork 共享服务器',egressIp:env.CONNECTOR_EGRESS_IP||null,configUrl:'https://developers.weixin.qq.com/platform'}};
+ if(args.action==='save'&&args.provider==='wechat-mp'){const c=await saveWechat(repo,identity,actor,args,env);return check(repo,c,env,{actor,channelId:args.channelId});}
  if(args.action==='catalog')return {items:CONNECTOR_CATALOG};
  if(args.action==='hosts')return {items:(await repo.list('service_host',{limit:500})).map(({tokenHash,pairingHash,...h})=>({...h,online:h.status!=='disconnected'&&Date.now()-Date.parse(h.lastSeen||0)<30000}))};
  if(args.action==='host.disconnect')return repo.transact(args.requestId,args,async tx=>{const host=await tx.get('service_host',required(args.hostId,'运行端'));tx.put('service_host',{...host,status:'disconnected',tokenHash:null,pairingHash:null});for(const j of await tx.list('service_job',{parent:host.id,status:'pending',limit:501}))tx.put('service_job',{...j,status:'failed',code:'not_started',message:'运行端已断开，未开始执行'});return {hostId:host.id,status:'disconnected'};});
@@ -148,6 +155,15 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
 }
 export async function mcpConnectorTool(repo,actor,args,env){
  await access(repo,args.channelId,actor);
+ if(args.action==='connect'){
+  required(args.requestId,'请求编号',160);
+  if(args.provider!=='wechat-mp')fail('invalid_provider','此接入方式用于微信公众号');
+  const current=(await repo.list('service_connection',{limit:500})).find(c=>c.provider==='wechat-mp'&&c.appId===args.appId&&c.status!=='disconnected');
+  if(current){if(!connectorAllowed(current,actor,args.channelId))fail('forbidden','当前成员或聊天已关闭这个公众号的访问',403);if(current.status==='connected'&&current.health==='ready')return {connection:agentService(current),alreadyConnected:true};return check(repo,current,env,{actor,channelId:args.channelId});}
+  // Keep the real caller. Adding a supported account from a permitted Vault
+  // reference never grants owner privileges or arbitrary host execution.
+  const c=await saveWechat(repo,{},actor,args,env);return check(repo,c,env,{actor,channelId:args.channelId});
+ }
  const all=(await repo.list('service_connection',{limit:500})).filter(c=>c.serviceType==='mcp'&&connectorAllowed(c,actor,args.channelId));
  if(args.action==='connections')return {items:all.map(c=>{const {tools,...value}=agentService(c);return value;})};
  const c=all.find(c=>c.id===args.connectionId);if(!c)fail('forbidden','此聊天或成员不可使用该连接',403);

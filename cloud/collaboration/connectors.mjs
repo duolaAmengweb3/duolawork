@@ -32,7 +32,7 @@ async function recordRead(repo,actor,connection,args,started,error){
 }
 export async function connectorSettings(repo,identity,actor,args,env,fetchImpl=fetch){
  await requireManager(repo,actor);
- if(['catalog','hosts','host.create','host.disconnect','import','save','access','authorize'].includes(args.action)||(args.connectionId&&(await repo.get('service_connection',args.connectionId,false))?.serviceType==='mcp'))return mcpConnectorSettings(repo,identity,actor,args,env);
+ if(['setup','catalog','hosts','host.create','host.disconnect','import','save','access','authorize'].includes(args.action)||(args.connectionId&&(await repo.get('service_connection',args.connectionId,false))?.serviceType==='mcp'))return mcpConnectorSettings(repo,identity,actor,args,env);
  if(!['list','activity','check','connect','update','disconnect'].includes(args.action))fail('invalid_action','连接操作无效');
  if(args.action==='list'){
   // One database request for all latest receipts; indexed lookup per connection,

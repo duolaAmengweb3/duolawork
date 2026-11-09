@@ -13,7 +13,7 @@ const listener = net.createServer(); listener.listen(0, '127.0.0.1'); await once
 const port = listener.address().port; await new Promise(r => listener.close(r));
 const key = crypto.randomUUID(), gatewaySecret = crypto.randomUUID();
 const configPath = path.join(directory, 'config.json');
-await fs.writeFile(configPath, JSON.stringify({ adminKey: key, gatewaySecret, workspaceId: 'isolated-server', publicOrigin: 'https://hub.example.com', compatibleOrigins: ['https://legacy.example.com'], database: path.join(directory, 'data.sqlite'), port, enableScheduled: false }), { mode: 0o600 });
+await fs.writeFile(configPath, JSON.stringify({ adminKey: key, gatewaySecret, workspaceId: 'isolated-server', connectorEgressIp: '203.0.113.19', publicOrigin: 'https://hub.example.com', compatibleOrigins: ['https://legacy.example.com'], database: path.join(directory, 'data.sqlite'), port, enableScheduled: false }), { mode: 0o600 });
 let child, client;
 const base = `http://127.0.0.1:${port}`;
 async function start() {
@@ -29,6 +29,9 @@ async function call(route, body, expected = 200) {
 try {
   await start();
   assert.equal((await fetch(base + '/v2/channels')).status, 401);
+  assert.equal((await fetch(base + '/v2/connectors?action=setup')).status,401);
+  const setup=await call('/v2/connectors?action=setup');assert.deepEqual(setup.wechat,{execution:'DuolaWork 共享服务器',egressIp:'203.0.113.19',configUrl:'https://developers.weixin.qq.com/platform'});assert.equal(Object.keys(setup).length,1);
+  await call('/v2/connectors?action=save',undefined,405);
   assert.equal((await fetch(base + '/health', { headers: { 'x-hub-public-origin': 'https://legacy.example.com', 'x-hub-gateway-secret': 'wrong' } })).status, 403);
   const discovery = await fetch(base + '/.well-known/oauth-protected-resource', { headers: { 'x-hub-public-origin': 'https://legacy.example.com', 'x-hub-gateway-secret': gatewaySecret } });
   assert.equal(discovery.status, 200); assert.match(await discovery.text(), /https:\/\/legacy.example.com/);

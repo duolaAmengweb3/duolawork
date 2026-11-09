@@ -28,6 +28,7 @@ const {connectorFetch}=await import('./connector-fetch.mjs');
 const env = {
   VAULT_ENCRYPTION_KEY:vaultKey.key,
   CONNECTOR_FETCH:connectorFetch,
+  CONNECTOR_EGRESS_IP:config.connectorEgressIp||null,
   PERSIST_MEMORY_FORGET:async id=>{await forgottenLedger(DB,config.workspaceId,config.database);await scrubMemoryReceipts(DB,config.workspaceId,id);},
   MEMORY:config.memory?memoryClient('http://127.0.0.1:'+(config.memory.port||8791)):undefined,
   DB, ADMIN_KEY: config.adminKey, WORKSPACE_ID: config.workspaceId, FILE_STORAGE: 'd1',

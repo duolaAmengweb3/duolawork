@@ -11,8 +11,8 @@ import {unseal} from '../cloud/collaboration/security.mjs';
 import {oauthProvider,finishConnectorOAuth} from '../cloud/collaboration/connector-oauth.mjs';
 import {McpToolHost} from '../local/mcp-tool-host.mjs';
 import {publicAddress} from '../server/connector-fetch.mjs';
-import {connectorResponse} from '../server/connector-fetch.mjs';
-import {Response as UndiciResponse} from 'undici';
+import {connectorRequest,connectorResponse} from '../server/connector-fetch.mjs';
+import {Response as UndiciResponse,Request as UndiciRequest,FormData as UndiciFormData} from 'undici';
 import {parseErrorResponse} from '@modelcontextprotocol/sdk/client/auth.js';
 import {applicationKey,configuredApplication} from '../cloud/collaboration/connector-applications.mjs';
 const owner={owner:true},agent={memberId:'grok'},peer={memberId:'check'};
@@ -236,4 +236,11 @@ test('anonymous tool discovery cannot mark an OAuth account connected, including
  assert.equal(pending.connection.health,'authorization_required',diagnostic?.stack);assert.ok(pending.authorizationUrl);assert.equal(anonymousMCP,0);
  await finishConnectorOAuth(f.repo,f.env,new URLSearchParams({state:new URL(pending.authorizationUrl).searchParams.get('state'),code:'test-code'}));
  const checked=await f.settings({action:'check',connectionId:pending.connection.id});assert.equal(checked.connection.health,'ready');
+});
+
+test('shared outbound transport preserves native multipart bytes, filenames and repeated fields across Node and npm undici',async()=>{
+ const body=new FormData(),bytes=new Uint8Array([0,255,13,10,82,71,66]);body.append('media',new Blob([bytes],{type:'image/png'}),'cover.png');body.append('description','first');body.append('description','second');
+ const normalized=connectorRequest({method:'POST',body,headers:{'x-test':'kept'}}),outbound=new UndiciRequest('https://api.weixin.qq.com/cgi-bin/material/add_material',normalized);assert.match(outbound.headers.get('content-type'),/^multipart\/form-data; boundary=/);assert.equal(outbound.headers.get('x-test'),'kept');
+ const wire=await outbound.arrayBuffer(),decoded=await new Response(wire,{headers:{'content-type':outbound.headers.get('content-type')}}).formData();assert.deepEqual(new Uint8Array(await decoded.get('media').arrayBuffer()),bytes);assert.equal(decoded.get('media').name,'cover.png');assert.equal(decoded.get('media').type,'image/png');assert.deepEqual(decoded.getAll('description'),['first','second']);
+ const own=new UndiciFormData();own.append('x','y');const existing={body:own};assert.equal(connectorRequest(existing),existing);const json={body:'{"a":1}'};assert.equal(connectorRequest(json),json);
 });

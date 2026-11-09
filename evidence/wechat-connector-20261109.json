@@ -1,0 +1,178 @@
+{
+  "at": "2026-11-09T02:28:08.119Z",
+  "scope": "generic shared-server WeChat Official Account connector, configured real account and original authenticated native member calls",
+  "buildId": "512195e2fe93811c",
+  "connection": {
+    "id": "mcp_110414dd5c57e89fc5745cce35b31527",
+    "name": "哆啦AI百宝箱",
+    "appId": "wx9993a9551095779a",
+    "health": "ready",
+    "transport": "wechat",
+    "serverEgressIp": "172.245.101.101",
+    "defaultWorkspaceAccess": true,
+    "credentialsStored": "encrypted Vault reference only"
+  },
+  "controlledTests": {
+    "unitTestsPassed": 656,
+    "wechatCases": 7,
+    "transportMultipartRegression": "npm undici outbound request contains exact binary bytes, filename, MIME and repeated fields",
+    "ui": "isolated browser: two accounts, visible server IP, masked secret, no secret persistence, bundled real logo, no popup",
+    "sessionRetentionAndPackagedDesktop": "passed; see browser.json and conversation-desktop.json",
+    "realServerHTTP": "passed authenticated setup GET and denied unauthenticated / write-via-GET",
+    "additionalBusinessRoots": "customer-service, semantic and WiFi business paths supported; seven WeChat cases rechecked after final change"
+  },
+  "live": {
+    "capabilities": {
+      "drafts": {
+        "state": "verified"
+      },
+      "materials": {
+        "state": "verified"
+      },
+      "publishedArticles": {
+        "state": "not_available",
+        "code": 48001,
+        "message": "微信未向这个公众号开放此接口权限"
+      },
+      "publish": {
+        "state": "not_tested",
+        "message": "未用测试文章公开发表；正式发表结果以微信接口实际返回为准"
+      }
+    },
+    "materialUpload": true,
+    "draftCreate": true,
+    "draftUpdate": true,
+    "readback": {
+      "titleMatches": true,
+      "bodyMatches": true,
+      "coverMatches": true,
+      "inlineStyles": true
+    },
+    "cleanup": {
+      "draftDeleted": true,
+      "materialDeleted": true,
+      "deletedDraftUnreadable": true
+    },
+    "calls": [
+      {
+        "tool": "wechat_upload",
+        "operation": "material",
+        "requestId": "f3ea9a48-b91a-4da5-8775-c0e08d9ff88d",
+        "invocationId": "invoke_93f64f8cbb779c0032d2f33cdb80d78671c65888975ffdc0e5282e7ab9b26ff3",
+        "status": "failed",
+        "at": "2026-11-09T01:57:17.948Z"
+      },
+      {
+        "tool": "wechat_upload",
+        "operation": "material",
+        "requestId": "9fdf5762-f2d5-4700-a392-49f13c8c0c2e",
+        "invocationId": "invoke_04d1b4cb0997ad659e83ca563b47969420b95fd71a084938c5e67a650de0975f",
+        "status": "succeeded",
+        "at": "2026-11-09T01:59:38.387Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "create",
+        "requestId": "f0f3f519-9838-4c33-b4e3-d046a7da1b5a",
+        "invocationId": "invoke_44d3cd1d9cae230eac75606efec7936714c5654292982d5078e7cfd022807f2c",
+        "status": "succeeded",
+        "at": "2026-11-09T01:59:41.824Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "get",
+        "requestId": "035a28c9-d4f0-448c-8662-d177ba72aa03",
+        "invocationId": "invoke_03bec3137fca9d25bde3939049a1f4623444b5e992cd79c790e9774bc7362e08",
+        "status": "succeeded",
+        "at": "2026-11-09T01:59:43.398Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "update",
+        "requestId": "820c5444-2a70-400f-94f6-6328178953de",
+        "invocationId": "invoke_54b975f154a433d41f7780deb7d89cb066f1a8efb3493b51e86d933a802a2560",
+        "status": "succeeded",
+        "at": "2026-11-09T02:25:15.885Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "get",
+        "requestId": "74014c69-73f3-4613-b928-e70f6d86a5a9",
+        "invocationId": "invoke_62493b4824bbc6fc289f90352b28463ac466f381f4b50e02a4077eec799c57b2",
+        "status": "succeeded",
+        "at": "2026-11-09T02:25:17.323Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "delete",
+        "requestId": "4a40c7dc-be1d-41c9-ad6f-9f1b05a81908",
+        "invocationId": "invoke_a2a03b1971a58a9687d34dbd6b77ed34198d985e79959376292fb311138f84a4",
+        "status": "succeeded",
+        "at": "2026-11-09T02:25:19.115Z"
+      },
+      {
+        "tool": "wechat_api",
+        "operation": "/cgi-bin/material/del_material",
+        "requestId": "023d65cd-e900-4991-aca9-98438a13e91c",
+        "invocationId": "invoke_3773e4fb704ce5837d63992f6477cab453265f55a57f32cb7b3bf39d53b0d933",
+        "status": "succeeded",
+        "at": "2026-11-09T02:25:20.435Z"
+      },
+      {
+        "tool": "wechat_draft",
+        "operation": "get",
+        "requestId": "9e41dc0e-7a77-48f1-83e2-93aefaa3c5fa",
+        "invocationId": "invoke_8278c5f3316be58c7b60e668b6a55173b341958838844e7790576822e8ef1547",
+        "status": "failed",
+        "at": "2026-11-09T02:25:22.021Z"
+      },
+      {
+        "tool": "wechat_status",
+        "requestId": "ea217636-b3dc-4bb6-9800-b3a5eca399b4",
+        "invocationId": "invoke_1b631d5935b575429dab465ad3592580c6f130ee8b0ad579477d0c9ff48fa913",
+        "status": "succeeded",
+        "at": "2026-11-09T02:25:24.007Z"
+      },
+      {
+        "tool": "wechat_status",
+        "requestId": "8389e5f2-d130-464b-b7f9-564265a7d9e7",
+        "invocationId": "invoke_ff35b1d1d20c40c2a70bfe923fc38218170003b875c7585ff0b03e7d83c43276",
+        "status": "succeeded",
+        "at": "2026-11-09T02:28:05.358Z"
+      }
+    ],
+    "publicPublicationPerformed": false,
+    "publicPublicationVerified": false
+  },
+  "deployment": {
+    "serverArtifactHashes": {
+      "worker.mjs": "ea40082d6b5e0399145d7e861cbad7aa47139a568fd741f4b23a6c9b761d577a",
+      "connector-fetch.mjs": "2e36ce2e971ef7ece5a93b7329c6dbdbe15b8d3a33eb08fbc7a9ea324645ca19",
+      "main.mjs": "48aef81a20b5361cf9aba894f4b014921d11cbc141afd63767683bcc96fae58a"
+    },
+    "serverArtifactsMatch": true,
+    "clientActivated": true,
+    "desktopAndLocalBuildMatch": true,
+    "cloudOnline": true,
+    "protectedLocalFilesUnchanged": true
+  },
+  "resolvedIncidents": [
+    {
+      "issue": "First server config IP update replaced file owner; service could not read 0600 config",
+      "resolution": "Restored systemd service user ownership, health verified and deployment repeated without changing secrets"
+    },
+    {
+      "issue": "First live multipart upload failed with WeChat 41005 because npm undici serialized native FormData as text",
+      "resolution": "Normalized FormData in shared outbound transport, added wire-format regression, deployed and real upload passed"
+    },
+    {
+      "issue": "Setup metadata GET initially missing HTTP allowlist and connector dispatch",
+      "resolution": "Added both routes and real Node HTTP assertions; installed client returns actual egress with HTTP 200"
+    }
+  ],
+  "limits": [
+    "Two-account and cross-agent checks use isolated controlled identities; the real account was invoked by the original authenticated native Codex identity",
+    "WeChat returned 48001 for published-article listing; do not infer public publication or fan broadcast capability from successful draft operations",
+    "No live token expiry interval was awaited; refresh and credential rotation verified in controlled tests"
+  ]
+}
