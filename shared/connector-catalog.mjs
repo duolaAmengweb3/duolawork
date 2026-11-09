@@ -3,7 +3,7 @@ export const CONNECTOR_CATALOG = [
  {id:'github-mcp',name:'GitHub',category:'开发',url:'https://api.githubcopilot.com/mcp/x/all',description:'仓库、Issue、Pull Request 与工作流',docs:'https://github.com/github/github-mcp-server'},
  {id:'cloudflare',name:'Cloudflare',category:'开发',url:'https://mcp.cloudflare.com/mcp',description:'Workers、DNS、R2 与云资源',docs:'https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/'},
  {id:'vercel',name:'Vercel',category:'开发',url:'https://mcp.vercel.com',description:'项目、部署与运行日志',docs:'https://vercel.com/docs/agent-resources/vercel-mcp'},
- {id:'feishu',name:'飞书',category:'办公',url:'',description:'文档、表格与任务；填写飞书提供的 MCP 地址',docs:'https://aily.feishu.cn/hc/1u7kleqg_ontbx456'},
+ {id:'feishu',name:'飞书',category:'办公',url:'',description:'复用这台电脑已登录的飞书账号，文档、表格与任务按原授权使用',docs:'https://github.com/larksuite/cli'},
  {id:'notion',name:'Notion',category:'办公',url:'https://mcp.notion.com/mcp',description:'文档、知识库与数据库',docs:'https://developers.notion.com/guides/mcp/overview'},
  {id:'google-drive',name:'Google Drive',category:'办公',url:'https://drivemcp.googleapis.com/mcp/v1',description:'云盘资料 · 官方开发者预览，需具备准入资格',preview:true,docs:'https://developers.google.com/workspace/guides/configure-mcp-servers'},
  {id:'google-gmail',name:'Gmail',category:'办公',url:'https://gmailmcp.googleapis.com/mcp/v1',description:'邮件 · 官方开发者预览，需具备准入资格',preview:true,docs:'https://developers.google.com/workspace/guides/configure-mcp-servers'},

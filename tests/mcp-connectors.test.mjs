@@ -133,6 +133,21 @@ test('tool host pairing is one-use; a real stdio subprocess serves members witho
  const hosts=await f.settings({action:'hosts'});assert.equal(hosts.items[0].tokenHash,undefined);
  assert.equal(JSON.stringify(await f.settings({action:'hosts'})).includes(paired.token),false);
 });
+test('stdio large Unicode results complete within repository limits and replay without starting another job',async t=>{
+ const f=await setup(t),created=await f.settings({action:'host.create',name:'large-result host'}),paired=await connectorHostRequest(f.repo,f.identity,{action:'pair',...created},null,f.env);
+ const host=new McpToolHost({...paired,endpoint:'https://hub.test'});host.request=args=>connectorHostRequest(f.repo,f.identity,{hostId:paired.hostId,...args},paired.token,f.env);
+ await host.tick();const task=host.start();t.after(async()=>{await host.stop();await task;});
+ const c=(await f.settings({action:'save',name:'large stdio',transport:'stdio',hostId:paired.hostId,command:process.execPath,args:[new URL('./fixtures/mcp-stdio.mjs',import.meta.url).pathname]})).connection;
+ const text='汉字🪻\\\"\n',args={action:'call',connectionId:c.id,requestId:'large-stdio',tool:'write',arguments:{text,repeat:40000}},r=await f.tool(args,peer);
+ assert.equal(r.status,'succeeded');assert.equal(r.result.content[0].text,text.repeat(40000));
+ const invocation=await f.repo.get('service_invocation',r.invocationId),jobs=await f.repo.list('service_job',{parent:paired.hostId,limit:50});
+ assert.ok(invocation.resultRef);assert.equal(invocation.result,undefined);assert.ok(jobs.find(j=>j.invocationId===r.invocationId).resultRef);
+ assert.ok((await f.repo.list('service_result_chunk',{parent:c.id,limit:501})).every(chunk=>Buffer.byteLength(JSON.stringify(chunk))<180000));
+ assert.deepEqual((await f.tool(args,peer)).result,r.result);assert.deepEqual((await f.tool({action:'result',connectionId:c.id,invocationId:r.invocationId},peer)).result,r.result);
+ assert.equal((await f.repo.list('service_job',{parent:paired.hostId,limit:50})).length,jobs.length);
+ const failed=await f.tool({...args,requestId:'logical-error',arguments:{text:'missing scope',fail:true}},peer);assert.equal(failed.status,'failed');assert.equal((await f.repo.get('service_connection',c.id)).health,'ready','a completed tool error is not a disconnected transport');
+ await f.settings({action:'access',connectionId:c.id,expectedVersion:c.version,blockedMemberIds:['check']});await assert.rejects(f.tool(args,peer),e=>e.code==='forbidden');
+});
 test('OAuth registration and PKCE state persist encrypted and callback replay is rejected',async t=>{
  const f=await setup(t),c=await f.save({authType:'none'});
  const ctx=await oauthProvider(f.repo,c,f.env,{begin:true});

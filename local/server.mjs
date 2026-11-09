@@ -20,6 +20,7 @@ import {DshManager} from './dsh-manager.mjs';
 import {AntigravityDesktopHost} from './antigravity-host.mjs';
 import {ChatSessions} from './chat-sessions.mjs';
 import {McpHostManager} from './mcp-host-manager.mjs';
+import {FeishuConnector} from './feishu-connector.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
@@ -30,6 +31,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  const connections=new AgentConnections({cloud,browsers,logins,file:path.join(dataDir,'agent-connections.json')});
  const documents=new DocumentStore(path.join(dataDir,'documents'));
  const toolHost=new McpHostManager(config,dataDir);if(!maintenance)await toolHost.load();
+ const feishuConnector=new FeishuConnector(config,dataDir,toolHost);
  const coding=new CodingManager({config,dataDir,maintenance,runtime:nativeRuntime,agentFactory:nativeAgentFactory});await coding.load();
  const dsh=new DshManager({config,dataDir,maintenance,host:dshHost});await dsh.load();
  const ag=new DshManager({config,dataDir,maintenance,host:antigravityHost||new AntigravityDesktopHost(dataDir),platformId:"antigravity",engine:"antigravity",fileName:"antigravity-desktop-members.json",requireFreshReceipt:true});await ag.load();
@@ -87,6 +89,8 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/local/open-provider'&&req.method==='POST')return json(res,await openProviderApp((await body(req)).platformId));
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
  if(url.pathname==='/api/local/connector-host'&&req.method==='POST')return json(res,await toolHost.connect());
+ if(url.pathname==='/api/local/feishu-connector'&&req.method==='GET')return json(res,await feishuConnector.status());
+ if(url.pathname==='/api/local/feishu-connector'&&req.method==='POST')return json(res,await feishuConnector.connect((await body(req)).profile));
  if(url.pathname==='/api/local/status')return json(res,{...runner.status,network:networkDiagnostics(),build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
  if(url.pathname.startsWith('/api/workspace/')&&req.method==='POST'){
   const input=await body(req),state=await cloud.state(),ready=availability(state);let command;
@@ -175,7 +179,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   return json(res,{loginStatuses:results});
  }
  if(url.pathname==='/api/local/finish-update'&&req.method==='POST'){
-  runner.maintenance=false;await coding.start();await dsh.start();await ag.start();await runner.tick();return json(res,{resumed:true});
+  runner.maintenance=false;await toolHost.load();await coding.start();await dsh.start();await ag.start();await runner.tick();return json(res,{resumed:true});
  }
  if(url.pathname==='/api/browser-network/check'&&req.method==='POST'){
   const p=await body(req);if(networkChecking)return json(res,{message:'出口检查正在进行，请稍候'},409);

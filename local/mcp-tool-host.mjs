@@ -37,7 +37,7 @@ export class McpToolHost{
   for(const job of response.jobs||(response.job?[response.job]:[])){const work=this.execute(job);this.active.add(work);work.finally(()=>this.active.delete(work));}
  }
  async start(){
-  if(this.running)return;this.running=true;this.active=new Set();
+  if(this.running)return;this.running=true;
   while(!this.stopping){try{await this.tick();}catch(e){if([401,403].includes(e.status))this.stopping=true;}if(!this.stopping)await new Promise(r=>{this.wake=r;this.timer=setTimeout(r,750);});}
   await Promise.allSettled([...this.active]);await Promise.allSettled([...this.sessions.values()].map(async s=>(await s).client.close()));this.running=false;
  }

@@ -1,0 +1,116 @@
+{
+  "at": "2026-11-09T00:52:41.294Z",
+  "connectionId": "mcp_94701f16ee14d810109b40253d440575",
+  "account": "徐焕",
+  "identity": "user",
+  "scope": "installed DuolaWork authenticated member → VPS → local tool host → official Feishu CLI → actual Feishu document",
+  "calls": [
+    {
+      "tool": "feishu_call",
+      "command": "docs +fetch",
+      "status": "succeeded",
+      "invocationId": "invoke_67bc5189a36026c456048e836fc34e9f7eafbd9ca5571a6070a85dac28ac7477",
+      "milliseconds": 2438
+    },
+    {
+      "tool": "feishu_call",
+      "command": "docs +update",
+      "status": "succeeded",
+      "invocationId": "invoke_fc628ad156337b1c69485e3a427d159de905e8d720571e68a2986463ef9131e9",
+      "milliseconds": 2517
+    },
+    {
+      "tool": "feishu_call",
+      "command": "docs +fetch",
+      "status": "succeeded",
+      "invocationId": "invoke_1eb70f585446b788feac575b4079f61632653f529a84db0b769a6d3835872e7f",
+      "milliseconds": 1844
+    },
+    {
+      "tool": "feishu_call",
+      "command": "docs +fetch",
+      "status": "succeeded",
+      "invocationId": "invoke_dba828945bf4e99ef0e4b5ddce68bd2d36b4b15cc1ff0381915621ec33e58207",
+      "milliseconds": 2503
+    },
+    {
+      "tool": "feishu_call",
+      "command": "docs +update",
+      "status": "succeeded",
+      "invocationId": "invoke_3633ec99631f68cd2061fbe8034c5ac646286b38cb19a763b37e0cf870dcca81",
+      "milliseconds": 2550
+    },
+    {
+      "tool": "feishu_call",
+      "command": "docs +fetch",
+      "status": "succeeded",
+      "invocationId": "invoke_9525796d2768c508018df21d0ede142f7fb42107c44e927910bdec55d02a7909",
+      "milliseconds": 2554
+    },
+    {
+      "tool": "feishu_help",
+      "command": "drive +search",
+      "status": "succeeded",
+      "invocationId": "invoke_54d76440b5c0a4b4f0d636d423e0390ba1b9e01af4d1f94bd232760410c3c40d",
+      "milliseconds": 1827
+    }
+  ],
+  "targetedWrite": true,
+  "writeReadback": true,
+  "writtenRevision": 7,
+  "originalContentRestored": true,
+  "originalSha256": "6a8c753af2cd0d3ee1646583ec30120f89f914091e8810a2be190e2ba1802e4e",
+  "restoredSha256": "6a8c753af2cd0d3ee1646583ec30120f89f914091e8810a2be190e2ba1802e4e",
+  "restoredRevision": 8,
+  "search": {
+    "status": "succeeded",
+    "testDocumentFound": true,
+    "invocationId": "invoke_faf1ac58644cac75aa9cabcdb91343eab2ff8aee53752bff4077cb03f2043ee4"
+  },
+  "directory": {
+    "status": "failed",
+    "errorSubtype": "missing_scope",
+    "missingScopes": [
+      "space:document:retrieve"
+    ],
+    "invocationId": "invoke_4204279b1f0d03cd635b452eafc52e6e551cb105476541a774ebab9a16119078"
+  },
+  "connectionAfterScopeError": "ready",
+  "repeatConnectReusesSameConnection": true,
+  "activeFeishuConnections": 1,
+  "allWorkspaceAgentsAllowed": true,
+  "sameHostRestoredAfterUpdate": true,
+  "hostOnline": true,
+  "release": {
+    "vpsArtifactMatches": true,
+    "installedFiles": [
+      {
+        "file": "local/feishu-mcp-bundle.cjs",
+        "match": true
+      },
+      {
+        "file": "local/mcp-host-manager.mjs",
+        "match": true
+      },
+      {
+        "file": "local/mcp-tool-host-bundle.cjs",
+        "match": true
+      },
+      {
+        "file": "local/server.mjs",
+        "match": true
+      }
+    ],
+    "buildId": "6c924d85aaeae86d",
+    "desktopMatches": true,
+    "protectedDataUnchanged": true,
+    "cloudOnline": true
+  },
+  "validation": {
+    "unitTests": 645,
+    "failed": 0,
+    "isolatedUiPassed": true,
+    "isolatedUpdateAndRestartPassed": true,
+    "realNativeModelsNotClaimed": true
+  }
+}

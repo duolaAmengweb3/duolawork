@@ -4,6 +4,7 @@ import {connectorAllowed} from '../../shared/connector-catalog.mjs';
 import {resolveConnectorCredentials} from './mcp-connectors.mjs';
 import {assertVaultUses,recordVaultUse} from './vault.mjs';
 import {concealSecrets} from '../../shared/vault-references.mjs';
+import {prepareConnectorResult} from './connector-result-storage.mjs';
 export async function connectorHostRequest(repo,identity,args,token,env){
  if(args.action==='pair'){
   const key=args.key||id('hostkey');if(typeof key!=='string'||key.length<32||key.length>200)fail('invalid_host_key','运行端密钥无效');const hash=await digest(key);
@@ -58,10 +59,11 @@ export async function connectorHostRequest(repo,identity,args,token,env){
   try{if(allowed){const resolved=await resolveConnectorCredentials(tx,connection,actor,j.channelId,env,j.vaultUses);await assertVaultUses(tx,j.vaultUses,actor,j.channelId);result=concealSecrets(args.result,resolved.secrets);}}catch{allowed=false;}
   if(j.invocationId){
    const invocation=await tx.get('service_invocation',j.invocationId,false);
-   if(invocation){const status=!allowed||args.error?'unknown':result?.isError?'failed':'succeeded',message=status==='succeeded'?'工具已返回结果':status==='unknown'?'未取得可确认的结果，请核对服务记录，勿重复执行':'工具返回执行错误';tx.put('service_invocation',{...invocation,status,message,...(allowed&&!args.error?{result}:{}),completedAt:tx.now});const event=await tx.get('connector_activity',j.invocationId,false);if(event)tx.put('connector_activity',{...event,status,message,completedAt:tx.now});}
+   if(invocation){const status=!allowed||args.error?'unknown':result?.isError?'failed':'succeeded',message=status==='succeeded'?'工具已返回结果':status==='unknown'?'未取得可确认的结果，请核对服务记录，勿重复执行':'工具返回执行错误';const {chunks,...stored}=await prepareConnectorResult(j.scopeId,invocation.id,allowed&&!args.error?result:undefined);for(const chunk of chunks)tx.put('service_result_chunk',chunk);tx.put('service_invocation',{...invocation,status,message,...stored,completedAt:tx.now});const event=await tx.get('connector_activity',j.invocationId,false);if(event)tx.put('connector_activity',{...event,status,message,completedAt:tx.now});}
   }
   await recordVaultUse(tx,j.vaultUses,actor,j.channelId,j.action==='tools'?'connector_check':'connector_call',allowed&&!args.error?'succeeded':'unknown');
-  return {status:tx.put('service_job',{...j,status:args.error||!allowed?'failed':'done',...(args.error||!allowed?{code:!allowed?'outcome_unknown':'tool_error',message:!allowed?'凭证或权限已变化，结果未交付；请核对服务记录':'运行端工具执行失败，请检查命令与依赖'}:{result}),completedAt:tx.now}).status};
+  const {chunks,...stored}=await prepareConnectorResult(j.scopeId,j.id,allowed&&!args.error?result:undefined);for(const chunk of chunks)tx.put('service_result_chunk',chunk);
+  return {status:tx.put('service_job',{...j,status:args.error||!allowed?'failed':'done',...(args.error||!allowed?{code:!allowed?'outcome_unknown':'tool_error',message:!allowed?'凭证或权限已变化，结果未交付；请核对服务记录':'运行端工具执行失败，请检查命令与依赖'}:stored),completedAt:tx.now}).status};
  });
  fail('invalid_action','运行端操作无效');
 }

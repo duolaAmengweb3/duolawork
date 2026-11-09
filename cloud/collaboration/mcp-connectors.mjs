@@ -60,7 +60,7 @@ async function hostRequest(repo,c,actor,args){
  await repo.transact(jobId,{},tx=>tx.put('service_job',{id:jobId,parentId:c.hostId,scopeId:c.id,status:'pending',connectionVersion:c.version,memberId:actor.memberId||'owner',channelId:args.channelId||null,invocationId:args.invocationId||null,action:args.action,tool:args.tool,arguments:args.arguments||{},createdAt:tx.now}));
  for(let i=0;i<50;i++){
   const job=await repo.get('service_job',jobId);
-  if(job.status==='done')return job.result;
+  if(job.status==='done')return readConnectorResult(repo,job);
   if(job.status==='failed')fail(job.code||'service_unavailable',job.message||'运行端调用失败',502);
   await sleep(700);
  }
@@ -171,9 +171,10 @@ export async function mcpConnectorTool(repo,actor,args,env){
  if(!claim.started){const r=await repo.get('service_invocation',invocationId),result=await readConnectorResult(repo,r);await fresh(repo,c,actor,args.channelId);return {invocationId,status:r.status,...(result!==undefined?{result}:{}),...(r.status!=='succeeded'?{message:r.message||'调用已提交，请查询结果；不要重复执行'}:{})};}
  let result,issue;
  try{result=await perform(repo,c,actor,{...args,invocationId},env);await access(repo,args.channelId,actor);await fresh(repo,c,actor,args.channelId);if(JSON.stringify(result).length>1500000)fail('outcome_unknown','结果过大，需在服务端核对');if(result?.isError)issue={code:'tool_error',message:'工具返回执行错误，请查看返回结果',state:'attention'};}catch(e){result=undefined;issue=errorState(e);if(!['authorization_required','permission_denied','rate_limited','host_offline'].includes(issue.code))issue={code:'outcome_unknown',message:'未取得明确结果；操作可能已执行，请查看记录，不要重复提交',state:'attention'};}
+ if(c.provider==='feishu'&&result?.isError&&result.structuredContent?.duolawork?.code==='authorization_required')issue={code:'authorization_required',state:'authorization_required',message:'原飞书账号需要登录，请在官方 CLI 恢复后检查连接'};
  const {chunks,...storedResult}=await prepareConnectorResult(c.id,invocationId,result);
  const record=await repo.transact('finish-'+invocationId,{},async tx=>{const r=await tx.get('service_invocation',invocationId);for(const chunk of chunks)tx.put('service_result_chunk',chunk);return tx.put('service_invocation',{...r,status:issue?(issue.code==='outcome_unknown'?'unknown':'failed'):'succeeded',...(issue?{code:issue.code,message:issue.message}:{}),...storedResult,completedAt:tx.now});});
- await repo.transact(id('connectorhealth'),{},async tx=>{const current=await tx.get('service_connection',c.id);if(current.version!==c.version||current.status==='disconnected')return {};return tx.put('service_connection',{...current,health:issue?.state||'ready',issueCode:issue?.code||null,message:issue?.message||null,lastCallAt:tx.now});});
+ await repo.transact(id('connectorhealth'),{},async tx=>{const current=await tx.get('service_connection',c.id);if(current.version!==c.version||current.status==='disconnected')return {};const connectionIssue=issue?.code==='tool_error'?null:issue;return tx.put('service_connection',{...current,health:connectionIssue?.state||'ready',issueCode:connectionIssue?.code||null,message:connectionIssue?.message||null,lastCallAt:tx.now});});
  await repo.transact(id('connectorreceipt'),{},async tx=>{const event=await tx.get('connector_activity',invocationId);return tx.put('connector_activity',{...event,status:record.status,message:record.message||'工具已返回结果',completedAt:record.completedAt});});
  return {invocationId,status:record.status,...(issue?{code:issue.code,message:issue.message}:{}),...(result?{result}:{})};
 }

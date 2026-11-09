@@ -6,7 +6,7 @@ const {McpToolHost}=toolHostRuntime;
 import {requestJson} from './transport.mjs';
 export class McpHostManager{
  constructor(config,dataDir){this.config=config;this.file=path.join(dataDir,'shared-tool-host.json');}
- async load(){try{const c=JSON.parse(await fs.readFile(this.file,'utf8'));if(c.endpoint===this.config.endpoint){this.host=new McpToolHost(c);this.host.start().catch(()=>{});return {hostId:c.hostId};}}catch{}return {};}
+ async load(){if(this.host&&!this.host.stopping)return {hostId:this.host.config.hostId};if(this.loading)return this.loading;this.loading=(async()=>{try{const c=JSON.parse(await fs.readFile(this.file,'utf8'));if(c.endpoint===this.config.endpoint){this.host=new McpToolHost(c);await this.host.tick().catch(()=>{});this.runPromise=this.host.start().catch(()=>{});return {hostId:c.hostId};}}catch{}return {};})().finally(()=>this.loading=null);return this.loading;}
  async connect(){
   if(this.host&&!this.host.stopping)return {hostId:this.host.config.hostId};
   if(this.pending)return this.pending;
@@ -15,8 +15,8 @@ export class McpHostManager{
    const created=await requestJson(this.config.endpoint+'/v2/connectors',{method:'POST',token:this.config.adminKey,body:args});
    const paired=await requestJson(this.config.endpoint+'/v2/connectors/host',{method:'POST',body:{action:'pair',hostId:created.hostId,code:created.code,environment:{hostname:os.hostname(),platform:process.platform}}});
    const record={...paired,endpoint:this.config.endpoint};await fs.writeFile(this.file,JSON.stringify(record),{mode:0o600});await fs.chmod(this.file,0o600);
-   this.host=new McpToolHost(record);await this.host.tick();this.host.start().catch(()=>{});return {hostId:paired.hostId};
+   this.host=new McpToolHost(record);await this.host.tick();this.runPromise=this.host.start().catch(()=>{});return {hostId:paired.hostId};
   })().finally(()=>{this.pending=null;});return this.pending;
  }
- async stop(){await this.host?.stop();}
+ async stop(){await this.host?.stop();await this.runPromise;}
 }
