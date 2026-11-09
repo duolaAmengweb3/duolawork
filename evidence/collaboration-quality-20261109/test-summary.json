@@ -44,11 +44,19 @@
     "tests": 46,
     "pass": 46,
     "finalP2Patch": "8a7cb0b",
-    "p2Review": "pending root check"
+    "p2Review": "passed in #730"
   },
   "finalTaskAndMemoryRelated": {
     "tests": 51,
     "pass": 51,
     "fail": 0
+  },
+  "independentFinalSource": {
+    "commit": "7508c38",
+    "tests": 51,
+    "pass": 51,
+    "fail": 0,
+    "reviewMessage": "chat_496f2642843b4761ad90033a6ef0b6bf",
+    "negativeOldSource": "1bc9dd7: 16/17 (new regression failed)"
   }
 }
