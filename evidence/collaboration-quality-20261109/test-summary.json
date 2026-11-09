@@ -26,12 +26,12 @@
     "packaged Electron exit/reopen"
   ],
   "activationBuild": "04b359e0ff6c7ac2",
-  "finalCloudSourceCommit": "8a7cb0ba76516d477134adf7c47c41b2fa7800c9",
+  "finalCloudSourceCommit": "7508c38",
   "finalFull": [
-    "ℹ tests 726",
-    "ℹ pass 726",
+    "ℹ tests 727",
+    "ℹ pass 727",
     "ℹ fail 0",
-    "ℹ duration_ms 17914.768792"
+    "ℹ duration_ms 18364.406209"
   ],
   "finalRelated": {
     "tests": 47,
@@ -45,5 +45,10 @@
     "pass": 46,
     "finalP2Patch": "8a7cb0b",
     "p2Review": "pending root check"
+  },
+  "finalTaskAndMemoryRelated": {
+    "tests": 51,
+    "pass": 51,
+    "fail": 0
   }
 }

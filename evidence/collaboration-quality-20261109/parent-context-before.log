@@ -1,0 +1,44 @@
+✔ T01 T04 T22 short work submits with self-check in one call; actor and no extra reviewer notification (10.788833ms)
+✔ T02 T03 dynamic sections and shared questions keep gaps; a complete form never auto-accepts content (4.635417ms)
+✔ T04 T05 T12 designated reviewer cannot edit executor result or self-audit (8.455167ms)
+✔ T06 T07 metadata preserves acceptance; actual specification revision reopens parent and keeps immutable history (5.054625ms)
+✔ T08 T15 legacy update(done) and cached tool catalog cannot bypass adopted protocol (3.703209ms)
+✔ T09 T10 T11 dependencies start only after current accepted input; durable outbox dedupes and cycles/moves fail (6.9025ms)
+✔ T05 T09 exact version and concurrent revise/check prevent stale result from advancing work (3.2355ms)
+✔ T13 T14 T20 linked coordination stays open until delivery; requirement change reopens only linked work (5.569708ms)
+✔ T14 execution decision binds concrete checked proposal and real owner source; does not grant account permissions (3.68875ms)
+✔ T17 malformed payload, impossible checks, huge content and untrusted content do not cause partial writes or execution (2.719042ms)
+✔ T18 T21 original source reaches native task notice and wrong criteria can be rejected without changing actor/model (10.992583ms)
+✔ T07 T23 T24 actual artifact version and check conclusion matter, not claims of adoption or forced agreement (5.050208ms)
+✔ reaccepting a previously rejected upstream result notifies the dependent once for the new check, not the stale notice (4.738292ms)
+✔ old stored tasks preserve history and do not acquire fabricated checks when grouped; original requirements cannot be replaced by a paraphrase (4.510375ms)
+✔ T12 standalone task leader receives designated review result without waking an unrelated group coordinator (2.831458ms)
+✔ T09 equivalent structured JSON with reordered object keys is the same deliverable, not a new downstream execution (2.666833ms)
+✖ a structural parent reference survives parent progress, submission and acceptance; real artifact edits still invalidate the child (3.697958ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 221.735125
+
+✖ failing tests:
+
+test at tests/task-deliverables.test.mjs:154:1
+✖ a structural parent reference survives parent progress, submission and acceptance; real artifact edits still invalidate the child (3.697958ms)
+  AssertionError [ERR_ASSERTION]: parent metadata is context, not an upstream deliverable
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/tests/task-deliverables.test.mjs:159:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
