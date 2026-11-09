@@ -25,7 +25,7 @@ test('accepted without claim retries the same notice; delayed receivers claim al
  assert.equal((await f.notice(two)).status,'coalesced');assert.equal(f.calls.length,1);
  await f.tick(119);assert.equal(f.calls.length,1);
  await Promise.all([f.tick(120),f.tick(120)]);assert.equal(f.calls.length,2);
- assert.equal(f.calls[0].delivery_id,f.calls[1].delivery_id);
+ assert.notEqual(f.calls[0].delivery_id,f.calls[1].delivery_id,'a new invitation must escape platform deduplication of the accepted event');
  assert.notEqual(f.calls[0].receive.arguments.requestId,f.calls[1].receive.arguments.requestId,'a cached busy/empty receipt must not poison the retry');
  const c=await claimConversation(f.repo,f.identity,{memberId:'grok'},{requestId:'real-receiver',stepId:n.stepId},at(121));
  assert.deepEqual(new Set(c.input.triggerMessageIds),new Set([one.id,two.id]));

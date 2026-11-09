@@ -840,7 +840,13 @@ export async function conversationCommand(
               if (turn.status === "active")
                 fail("member_busy", "此成员正在回应，请等它完成后移出", 409);
               tx.put("channel_turn", { ...turn, status: "removed" });
+              const notice=await tx.get('outbox','notice_'+turn.id,false);
+              if(notice)tx.put('outbox',{...notice,status:'canceled',reason:'成员已退出本群，本通知失效',completedAt:tx.now});
             }
+          for(const memberId of removed){
+            const wait=await tx.get('channel_wait',channel.id+':'+memberId,false);
+            if(wait?.status==='waiting')tx.put('channel_wait',{...wait,status:'finished',expiresAt:tx.now});
+          }
           channel.memberIds = ids;
         }
         if (cmd.coordinatorId !== undefined)

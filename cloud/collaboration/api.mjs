@@ -119,7 +119,7 @@ export const TOOLS = [
   {
     name: "receive_messages",
     description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
-    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]},
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, notificationTurnId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]},
       waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
   },
   {

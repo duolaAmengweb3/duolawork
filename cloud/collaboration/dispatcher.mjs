@@ -9,16 +9,18 @@ import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
 import {reconcileTaskNotification} from './task-deliverables.mjs';
+import {wakeExpired,wakeId} from './receiver-wakes.mjs';
 const sameDeliveryScope=(a,b)=>(a.deliveryReview||null)===(b.deliveryReview||null)&&(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
-const claimWaitMs = 2 * 60000;
 const maxUnclaimedWakes = 3;
 
 // Only retry the doorbell before an execution lease exists. A platform HTTP
 // receipt says nothing about whether its Agent actually called receive_messages.
 async function recoverUnclaimedWakes(repo, now) {
-  for (const row of await repo.list('outbox', { status: 'accepted', limit: 100 })) {
-    if (!row.conversation || row.transport !== 'grok-webhook' ||
-        Date.parse(row.completedAt) + claimWaitMs > Date.parse(now)) continue;
+  let after='';
+  for (;;) {
+   const page=await repo.list('outbox', { status: 'accepted', after, limit: 100 });
+   for (const row of page) {
+    if (!row.conversation || !wakeExpired(row,now)) continue;
     await repo.transact(`unclaimed-wake:${row.id}:${row.revision}:${now}`, { id: row.id, revision: row.revision }, async tx => {
       const current = await tx.get('outbox', row.id);
       if (current.status !== 'accepted' || current.revision !== row.revision) return {};
@@ -32,14 +34,19 @@ async function recoverUnclaimedWakes(repo, now) {
           connection.status !== 'verified' || connection.configVersion !== row.configVersion) return {};
       const resource = await tx.get('resource', await executionResource(tx, connection, channel.id), false);
       if (resource?.status === 'busy') return {};
-      if (current.attempts < maxUnclaimedWakes) {
+      if ((current.wakeGeneration||0) < maxUnclaimedWakes-1) {
         tx.put('outbox', { ...current, status: 'retry', dueAt: now,
+          wakeGeneration:(current.wakeGeneration||0)+1,
+          wakeCreatedAt:now,
           unclaimedRetry: true, reason: '平台已受理，但成员尚未接收；正在重新通知' });
       } else {
         await stallUnclaimedBatch(tx, current, '已多次通知原平台，但成员仍未接收；消息已保留，可重试或查看原 Agent。');
       }
       return {};
     }, now);
+   }
+   if(page.length<100)break;
+   after=page.at(-1).id;
   }
 }
 
@@ -128,7 +135,7 @@ export async function dispatchOne(
         const outstanding=(await Promise.all(["accepted","sending"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat();
         for(const notice of outstanding){
           if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
-          if(notice.status==='accepted'&&row.transport==='dots-events'&&!await eventReceiptCurrent(tx,notice,now))continue;
+          if(notice.status==='accepted'&&(wakeExpired(notice,now)||row.transport==='dots-events'&&!await eventReceiptCurrent(tx,notice,now)))continue;
           const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
           if(notifiedTurn?.status!=="ready"||notifiedTurn.claimedAt||notifiedTurn.lease)continue;
           if((await reconcileTaskNotification(tx,notifiedTurn)).state!=='current')continue;
@@ -146,6 +153,16 @@ export async function dispatchOne(
         // every turn ready until the native Agent actually claims them.
         for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation&&sameDeliveryScope(pending,row)){
           const other=await tx.get('channel_turn',pending.stepId);if((await reconcileTaskNotification(tx,other)).state==='current')tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
+        }
+        // A fresh message may replace an expired invitation, but never launch
+        // a second recovery behind it. Repoint its supplements to the new wake.
+        for(const notice of outstanding){
+          if(notice.status!=='accepted'||!wakeExpired(notice,now)||notice.id===row.id||notice.memberId!==row.memberId||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
+          const old=await tx.get('channel_turn',notice.stepId,false);
+          if(old?.status!=='ready'||old.claimedAt||old.lease)continue;
+          tx.put('outbox',{...notice,status:'coalesced',coalescedInto:row.id});
+          for(const child of await tx.list('outbox',{scope:channel.id,status:'coalesced'}))
+            if(child.coalescedInto===notice.id)tx.put('outbox',{...child,coalescedInto:row.id});
         }
       }
       if(turn&&!await chargeMeetingRetry(tx,turn,row.attempts)){tx.put('outbox',{...row,status:'canceled',reason:'达到本场自动重试预算'});return null;}
@@ -165,8 +182,9 @@ export async function dispatchOne(
     const c = await repo.get("connection", row.memberId);
     if (row.transport === "grok-webhook") {
       const credentials = await unseal(c.credentials, env.ADMIN_KEY);
+      const deliveryId = wakeId(row);
       const body = JSON.stringify({
-        delivery_id: row.id,
+        delivery_id: deliveryId,
         member_id: row.memberId,
         step_id: row.stepId,
         run_id: row.parentId,
@@ -174,16 +192,16 @@ export async function dispatchOne(
         ...(row.conversation ? {
           kind: 'conversation',
           channel_id: row.scopeId,
-          receive: { tool: 'receive_messages', arguments: { requestId: row.id + ':receive' + (row.attempts > 1 ? ':' + row.attempts : ''), channelId: row.scopeId, expectedMemberId: row.memberId } },
-          instruction: 'Use the private credential bound to member_id, not a shared MCP login belonging to another Bot. GET /v2/self/status must return connection.id=member_id. Then call receive.tool with all receive.arguments via authenticated REST /v2/tools/{tool}. Do not reuse a channel, requestId or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. If busy or empty, stop. If receiver_identity_mismatch, use your own saved credential; do not reconfigure shared MCP or claim another member work.',
+          receive: { tool: 'receive_messages', arguments: { requestId: deliveryId + ':receive', channelId: row.scopeId, expectedMemberId: row.memberId, notificationTurnId:row.stepId } },
+          instruction: 'Use the private credential bound to member_id, not a shared MCP login belonging to another Bot. GET /v2/self/status must return connection.id=member_id. Then call receive.tool with all receive.arguments via authenticated REST /v2/tools/{tool}. Each wake uses current membership: users may remove and re-add you. A previous left-group/forbidden result is not current authorization. Do not reuse a channel, requestId or afterTurnId from earlier invocations. Reply to the returned channelId and turnId in Hub. If busy, empty or obsolete, end only this invocation; keep the receiver enabled for future wakes and other groups. A removed group must never disable the whole receiver. If receiver_identity_mismatch, use your own saved credential; do not reconfigure shared MCP or claim another member work.',
         } : { kind: 'work', claim: { tool: 'claim_work', arguments: { requestId: row.id + ':claim', stepId: row.stepId, expectedMemberId: row.memberId } }, instruction: 'Use the private credential bound to member_id. GET /v2/self/status must return connection.id=member_id. Call claim.tool with claim.arguments through authenticated REST, then follow the returned verification instructions and submit real results. Never use another Bot shared MCP login.' }),
       });
       const headers = credentials.token.startsWith("whsec_")
         ? await signedHeaders(
             credentials.token,
-            row.id,
+            deliveryId,
             body,
-            row.id,
+            deliveryId,
             Date.parse(now),
           )
         : {

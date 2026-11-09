@@ -122,6 +122,18 @@ export async function receiveMessages(repo, identity, actor, args, options = {})
   const member = identity.members.find(m => m.id === actor.memberId && m.status !== "disabled" && !m.paused);
   if (!member) fail("unavailable", "成员当前不可接收消息", 409);
   required(args.requestId, "幂等请求编号", 150);
+  // A late webhook can outlive removal from a group. Acknowledge only that
+  // invitation as obsolete, without reading history or disabling the receiver.
+  // Keep this check ahead of cached claims: rejoining does not revive old work.
+  if(args.notificationTurnId){
+    const notice=await repo.get('channel_turn',required(args.notificationTurnId,'通知编号',180));
+    if(notice.memberId!==actor.memberId||args.channelId&&notice.scopeId!==args.channelId)
+      fail('forbidden','通知不属于当前成员或聊天',403);
+    const group=await repo.get('channel',notice.scopeId);
+    if(!group.memberIds.includes(actor.memberId)||group.status!=='active'||['removed','done','silent','merged'].includes(notice.status))
+      return {status:'obsolete',claimed:false,needsResponse:false,channelId:notice.scopeId,
+        instruction:'这条通知已失效，仅结束本次调用。保持接收器启用；成员重新入群后的新通知照常接收，不读取或重放退群前的工作。'};
+  }
   const seconds = args.waitSeconds ?? 0;
   if (!Number.isInteger(seconds) || seconds < 0 || seconds > MAX_MESSAGE_WAIT_SECONDS)
     fail("invalid_wait", "消息等待应为 0 到 45 秒");
@@ -129,6 +141,7 @@ export async function receiveMessages(repo, identity, actor, args, options = {})
     fail("invalid_wait", "仅在回应后短暂等待连续消息");
   const clock = options.clock || Date.now, sleep = options.sleep || pause;
   const selection = { requestId: args.requestId, receiveNext: true,
+    ...(args.notificationTurnId ? {notificationTurnId:args.notificationTurnId} : {}),
     ...(args.channelId ? { channelId: args.channelId } : {}),
     ...(args.contextMode?{contextMode:args.contextMode}:{}),
     ...(args.expectedSessionId ? { expectedSessionId: required(args.expectedSessionId,'原工作会话',200) } : {}),
