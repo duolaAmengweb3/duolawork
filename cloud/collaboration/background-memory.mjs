@@ -11,6 +11,7 @@ export async function foregroundWaiting(repo,memberId,resourceKey,exceptId){
   const rows=await repo.list('channel_turn',{parent:memberId,status,after,limit:500,page:true});
   for(const turn of rows){
    if(turn.id===exceptId||await isMemoryMaintenance(repo,turn))continue;
+   if(turn.taskId&&turn.taskEvent){const {taskNotificationState}=await import('./task-deliverables.mjs');if((await taskNotificationState(repo,turn)).state!=='current')continue;}
    const channel=await repo.get('channel',turn.scopeId,false);
    if(channel?.status==='active'&&channel.memberIds.includes(memberId)&&await executionResource(repo,connection,channel.id)===resourceKey)return true;
   }

@@ -191,3 +191,12 @@ test('legacy queued maintenance also yields to foreground in receiveNext without
  assert.deepEqual(claim.input.triggerMessageIds,[owner.id]);assert.equal(claim.input.backgroundWork,undefined);
  assert.equal((await f.repo.get('channel_turn',f.stepId)).status,'ready','legacy background remains pending, never pretends it was processed');
 });
+
+test('obsolete task reminders are not executable foreground and cannot starve memory maintenance',async t=>{
+ const f=await maintenanceFixture(t),background=await f.send('channel.claim',{channelId:f.channelId,stepId:f.stepId},f.actor);
+ const old=await f.send('channel.post',{channelId:f.channelId,body:'旧任务通知，任务随后取消'});
+ await f.repo.transact('legacy-obsolete-task-reminder',{},async tx=>{tx.put('channel_task',{id:'canceled-task',scopeId:f.channelId,status:'canceled'});const turn=await tx.get('channel_turn','turn_'+old.id+'_grok');tx.put('channel_turn',{...turn,taskId:'canceled-task',taskEvent:'assigned'});});
+ const batch=await groupMemoryTool(f.repo,f.actor,{channelId:f.channelId,action:'list'});
+ assert.equal(batch.backgroundWork.yieldToForeground,false);assert.ok(batch.coverage.events.some(e=>e.sourceId===f.source.id));
+ assert.equal((await f.repo.get('channel_turn',background.turnId)).status,'active','normal background lease stays intact');
+});
