@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-09T13:51:51.927Z",
+  "at": "2026-11-09T13:57:15.716Z",
   "scope": "isolated real HTTP and browser; fixture accounts are not live external service acceptance",
   "checks": [
     "默认任务视图显示真实成果失效状态与受阻原因，不把 Todo 完成冒充交付通过",

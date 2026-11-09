@@ -1,6 +1,7 @@
 {
-  "at": "2026-11-09T05:52:09.806Z",
+  "at": "2026-11-09T13:52:43.179Z",
   "scope": "isolated HTTP and browser, not native model acceptance",
+  "executablePath": null,
   "checks": [
     "当前详情直接展示用户原话，不只显示负责人摘要",
     "同一详情调整完成条件和核对人，没有新增工作台",
