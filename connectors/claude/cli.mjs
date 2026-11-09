@@ -97,8 +97,16 @@ export async function hook(runFile,input){
 }
 export async function main(argv=process.argv.slice(2)){
   const [command,...args]=argv;
-  if(command==='monitor'){await runMonitor(args[0],args[1]==='--runtime-revision'?args[2]:undefined);return;}
-  if(command==='monitor-mcp'){await serveMonitor(args[0]);return;}
+  if(command==='monitor'||command==='monitor-mcp'){
+    // Snapshot the bundle at process startup; never infer loaded code from a
+    // later installation/config change or the current server release.
+    const loadedRevision=createHash('sha256').update(await fs.readFile(executable)).digest('hex');
+    if(command==='monitor'){
+      if(args[1]==='--runtime-revision'&&args[2]!==loadedRevision)throw Error('接收器启动版本与插件登记不同，请重新加载 DuolaWork 插件');
+      await runMonitor(args[0],loadedRevision);
+    }else await serveMonitor(args[0],loadedRevision);
+    return;
+  }
   if(command==='monitor-stop'){try{await monitorStopped(args[0],await stdinJson(2000000));}catch{/* A hook must not interrupt the user's original turn; its durable marker retries. */}return;}
   if(command==='prepare-monitor'){
     const {connectionDir,pluginDir,sessionId}=await stdinJson();

@@ -1,6 +1,7 @@
 import {putExecutionBinding} from './execution-bindings.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {fail,required,id,digest} from './repository.mjs';
+import {sha256 as currentReceiverRevision} from './claude-download.mjs';
 
 const live=s=>s?.status==='online'&&Date.now()-Date.parse(s.seenAt)<90000;
 async function expireCreates(repo,memberId){
@@ -28,6 +29,7 @@ export async function remoteSessions(repo,identity,actor,input={},write=false){
     if(!actor.memberId)fail('forbidden','只有原生连接器可登记会话',403);
     const sessionId=required(input.sessionId,'原生会话编号',100),instanceId=required(input.instanceId,'运行实例',100);
     if(!/^[a-zA-Z0-9_-]+$/.test(sessionId)||!/^[a-zA-Z0-9_-]+$/.test(instanceId))fail('invalid_session','会话编号无效');
+    if(input.receiverRevision!==undefined&&input.receiverRevision!==null&&!/^[a-f0-9]{64}$/.test(input.receiverRevision))fail('invalid_revision','接收器版本需要有效的 SHA-256');
     await repo.transact(id('native-heartbeat'),{memberId,sessionId,instanceId},async tx=>{
       const r=await tx.get('native-source',memberId,false)||{id:memberId,sessions:{},bindings:{}};
       const prior=r.sessions[sessionId];
@@ -36,20 +38,24 @@ export async function remoteSessions(repo,identity,actor,input={},write=false){
       const runtimeId=required(input.runtimeId,'运行端编号',100);
       if(other.some(x=>x.id!==memberId&&Object.values(x.sessions||{}).some(s=>s.runtimeId===runtimeId&&s.id===sessionId&&live(s))))fail('session_owned','此会话已经属于另一位 Hub 成员',409);
       if(!prior&&Object.keys(r.sessions).length>=100)fail('session_limit','会话登记已达上限，请整理离线会话');
-      r.sessions[sessionId]={id:sessionId,instanceId,runtimeId,title:required(input.title,'会话名称',200),workspace:required(input.workspace,'项目目录',1000),createdAt:prior?.createdAt||tx.now,seenAt:tx.now,status:input.status==='offline'?'offline':'online',canCreate:input.canCreate===true};
+      // An installation on disk is not proof that this native process loaded it.
+      // Retain an omitted version only for the exact same running instance.
+      const receiverRevision=input.receiverRevision===undefined?(prior?.instanceId===instanceId?prior.receiverRevision||null:null):input.receiverRevision;
+      r.sessions[sessionId]={id:sessionId,instanceId,runtimeId,title:required(input.title,'会话名称',200),workspace:required(input.workspace,'项目目录',1000),createdAt:prior?.createdAt||tx.now,seenAt:tx.now,status:input.status==='offline'?'offline':'online',canCreate:input.canCreate===true,receiverRevision};
       if(!r.verificationSessionId||connection?.status!=='verified'&&!live(r.sessions[r.verificationSessionId]))r.verificationSessionId=sessionId;
       tx.put('native-source',r);return{};
     });
   }
-  const r=await repo.get('native-source',memberId,false),items=Object.values(r?.sessions||{}).map(({instanceId,runtimeId,...s})=>({...s,online:live(s)}));
+  const r=await repo.get('native-source',memberId,false),items=Object.values(r?.sessions||{}).map(({instanceId,runtimeId,...s})=>({...s,online:live(s),receiverRevision:s.receiverRevision||null,updateAvailable:s.receiverRevision!==currentReceiverRevision}));
   const canCreate=items.some(s=>s.online&&s.canCreate);
+  const active=items.filter(s=>s.online),revisionKnown=active.length>0&&active.every(s=>s.receiverRevision),versions=new Set(active.map(s=>s.receiverRevision));
   // A different online conversation must not turn this chat's offline binding green.
   const observedAt=new Date().toISOString(),assignments=Object.entries(r?.bindings||{}).map(([channelId,b])=>{
     const session=items.find(s=>s.id===b.sessionId);
-    return {channelId,...b,nativeState:session?.online?'unknown':'unavailable',observedAt,...(!session?.online?{nativeIssueCode:'session_offline',nativeMessage:'这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。'}:{})};
+    return {channelId,...b,receiverRevision:session?.receiverRevision||null,nativeState:session?.online?'unknown':'unavailable',observedAt,...(!session?.online?{nativeIssueCode:'session_offline',nativeMessage:'这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。'}:{})};
   });
   const commands=actor.memberId?(await repo.list('native-command',{parent:memberId,status:'pending',limit:501})).filter(c=>c.engine==='claude'):undefined;
-  return {items,bindings:r?.bindings||{},verificationSessionId:r?.verificationSessionId||null,capabilities:{create:canCreate,createHint:canCreate?'新对话会在 Claude 原来的电脑或服务器创建，沿用原账号和工具。':'原环境的连接器尚未提供新建能力；可配对已打开的对话。'},...(commands?{commands}:{}),record:{memberId,enabled:!!r,sourceReady:items.some(s=>s.online),manualAssignments:true,status:items.some(s=>s.online)?'idle':'offline',message:items.some(s=>s.online)?'Claude 工作会话已在线':'请在原来的环境打开已接入的 Claude',assignments}};
+  return {items,bindings:r?.bindings||{},verificationSessionId:r?.verificationSessionId||null,capabilities:{create:canCreate,createHint:canCreate?'新对话会在 Claude 原来的电脑或服务器创建，沿用原账号和工具。':'原环境的连接器尚未提供新建能力；可配对已打开的对话。'},...(commands?{commands}:{}),record:{memberId,enabled:!!r,sourceReady:items.some(s=>s.online),manualAssignments:true,status:items.some(s=>s.online)?'idle':'offline',message:items.some(s=>s.online)?'Claude 工作会话已在线':'请在原来的环境打开已接入的 Claude',assignments,receiverRevision:revisionKnown&&versions.size===1?active[0].receiverRevision:null,targetRevision:currentReceiverRevision,revisionKnown:!!revisionKnown,updateAvailable:active.some(s=>s.updateAvailable)}};
 }
 export async function assignRemoteSession(repo,identity,actor,input){
   if(!actor.owner)fail('forbidden','只有用户可以选择工作会话',403);
