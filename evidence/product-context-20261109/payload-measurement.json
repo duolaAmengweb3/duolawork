@@ -1,0 +1,11 @@
+{
+  "observedAt": "2026-11-09T08:41:35.276Z",
+  "type": "isolated fixture, not production latency benchmark",
+  "taskCount": 3,
+  "fullTasksBytes": 69803,
+  "indexedTasksBytes": 1061,
+  "taskWorkCount": 0,
+  "reduction": 0.9848000802257783,
+  "exactOriginalPreserved": true,
+  "limit": "Only the tasks component is compared; total prompt and model time are not inferred."
+}

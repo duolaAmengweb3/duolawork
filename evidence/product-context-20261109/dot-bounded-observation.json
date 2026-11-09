@@ -1,0 +1,33 @@
+{
+  "observedAt": "2026-11-09T08:46:56.402Z",
+  "observationOnly": true,
+  "classification": "platform-accepted-not-claimed; cause unknown; not passed",
+  "before": {
+    "taskStatus": "todo",
+    "taskVersion": 2,
+    "createdAt": "2026-11-09T08:22:39.302Z",
+    "turnStatus": "ready",
+    "claimedAt": null
+  },
+  "after": {
+    "taskStatus": "canceled",
+    "taskVersion": 3,
+    "turnStatus": "removed",
+    "notice": {
+      "id": "notice_turn_chat_a2f89211ffc947f1b4c4b87fd4c2aefb_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "stepId": "turn_chat_a2f89211ffc947f1b4c4b87fd4c2aefb_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "canceled",
+      "reason": "任务已取消或移除，旧提醒已自动收尾",
+      "httpStatus": null,
+      "createdAt": "2026-11-09T08:22:39.302Z",
+      "completedAt": "2026-11-09T08:46:55.362Z",
+      "dueAt": "2026-11-09T08:23:39.342Z",
+      "sendingAt": "2026-11-09T08:22:39.342Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-09T08:22:39.932Z",
+      "dispatchElapsedMs": 523,
+      "attemptFinishedAt": "2026-11-09T08:22:39.937Z"
+    }
+  }
+}

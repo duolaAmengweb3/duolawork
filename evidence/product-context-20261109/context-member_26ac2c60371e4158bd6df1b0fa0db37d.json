@@ -1,0 +1,107 @@
+{
+  "observedAt": "2026-11-09T08:48:16.829Z",
+  "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "release": {
+    "schemaVersion": 1,
+    "revision": "f3924d7b046ac57fccc4ab773554a4c4b044f112f434130db4ad4578b430cee3",
+    "guidanceRevision": "c90ba3b3d295ad5a414bc478adfc1b6e0c5b43fb0f3d5a6314c89624296113ad",
+    "toolCatalogRevision": "84f6934b6652d6158c5541a54ca931d4a45d2f330e1e4ed0edac7d39379f1323",
+    "toolCount": 56
+  },
+  "deliveries": [
+    {
+      "id": "turn_chat_91d3503ef88e41229d271b0197acc460_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "parentId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "scopeKind": "native-session",
+      "releaseRevision": "f3924d7b046ac57fccc4ab773554a4c4b044f112f434130db4ad4578b430cee3",
+      "guidanceRevision": "c90ba3b3d295ad5a414bc478adfc1b6e0c5b43fb0f3d5a6314c89624296113ad",
+      "toolCatalogRevision": "84f6934b6652d6158c5541a54ca931d4a45d2f330e1e4ed0edac7d39379f1323",
+      "stateRevision": "fcac403e85b7cde3806bc69c6e3418f1408fe5529452f6277bc94168f55cb1d9",
+      "stateRefs": {
+        "requirements": [
+          {
+            "id": "chat_7bedb1f95f824bf9826e6c4b8c0d2302",
+            "version": 1
+          },
+          {
+            "id": "chat_9be1d1a89ed149a7b50131446cd2ef5d",
+            "version": 1
+          },
+          {
+            "id": "chat_142478fa27cf4ba2b00a270ae51df546",
+            "version": 1
+          },
+          {
+            "id": "chat_1827643e5797406d8fe559af8b60d740",
+            "version": 1
+          },
+          {
+            "id": "chat_7c1114f8dd25477090f90a56c9879c12",
+            "version": 1
+          },
+          {
+            "id": "chat_fa1643c06f3346399482c20fc2d7f5af",
+            "version": 1
+          },
+          {
+            "id": "chat_87d6da8aa0944515a0fa49ff34b73017",
+            "version": 1
+          },
+          {
+            "id": "chat_351e0c6eb8cf47fbb946e982211fa45f",
+            "version": 1
+          },
+          {
+            "id": "chat_ca903d37234e41d595e9f2d611faf435",
+            "version": 1
+          },
+          {
+            "id": "chat_027c3614d17846f7ad2f649bed1f8aca",
+            "version": 1
+          },
+          {
+            "id": "chat_a2f89211ffc947f1b4c4b87fd4c2aefb",
+            "version": 1
+          }
+        ],
+        "tasks": [
+          {
+            "id": "board_5084c440a90b4ac284b6c8386909ce75",
+            "version": 5,
+            "workSpecVersion": 1,
+            "submissionId": "submission_a58c04e996c648b983c443c7d5fc1e73",
+            "checkId": "check_01bee46e5f5d408c9fb2fe56b5a5808b"
+          },
+          {
+            "id": "board_3f9ba338b6d842038566464ef346e357",
+            "version": 8,
+            "workSpecVersion": 1,
+            "submissionId": "submission_ca4dda0700ff4cfd9daf3e2c58ea0315",
+            "checkId": "check_db377b50fe364d59bc80969c9a71985f"
+          }
+        ],
+        "memory": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4
+          }
+        ],
+        "topics": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4,
+            "needsReconcile": false
+          }
+        ]
+      },
+      "status": "response_recorded",
+      "preparedAt": "2026-11-09T08:41:03.631Z",
+      "kind": "agent_context_delivery",
+      "revision": 2,
+      "updatedAt": "2026-11-09T08:41:09.764Z",
+      "responseStatus": "done",
+      "responseRecordedAt": "2026-11-09T08:41:09.764Z"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+ℹ {"scope":"in-process SQLite commit to change notification, not remote native/model latency","count":100,"p50":0.4123329999999896,"p95":0.8805830000000014,"max":2.750833}
+ℹ tests 704
+ℹ suites 0
+ℹ pass 704
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19079.255833

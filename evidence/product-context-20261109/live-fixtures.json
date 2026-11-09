@@ -1,0 +1,27 @@
+{
+  "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+  "sourceId": "chat_f68d44b94f694951a4fdf2dc05abe087",
+  "rootId": "board_942024324eb9418996d8addf6576b627",
+  "rootVersion": 1,
+  "children": [
+    {
+      "name": "Gemini2VPS",
+      "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "id": "board_5084c440a90b4ac284b6c8386909ce75",
+      "version": 1
+    },
+    {
+      "name": "ClaudeVPS",
+      "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "id": "board_3f9ba338b6d842038566464ef346e357",
+      "version": 1
+    },
+    {
+      "name": "Dot",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "id": "board_2bcbe6eb814a4f39919e4f5e4e8f972a",
+      "version": 1
+    }
+  ],
+  "createdAt": "2026-11-09T08:22:37.881Z"
+}
