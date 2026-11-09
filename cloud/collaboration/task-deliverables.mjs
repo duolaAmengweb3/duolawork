@@ -9,6 +9,9 @@ import {recordMemoryEvent} from './memory-context.mjs';
 const object={type:'object',additionalProperties:true};
 export const taskDeliveryProperties={workSpec:object,dependsOn:{type:'array',items:{type:'string'},maxItems:100},coordinationRef:object,submission:object,selfCheck:object,submissionId:{type:'string'},workSpecVersion:{type:'integer',minimum:1},criterionResults:{type:'array',items:object,maxItems:100},verdict:{type:'string',enum:['accept','changes_requested']},reason:{type:'string'},executionDecision:object};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+// JSON object key order is not a new business deliverable. Array order remains
+// meaningful (sections, tables), while retries with reordered object keys dedupe.
+const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const terminal=t=>['done','canceled'].includes(t.status);
 const who=a=>a.owner?'owner':a.memberId;
 function str(v,path,max=12000,optional=false){
@@ -167,7 +170,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
  if(cmd.workSpec!==undefined)next.workSpec=await normalizeSpec(tx,channel,cmd.workSpec,old?.workSpec,validateRefs);
  else if(!old||action==='configure'&&!old.workSpec||!old?.workSpec&&parent?.workSpec&&!terminal(old))next.workSpec=await normalizeSpec(tx,channel,{expectedOutcome:next.title,criteria:[{id:'outcome',text:next.title,required:true}],basisRefs:next.refs},null,validateRefs);
  if(cmd.body!==undefined&&old?.workSpec&&cmd.body!==old.body&&cmd.workSpec===undefined){next.workSpec={...old.workSpec,version:old.workSpec.version+1,expectedOutcome:next.body||next.title};next.reviewReason='工作说明已更新，请核对完成条件';}
- next.dependsOn=cmd.dependsOn===undefined?(old?.dependsOn||[]):[...new Set(array(cmd.dependsOn,'dependsOn'))];
+ next.dependsOn=cmd.dependsOn===undefined?(old?.dependsOn||[]):[...new Set(array(cmd.dependsOn,'dependsOn'))].sort();
  if(cmd.dependsOn!==undefined&&!['create','configure'].includes(action))fail('invalid_action','请用 configure 调整前置依赖');
  if(old?.status==='canceled'&&strict)fail('task_closed','已取消任务不会自动恢复，请先明确重新打开',409);
  if(next.workSpec&&(!old||action==='configure'||cmd.sourceMessageId!==undefined||cmd.coordinationRef!==undefined))next.requirementSources=(await sourceMessages(tx,channel,next)).map(m=>({id:m.id,version:m.version}));
@@ -200,7 +203,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
   const ids=new Set([...next.workSpec.criteria,...next.workSpec.commonQuestions].map(c=>c.id)),used=new Set();
   const coverage=array(input.coverage||[],'submission.coverage',150).map(c=>{keys(c,['id','location','gap'],'coverage');if(!ids.has(c.id)||used.has(c.id))fail('invalid_input','coverage.id 必须唯一且属于本次条件或共同问题');used.add(c.id);return{id:c.id,location:str(c.location,'coverage.location',2000,true),gap:str(c.gap,'coverage.gap',2000,true)};});
   const data={taskId:next.id,workSpecVersion:next.workSpec.version,requirementVersion:basis.requirementVersion,sourceVersions:(await sourceMessages(tx,channel,next)).map(m=>({id:m.id,version:m.version})),inputs:basis.inputs,body,sections:input.sections||[],data:input.data||null,refs,codeRef,coverage,authorId};
-  const fingerprint=await digest(JSON.stringify(data)),previous=old?.currentSubmissionId?await tx.get('channel_task_submission',old.currentSubmissionId,false):null;
+  const fingerprint=await digest(JSON.stringify(canonical(data))),previous=old?.currentSubmissionId?await tx.get('channel_task_submission',old.currentSubmissionId,false):null;
   if(previous?.fingerprint===fingerprint){if(!cmd.selfCheck)return enrichTask(tx,old);next.currentSubmissionId=previous.id;}
   else {const submission=tx.put('channel_task_submission',{...data,id:id('submission'),scopeId:channel.id,parentId:next.id,fingerprint,supersedes:old?.currentSubmissionId||null,createdAt:tx.now});next.currentSubmissionId=submission.id;next.currentCheckId=null;next.acceptedSubmissionId=null;next.executionDecision=null;submitted=true;}
   next.status='doing';next.result=body||refs.map(r=>r.title).join('、')||'成果见提交记录';
@@ -223,7 +226,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
    if(spec.criteria.some(c=>c.required&&!criterionResults.some(r=>r.id===c.id&&r.result==='met')))fail('check_incomplete','必要条件存在未满足或未知项；不能接受',409);
   }
   const data={taskId:next.id,submissionId:submission.id,workSpecVersion:spec.version,requirementVersion:submission.requirementVersion,verdict:checkInput.verdict,reason,criterionResults,authorId};
-  const fingerprint=await digest(JSON.stringify(data)),prior=next.currentCheckId?await tx.get('channel_task_check',next.currentCheckId,false):null;
+  const fingerprint=await digest(JSON.stringify(canonical(data))),prior=next.currentCheckId?await tx.get('channel_task_check',next.currentCheckId,false):null;
   if(prior?.fingerprint===fingerprint)return enrichTask(tx,old);
   const check=tx.put('channel_task_check',{...data,id:id('check'),scopeId:channel.id,parentId:next.id,fingerprint,createdAt:tx.now});next.currentCheckId=check.id;checked=true;
   next.acceptedSubmissionId=check.verdict==='accept'?submission.id:null;next.status=check.verdict==='accept'?'done':'doing';

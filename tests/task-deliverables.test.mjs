@@ -140,3 +140,10 @@ test('T12 standalone task leader receives designated review result without wakin
  const turns=(await f.repo.list('channel_turn')).filter(x=>x.taskEvent==='check:'+done.currentCheckId);
  assert.deepEqual(turns.map(t=>t.memberId),['grok']);assert.equal(done.status,'done');
 });
+
+test('T09 equivalent structured JSON with reordered object keys is the same deliverable, not a new downstream execution',async t=>{
+ const f=await setup(t),task=await f.task({workSpec:spec()});
+ const first=await f.submit(task,{submission:{data:{alpha:1,beta:{x:2,y:3}},coverage:[{id:'outcome',location:'结构数据'}]},selfCheck:passed});
+ const again=await f.submit(first,{submission:{data:{beta:{y:3,x:2},alpha:1},coverage:[{location:'结构数据',id:'outcome'}]},selfCheck:passed});
+ assert.equal(again.currentSubmissionId,first.currentSubmissionId);assert.equal(again.currentCheckId,first.currentCheckId);assert.equal(again.version,first.version);assert.equal((await f.repo.list('channel_task_submission')).length,1);
+});
