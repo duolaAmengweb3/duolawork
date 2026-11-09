@@ -142,7 +142,7 @@ export default function App() {
     [snapshot, setSnapshot] = useState(null),
     [secretaryOpen,setSecretaryOpen]=useState(saved.current.page==="secretary"),[secretarySource,setSecretarySource]=useState(null),
     [page, setPage] = useState(["members","connectors","skills","vault"].includes(saved.current.page) ? saved.current.page : "chat"),
-    [tab, setTab] = useState(saved.current.spaceTab||"documents"),
+    [tab, setTab] = useState(saved.current.spaceTab||"tasks"),
     [spaceSelection,setSpaceSelection]=useState(null),[spaceEditor,setSpaceEditor]=useState(null),[meetingStart,setMeetingStart]=useState(false),
     [references,setReferences]=useState(saved.current.references||{}),
     [side, setSide] = useState(()=>window.innerWidth>850),
@@ -302,8 +302,9 @@ export default function App() {
   useEffect(() => {
     const report=e=>setSyncError(e.message);
     const watcher=watchChanges({request:(route,signal)=>api(route,undefined,undefined,{signal}),onError:report,onChange:async page=>{
-      if(page.reset)for(const prefix of ['/v2/connectors','/v2/vault','/v2/skills'])serviceStore.invalidate(prefix,{onlyCached:true});
+      if(page.reset)for(const prefix of ['/v2/connectors','/v2/vault','/v2/skills','/v2/channel-resources'])serviceStore.invalidate(prefix,{onlyCached:true});
       else{const kinds=new Set(page.changes.map(c=>c.kind));if(kinds.has('service_connection'))serviceStore.invalidate('/v2/connectors');if(kinds.has('service_host'))serviceStore.invalidate('/v2/connectors?action=hosts');if(kinds.has('vault_entry'))serviceStore.invalidate('/v2/vault');if(kinds.has('workspace_skill'))serviceStore.invalidate('/v2/skills');}
+      if(page.changes.some(c=>['channel','service_connection','workspace_skill'].includes(c.kind)))serviceStore.invalidate('/v2/channel-resources');
       const affected=page.changes.filter(c=>c.channelId===currentRef.current);
       const fast=page.reset||affected.length?refresh({chatOnly:true}):Promise.resolve();
       for(const id of new Set(page.changes.filter(c=>c.kind==='channel_message'&&c.channelId!==currentRef.current).map(c=>c.channelId)))void refresh({chatOnly:true,channelId:id}).catch(report);
@@ -920,7 +921,7 @@ export default function App() {
                   />
                   <div className="composer-toolbar">
                     <div>
-                      <UploadFiles key={current} compact channelId={current} onDone={refresh}/>
+                      <UploadFiles key={current} compact channelId={current} folderId={snapshot.folders?.some(f=>f.id===channel.resourcePreferences?.defaultFolderId)?channel.resourcePreferences.defaultFolderId:null} onDone={refresh}/>
                       <Button
                         type="button"
                         size="icon"
@@ -938,7 +939,7 @@ export default function App() {
                         size="icon"
                         variant="ghost"
                         aria-label="新建共享文档"
-                        onClick={() => setModal({ type: "doc" })}
+                        onClick={() => setModal({ type: "doc",folderId:snapshot.folders?.some(f=>f.id===channel.resourcePreferences?.defaultFolderId)?channel.resourcePreferences.defaultFolderId:null })}
                       >
                         <FileText size={17} />
                       </Button>
@@ -981,7 +982,7 @@ export default function App() {
               </section>
               {meetingPanel?.channelId===current ? <MeetingPanel key={meetingPanel.viewKey||meetingPanel.id||('new:'+current)} initialId={meetingPanel.id} channel={channel} members={workspace.members} connections={workspace.connections} activity={snapshot.activity} notifications={snapshot.notifications} onCreated={id=>setMeetingPanel({id,channelId:current,viewKey:meetingPanel.viewKey||meetingPanel.id||('new:'+current)})} onClose={()=>setMeetingPanel(null)} onChanged={()=>refresh().catch(()=>{})} onChat={()=>{setMeetingScopes(old=>({...old,[current]:meetingPanel.id}));setMeetingPanel(null);document.querySelector('[aria-label="群消息"]')?.focus();}} onTodo={m=>{setMeetingPanel(null);setSide(true);setTab('tasks');setSpaceEditor({kind:'task',prefill:{meetingIds:[m.id],refs:[refOf('meeting',m)]}});}} tasks={snapshot.tasks} onTask={t=>openObject(refOf('task',t))}/> : side && (
                 tab==='activity'?<MessageActivity snapshot={snapshot} messages={messages} members={workspace.members} nativeMembers={codingStatus.members} onBack={()=>setTab('documents')} onSource={jumpToSource} onResolve={async(issue,action)=>{await command('channel.delivery.resolve',{channelId:current,issueId:issue.id,expectedVersion:issue.version,action,summary:action==='retry'?'用户要求再次通知尚未接收的成员。':'用户确认不再需要这条旧通知。'});await refresh();}} onConnect={id=>{const member=workspace.members.find(m=>m.id===id);if(member)setModal({type:'connect',member});}} onSelectSession={id=>{const member=workspace.members.find(m=>m.id===id);if(member)setModal({type:'session',member});}} onDiscuss={async issue=>{if(!channel.coordinatorId){setModal({type:'group'});return;}setMentions([channel.coordinatorId]);setMentionAll(false);try{const source=messages.find(m=>m.id===issue.messageId)||await api('/v2/space-object?'+new URLSearchParams({channelId:current,kind:'message',id:issue.messageId}));if(currentRef.current!==current)return;setReply(source);}catch(e){setError(e.message);return;}setDrafts(old=>({...old,[current]:old[current]||'请核对这件消息异常，并说明剩余工作和下一步。'}));document.querySelector('[aria-label="群消息"]')?.focus();}}/>:
-                <CollaborationSpace key={current} channel={channel} snapshot={{...snapshot,meetings:[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i)}} tab={tab==='members'?'documents':tab} setTab={setTab} name={name} members={groupMembers} onChanged={refresh} onQuote={quoteObject} onOpenDoc={setDocumentId} onOpenFile={setSharedFileId} onCreateDoc={folderId=>setModal({type:'doc',folderId})} onMeeting={id=>setMeetingPanel({id,channelId:current})} onNewMeeting={()=>setMeetingStart(true)} selection={spaceSelection} setSelection={setSpaceSelection} editor={spaceEditor} setEditor={setSpaceEditor} onSource={jumpToSource} onClose={()=>setSide(false)} onActivity={()=>setTab('activity')} moreMeetings={meetingCursor} loadMeetings={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}/>
+                <CollaborationSpace key={current} channel={channel} snapshot={{...snapshot,meetings:[...snapshot.meetings,...olderMeetings].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i)}} tab={tab==='members'?'tasks':tab} setTab={setTab} name={name} members={groupMembers} onGlobalService={setPage} onChanged={refresh} onQuote={quoteObject} onOpenDoc={setDocumentId} onOpenFile={setSharedFileId} onCreateDoc={folderId=>setModal({type:'doc',folderId})} onMeeting={id=>setMeetingPanel({id,channelId:current})} onNewMeeting={()=>setMeetingStart(true)} selection={spaceSelection} setSelection={setSpaceSelection} editor={spaceEditor} setEditor={setSpaceEditor} onSource={jumpToSource} onClose={()=>setSide(false)} onActivity={()=>setTab('activity')} moreMeetings={meetingCursor} loadMeetings={async()=>{try{const d=await api('/v2/meetings?channelId='+current+'&cursor='+encodeURIComponent(meetingCursor));setOlderMeetings(old=>[...old,...d.items]);setMeetingCursor(d.nextCursor);}catch(e){setError(e.message);}}}/>
 
               )}
             </div>

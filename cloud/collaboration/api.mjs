@@ -1,3 +1,4 @@
+import {channelResources,CHANNEL_RESOURCE_TOOL} from './channel-resources.mjs';
 import {responseMetrics} from './response-metrics.mjs';
 import {changes} from './change-feed.mjs';
 import {GROUP_MEMORY_TOOLS,groupMemoryTool,readGroupMemory} from './group-memory.mjs';
@@ -96,7 +97,7 @@ export const TOOLS = [
   ...CHANNEL_TOOLS,
   PRODUCT_CONTEXT_TOOL,
   ...MANAGEMENT_TOOLS,
-  ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,...SKILL_TOOLS,
+  ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,CHANNEL_RESOURCE_TOOL,...SKILL_TOOLS,
   ...CONNECTOR_TOOLS,
   VAULT_TOOL,
   ...SHARED_TOOLS,
@@ -366,6 +367,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   if(name==='group_memory')return groupMemoryTool(repo,actor,args);
   if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
+  if(name==='channel_resources')return channelResources(repo,actor,args);
   if(name==='github')return connectorTool(repo,actor,args,env);
   if(name==='connector')return mcpConnectorTool(repo,actor,args,env);
   if(name==='vault')return vaultTool(repo,identity,actor,args,env);
@@ -374,7 +376,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['read_product_context','resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['channel_resources','read_product_context','resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
@@ -809,6 +811,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
     return json({active:r.total});
   }
+  if(url.pathname==='/v2/channel-resources'){if(!['GET','POST'].includes(request.method))fail('method_not_allowed','请使用 GET 或 POST',405);return json(await channelResources(repo,actor,request.method==='GET'?{channelId:url.searchParams.get('channelId'),action:'list'}:await readJSON(request)));}
   if(url.pathname==='/v2/skills'){
     const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||(url.searchParams.has('skillId')?'read':'list')}:await readJSON(request);
     if(request.method==='GET'&&!['read','list','catalog','activity'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);

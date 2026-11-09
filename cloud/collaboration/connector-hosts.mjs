@@ -26,7 +26,7 @@ export async function connectorHostRequest(repo,identity,args,token,env){
    const jobs=[];for(const job of pending){
     const c=await tx.get('service_connection',job.scopeId,false);
     const member=job.memberId==='owner'?{id:'owner',status:'enabled'}:identity.members.find(m=>m.id===job.memberId);
-    if(!c||c.hostId!==host.id||c.status==='disconnected'||c.version!==job.connectionVersion||!member||member.status==='disabled'||job.channelId&&!connectorAllowed(c,{memberId:job.memberId},job.channelId)){
+    if(!c||c.hostId!==host.id||c.status==='disconnected'||c.version!==job.connectionVersion||!member||member.status==='disabled'||job.channelId&&!connectorAllowed(c,{memberId:job.memberId},job.channelId,(await tx.get('channel',job.channelId,false))?.resourcePreferences)){
      tx.put('service_job',{...job,status:'failed',code:'connection_changed',message:'连接或使用范围已变化'});continue;
     }
     if(Date.now()-Date.parse(job.createdAt)>40000){tx.put('service_job',{...job,status:'failed',code:'not_started',message:'请求已过期，未开始执行'});continue;}
@@ -42,7 +42,7 @@ export async function connectorHostRequest(repo,identity,args,token,env){
    try{
     const c=await repo.get('service_connection',job.scopeId),actor=job.memberId==='owner'?{owner:true}:{memberId:job.memberId};
     const resolved=await resolveConnectorCredentials(repo,c,actor,job.channelId,env);
-    await repo.transact(id('hostvault'),{},async tx=>{const current=await tx.get('service_job',job.id),connection=await tx.get('service_connection',c.id),currentHost=await tx.get('service_host',host.id);if(currentHost.status==='disconnected'||current.lease!==job.lease||connection.version!==job.connectionVersion||connection.status==='disconnected')fail('connection_changed','运行端或连接已变化',409);await assertVaultUses(tx,resolved.uses,actor,job.channelId);tx.put('service_job',{...current,vaultUses:resolved.uses});return {prepared:true};});
+    await repo.transact(id('hostvault'),{},async tx=>{const current=await tx.get('service_job',job.id),connection=await tx.get('service_connection',c.id),currentHost=await tx.get('service_host',host.id);if(currentHost.status==='disconnected'||current.lease!==job.lease||connection.version!==job.connectionVersion||connection.status==='disconnected'||job.channelId&&!connectorAllowed(connection,actor,job.channelId,(await tx.get('channel',job.channelId)).resourcePreferences))fail('connection_changed','运行端或连接已变化',409);await assertVaultUses(tx,resolved.uses,actor,job.channelId);tx.put('service_job',{...current,vaultUses:resolved.uses});return {prepared:true};});
     const executionRevision=resolved.uses.length?job.connectionVersion+':vault:'+await digest(JSON.stringify(resolved.uses)):job.connectionVersion;
     // Older installed hosts already key sessions by connectionVersion. Give
     // them an opaque execution revision too, so rotation cannot reuse old env.
@@ -55,7 +55,7 @@ export async function connectorHostRequest(repo,identity,args,token,env){
   const j=await tx.get('service_job',required(args.jobId,'调用'));
   if(j.parentId!==host.id||j.status!=='active'||j.lease!==args.lease)fail('lease_conflict','此调用的领取已变化',409);
   const connection=await tx.get('service_connection',j.scopeId,false),actor=j.memberId==='owner'?{owner:true}:{memberId:j.memberId};
-  let allowed=connection&&connection.status!=='disconnected'&&connection.version===j.connectionVersion&&(actor.owner||connectorAllowed(connection,actor,j.channelId)),result;
+  let allowed=connection&&connection.status!=='disconnected'&&connection.version===j.connectionVersion&&(actor.owner||connectorAllowed(connection,actor,j.channelId,(await tx.get('channel',j.channelId,false))?.resourcePreferences)),result;
   try{if(allowed){const resolved=await resolveConnectorCredentials(tx,connection,actor,j.channelId,env,j.vaultUses);await assertVaultUses(tx,j.vaultUses,actor,j.channelId);result=concealSecrets(args.result,resolved.secrets);}}catch{allowed=false;}
   if(j.invocationId){
    const invocation=await tx.get('service_invocation',j.invocationId,false);

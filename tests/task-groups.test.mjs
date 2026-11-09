@@ -7,6 +7,23 @@ import {callTool} from '../cloud/collaboration/api.mjs';
 const owner={owner:true},agent={memberId:'grok'};
 async function setup(t){const f=await fixture(t);let n=0;const send=(type,args={},actor=owner)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'group-'+(++n),...args});const c=await send('channel.create',{name:'任务归组',memberIds:['grok','check'],coordinatorId:'grok'});const task=async(args,actor=owner)=>{if(args.status!=='done')return send('channel.task',{channelId:c.id,action:'create',notifyAssignee:false,...args},actor);const initial=args.action==='update'?await conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,taskId:args.taskId}):await send('channel.task',{channelId:c.id,action:'create',notifyAssignee:false,...args,status:'todo'},actor);return send('channel.task',{channelId:c.id,action:'submit',taskId:initial.id,expectedVersion:initial.version,workSpecVersion:initial.workSpec.version,submission:{body:args.result,coverage:initial.workSpec.criteria.map(x=>({id:x.id,location:'实际交付结果'}))},selfCheck:{verdict:'accept',reason:'已核对实际交付结果',criterionResults:initial.workSpec.criteria.map(x=>({id:x.id,result:'met',evidence:'实际交付结果'}))}},actor);};const list=args=>conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,...args});return {...f,c,send,task,list};}
 
+test('overview reduces payload without changing actual delivery state, task detail or immutable submissions',async t=>{
+ const f=await setup(t),body='完整原始要求'.repeat(300),result='实际交付正文'.repeat(300);
+ const task=await f.task({title:'可核验成果',body,status:'done',result,progress:'最新进展'.repeat(200)});
+ const full=(await f.list({})).items[0],short=(await f.list({view:'overview'})).items[0];
+ assert.equal(short.id,task.id);assert.equal(short.delivery.stage,full.delivery.stage);assert.equal(short.delivery.valid,true);assert.equal(short.body,undefined);assert.equal(short.result,undefined);assert.equal(short.workSpec,undefined);assert.equal(short.delivery.submission.body,undefined);assert.ok(short.progress.length<=300);
+ const detail=await f.list({taskId:task.id});assert.equal(detail.body,body);assert.equal(detail.delivery.submission.body,result);assert.equal(detail.delivery.valid,true);assert.ok(JSON.stringify(short).length<JSON.stringify(full).length/2);
+});
+test('accepted work invalidated by an artifact edit resurfaces in active overview and leaves completed section',async t=>{
+ const f=await setup(t),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'交付原件',body:'原内容'});
+ const task=await f.task({title:'原件交付'});
+ const done=await f.task({action:'submit',taskId:task.id,expectedVersion:task.version,workSpecVersion:1,submission:{body:'已交付原件',refs:[{kind:'document',id:doc.id,version:1}],coverage:[{id:'outcome',location:'原件'}]},selfCheck:{verdict:'accept',reason:'已核对原件',criterionResults:[{id:'outcome',result:'met',evidence:'实际原件'}]}});
+ assert.equal(done.delivery.valid,true);assert.equal((await f.list({view:'overview',filter:'active'})).items.length,0);
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:1,body:'新版内容',reason:'更新原件'});
+ const active=(await f.list({view:'overview',filter:'active'})).items;assert.equal(active[0].id,task.id);assert.equal(active[0].delivery.stage,'stale');assert.equal((await f.list({view:'overview',filter:'done'})).items.length,0);
+ const detail=await f.list({taskId:task.id});assert.equal(detail.status,'done');assert.equal(detail.delivery.check.id,done.currentCheckId);assert.equal(detail.delivery.submission.refs[0].version,1);
+});
+
 test('existing tasks move without losing history, identity, result, assignee or meeting; listing searches child and groups roots',async t=>{
  const f=await setup(t),channelId=f.c.id;
  const meeting=await f.send('channel.meeting',{channelId,action:'prepare',body:'讨论交付'});

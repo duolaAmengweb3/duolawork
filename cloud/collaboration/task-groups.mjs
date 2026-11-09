@@ -57,12 +57,16 @@ export async function listTaskGroups(repo, channelId, args={}) {
   const query=typeof args.query==='string'?args.query.trim().toLocaleLowerCase().slice(0,300):'';
   const params=[repo.workspaceId,channelId,parentId,args.after||''];
   let sql="SELECT t.body FROM hub_v2_records t WHERE t.workspace_id=? AND t.kind='channel_task' AND t.scope_id=? AND t.parent_id=? AND t.id>?";
-  if(args.filter==='active')sql+=" AND t.status NOT IN ('done','canceled')";
-  if(args.filter==='done')sql+=" AND t.status IN ('done','canceled')";
+  if(args.view!=='overview'&&args.filter==='active')sql+=" AND t.status NOT IN ('done','canceled')";
+  if(args.view!=='overview'&&args.filter==='done')sql+=" AND t.status IN ('done','canceled')";
   if(query){
     sql+=" AND (instr(lower(COALESCE(json_extract(t.body,'$.title'),'')||' '||COALESCE(json_extract(t.body,'$.body'),'')||' '||COALESCE(json_extract(t.body,'$.progress'),'')),?)>0 OR EXISTS(SELECT 1 FROM hub_v2_records c WHERE c.workspace_id=t.workspace_id AND c.kind='channel_task' AND c.scope_id=t.scope_id AND c.parent_id=t.id AND instr(lower(COALESCE(json_extract(c.body,'$.title'),'')||' '||COALESCE(json_extract(c.body,'$.body'),'')||' '||COALESCE(json_extract(c.body,'$.progress'),'')),?)>0))";
     params.push(query,query);
   }
   const rows=(await repo.db.prepare(sql+' ORDER BY t.id LIMIT 101').bind(...params).all()).results.map(r=>JSON.parse(r.body));
-  return {items:await Promise.all((await taskSummaries(repo,rows.slice(0,100))).map(t=>enrichTask(repo,t))),next:rows.length>100?rows[99].id:null};
+  let items=await Promise.all((await taskSummaries(repo,rows.slice(0,100))).map(t=>enrichTask(repo,t)));
+  // Artifact edits can invalidate an already checked task without rewriting
+  // its recorded completion. Keep that work visible in the active overview.
+  if(args.view==='overview'&&['active','done'].includes(args.filter))items=items.filter(t=>{const closed=t.status==='canceled'||t.status==='done'&&!['stale','changes_requested','review'].includes(t.delivery?.stage);return args.filter==='done'?closed:!closed;});
+  return {items:args.view==='overview'?items.map(({body,result,workSpec,sourceMessageIds,...t})=>({...t,progress:t.progress?.slice(0,300),delivery:t.delivery?{stage:t.delivery.stage,label:t.delivery.label,valid:t.delivery.valid,submission:t.delivery.submission?{id:t.delivery.submission.id,refs:t.delivery.submission.refs,codeRef:t.delivery.submission.codeRef}:null,check:t.delivery.check?{reason:t.delivery.check.reason.slice(0,300)}:null}:null})):items,next:rows.length>100?rows[99].id:null};
 }

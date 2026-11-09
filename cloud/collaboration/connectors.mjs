@@ -10,7 +10,7 @@ export const CONNECTOR_TOOLS=[{name:'github',description:'读取已授权 GitHub
 const publicConnection=({credentials,...c})=>c;
 CONNECTOR_TOOLS.push(MCP_CONNECTOR_TOOL);
 const repositoryName=value=>{if(typeof value!=='string'||! /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)||value.includes('..'))fail('invalid_repository','仓库请填写 owner/repository');return value;};
-const allowed=(c,actor,channelId)=>c.serviceType!=='mcp'&&c.status==='connected'&&connectorAllowed(c,actor,channelId);
+const allowed=(c,actor,channelId,preferences)=>c.serviceType!=='mcp'&&c.status==='connected'&&connectorAllowed(c,actor,channelId,preferences);
 async function githubFetch(token,path,fetchImpl){
  let response;try{response=await fetchImpl('https://api.github.com'+path,{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+token,'X-GitHub-Api-Version':'2026-03-10','User-Agent':'DuolaWork'},signal:AbortSignal.timeout(12000),redirect:'error'});}catch(error){fail(error.name==='TimeoutError'||error.name==='AbortError'?'connection_timeout':'connection_network',error.name==='TimeoutError'||error.name==='AbortError'?'GitHub 响应超时，请稍后重试':'暂时无法连接 GitHub，请检查网络后重试',503);}
  if(!response.ok){
@@ -74,10 +74,10 @@ export async function connectorSettings(repo,identity,actor,args,env,fetchImpl=f
  });
 }
 export async function connectorTool(repo,actor,args,env,fetchImpl=fetch){
- await access(repo,args.channelId,actor);
- const connections=(await repo.list('service_connection',{limit:500})).filter(c=>allowed(c,actor,args.channelId));
- if(args.action==='connections')return {items:connections.map(publicConnection)};
- const connection=connections.find(c=>c.id===args.connectionId);if(!connection)fail('forbidden','此聊天或成员没有该连接的使用权',403);
+ const channel=await access(repo,args.channelId,actor);
+ const connections=(await repo.list('service_connection',{limit:500})).filter(c=>allowed(c,actor,args.channelId,channel.resourcePreferences));
+ if(args.action==='connections')return {items:connections.map(c=>({...publicConnection(c),preferred:channel.resourcePreferences?.defaultConnections?.github===c.id}))};
+ const connection=connections.find(c=>c.id===(args.connectionId||channel.resourcePreferences?.defaultConnections?.github));if(!connection)fail('forbidden','此聊天或成员没有该连接的使用权',403);
  if(args.action==='activity')return activityPage(repo,'connector_activity',{parent:connection.id,scope:args.channelId,after:args.after});
  const repoName=repositoryName(args.repository);
  if(!connection.repositories.includes(repoName))fail('forbidden','此仓库尚未关联到连接',403);
@@ -89,8 +89,8 @@ export async function connectorTool(repo,actor,args,env,fetchImpl=fetch){
  const started=Date.now();let result,error;
  try{
   const {token}=await unseal(connection.credentials,env.ADMIN_KEY);result=await githubFetch(token,path,fetchImpl);
-  const fresh=await repo.get('service_connection',connection.id);await access(repo,args.channelId,actor);
-  if(fresh.version!==connection.version||!allowed(fresh,actor,args.channelId))fail('connection_changed','连接授权已变化，请重新读取',409);
+  const fresh=await repo.get('service_connection',connection.id);const latestChannel=await access(repo,args.channelId,actor);
+  if(fresh.version!==connection.version||!allowed(fresh,actor,args.channelId,latestChannel.resourcePreferences))fail('connection_changed','连接授权已变化，请重新读取',409);
  }catch(e){error=e;}
  const receipt=await recordRead(repo,actor,connection,{...args,resourcePath:path},started,error);if(error)throw error;
  return {account:connection.account,repository:repoName,result,access:'read_only',readAt:receipt.createdAt,receiptId:receipt.id,source:'https://api.github.com'+path};

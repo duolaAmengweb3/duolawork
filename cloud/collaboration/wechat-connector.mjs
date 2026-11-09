@@ -1,3 +1,4 @@
+import {access as channelAccess} from './workspace-objects.mjs';
 import {id,digest,fail,required} from './repository.mjs';
 import {seal,unseal,readBounded,unbase64} from './security.mjs';
 import {assertVaultUses,resolveVaultConfig,recordVaultUse,vaultSettings} from './vault.mjs';
@@ -27,13 +28,13 @@ async function jsonResponse(response){
  if(!response.ok)fail('outcome_unknown','微信请求未取得明确结果，请核对服务记录，勿重复写入',502);return result;
 }
 async function account(repo,c,actor,channelId,env){
- const current=await repo.get('service_connection',c.id);if(current.version!==c.version||!connectorAllowed(current,actor,channelId))fail('connection_changed','公众号连接或使用范围已变化',409);
+ const current=await repo.get('service_connection',c.id);if(current.version!==c.version||!connectorAllowed(current,actor,channelId,channelId?(await channelAccess(repo,channelId,actor)).resourcePreferences:undefined))fail('connection_changed','公众号连接或使用范围已变化',409);
  const sealed=await unseal(c.credentials,env.ADMIN_KEY),resolved=await resolveVaultConfig(repo,sealed,actor,channelId,env,{targetOrigin:WECHAT_ORIGIN});
  const {appId,appSecret}=resolved.config.wechat||{};
  if(!/^wx[a-zA-Z0-9]{16}$/.test(appId||'')||typeof appSecret!=='string'||!appSecret)fail('wechat_credentials_required','请选择保存了 AppID、AppSecret 的 Vault 凭证');
  return {...resolved,secrets:resolved.secrets.filter(value=>value!==appId),appId,appSecret};
 }
-async function stillAllowed(repo,c,a,actor,channelId){const now=await repo.get('service_connection',c.id);if(now.version!==c.version||!connectorAllowed(now,actor,channelId))fail('connection_changed','公众号连接或使用范围已变化',409);await assertVaultUses(repo,a.uses,actor,channelId);}
+async function stillAllowed(repo,c,a,actor,channelId){const now=await repo.get('service_connection',c.id);if(now.version!==c.version||!connectorAllowed(now,actor,channelId,channelId?(await channelAccess(repo,channelId,actor)).resourcePreferences:undefined))fail('connection_changed','公众号连接或使用范围已变化',409);await assertVaultUses(repo,a.uses,actor,channelId);}
 async function token(repo,c,a,actor,channelId,env,{expired}={}){
  const key=await digest(a.appId+':'+a.appSecret+':'+JSON.stringify(a.uses)),row=await repo.get('service_wechat_token',c.id,false);
  const read=async record=>{if(record?.key===key&&Date.parse(record.expiresAt)>Date.now()+180000){const t=await unseal(record.sealed,env.ADMIN_KEY);if(t.access_token!==expired)return t.access_token;}return null;};
@@ -104,12 +105,12 @@ export async function performWechat(repo,c,actor,args,env){
 
 export async function saveWechat(repo,identity,actor,args,env){
  required(args.requestId,'请求编号',160);
- const old=args.connectionId?await repo.get('service_connection',args.connectionId):null;if(old&&(old.provider!=='wechat-mp'||old.version!==args.expectedVersion||!connectorAllowed({...old,status:'connected'},actor,args.channelId)))fail('version_conflict','公众号连接已更新或不在当前使用范围，请刷新',409);
+ const old=args.connectionId?await repo.get('service_connection',args.connectionId):null;if(old&&(old.provider!=='wechat-mp'||old.version!==args.expectedVersion||!connectorAllowed({...old,status:'connected'},actor,args.channelId,args.channelId?(await channelAccess(repo,args.channelId,actor)).resourcePreferences:undefined)))fail('version_conflict','公众号连接已更新或不在当前使用范围，请刷新',409);
  let secret=old?.credentials?await unseal(old.credentials,env.ADMIN_KEY):{};
  const appId=args.appId||old?.appId;if(!/^wx[a-zA-Z0-9]{16}$/.test(appId||''))fail('invalid_appid','请填写 wx 开头的公众号 AppID');
  if(old?.appId&&old.appId!==appId)fail('account_changed','此连接属于另一个公众号，请使用添加账号');
  const expectedId='mcp_'+(await digest('wechat-mp:'+appId+':'+args.requestId)).slice(0,32),same=(await repo.list('service_connection',{limit:500})).find(c=>c.provider==='wechat-mp'&&c.appId===appId&&c.status!=='disconnected');
- if(!old&&same){if(!connectorAllowed(same,actor,args.channelId))fail('forbidden','这个公众号不在当前使用范围',403);if(same.id===expectedId)return same;fail('account_exists','这个公众号已经接入，请检查连接或在原连接更新凭证');}
+ if(!old&&same){if(!connectorAllowed(same,actor,args.channelId,args.channelId?(await channelAccess(repo,args.channelId,actor)).resourcePreferences:undefined))fail('forbidden','这个公众号不在当前使用范围',403);if(same.id===expectedId)return same;fail('account_exists','这个公众号已经接入，请检查连接或在原连接更新凭证');}
  let credentialId=args.credentialId;
  if(args.appSecret){const targetId=credentialId||old?.vaultReferences?.[0]?.credentialId,previous=targetId?await repo.get('vault_entry',targetId):null;
   if(previous){const binding=await resolveVaultConfig(repo,{appId:vaultReference(previous.id,'app_id')},actor,args.channelId,env,{targetOrigin:WECHAT_ORIGIN});if(binding.config.appId!==appId)fail('account_changed','所选 Vault 凭证属于另一个公众号');}
@@ -119,6 +120,6 @@ export async function saveWechat(repo,identity,actor,args,env){
  const resolved=await resolveVaultConfig(repo,secret,actor,args.channelId,env,{targetOrigin:WECHAT_ORIGIN});if(resolved.config.wechat.appId!==appId)fail('account_changed','所选凭证的 AppID 与公众号不一致');
  const refs=[...new Set(resolved.uses.map(u=>u.id))].map(credentialId=>({credentialId})),connectionId=old?.id||expectedId;
  const row={...old,id:connectionId,serviceType:'mcp',provider:'wechat-mp',name:required(args.name||old?.name||'微信公众号','公众号名称',120),accountName:args.name||old?.accountName||'微信公众号',appId,transport:'wechat',url:WECHAT_ORIGIN,authType:'none',hostId:null,execution:{kind:'server',egressIp:env.CONNECTOR_EGRESS_IP||null},blockedMemberIds:old?.blockedMemberIds||[],blockedChannelIds:old?.blockedChannelIds||[],tools:WECHAT_TOOLS,toolCount:WECHAT_TOOLS.length,catalog:null,status:'configured',health:'unchecked',version:(old?.version||0)+1,vaultReferences:refs};
- await repo.transact(args.requestId,{action:'wechat.save',id:connectionId,appId,name:row.name,secretHash:await digest(JSON.stringify(secret)),version:row.version},async tx=>{if(old){const current=await tx.get('service_connection',old.id);if(current.version!==old.version||!connectorAllowed({...current,status:'connected'},actor,args.channelId))fail('version_conflict','公众号连接已更新',409);}await assertVaultUses(tx,resolved.uses,actor,args.channelId);return tx.put('service_connection',{...row,credentials:await seal(secret,env.ADMIN_KEY),createdAt:old?.createdAt||tx.now});});
+ await repo.transact(args.requestId,{action:'wechat.save',id:connectionId,appId,name:row.name,secretHash:await digest(JSON.stringify(secret)),version:row.version},async tx=>{if(old){const current=await tx.get('service_connection',old.id);if(current.version!==old.version||!connectorAllowed({...current,status:'connected'},actor,args.channelId,args.channelId?(await channelAccess(tx,args.channelId,actor)).resourcePreferences:undefined))fail('version_conflict','公众号连接已更新',409);}await assertVaultUses(tx,resolved.uses,actor,args.channelId);return tx.put('service_connection',{...row,credentials:await seal(secret,env.ADMIN_KEY),createdAt:old?.createdAt||tx.now});});
  return repo.get('service_connection',connectionId);
 }

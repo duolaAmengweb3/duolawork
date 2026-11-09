@@ -24,8 +24,8 @@ export function importConnectorConfig(raw){
   throw Error('缺少服务地址或启动命令：'+name);
  }).filter(Boolean);
 }
-export function connectorAllowed(c,actor,channelId){
- return c.status!=='disconnected' && !c.blockedChannelIds?.includes(channelId) &&
+export function connectorAllowed(c,actor,channelId,preferences){
+ return !preferences?.disabledConnectionIds?.includes(c.id) && c.status!=='disconnected' && !c.blockedChannelIds?.includes(channelId) &&
   !c.blockedMemberIds?.includes(actor.memberId) &&
   (!c.channelIds?.length||c.channelIds.includes(channelId)) &&
   (!c.memberIds?.length||actor.owner||c.memberIds.includes(actor.memberId));

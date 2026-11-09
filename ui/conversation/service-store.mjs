@@ -3,7 +3,7 @@
 export function createServiceStore(request,{now=Date.now,ttl=30000,limit=80}={}){
  let scope='',epoch=0;const entries=new Map(),listeners=new Map();
  const notify=key=>{for(const fn of listeners.get(key)||[])fn();};
- const safe=key=>{const u=new URL(key,'https://local.invalid');return (u.pathname==='/v2/connectors'&&['list','hosts','setup'].includes(u.searchParams.get('action')||'list'))||(u.pathname==='/v2/vault'&&(u.searchParams.get('action')||'list')==='list')||(u.pathname==='/v2/skills'&&!u.searchParams.has('skillId')&&!u.searchParams.has('action'));};
+ const safe=key=>{const u=new URL(key,'https://local.invalid');return (u.pathname==='/v2/channel-resources'&&u.searchParams.has('channelId')&&!u.searchParams.has('action'))||(u.pathname==='/v2/connectors'&&['list','hosts','setup'].includes(u.searchParams.get('action')||'list'))||(u.pathname==='/v2/vault'&&(u.searchParams.get('action')||'list')==='list')||(u.pathname==='/v2/skills'&&!u.searchParams.has('skillId')&&!u.searchParams.has('action'));};
  function entry(key){if(!safe(key))throw Error('Only service-list metadata may be cached');if(!entries.has(key)){if(entries.size>=limit){for(const [k,v]of entries)if(!v.pending&&!listeners.get(k)?.size){entries.delete(k);break;}}entries.set(key,{value:Object.freeze({data:null,loading:false,error:''}),at:0,sequence:0});}return entries.get(key);}
  function publish(key,e,changes){e.value=Object.freeze({...e.value,...changes});notify(key);}
  function load(key,{force=false}={}){

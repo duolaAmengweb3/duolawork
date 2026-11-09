@@ -14,7 +14,7 @@ import {saveApplication} from './connector-applications.mjs';
 import {prepareConnectorResult,readConnectorResult} from './connector-result-storage.mjs';
 import {saveWechat,checkWechat,performWechat,wechatIssue} from './wechat-connector.mjs';
 
-export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书、微信公众号等）。先 connections 查连接，再 tools、call。公众号可先将 app_id/app_secret 保存到 Vault，再 connect(provider=wechat-mp,appId,credentialId,name,requestId) 直接接入，默认团队共享，不要求秘书身份。使用原聊天 channelId；写操作须提供唯一 requestId，结果不明查 result，不换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result','connect']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'},provider:{type:'string',enum:['wechat-mp']},appId:{type:'string'},credentialId:{type:'string'},name:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
+export const MCP_CONNECTOR_TOOL={name:'connector',description:'使用团队共享的外部服务（GitHub、Cloudflare、飞书、微信公众号等）。先 connections 查连接，再 tools、call。公众号可先将 app_id/app_secret 保存到 Vault，再 connect(provider=wechat-mp,appId,credentialId,name,requestId) 直接接入，默认团队共享，不要求秘书身份。使用原聊天 channelId；写操作须提供唯一 requestId，结果不明查 result，不换编号重做。',inputSchema:{type:'object',properties:{channelId:{type:'string'},action:{type:'string',enum:['connections','tools','call','result','connect']},connectionId:{type:'string'},tool:{type:'string'},arguments:{type:'object',additionalProperties:true},requestId:{type:'string'},invocationId:{type:'string'},provider:{type:'string'},appId:{type:'string'},credentialId:{type:'string'},name:{type:'string'}},required:['channelId','action'],additionalProperties:false}};
 export const publicService=({credentials,...c})=>({...c,toolCount:c.toolCount??c.tools?.length??0});
 const agentService=c=>{const value=publicService(c);return {...value,url:value.url?new URL(value.url).origin:null};};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -31,12 +31,12 @@ function errorState(e){
 }
 async function fresh(repo,c,actor,channelId){
  const next=await repo.get('service_connection',c.id);
- if(next.version!==c.version||next.status==='disconnected'||channelId&&!connectorAllowed(next,actor,channelId))fail('connection_changed','连接或使用范围已变化，请刷新后再试',409);
+ if(next.version!==c.version||next.status==='disconnected'||channelId&&!connectorAllowed(next,actor,channelId,(await access(repo,channelId,actor)).resourcePreferences))fail('connection_changed','连接或使用范围已变化，请刷新后再试',409);
  if(actor)await assertVaultUses(repo,(next.vaultReferences||[]).map(r=>({id:r.credentialId})),actor,channelId);
  return next;
 }
 async function credentials(repo,c,env){return c.credentials?unseal(c.credentials,env.ADMIN_KEY):{};}
-export async function resolveConnectorCredentials(repo,c,actor,channelId,env,expectedUses){return resolveVaultConfig(repo,await credentials(repo,c,env),actor,channelId,env,{targetOrigin:c.url?new URL(c.url).origin:undefined,expectedUses});}
+export async function resolveConnectorCredentials(repo,c,actor,channelId,env,expectedUses){if(channelId&&!connectorAllowed(c,actor,channelId,(await access(repo,channelId,actor)).resourcePreferences))fail('forbidden','本群已关闭该连接',403);return resolveVaultConfig(repo,await credentials(repo,c,env),actor,channelId,env,{targetOrigin:c.url?new URL(c.url).origin:undefined,expectedUses});}
 async function remote(repo,c,env,fn,{authorize=false,actor={owner:true},channelId}={}){
  const resolved=await resolveConnectorCredentials(repo,c,actor,channelId,env),secret=resolved.config;let o=c.authType==='oauth'?await oauthProvider(repo,c,env,{begin:authorize}):null;
  const initialToken=o?.data.tokens?.access_token;
@@ -154,19 +154,20 @@ export async function mcpConnectorSettings(repo,identity,actor,args,env){
  fail('invalid_action','连接操作无效');
 }
 export async function mcpConnectorTool(repo,actor,args,env){
- await access(repo,args.channelId,actor);
+ const channel=await access(repo,args.channelId,actor),preferences=channel.resourcePreferences;
  if(args.action==='connect'){
   required(args.requestId,'请求编号',160);
   if(args.provider!=='wechat-mp')fail('invalid_provider','此接入方式用于微信公众号');
   const current=(await repo.list('service_connection',{limit:500})).find(c=>c.provider==='wechat-mp'&&c.appId===args.appId&&c.status!=='disconnected');
-  if(current){if(!connectorAllowed(current,actor,args.channelId))fail('forbidden','当前成员或聊天已关闭这个公众号的访问',403);if(current.status==='connected'&&current.health==='ready')return {connection:agentService(current),alreadyConnected:true};return check(repo,current,env,{actor,channelId:args.channelId});}
+  if(current){if(!connectorAllowed(current,actor,args.channelId,preferences))fail('forbidden','当前成员或聊天已关闭这个公众号的访问',403);if(current.status==='connected'&&current.health==='ready')return {connection:agentService(current),alreadyConnected:true};return check(repo,current,env,{actor,channelId:args.channelId});}
   // Keep the real caller. Adding a supported account from a permitted Vault
   // reference never grants owner privileges or arbitrary host execution.
   const c=await saveWechat(repo,{},actor,args,env);return check(repo,c,env,{actor,channelId:args.channelId});
  }
- const all=(await repo.list('service_connection',{limit:500})).filter(c=>c.serviceType==='mcp'&&connectorAllowed(c,actor,args.channelId));
- if(args.action==='connections')return {items:all.map(c=>{const {tools,...value}=agentService(c);return value;})};
- const c=all.find(c=>c.id===args.connectionId);if(!c)fail('forbidden','此聊天或成员不可使用该连接',403);
+ const all=(await repo.list('service_connection',{limit:500})).filter(c=>c.serviceType==='mcp'&&connectorAllowed(c,actor,args.channelId,preferences));
+ if(args.action==='connections')return {items:all.map(c=>{const {tools,...value}=agentService(c);return {...value,preferred:preferences?.defaultConnections?.[c.provider]===c.id};})};
+ const choice=args.connectionId||preferences?.defaultConnections?.[args.provider];
+ const c=choice?all.find(c=>c.id===choice):args.provider&&all.filter(c=>c.provider===args.provider).length===1?all.find(c=>c.provider===args.provider):null;if(!c)fail('forbidden','此聊天或成员不可使用该连接',403);
  if(args.action==='tools'){const tools=await readToolCatalog(repo,c);await fresh(repo,c,actor,args.channelId);return {connection:agentService({...c,tools:undefined}),tools,health:c.health,message:c.message};}
  if(args.action==='result'){
   await fresh(repo,c,actor,args.channelId);

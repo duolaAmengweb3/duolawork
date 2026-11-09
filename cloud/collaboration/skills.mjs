@@ -38,8 +38,8 @@ async function sourcesAccessible(repo,actor,skill){
  try{for(const ref of skill.derivedFrom.refs)await readSpaceObject(repo,actor,{channelId:skill.derivedFrom.channelId,kind:ref.kind,id:ref.id,version:ref.version},{recordRead:false});return true;}catch{return false;}
 }
 export async function skillCatalog(repo,actor,channelId){
- await access(repo,channelId,actor);await seedSkills(repo);
- const skills=(await repo.list('workspace_skill',{limit:500})).filter(s=>skillAvailable(s,actor,channelId));
+ const channel=await access(repo,channelId,actor);await seedSkills(repo);
+ const skills=(await repo.list('workspace_skill',{limit:500})).filter(s=>skillAvailable(s,actor,channelId,channel.resourcePreferences));
  return (await Promise.all(skills.map(async s=>await sourcesAccessible(repo,actor,s)?publicSkill(s):null))).filter(Boolean);
 }
 async function taskContext(repo,channelId,taskId){
@@ -57,7 +57,7 @@ async function reviewUse(repo,actor,args){
   const use=current||(legacy?{...legacy,event:'use'}:null);
   if(!use||use.scopeId!==args.channelId||use.event!=='use')fail('invalid_use','请选择本群的一次使用记录');
   const skill=await tx.get('workspace_skill',use.parentId);
-  if(!skillAvailable(skill,actor,args.channelId)||!await sourcesAccessible(tx,actor,skill))fail('forbidden','技能当前不在你的使用范围',403);
+  if(!skillAvailable(skill,actor,args.channelId,(await access(tx,args.channelId,actor)).resourcePreferences)||!await sourcesAccessible(tx,actor,skill))fail('forbidden','技能当前不在你的使用范围',403);
   if(use.memberId===(actor.memberId||'owner'))fail('self_review','自己的使用不能标为独立核验',403);
   if(!['passed','failed'].includes(args.outcome))fail('invalid_outcome','请选择核验结论');
   const refs=await validateRefs(tx,args.channelId,args.refs||[]);if(!actor.owner&&!refs.length)fail('source_required','请关联实际核对的产物或消息');
@@ -83,7 +83,7 @@ export async function skillTool(repo,actor,name,args){
  if(name==='review_skill_use')return reviewUse(repo,actor,args);
  await access(repo,args.channelId,actor);const task=await taskContext(repo,args.channelId,args.taskId);
  if(name==='skill_activity'){
-  if(args.skillId&&!actor.owner){const s=await repo.get('workspace_skill',args.skillId);if(!skillAvailable(s,actor,args.channelId)||!await sourcesAccessible(repo,actor,s))fail('forbidden','技能当前不可用',403);}
+  if(args.skillId&&!actor.owner){const s=await repo.get('workspace_skill',args.skillId);if(!skillAvailable(s,actor,args.channelId,(await access(repo,args.channelId,actor)).resourcePreferences)||!await sourcesAccessible(repo,actor,s))fail('forbidden','技能当前不可用',403);}
   const page=await activityPage(repo,'skill_activity',{scope:args.channelId,parent:args.skillId,taskId:args.taskId,after:args.after});
   if(actor.owner)return page;
   const allowed=new Set((await skillCatalog(repo,actor,args.channelId)).map(s=>s.id));return {...page,items:page.items.filter(x=>allowed.has(x.parentId))};
@@ -96,11 +96,11 @@ export async function skillTool(repo,actor,name,args){
   const version=await skillVersion(repo,skill,selected);if(!await sourcesAccessible(repo,actor,version))fail('source_changed','方法来源已不可用，请核对最新来源',409);
   const path=args.path||'SKILL.md';if(!Object.hasOwn(version.files,path))fail('not_found','技能资源未提供，请补齐文件或核对来源',404);
   const value=version.files[path],sha256=await fileHash(value);
-  const receipt=await repo.transact(id('skill_read'),{actor,args},async tx=>{await access(tx,args.channelId,actor);const fresh=await tx.get('workspace_skill',skill.id);if(fresh.version!==skill.version||!skillAvailable(fresh,actor,args.channelId))fail('version_conflict','技能范围或版本已变化，请重试',409);if(!await sourcesAccessible(tx,actor,fresh)||!await sourcesAccessible(tx,actor,version))fail('source_changed','方法来源已变化，请核对来源',409);return tx.put('skill_activity',{id:id('skill_read'),event:'read',parentId:skill.id,scopeId:args.channelId,memberId:actor.memberId||'owner',version:selected,taskId:task?.id||null,taskTitle:task?.title||null,path,sha256,createdAt:tx.now});});
+  const receipt=await repo.transact(id('skill_read'),{actor,args},async tx=>{await access(tx,args.channelId,actor);const fresh=await tx.get('workspace_skill',skill.id);if(fresh.version!==skill.version||!skillAvailable(fresh,actor,args.channelId,(await access(tx,args.channelId,actor)).resourcePreferences))fail('version_conflict','技能范围或版本已变化，请重试',409);if(!await sourcesAccessible(tx,actor,fresh)||!await sourcesAccessible(tx,actor,version))fail('source_changed','方法来源已变化，请核对来源',409);return tx.put('skill_activity',{id:id('skill_read'),event:'read',parentId:skill.id,scopeId:args.channelId,memberId:actor.memberId||'owner',version:selected,taskId:task?.id||null,taskTitle:task?.title||null,path,sha256,createdAt:tx.now});});
   return {...publicSkill(version),path,body:typeof value==='string'?value:value.data,encoding:typeof value==='string'?'utf-8':'base64',sha256,readId:receipt.id,readAt:receipt.createdAt,execution:'按当前任务需要参考；环境依赖由实际执行者检查，脚本在原环境执行，未宣称安装。'};
  }
  return repo.transact(args.requestId,{actor,args},async tx=>{
-  await access(tx,args.channelId,actor);const current=await tx.get('workspace_skill',skill.id);if(!skillAvailable(current,actor,args.channelId))fail('forbidden','技能范围已改变',403);
+  await access(tx,args.channelId,actor);const current=await tx.get('workspace_skill',skill.id);if(!skillAvailable(current,actor,args.channelId,(await access(tx,args.channelId,actor)).resourcePreferences))fail('forbidden','技能范围已改变',403);
   const read=args.readId?await tx.get('skill_activity',args.readId):null;
   if(read&&(read.event!=='read'||read.parentId!==skill.id||read.version!==args.version||read.scopeId!==args.channelId||read.memberId!==(actor.memberId||'owner')||read.taskId&&read.taskId!==args.taskId))fail('invalid_read','读取记录不属于本次成员、任务或版本');
   if(args.version!==current.version&&!read)fail('version_conflict','旧版本使用请关联当时的 readId',409);
