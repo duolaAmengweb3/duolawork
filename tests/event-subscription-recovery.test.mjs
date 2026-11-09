@@ -69,3 +69,9 @@ test('new messages cannot coalesce behind a historical receipt belonging only to
  assert.equal((await f.repo.get('outbox',b.noticeId)).status,'accepted');assert.equal((await f.repo.get('channel_turn',a.turnId)).status,'ready');
  const c=await f.post('Healthy coalesced supplement');await f.dispatch(c);assert.equal((await f.repo.get('outbox',c.noticeId)).status,'coalesced');assert.equal(f.events.filter(e=>e.url.endsWith('fixture-new')).length,1);
 });
+test('an inconsistent ready record with a previous lease cannot absorb newly published work',async t=>{
+ const f=await setup(t);await f.subscribe('current');const a=await f.post('Previously leased source');await f.dispatch(a);
+ await f.repo.transact('historical-ready-with-lease',{},async tx=>{const turn=await tx.get('channel_turn',a.turnId);tx.put('channel_turn',{...turn,lease:'existing-lease',claimedAt:tx.now});return{};});
+ const before=await f.repo.get('channel_turn',a.turnId),b=await f.post('Independent new input');await f.dispatch(b);
+ assert.equal((await f.repo.get('outbox',b.noticeId)).status,'accepted');assert.deepEqual(await f.repo.get('channel_turn',a.turnId),before);assert.equal(f.events.length,2);
+});

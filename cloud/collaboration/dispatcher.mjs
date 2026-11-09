@@ -130,7 +130,7 @@ export async function dispatchOne(
           if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
           if(notice.status==='accepted'&&row.transport==='dots-events'&&!await eventReceiptCurrent(tx,notice,now))continue;
           const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
-          if(notifiedTurn?.status!=="ready")continue;
+          if(notifiedTurn?.status!=="ready"||notifiedTurn.claimedAt||notifiedTurn.lease)continue;
           if((await reconcileTaskNotification(tx,notifiedTurn)).state!=='current')continue;
           tx.put("outbox",{...row,status:"coalesced",coalescedInto:notice.id});
           return null;
