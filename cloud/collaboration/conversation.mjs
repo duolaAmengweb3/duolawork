@@ -299,7 +299,7 @@ async function rejectStaleResponse(tx, actor, turn) {
   const current = await tx.list('channel_turn', {scope: turn.scopeId, parent: actor.memberId, status: 'active'});
   if (current.length) fail('stale_turn', `这条通知已结束，未发布或确认本次回复。当前实际领取：${current.map(t=>t.id).join('、')}。请核对当前要求后使用正确的 turnId；不要重做已完成的工作。`, 409);
 }
-async function finishTurn(tx, actor, turnId, status, reason) {
+async function finishTurn(tx, actor, turnId, status, reason, responseRef) {
   if (!turnId) return;
   const turn = await tx.get("channel_turn", turnId);
   if (turn.memberId !== actor.memberId)
@@ -307,7 +307,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
   if (["done", "silent", "merged", "removed"].includes(turn.status)) { await rejectStaleResponse(tx, actor, turn); return; }
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
-  tx.put("channel_turn", { ...turn, status, reason,lastAckError:null, completedAt: tx.now });
+  tx.put("channel_turn", { ...turn, status, reason,...(responseRef?{responseRef}:{}),lastAckError:null, completedAt: tx.now });
   await acknowledgeNativeContext(tx,turn);
   await acknowledgeProductContext(tx,turn,status);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
@@ -594,6 +594,19 @@ export async function claimConversation(
   );
 }
 
+function participantActivity(turns,notifications){
+  const byId=new Map(turns.map(t=>[t.id,t]));
+  const noticesByStep=new Map(notifications.map(n=>[n.stepId,n])),noticesById=new Map(notifications.map(n=>[n.id,n]));
+  return {window:{limit:100,complete:turns.length<100},items:turns.map(t=>{
+    const primary=t.status==='merged'?byId.get(t.mergedInto):null;
+    const notice=noticesByStep.get(t.id),delivery=notice?.status==='coalesced'?noticesById.get(notice.coalescedInto)||notice:notice;
+    return {messageId:t.messageId,rootId:t.coordinationRootId||t.rootId||t.messageId,memberId:t.memberId,status:t.status,
+      ...(primary?{mergedStatus:primary.status}:{}),
+      ...(delivery?{notification:{status:delivery.status,...(delivery.platformRespondedAt?{platformRespondedAt:delivery.platformRespondedAt}:{}),...(Number.isFinite(delivery.dispatchElapsedMs)?{dispatchElapsedMs:delivery.dispatchElapsedMs}:{})}}:{}),
+      ...(t.connectorReceivedAt?{received:true}:{}),...(t.claimedAt?{claimed:true}:{}),
+      ...(t.responseRef||primary?.responseRef?{responseRef:t.responseRef||primary.responseRef}:{})};
+  })};
+}
 export async function readChannel(repo, identity, actor, args) {
   const channel = await channelAccess(repo, args.channelId, actor),
     before = args.before ?? Number.MAX_SAFE_INTEGER;
@@ -617,6 +630,7 @@ export async function readChannel(repo, identity, actor, args) {
     return {channel,members:channel.memberIds.map(memberId=>({id:memberId,name:activeMember(identity,memberId)?.name||'已停用成员',isCoordinator:channel.coordinatorId===memberId})),
       messages:rows.slice(0,50).reverse(),before:rows.length>50?rows[49].number:null,
       activity:turns.filter(t=>actor.owner||t.memberId===actor.memberId).map(({lease,resourceKey,...t})=>t),
+      participation:participantActivity(turns,notifications),
       notifications:actor.owner?notifications.map(({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})=>({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})):[],coordination,deliveryIssues};
   }
   const [documents, decisions, knowledge, meetings, tasks, suggestions, turns] =
@@ -636,9 +650,10 @@ export async function readChannel(repo, identity, actor, args) {
   const [files,handoffs,folders,placements,links,notifications,coordination,deliveryIssues]=await Promise.all([
     repo.list('shared_file',{scope:channel.id,limit:100,order:'recent'}),repo.list('shared_handoff',{scope:channel.id,limit:100,order:'recent'}),
     allFolders(repo,channel.id),allPlacements(repo,channel.id),repo.list('channel_link',{scope:channel.id,limit:100,order:'recent'}),
-    actor.owner?repo.list('outbox',{scope:channel.id,limit:100,order:'recent'}):[],repo.list('channel_coordination',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_delivery_issue',{scope:channel.id,limit:100,order:'recent'})]);
+    repo.list('outbox',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_coordination',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_delivery_issue',{scope:channel.id,limit:100,order:'recent'})]);
   return {
     channel,
+    participation:participantActivity(turns,notifications),
     collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
     members: channel.memberIds.map((memberId) => ({
       id: memberId,
@@ -938,7 +953,7 @@ export async function conversationCommand(
         message.recipientIds=[...new Set(targets)];tx.put("channel_message",message);
         for (const mid of targets)
           await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
-        await finishTurn(tx, actor, cmd.turnId || turn?.id, "done");
+        await finishTurn(tx, actor, cmd.turnId || turn?.id, "done",undefined,{kind:'message',id:message.id});
         return message;
       }
       if (type === "channel.silent") {
@@ -1094,7 +1109,7 @@ export async function conversationCommand(
             parent: actor.memberId,
             status: "active",
           }))
-            await finishTurn(tx, actor, turn.id, "done", "已交付共享文档");
+            await finishTurn(tx, actor, turn.id, "done", "已交付共享文档",{kind:'document',id:doc.id,version:doc.version});
         return delivery;
       }
       if (type === "channel.ask") {

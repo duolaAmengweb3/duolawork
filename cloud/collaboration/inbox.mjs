@@ -49,6 +49,8 @@ export async function withConversationContext(repo, identity, actor, claim,optio
       skillInstruction: HUB_INSTRUCTIONS.skillInstruction,
 
       members: context.members,
+      participation:context.participation,
+      participationInstruction:HUB_INSTRUCTIONS.participationInstruction,
       messages: history.messages,
       history: history.history,
       earlierMessagesBefore: context.before,

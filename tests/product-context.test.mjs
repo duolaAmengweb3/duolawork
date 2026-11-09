@@ -122,3 +122,41 @@ test('large research, implementation and data-review outputs remain exact and re
  const target=tasks[1];const notice=await f.send('channel.task',{channelId:f.c.id,taskId:target.task.id,action:'update',expectedVersion:target.task.version,notifyAssignee:true,progress:'Review this exact result.'});
  const related=await f.claim({id:notice.notificationMessageId});assert.equal(related.input.taskWork[0].delivery.submission.body,target.body);assert.equal(related.input.taskWork[0].sourceMessages[0].id,source.id);
 });
+
+test('a coordinator can see peer notification progress and exact responses without private sessions, leases or treating silence as acceptance',async t=>{
+ const f=await setup(t),source=await f.send('channel.post',{channelId:f.c.id,body:'Both members review independently; no execution.',mentions:['grok','check']});
+ const mine=await f.claim(source);assert.ok(mine.input.participation.items.some(t=>t.memberId==='check'&&t.messageId===source.id&&t.status==='ready'));
+ const response=await f.send('channel.post',{channelId:f.c.id,turnId:mine.turnId,body:'A concrete disagreement remains unresolved.',mentions:[]},f.actor);
+ const view=await readChannel(f.repo,f.identity,{memberId:'check'},{channelId:f.c.id});
+ assert.ok(view.activity.every(t=>t.memberId==='check'),'the detailed private activity remains scoped to the caller');
+ const peer=view.participation.items.find(t=>t.memberId==='grok'&&t.messageId===source.id);
+ assert.equal(peer.status,'done');assert.deepEqual(peer.responseRef,{kind:'message',id:response.id});
+ for(const key of ['lease','resourceKey','nativeSessionId','queuedResourceKey','receiptSessionKey'])assert.ok(!JSON.stringify(view.participation).includes(key));
+ const claim=await claimConversation(f.repo,f.identity,{memberId:'check'},{requestId:f.requestId(),stepId:`turn_${source.id}_check`,channelId:f.c.id});
+ await f.send('channel.silent',{channelId:f.c.id,turnId:claim.turnId,reason:'No new evidence; not an acceptance vote.'},{memberId:'check'});
+ const current=await readChannel(f.repo,f.identity,f.actor,{channelId:f.c.id});const silent=current.participation.items.find(t=>t.memberId==='check'&&t.messageId===source.id);
+ assert.equal(silent.status,'silent');assert.equal(silent.responseRef,undefined);assert.equal(current.participation.window.complete,true);
+ assert.ok(current.coordination.every(c=>c.status!=='completed'),'returning or staying silent does not close the business request');
+ await assert.rejects(readChannel(f.repo,f.identity,{memberId:'write'},{channelId:f.c.id}),e=>e.code==='forbidden');
+});
+
+test('a bounded participant status window declares incomplete coverage instead of implying everybody has responded',async t=>{
+ const f=await setup(t);
+ await f.repo.transact(f.requestId(),{},tx=>{for(let i=0;i<101;i++)tx.put('channel_turn',{id:'window-'+String(i).padStart(3,'0'),parentId:'check',scopeId:f.c.id,memberId:'check',messageId:'fixture-message-'+i,status:'ready',createdAt:tx.now});return{};});
+ const view=await readChannel(f.repo,f.identity,f.actor,{channelId:f.c.id,view:'chat'});
+ assert.equal(view.participation.items.length,100);assert.equal(view.participation.window.complete,false);
+ assert.equal(view.activity.length,0,'peer summaries do not expand detailed private activity');
+});
+
+test('platform acceptance is visible to peers but never invents an Agent claim, queue or response',async t=>{
+ const f=await setup(t),source=await f.send('channel.post',{channelId:f.c.id,body:'Inspect actual receipt phase.',mentions:['check']});
+ const turnId=`turn_${source.id}_check`,noticeId=`notice_${turnId}`;
+ await f.repo.transact(f.requestId(),{},async tx=>{const notice=await tx.get('outbox',noticeId);tx.put('outbox',{...notice,status:'accepted',platformRespondedAt:tx.now,dispatchElapsedMs:523,credentials:'private value never projected',reason:'private transport detail'});return{};});
+ for(const view of ['chat',undefined]){
+  const channel=await readChannel(f.repo,f.identity,f.actor,{channelId:f.c.id,view});
+  const peer=channel.participation.items.find(t=>t.messageId===source.id&&t.memberId==='check');
+  assert.equal(peer.status,'ready');assert.equal(peer.notification.status,'accepted');assert.equal(peer.notification.dispatchElapsedMs,523);assert.ok(peer.notification.platformRespondedAt);
+  assert.equal(peer.claimed,undefined);assert.equal(peer.responseRef,undefined);assert.deepEqual(channel.notifications,[]);
+  assert.ok(!JSON.stringify(channel.participation).includes('private'));
+ }
+});
