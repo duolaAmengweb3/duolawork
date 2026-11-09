@@ -40,7 +40,8 @@ const durable = (s) => ({
   artifacts: s.artifacts,
 });
 const activeWork=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
-if(activeWork.active)throw new Error('原生 Agent 仍在回应，未重启本机软件。');
+const allowActiveWork=process.argv.includes('--allow-active-work');
+if(activeWork.active&&!allowActiveWork)throw new Error('原生 Agent 仍在回应，未重启本机软件。');
 const digest = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 async function localDigest() {
@@ -167,11 +168,11 @@ try {
           : 15000,
       ),
     });
-    if (r.status === 409 && p === "/api/local/prepare-update" && retry < 12) {
+    if (r.status === 409 && p === "/api/local/prepare-update" && !allowActiveWork && retry < 12) {
       await sleep(500);
       return post(p, body, retry + 1);
     }
-    if (!r.ok) throw new Error("更新交接失败 HTTP " + r.status);
+    if (!r.ok) throw Object.assign(new Error("更新交接失败 HTTP " + r.status),{status:r.status});
     return r.json();
   }
   const localBefore = await persistentDigest(),
@@ -199,6 +200,8 @@ try {
     // Native agents can be busy even when no managed browser is open.
     // Always ask the running client to check and drain its receivers first.
     {
+      // --allow-active-work only overrides remote activity. A live local
+      // receiver still has to complete its normal controlled handoff.
       const result = await post("/api/local/prepare-update");
       if (
         !result.prepared ||
@@ -347,6 +350,7 @@ try {
     processId: status.processId,
     desktopBuildId: status.clientView.buildId,
     backendAndDesktopMatch: true,
+    ...(allowActiveWork?{ownerAuthorizedActiveUpdate:true}:{}),
     cloudOnline: status.online,
     protectedLocalDataUnchanged:
       handoff.length || observedProfiles.length ? null : true,

@@ -31,7 +31,7 @@ test('Vault encrypts values, defaults to current/future members and groups, and 
  const row=await f.repo.get('vault_entry',f.item.id);
  for(const ctx of [{workspace:'another',id:row.id,version:row.version},{workspace:'test',id:'wrong',version:row.version},{workspace:'test',id:row.id,version:row.version+1}])await assert.rejects(()=>unsealVault(row.sealed,f.env,ctx),e=>e.code==='vault_locked');
  await assert.rejects(()=>f.tool({action:'info',credentialId:row.id},{memberId:'write'}),e=>e.status===403);
- await assert.rejects(()=>vaultSettings(f.repo,f.identity,a,{action:'reveal',credentialId:row.id},f.env),e=>e.status===403);
+ assert.equal((await vaultSettings(f.repo,f.identity,a,{action:'reveal',channelId:f.channel.id,credentialId:row.id,requestId:f.requestId()},f.env)).fields.token,secret);
 });
 
 test('one-time native grants enforce member, expiry, scopes and rotation; ledger never retains resolved values',async t=>{
@@ -53,7 +53,7 @@ test('status changes revoke immediately, restore preserves values, and a secreta
  e=await f.settings({action:'access',credentialId:e.id,expectedVersion:e.version,blockedChannelIds:[f.channel.id]});await assert.rejects(()=>f.tool({action:'info',credentialId:e.id}),e=>e.code==='vault_forbidden');
  await assert.rejects(()=>f.tool({action:'manage',operation:'save',credentialId:e.id,expectedVersion:e.version,blockedChannelIds:[]}),e=>e.code==='owner_required');
  e=await f.settings({action:'disable',credentialId:e.id,expectedVersion:e.version});assert.equal((await f.settings({action:'reveal',credentialId:e.id})).fields.token,secret);
- e=await f.settings({action:'delete',credentialId:e.id,expectedVersion:e.version});assert.equal((await f.settings({action:'list',deleted:true})).items.length,1);await assert.rejects(()=>f.tool({action:'info',credentialId:e.id}),e=>e.code==='vault_unavailable');
+ e=await f.settings({action:'delete',credentialId:e.id,expectedVersion:e.version});assert.equal((await f.settings({action:'list',deleted:true})).items.length,1);await assert.rejects(()=>f.tool({action:'info',credentialId:e.id}),e=>e.code==='vault_forbidden');
  e=await f.settings({action:'restore',credentialId:e.id,expectedVersion:e.version});assert.equal((await f.settings({action:'reveal',credentialId:e.id})).fields.token,secret);
  e=await f.settings({action:'delete',credentialId:e.id,expectedVersion:e.version});await f.settings({action:'purge',credentialId:e.id,expectedVersion:e.version,confirm:true});assert.equal((await f.settings({action:'list'})).items.length,0);assert.ok(!(await f.dump()).includes(secret));
 });
@@ -114,8 +114,50 @@ test('independent server key survives reboot, recovers its own copy and refuses 
  const missing={database:path.join(directory,'new-place/data.sqlite')};assert.equal((await loadVaultKey(f.db,missing)).state,'locked');
 });
 
-test('cached MCP bridge uses the same scoped Vault and cannot retrieve raw values',async t=>{
+test('cached MCP bridge uses the same scoped Vault and ordinary info does not reveal values',async t=>{
  const f=await setup(t);const r=await callTool(f.repo,f.identity,a,'post_message',{requestId:f.requestId(),channelId:f.channel.id,body:'HUB_SHARED_TOOL_V1\n'+JSON.stringify({name:'vault',arguments:{action:'info',channelId:f.channel.id,credentialId:f.item.id}})},f.env);assert.equal(r.item.id,f.item.id);assert.ok(!JSON.stringify(r).includes(secret));
+});
+
+test('ordinary agents create, read, rotate and manage credentials by default without a secretary role or owner setup',async t=>{
+ const f=await setup(t),channelId=f.channel.id,provided='synthetic-user-provided-password-only';
+ const invoke=(actor,args)=>callTool(f.repo,f.identity,actor,'vault',{channelId,requestId:f.requestId(),...args},f.env);
+ const createArgs={action:'save',requestId:f.requestId(),name:'Synthetic server',type:'ssh',fields:{host:'server.example.test',username:'fixture-user',password:provided}};
+ let item=await invoke(a,createArgs);assert.ok(item.id);assert.deepEqual(item.blockedMemberIds,[]);assert.deepEqual(item.blockedChannelIds,[]);assert.ok(!JSON.stringify(item).includes(provided));
+ assert.equal((await invoke(b,{action:'reveal',credentialId:item.id})).fields.password,provided);
+ const group=await f.command('channel.create',{name:'later credential use',memberIds:['grok','check']});assert.ok((await f.tool({action:'list',channelId:group.id},b)).items.some(e=>e.id===item.id));
+ item=await invoke(b,{action:'save',credentialId:item.id,expectedVersion:item.version,fields:{password:'rotated-synthetic-password'},description:'rotated by another ordinary agent'});
+ let values=(await invoke(a,{action:'reveal',credentialId:item.id})).fields;assert.equal(values.host,'server.example.test');assert.equal(values.password,'rotated-synthetic-password');
+ item=await invoke(a,{action:'disable',credentialId:item.id,expectedVersion:item.version});assert.equal(item.status,'disabled');assert.ok((await invoke(b,{action:'list',status:'disabled'})).items.some(e=>e.id===item.id));await assert.rejects(()=>invoke(b,{action:'prepare',references:{TOKEN:item.fields[0].reference}}),e=>e.code==='vault_unavailable');
+ item=await invoke(b,{action:'enable',credentialId:item.id,expectedVersion:item.version});assert.equal(item.status,'active');
+ item=await invoke(b,{action:'delete',credentialId:item.id,expectedVersion:item.version});assert.equal(item.status,'deleted');assert.ok((await invoke(a,{action:'list',deleted:true})).items.some(e=>e.id===item.id));
+ item=await invoke(a,{action:'restore',credentialId:item.id,expectedVersion:item.version});assert.equal((await invoke(b,{action:'reveal',credentialId:item.id})).fields.password,'rotated-synthetic-password');
+ const audit=await invoke(a,{action:'activity',credentialId:item.id});assert.ok(audit.items.some(e=>e.event==='create'&&e.memberId==='grok'&&e.scopeId===channelId));assert.ok(audit.items.some(e=>e.event==='update'&&e.memberId==='check'));
+ const scoped=await f.settings({action:'access',credentialId:item.id,expectedVersion:item.version,blockedMemberIds:['grok']});
+ for(const action of ['info','reveal','save','delete','restore','activity'])await assert.rejects(()=>invoke(a,{action,credentialId:item.id,expectedVersion:scoped.version,...(action==='save'?{fields:{password:'should-not-save'}}:{})}),e=>e.code==='vault_forbidden');
+ await assert.rejects(()=>invoke(a,createArgs),e=>e.code==='vault_forbidden','replaying a former create cannot bypass a later user exclusion');
+ await assert.rejects(()=>invoke(b,{action:'save',credentialId:item.id,expectedVersion:scoped.version,blockedMemberIds:[]}),e=>e.code==='owner_required');
+ const backup=await invoke(a,{action:'export',password:'synthetic backup passphrase'}),restored=await invoke(a,{action:'import',password:'synthetic backup passphrase',bundle:backup.bundle});assert.equal(restored.items.length,1,'export excludes the credential the user hid from this agent');
+ assert.ok(!(await f.dump()).includes(provided));assert.ok(!(await f.dump()).includes('rotated-synthetic-password'));
+});
+
+test('cached tool catalogs can store a provided credential through the existing post_message envelope without publishing it',async t=>{
+ const f=await setup(t),channelId=f.channel.id,value='synthetic-old-catalog-value';
+ const send=arguments_=>callTool(f.repo,f.identity,a,'post_message',{requestId:f.requestId(),channelId,body:'HUB_SHARED_TOOL_V1\n'+JSON.stringify({name:'vault',arguments:{channelId,...arguments_}})},f.env);
+ const before=(await f.repo.list('channel_message')).length;let item=await send({action:'manage',operation:'save',name:'Legacy credential',type:'token',fields:{token:value}});assert.ok(item.id);
+ item=await send({action:'save',credentialId:item.id,expectedVersion:item.version,fields:{token:'synthetic-legacy-rotated'}});assert.equal(item.version,2);
+ assert.equal((await f.tool({action:'reveal',credentialId:item.id,requestId:f.requestId()},b)).fields.token,'synthetic-legacy-rotated');assert.equal((await f.repo.list('channel_message')).length,before);assert.ok(!(await f.dump()).includes(value));
+});
+
+test('HTTP use needs no setup whitelist by default and later user destination and channel exclusions apply immediately',async t=>{
+ const f=await setup(t);let calls=0;f.env.CONNECTOR_FETCH=async(url,init)=>{calls++;assert.equal(new Headers(init.headers).get('Authorization'),'Bearer '+secret);return Response.json({ok:true});};
+ let item=await f.tool({action:'save',requestId:f.requestId(),name:'Default-open token',type:'token',fields:{token:secret}},b);
+ const request=()=>f.tool({action:'request',requestId:f.requestId(),credentialId:item.id,url:'https://another.example.test/check'},b);
+ assert.equal((await request()).status,'succeeded');assert.equal(calls,1);
+ item=await f.settings({action:'save',credentialId:item.id,expectedVersion:item.version,allowedOrigins:['https://api.example.test']});await assert.rejects(request,e=>e.code==='vault_destination');
+ await assert.rejects(()=>f.tool({action:'save',requestId:f.requestId(),credentialId:item.id,expectedVersion:item.version,allowedOrigins:[]},b),e=>e.code==='owner_required');
+ item=await f.settings({action:'access',credentialId:item.id,expectedVersion:item.version,blockedChannelIds:[f.channel.id]});
+ await assert.rejects(()=>f.tool({action:'save',requestId:f.requestId(),credentialId:item.id,expectedVersion:item.version,fields:{token:'cannot-override'}},b),e=>e.code==='vault_forbidden');
+ assert.equal((await f.tool({action:'list'},b)).items.some(e=>e.id===item.id),false);
 });
 
 test('MCP remote headers resolve one shared reference, rotate for the next call and never expose the secret',async t=>{

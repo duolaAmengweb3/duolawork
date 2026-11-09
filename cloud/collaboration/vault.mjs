@@ -1,6 +1,5 @@
 import {id,fail,required,digest} from './repository.mjs';
 import {access} from './workspace-objects.mjs';
-import {requireManager} from './delegation.mjs';
 import {activityPage} from './service-activity.mjs';
 import {publicMcpURL} from '../../shared/mcp-client.mjs';
 import {vaultReference,vaultReferences,replaceVaultReferences,concealSecrets} from '../../shared/vault-references.mjs';
@@ -8,7 +7,8 @@ import {sealVault,unsealVault,exportVaultBackup,importVaultBackup} from './vault
 import {readBounded} from './security.mjs';
 
 const string={type:'string'},object={type:'object',additionalProperties:true};
-export const VAULT_TOOL={name:'vault',description:'全局凭证库。list/info 返回可用凭证名称、字段和引用，不返回密钥。request 在指定服务地址代发 HTTP 并注入凭证；结果不明查 result，不重复写。原生命令用本地 run_with_credentials 注入 vault:// 引用。prepare 只给受信运行端一次性领取，不能把领取结果放进群或记忆。manage 仅供指定秘书修改名称和备注，不能扩大授权。',inputSchema:{type:'object',properties:{action:{type:'string',enum:['list','info','request','result','prepare','manage']},channelId:string,credentialId:string,requestId:string,query:string,after:string,invocationId:string,url:string,method:string,headers:object,body:{},auth:{type:'string',enum:['bearer','basic','headers','none']},references:object,operation:string,expectedVersion:{type:'integer'},name:string,description:string,blockedMemberIds:{type:'array',items:string},blockedChannelIds:{type:'array',items:string}},required:['action','channelId'],additionalProperties:false}};
+const managementActions=['save','reveal','activity','disable','enable','delete','restore','purge','export','import'];
+export const VAULT_TOOL={name:'vault',description:'全局凭证库，所有已接入 Agent 默认可新增、读取、修改、轮换、启停、删除/恢复及使用凭证，不要求用户代填，不需要秘书身份或逐次授权。save(name,type,fields) 创建，带 credentialId/expectedVersion 更新；fields 是字段名到真实值的对象，直接加密保存，结果只返回引用。用户已提供凭证并要求保存时直接保存，不要推给用户手动操作。list/info 查名称、状态和字段引用；reveal 按需读取真实值，不要回显到群聊或记忆。request 在服务端注入凭证并请求 HTTP；原生命令用 run_with_credentials。普通删除进入回收站；purge 仅用于明确要求彻底删除并传 confirm=true。用户后置关闭的成员/聊天访问及服务范围继续生效，Agent 不能改写这些关闭设置。manage(operation) 兼容旧工具目录。',inputSchema:{type:'object',properties:{action:{type:'string',enum:['list','info','request','result','prepare','manage',...managementActions]},channelId:string,credentialId:string,requestId:string,query:string,after:string,invocationId:string,url:string,method:string,headers:object,body:{},auth:{type:'string',enum:['bearer','basic','headers','none']},references:object,operation:{type:'string',enum:managementActions},expectedVersion:{type:'integer'},name:string,description:string,type:{type:'string',enum:['api_key','token','login','ssh','custom']},fields:{type:'object',additionalProperties:string},service:string,allowedOrigins:{type:'array',items:string},expiresAt:{type:['string','null']},removedFields:{type:'array',items:string},status:{type:'string',enum:['active','disabled']},deleted:{type:'boolean'},confirm:{type:'boolean'},password:string,bundle:object,blockedMemberIds:{type:'array',items:string},blockedChannelIds:{type:'array',items:string}},required:['action','channelId'],additionalProperties:false}};
 const workspace=repo=>repo.workspaceId||repo.repo.workspaceId;
 const context=(repo,e)=>({workspace:workspace(repo),id:e.id,version:e.version});
 export const publicVaultEntry=e=>({id:e.id,name:e.name,type:e.type,description:e.description||'',service:e.service||'',allowedOrigins:e.allowedOrigins||[],status:e.status,fieldNames:e.fieldNames,fields:e.fieldNames.map(name=>({name,reference:vaultReference(e.id,name)})),blockedMemberIds:e.blockedMemberIds||[],blockedChannelIds:e.blockedChannelIds||[],version:e.version,createdAt:e.createdAt,updatedAt:e.updatedAt,expiresAt:e.expiresAt||null,lastUsedAt:e.lastUsedAt||null});
@@ -18,7 +18,9 @@ function fields(input){
  return {...input};
 }
 function origins(input=[]){if(!Array.isArray(input)||input.length>30)fail('invalid_vault_origin','服务地址无效');return [...new Set(input.filter(Boolean).map(v=>new URL(publicMcpURL(v)).origin))];}
-function visible(entry,actor,channelId){return actor.owner||entry.status==='active'&&(!entry.expiresAt||Date.parse(entry.expiresAt)>Date.now())&&!entry.blockedMemberIds?.includes(actor.memberId)&&!entry.blockedChannelIds?.includes(channelId);}
+function inScope(entry,actor,channelId){return actor.owner||!entry.blockedMemberIds?.includes(actor.memberId)&&!entry.blockedChannelIds?.includes(channelId);}
+function visible(entry,actor,channelId){return actor.owner||entry.status==='active'&&(!entry.expiresAt||Date.parse(entry.expiresAt)>Date.now())&&inScope(entry,actor,channelId);}
+function assertScope(entry,actor,channelId){if(!inScope(entry,actor,channelId))fail('vault_forbidden','当前成员或聊天已关闭此凭证的访问',403);return entry;}
 async function allowed(repo,actor,credentialId,channelId,{version}={}){
  if(!actor.owner){if(!actor.memberId)fail('forbidden','需要真实成员身份',403);await access(repo,required(channelId,'聊天'),actor);}
  const entry=await repo.get('vault_entry',required(credentialId,'凭证'));
@@ -53,7 +55,7 @@ async function list(repo,actor,args){
  if(query){sql+=" AND (json_extract(body,'$.name') LIKE ? ESCAPE '\\' OR json_extract(body,'$.service') LIKE ? ESCAPE '\\')";const q='%'+query.replace(/[\\%_]/g,'\\$&')+'%';params.push(q,q);}
  sql+=' ORDER BY id LIMIT ?';params.push(limit);
  const rows=(await repo.db.prepare(sql).bind(...params).all()).results.map(r=>JSON.parse(r.body));
- return {items:rows.slice(0,100).filter(e=>actor.owner||visible(e,actor,args.channelId)).map(publicVaultEntry),next:rows.length>100?rows[99].id:null};
+ return {items:rows.slice(0,100).filter(e=>inScope(e,actor,args.channelId)).map(publicVaultEntry),next:rows.length>100?rows[99].id:null};
 }
 function scope(args,old,identity){
  const members=args.blockedMemberIds??old?.blockedMemberIds??[],channels=args.blockedChannelIds??old?.blockedChannelIds??[];
@@ -62,49 +64,47 @@ function scope(args,old,identity){
 }
 async function checkVersion(tx,entry,version){const current=await tx.get('vault_entry',entry.id);if(current.version!==version)fail('version_conflict','凭证刚被更新，请刷新后重试',409);return current;}
 export async function vaultSettings(repo,identity,actor,args,env){
- await requireManager(repo,actor);
+ if(!actor.owner){if(!actor.memberId)fail('forbidden','需要真实成员身份',403);await access(repo,required(args.channelId,'聊天'),actor);}
  if(args.action==='list')return {...await list(repo,actor,args),configured:!!env.VAULT_ENCRYPTION_KEY};
- if(args.action==='get'){if(!actor.owner)await allowed(repo,actor,args.credentialId,args.channelId);return {item:publicVaultEntry(await repo.get('vault_entry',args.credentialId))};}
- if(args.action==='activity'){const e=args.credentialId?await repo.get('vault_entry',args.credentialId):null;if(!actor.owner){if(!e)fail('owner_required','只有用户可查看凭证库全局记录',403);await allowed(repo,actor,e.id,args.channelId);}return activityPage(repo,'vault_activity',{parent:e?.id,after:args.after});}
+ if(args.action==='get')return {item:publicVaultEntry(assertScope(await repo.get('vault_entry',args.credentialId),actor,args.channelId))};
+ if(args.action==='activity'){const e=args.credentialId?assertScope(await repo.get('vault_entry',args.credentialId),actor,args.channelId):null;const page=await activityPage(repo,'vault_activity',{parent:e?.id,after:args.after});if(actor.owner||e)return page;const entries=await Promise.all(page.items.map(r=>repo.get('vault_entry',r.parentId,false)));return {...page,items:page.items.filter((r,i)=>r.parentId==='vault'||entries[i]&&inScope(entries[i],actor,args.channelId))};}
  if(args.action==='reveal'){
-  if(!actor.owner)fail('owner_required','只有用户可在凭证库页面查看真实值',403);
-  const entry=await repo.get('vault_entry',args.credentialId);if(!['active','disabled'].includes(entry.status))fail('vault_unavailable','请先恢复凭证');const data=await decrypt(repo,entry,env);
-  await repo.transact(args.requestId,{action:'reveal',credentialId:entry.id},async tx=>{await checkVersion(tx,entry,entry.version);audit(tx,entry,actor,null,'reveal');return {recorded:true};});
+  const entry=assertScope(await repo.get('vault_entry',args.credentialId),actor,args.channelId);if(!['active','disabled'].includes(entry.status))fail('vault_unavailable','请先恢复凭证');const data=await decrypt(repo,entry,env);
+  await repo.transact(args.requestId,{action:'reveal',credentialId:entry.id},async tx=>{await checkVersion(tx,entry,entry.version);audit(tx,entry,actor,args.channelId,'reveal');return {recorded:true};});
   return {fields:data,version:entry.version};
  }
  if(args.action==='export'){
-  if(!actor.owner)fail('owner_required','只有用户可导出凭证备份',403);
-  const rows=[];let after='';while(true){const page=await repo.list('vault_entry',{limit:501,after});rows.push(...page.filter(e=>!['deleted','purged'].includes(e.status)));if(rows.length>1000||rows.reduce((sum,e)=>sum+(e.sealed?.data.length||0),0)>8000000)fail('too_large','单次备份最多 1000 条或 8MB 凭证');if(page.length<501)break;after=page.at(-1).id;}
+  const rows=[];let after='';while(true){const page=await repo.list('vault_entry',{limit:501,after});rows.push(...page.filter(e=>!['deleted','purged'].includes(e.status)&&inScope(e,actor,args.channelId)));if(rows.length>1000||rows.reduce((sum,e)=>sum+(e.sealed?.data.length||0),0)>8000000)fail('too_large','单次备份最多 1000 条或 8MB 凭证');if(page.length<501)break;after=page.at(-1).id;}
   const items=await Promise.all(rows.map(async e=>({...publicVaultEntry(e),values:await decrypt(repo,e,env)})));
-  const data={sourceWorkspace:repo.workspaceId,createdAt:new Date().toISOString(),items};if(new TextEncoder().encode(JSON.stringify(data)).byteLength>5000000)fail('too_large','备份内容过大，请分批整理后导出');const bundle=await exportVaultBackup(data,args.password);await repo.transact(id('vaultexport'),{},tx=>{audit(tx,{id:'vault',name:'凭证库',version:1},actor,null,'export');return {recorded:true};});return {bundle};
+  const data={sourceWorkspace:repo.workspaceId,createdAt:new Date().toISOString(),items};if(new TextEncoder().encode(JSON.stringify(data)).byteLength>5000000)fail('too_large','备份内容过大，请分批整理后导出');const bundle=await exportVaultBackup(data,args.password);await repo.transact(id('vaultexport'),{},async tx=>{for(const e of rows){const current=await checkVersion(tx,e,e.version);assertScope(current,actor,args.channelId);}audit(tx,{id:'vault',name:'凭证库',version:1},actor,args.channelId,'export');return {recorded:true};});return {bundle};
  }
  if(args.action==='import'){
-  if(!actor.owner)fail('owner_required','只有用户可导入凭证备份',403);
   const data=await importVaultBackup(args.bundle,args.password);
   if(!Array.isArray(data.items)||data.items.length>1000||data.items.some(e=>!e?.name||['blockedMemberIds','blockedChannelIds'].some(k=>e[k]!==undefined&&(!Array.isArray(e[k])||e[k].some(v=>typeof v!=='string')))||e.expiresAt&&!Number.isFinite(Date.parse(e.expiresAt))))fail('invalid_backup','备份内容无效，未导入');
-  const sameWorkspace=data.sourceWorkspace===repo.workspaceId;
+  const sameWorkspace=actor.owner&&data.sourceWorkspace===repo.workspaceId;
   const imported=await Promise.all(data.items.map(async e=>{const values=fields(e.values),entry={id:id('credential'),name:required(e.name,'凭证名称',120),type:['api_key','token','login','ssh','custom'].includes(e.type)?e.type:'custom',description:typeof e.description==='string'?e.description.slice(0,1000):'',service:typeof e.service==='string'?e.service.slice(0,200):'',allowedOrigins:origins(e.allowedOrigins),status:e.status==='disabled'?'disabled':'active',fieldNames:Object.keys(values),expiresAt:e.expiresAt||null,blockedMemberIds:sameWorkspace?(e.blockedMemberIds||[]).filter(m=>identity.members.some(x=>x.id===m)):[],blockedChannelIds:sameWorkspace?e.blockedChannelIds||[]:[],version:1};return {...entry,sealed:await sealVault(values,env,context(repo,entry))};}));
-  return repo.transact(args.requestId,{action:'import',fingerprint:await digest(JSON.stringify(args.bundle))},async tx=>{const items=[];for(const e of imported){items.push(publicVaultEntry(tx.put('vault_entry',{...e,createdAt:tx.now,updatedAt:tx.now})));audit(tx,e,actor,null,'import');}return {items};});
+  return repo.transact(args.requestId,{action:'import',fingerprint:await digest(JSON.stringify(args.bundle))},async tx=>{const items=[];for(const e of imported){items.push(publicVaultEntry(tx.put('vault_entry',{...e,createdAt:tx.now,updatedAt:tx.now})));audit(tx,e,actor,args.channelId,'import');}return {items};});
  }
  if(args.action==='save'){
-  if(args.fields!==undefined&&!actor.owner)fail('owner_required','凭证值请由用户在 Vault 页面录入',403);
-  if(!actor.owner){if(!args.credentialId||['blockedMemberIds','blockedChannelIds','allowedOrigins','expiresAt','type','removedFields'].some(k=>args[k]!==undefined))fail('owner_required','凭证授权和生命周期由用户管理，秘书不能自行扩大权限',403);await allowed(repo,actor,args.credentialId,args.channelId);}
+  if(!actor.owner&&['blockedMemberIds','blockedChannelIds'].some(k=>args[k]!==undefined))fail('owner_required','成员和聊天的关闭设置由用户后置管理，Agent 不能改写',403);
   const submitted=args.fields===undefined?undefined:fields(args.fields),entryId=args.credentialId||'credential_'+(await digest(required(args.requestId,'请求编号'))).slice(0,32);
+  const existing=await repo.get('vault_entry',entryId,false);if(existing)assertScope(existing,actor,args.channelId);
   return repo.transact(args.requestId,{...args,fields:submitted?await digest(JSON.stringify(submitted)):undefined},async tx=>{
-   const old=args.credentialId?await tx.get('vault_entry',args.credentialId):null;if(old)await checkVersion(tx,old,args.expectedVersion);
+   const old=args.credentialId?assertScope(await tx.get('vault_entry',args.credentialId),actor,args.channelId):null;if(old)await checkVersion(tx,old,args.expectedVersion);
+   if(!actor.owner&&old?.allowedOrigins?.length&&args.allowedOrigins!==undefined&&JSON.stringify(origins(args.allowedOrigins))!==JSON.stringify(old.allowedOrigins))fail('owner_required','凭证已有指定服务范围，Agent 不能改写；请由用户在使用范围中调整',403);
    if(old&&['deleted','purged'].includes(old.status))fail('vault_deleted','请先从回收站恢复此凭证',409);
    const values=old?{...await decrypt(repo,old,env),...submitted}:submitted||fields(null),version=(old?.version||0)+1;
    if(args.removedFields!==undefined){if(!Array.isArray(args.removedFields)||args.removedFields.some(v=>typeof v!=='string'))fail('invalid_vault_fields','删除字段格式无效');for(const k of args.removedFields)delete values[k];}fields(values);
    const entry={...old,id:entryId,name:required(args.name||old?.name,'凭证名称',120),type:args.type||old?.type||'custom',description:args.description??old?.description??'',service:args.service??old?.service??'',allowedOrigins:origins(args.allowedOrigins??old?.allowedOrigins??[]),fieldNames:Object.keys(values),status:old?.status||'active',version,expiresAt:args.expiresAt??old?.expiresAt??null,...scope(args,old,identity)};
    if(!['api_key','token','login','ssh','custom'].includes(entry.type)||typeof entry.description!=='string'||entry.description.length>1000||typeof entry.service!=='string'||entry.service.length>200||entry.expiresAt&&!Number.isFinite(Date.parse(entry.expiresAt)))fail('invalid_vault_item','凭证类型、说明或到期时间无效');
-   const sealed=await sealVault(values,env,context(repo,entry)),row=tx.put('vault_entry',{...entry,sealed,createdAt:old?.createdAt||tx.now,updatedAt:tx.now});audit(tx,row,actor,null,old?'update':'create');return publicVaultEntry(row);
+   const sealed=await sealVault(values,env,context(repo,entry)),row=tx.put('vault_entry',{...entry,sealed,createdAt:old?.createdAt||tx.now,updatedAt:tx.now});audit(tx,row,actor,args.channelId,old?'update':'create');return publicVaultEntry(row);
   });
  }
- const entry=await repo.get('vault_entry',required(args.credentialId,'凭证'));
+ const entry=assertScope(await repo.get('vault_entry',required(args.credentialId,'凭证')),actor,args.channelId);
  if(!['access','disable','enable','delete','restore','purge'].includes(args.action))fail('invalid_action','凭证库操作无效');
- if(!actor.owner)fail('owner_required','请由用户管理凭证授权、启停和删除，Agent 不能自行扩大权限',403);
+ if(args.action==='access'&&!actor.owner)fail('owner_required','成员和聊天的关闭设置由用户后置管理，Agent 不能改写',403);
  return repo.transact(args.requestId,{action:args.action,id:entry.id,version:args.expectedVersion,...(args.action==='access'?scope(args,entry,identity):{})},async tx=>{
-  const e=await checkVersion(tx,entry,args.expectedVersion);
+  const e=assertScope(await checkVersion(tx,entry,args.expectedVersion),actor,args.channelId);
   if(args.action==='purge'&&(e.status!=='deleted'||args.confirm!==true))fail('invalid_action','只能在回收站明确彻底删除凭证');
   if(e.status==='deleted'&&!['restore','purge'].includes(args.action))fail('vault_deleted','此凭证已在回收站');
   // Scope/status revisions must also bind the sealed payload to the new version.
@@ -113,7 +113,7 @@ export async function vaultSettings(repo,identity,actor,args,env){
   else next.status={disable:'disabled',enable:'active',delete:'deleted',restore:'active',purge:'purged'}[args.action];
   next.sealed=args.action==='purge'?null:await sealVault(await decrypt(repo,e,env),env,context(repo,next));
   if(args.action==='purge'){next.fieldNames=[];next.name='已彻底删除';next.description='';next.service='';next.allowedOrigins=[];}
-  tx.put('vault_entry',next);audit(tx,e,actor,null,args.action);return publicVaultEntry(next);
+  const saved=tx.put('vault_entry',next);audit(tx,e,actor,args.channelId,args.action);return publicVaultEntry(saved);
  });
 }
 const reservedEnv=new Set(['PATH','HOME','USER','SHELL','CODEX_HOME','CLAUDE_CONFIG_DIR','NODE_OPTIONS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','NODE_PATH','BASH_ENV','ENV','__proto__','constructor','prototype']);
@@ -136,7 +136,7 @@ export async function redeemVaultLease(repo,actor,args,env){
 }
 async function vaultRequest(repo,actor,args,env){
  const entry=await allowed(repo,actor,args.credentialId,args.channelId),url=publicMcpURL(args.url),origin=new URL(url).origin;
- if(!entry.allowedOrigins?.includes(origin))fail('vault_destination','请先在 Vault 中为这条凭证填写允许的服务地址',403);
+ if(entry.allowedOrigins?.length&&!entry.allowedOrigins.includes(origin))fail('vault_destination','凭证已有指定服务范围，不允许发送到这个地址',403);
  const method=(args.method||'GET').toUpperCase();if(!['GET','HEAD','POST','PUT','PATCH','DELETE'].includes(method))fail('invalid_method','HTTP 方法无效');
  if(args.headers&&(typeof args.headers!=='object'||Array.isArray(args.headers)||Object.entries(args.headers).some(([k,v])=>!/^[A-Za-z0-9_-]+$/.test(k)||typeof v!=='string'||/[\r\n]/.test(v))))fail('invalid_headers','请求头需要是有效名称和文本值');
  const secret=await decrypt(repo,entry,env),auth=args.auth||(entry.type==='login'?'basic':'bearer'),headers=new Headers(args.headers||{});
@@ -174,10 +174,11 @@ async function requestResult(repo,actor,channelId,invocationId,env){
 export async function vaultTool(repo,identity,actor,args,env){
  await access(repo,args.channelId,actor);
  if(args.action==='list')return list(repo,actor,args);
- if(args.action==='info')return {item:publicVaultEntry(await allowed(repo,actor,args.credentialId,args.channelId)),usage:'HTTP 使用 vault(action=request)，原生环境使用 run_with_credentials；连接器请求头/环境变量中可使用字段的 vault:// 引用。'};
+ if(args.action==='info')return {...await vaultSettings(repo,identity,actor,{...args,action:'get'},env),usage:'默认可直接 save 新增或改值，reveal 按需读取；HTTP 使用 request，原生环境使用 run_with_credentials；不要回显真实值到群聊或记忆。'};
  if(args.action==='prepare')return prepare(repo,actor,args,env);
  if(args.action==='request')return vaultRequest(repo,actor,args,env);
  if(args.action==='result')return requestResult(repo,actor,args.channelId,required(args.invocationId,'请求记录'),env);
- if(args.action==='manage'){if(args.operation!=='save')fail('owner_required','授权、启停和删除请由用户在 Vault 管理',403);return vaultSettings(repo,identity,actor,{...args,action:args.operation},env);}
+ if(args.action==='manage'){if(!managementActions.includes(args.operation))fail('invalid_action','请选择凭证管理操作');return vaultSettings(repo,identity,actor,{...args,action:args.operation},env);}
+ if(managementActions.includes(args.action))return vaultSettings(repo,identity,actor,args,env);
  fail('invalid_action','凭证工具操作无效');
 }
