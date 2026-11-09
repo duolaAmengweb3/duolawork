@@ -2,7 +2,7 @@
 export function receptionIssues(connection) {
   const issues = {...connection?.receptionIssues};
   const setup = connection?.setup;
-  if (setup?.stage === 'blocked' && (!connection?.verifiedAt || !setup.at || setup.at > connection.verifiedAt))
+  if (setup?.stage === 'blocked')
     issues[setup.channelId || '*'] = setup;
   return Object.fromEntries(Object.entries(issues).filter(([, issue]) => issue?.stage === 'blocked'));
 }

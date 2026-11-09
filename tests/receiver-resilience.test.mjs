@@ -7,6 +7,7 @@ import {eventMethod} from '../cloud/collaboration/events.mjs';
 import {dispatchOne,maintenance} from '../cloud/collaboration/dispatcher.mjs';
 import {seal,publicConnection} from '../cloud/collaboration/security.mjs';
 import {memberAvailability} from '../shared/member-availability.mjs';
+import {command} from '../cloud/collaboration/engine.mjs';
 const secret='isolated-receiver-recovery',signing='whsec_'+Buffer.alloc(32,21).toString('base64');
 const base=Date.parse('2026-11-09T15:00:00Z'),at=s=>new Date(base+s*1000).toISOString();
 async function setup(t,transport='dots-events',receiverToken=signing){
@@ -156,4 +157,20 @@ test('two failed groups retain separate blockers when only one group really reco
  const own=await callTool(f.repo,f.identity,{memberId:'grok'},'receive_messages',{requestId:'actual-A-recovery',channelId:f.channel.id,notificationTurnId:a.turnId},{},{clock:()=>base+3200000});
  await f.send('channel.post',{channelId:f.channel.id,turnId:own.turnId,body:'A real reply'},{memberId:'grok'},3201);
  c=await f.repo.get('connection','grok');assert.equal(c.setup.stage,'verified');assert.deepEqual(c.receptionIssues,{});
+});
+test('a successful real connection probe preserves a legacy setup-only group failure until that group ACKs',async t=>{
+ const f=await setup(t),a=await f.post('Legacy failed group requirement');
+ const issue={stage:'blocked',channelId:f.channel.id,code:'delivery_unclaimed',message:'Legacy group did not receive',at:at(1)};
+ await f.repo.transact('legacy-only-issue',{},async tx=>{const c=await tx.get('connection','grok');delete c.receptionIssues;tx.put('connection',{...c,setup:issue});return{};});
+ // Both the projection and the real engine mutation must retain the legacy issue.
+ assert.equal(publicConnection({...await f.repo.get('connection','grok'),verifiedAt:at(2)}).setup.stage,'blocked');
+ const send=(type,args,actor={owner:true},s=2)=>command(f.repo,f.identity,actor,{type,requestId:'legacy-probe-'+type,...args},at(s));
+ const probe=await send('connection.probe',{memberId:'grok'}),step=(await f.repo.list('step',{parent:probe.runId}))[0];
+ const claim=await send('step.claim',{stepId:step.id},{memberId:'grok'},3),run=await f.repo.get('run',probe.runId);
+ await send('step.submit',{attemptId:claim.attemptId,lease:claim.lease,items:[{title:'连接验证',body:run.probeNonce}]},{memberId:'grok'},4);
+ const c=await f.repo.get('connection','grok');assert.equal(c.status,'verified');assert.equal(c.setup.channelId,f.channel.id);assert.deepEqual(c.receptionIssues[f.channel.id],issue);
+ assert.equal(memberAvailability({id:'grok',platformId:'grok-bot'},publicConnection(c),null,f.channel.id).label,'接收异常');
+ const actual=await f.receive(a,'legacy-source-real-claim');
+ await f.send('channel.post',{channelId:f.channel.id,turnId:actual.turnId,body:'Original group actual reply'},{memberId:'grok'},611);
+ assert.equal((await f.repo.get('connection','grok')).setup.stage,'verified');
 });
