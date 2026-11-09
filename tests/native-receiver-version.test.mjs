@@ -8,9 +8,10 @@ import {sha256 as currentRevision} from '../cloud/collaboration/claude-download.
 import {MonitorBridge} from '../connectors/claude/monitor.mjs';
 import {privateJson} from '../local/storage.mjs';
 import os from 'node:os';
-import {execFile} from 'node:child_process';
+import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 
 async function setup(t){
  const f=await fixture(t);f.identity.members[0].platformId='claude-code';
@@ -63,4 +64,17 @@ test('monitor heartbeat uses its startup version instead of rereading a replaced
 test('native monitor refuses a registration hash that differs from its startup bundle before opening a connection',async()=>{
  const entry=fileURLToPath(new URL('../connectors/claude/cli.mjs',import.meta.url));
  await assert.rejects(promisify(execFile)(process.execPath,[entry,'monitor',path.join(os.tmpdir(),'not-a-real-hub-config'),'--runtime-revision','0'.repeat(64)],{env:{...process.env,AGENT_HUB_CONNECTOR_IMPORT:'0'},timeout:10000}),error=>error.code===1&&/启动版本与插件登记不同/.test(error.stderr)&&!error.stderr.includes('ENOENT'));
+});
+
+test('installing a replacement does not stop the existing native monitor before its host reloads it',async t=>{
+ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'hub-monitor-handoff-'));t.after(()=>fs.rm(directory,{recursive:true,force:true}));
+ const entry=fileURLToPath(new URL('../connectors/claude/cli.mjs',import.meta.url));
+ const revision=createHash('sha256').update(await fs.readFile(entry)).digest('hex'),configFile=path.join(directory,'connection.json');
+ await privateJson(configFile,{connectionDir:directory,runtimeRevision:revision});
+ const child=spawn(process.execPath,[entry,'monitor',configFile,'--runtime-revision',revision],{env:{...process.env,AGENT_HUB_CONNECTOR_IMPORT:'0',CLAUDE_CONFIG_DIR:path.join(directory,'native-profile')},stdio:'ignore'});
+ const ended=new Promise(resolve=>child.once('exit',resolve));t.after(async()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');await ended;});
+ await new Promise(resolve=>setTimeout(resolve,300));assert.equal(child.exitCode,null);
+ await privateJson(configFile,{connectionDir:directory,runtimeRevision:'2'.repeat(64)});
+ await new Promise(resolve=>setTimeout(resolve,2300));assert.equal(child.exitCode,null,'Only the native host may replace the receiver after loading the new plugin');
+ child.kill('SIGTERM');await ended;
 });

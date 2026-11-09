@@ -145,7 +145,7 @@ export async function monitorStopped(configFile,input,options={}){
 }
 
 export async function runMonitor(configFile,expectedRevision){
-  const config=await read(configFile),bridge=new MonitorBridge({...config,receiverRevision:expectedRevision||null});let closed=false,replaced=false,pending,finish;
+  const config=await read(configFile),bridge=new MonitorBridge({...config,receiverRevision:expectedRevision||null});let closed=false,pending,finish;
   const ended=new Promise(resolve=>finish=resolve);
   const close=()=>{closed=true;finish();};process.once('SIGTERM',close);process.once('SIGINT',close);
   const failure=e=>{
@@ -154,7 +154,9 @@ export async function runMonitor(configFile,expectedRevision){
     process.stderr.write('DuolaWork 暂未连通，保留消息后重试。\n');
   };
   const tick=()=>pending??=(async()=>{
-    if(expectedRevision){const latest=await read(configFile);if(latest.runtimeRevision&&latest.runtimeRevision!==expectedRevision){replaced=true;close();return;}}
+    // Rewriting the installed plugin does not mean its replacement is running.
+    // Keep this loaded receiver alive until the native host actually reloads or
+    // stops it; continue reporting this process's startup revision throughout.
     if(!closed)await bridge.tick();
   })().catch(failure).finally(()=>pending=null);
   await tick();
@@ -164,7 +166,7 @@ export async function runMonitor(configFile,expectedRevision){
     else void bridge.bridge?.tick(bridge.scopeCache).catch(failure);
   });
   let lastFallback=Date.now();const timer=setInterval(()=>{if(!stopWatching.available||Date.now()-lastFallback>=15000){lastFallback=Date.now();void tick();}},2000);
-  try{await ended;}finally{closed=true;stopWatching();clearInterval(timer);await pending;await bridge.bridge?.pending?.catch(()=>{});if(!replaced)await bridge.close();}
+  try{await ended;}finally{closed=true;stopWatching();clearInterval(timer);await pending;await bridge.bridge?.pending?.catch(()=>{});await bridge.close();}
 }
 
 export async function serveMonitor(configFile,receiverRevision=null){
