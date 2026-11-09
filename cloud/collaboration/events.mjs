@@ -1,4 +1,5 @@
 import { digest, fail, id } from "./repository.mjs";
+import {reconcileTaskNotification} from './task-deliverables.mjs';
 import {
   platformURL,
   readJSON,
@@ -145,6 +146,32 @@ export async function eventMethod(
         expiresAt: refreshBefore,
         verifiedUntil: new Date(Date.parse(now) + 300000).toISOString(),
       });
+      // Acceptance belongs to a particular receiver subscription. After a
+      // receiver replacement, its predecessor's receipt cannot cover delivery
+      // to the new receiver. Keep each event ID stable for that destination.
+      const current=await tx.get('connection',memberId);
+      if(current.transport!=='dots-events'||!['configured','verified'].includes(current.status)||current.configVersion!==c.configVersion)return {};
+      for(const status of ['accepted','waiting_subscription']){
+        let after='';
+        for(;;){
+          const page=await tx.list('outbox',{status,after,limit:500,page:true});
+          for(const row of page){
+            if(row.memberId!==memberId||row.transport!=='dots-events'||row.configVersion!==current.configVersion)continue;
+            if((await tx.get('event_delivery',`${row.id}:${subscriptionId}`,false))?.status==='accepted')continue;
+            if(row.conversation){
+              const turn=await tx.get('channel_turn',row.stepId,false),channel=await tx.get('channel',row.scopeId,false);
+              if(!turn||turn.memberId!==memberId||turn.status!=='ready'||turn.claimedAt||turn.lease||channel?.status!=='active'||!channel.memberIds.includes(memberId))continue;
+              if((await reconcileTaskNotification(tx,turn)).state!=='current')continue;
+            }else{
+              const step=await tx.get('step',row.stepId,false),run=await tx.get('run',row.parentId,false);
+              if(step?.memberId!==memberId||step.status!=='ready'||step.generation!==row.generation||run?.status!=='running')continue;
+            }
+            tx.put('outbox',{...row,status:'pending',dueAt:tx.now,reason:null});
+          }
+          if(page.length<500)break;
+          after=page.at(-1).id;
+        }
+      }
       return {};
     },
     now,
