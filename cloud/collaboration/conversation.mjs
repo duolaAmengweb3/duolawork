@@ -5,6 +5,7 @@ import {manageChannel} from './channel-management.mjs';
 import {skillRefsSchema} from './skill-bindings.mjs';
 import {groupMemoryMaintenance} from './group-memory.mjs';
 import {acknowledgeNativeContext} from './native-context.mjs';
+import {acknowledgeProductContext} from './product-context.mjs';
 import {executionResource} from './execution-bindings.mjs';
 import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
 import {recordMemoryEvent,queueMemoryIndex,sourcesAvailable} from './memory-context.mjs';
@@ -308,6 +309,7 @@ async function finishTurn(tx, actor, turnId, status, reason) {
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
   tx.put("channel_turn", { ...turn, status, reason,lastAckError:null, completedAt: tx.now });
   await acknowledgeNativeContext(tx,turn);
+  await acknowledgeProductContext(tx,turn,status);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
   const r = await tx.get("resource", turn.resourceKey, false);
   if (r?.turnId === turn.id)

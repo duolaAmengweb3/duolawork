@@ -215,7 +215,9 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
  const next={...old,id:old?.id||id('board'),scopeId:channel.id,parentId:channel.id,title:required(cmd.title??old?.title,'Todo 标题',1000),body:str(cmd.body??old?.body,'body',12000,true),status:cmd.status||old?.status||'todo',assigneeId:cmd.assigneeId===undefined?(old?.assigneeId||null):(cmd.assigneeId||null),authorId:old?.authorId||authorId,createdAt:old?.createdAt||tx.now};
  if(!['todo','doing','blocked','done','canceled'].includes(next.status))fail('invalid_status','Todo 状态无效');
  if(next.assigneeId&&!channel.memberIds.includes(next.assigneeId))fail('invalid_member','执行成员须在本群内');
- for(const k of ['progress','blocker','result','dueDate'])next[k]=str(cmd[k]??old?.[k],k,k==='dueDate'?40:12000,true);
+ // submit accepts 24k result bodies; later metadata edits must still accept the
+ // same stored result rather than trapping every task with a long submission.
+ for(const k of ['progress','blocker','result','dueDate'])next[k]=str(cmd[k]??old?.[k],k,k==='dueDate'?40:k==='result'?24000:12000,true);
  if(next.dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(next.dueDate))fail('invalid_date','日期格式无效');
  if(next.status==='blocked'&&!next.blocker)fail('blocker_required','请说明卡在哪里');
  next.refs=cmd.refs===undefined?(old?.refs||[]):await validateRefs(tx,channel.id,cmd.refs);

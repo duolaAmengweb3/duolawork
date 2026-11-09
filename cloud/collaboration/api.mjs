@@ -57,6 +57,7 @@ import {
 import { uploadFile, downloadFile } from "./files.mjs";
 import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
 import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
+import {PRODUCT_CONTEXT_TOOL,readProductContext} from './product-context.mjs';
 import { readSpaceObject } from './workspace-objects.mjs';
 import { meetingDetail } from './meetings.mjs';
 import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup, completeGuidedConnection } from "./onboarding.mjs";
@@ -83,7 +84,7 @@ function decodeCursor(raw) {
     fail("invalid_cursor", "分页游标无效");
   }
 }
-const quietSharedTools = new Set(['shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff','vault']);
+const quietSharedTools = new Set(['read_product_context','shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff','vault']);
 const string = { type: "string" };
 const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   type: "object",
@@ -93,6 +94,7 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
 });
 export const TOOLS = [
   ...CHANNEL_TOOLS,
+  PRODUCT_CONTEXT_TOOL,
   ...MANAGEMENT_TOOLS,
   ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,...SKILL_TOOLS,
   ...CONNECTOR_TOOLS,
@@ -360,6 +362,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   // recipient before reading an idempotency receipt or claiming any work.
   if (args.expectedMemberId !== undefined && args.expectedMemberId !== actor.memberId)
     fail("receiver_identity_mismatch", "当前工具连接属于另一位成员。请使用接收器绑定的本成员凭证调用 REST；不要重配共享 MCP 或领取其他成员的消息。", 403);
+  if(name==='read_product_context')return readProductContext(repo,actor,args,TOOLS);
   if(name==='group_memory')return groupMemoryTool(repo,actor,args);
   if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
   if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
@@ -371,7 +374,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
   if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
     let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
-    if(['resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+    if(['read_product_context','resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
       const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
       if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
       if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
@@ -383,7 +386,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   if (name === "setup_connection") return selfConnection(repo, identity, actor, args, env.ADMIN_KEY);
   if (name === "report_setup_status") return reportSetup(repo, actor, args);
   if (name === "check_connection") return selfCheck(repo, identity, actor, args);
-  if (name === "receive_messages") return receiveMessages(repo, identity, actor, args, options);
+  if (name === "receive_messages") return receiveMessages(repo, identity, actor, args, {...options,tools:TOOLS});
   // Stable write-tool transport for hosts caching their MCP catalog. Both
   // entries use the same inbox implementation and member-scoped authorization.
   if (name === "claim_work" && (args.stepId === "inbox" || args.stepId?.startsWith("inbox:after:")))
@@ -393,7 +396,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
       ...(args.expectedSessionId?{expectedSessionId:args.expectedSessionId}:{}),
       ...(args.contextMode?{contextMode:args.contextMode}:{}),
       ...(args.stepId === "inbox" ? {} : { afterTurnId: args.stepId.slice(12), waitSeconds: MAX_MESSAGE_WAIT_SECONDS }),
-    }, options);
+    }, {...options,tools:TOOLS});
   if (name === "list_work")
     return { work: [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)] };
   // Preserve approved legacy tool semantics while platforms refresh their tool
@@ -401,7 +404,7 @@ async function dispatchTool(repo, identity, actor, name, args, env, options = {}
   // formal task, document, fabricated speaker or silent tool-scope expansion.
   if (name === "claim_work" && args.stepId?.startsWith("turn_")) {
     const claim=await claimConversation(repo,identity,actor,args);
-    return withConversationContext(repo, identity, actor, claim);
+    return withConversationContext(repo, identity, actor, claim,{tools:TOOLS});
   }
   if (["submit_work","report_progress"].includes(name) && args.attemptId?.startsWith("turn_")) {
     const turn=await repo.get("channel_turn",args.attemptId);
@@ -527,7 +530,7 @@ async function mcp(repo, identity, actor, request, env, kick = () => {}) {
         tools: TOOLS.map((t) => ({
           ...t,
           annotations: {
-            readOnlyHint: ["list_work", "read_document", "read_channel", "read_doc", "read_file", "shared_files", "read_shared_file", "read_handoff", "file_upload_status"].includes(t.name),
+            readOnlyHint: ["read_product_context", "list_work", "read_document", "read_channel", "read_doc", "read_file", "shared_files", "read_shared_file", "read_handoff", "file_upload_status"].includes(t.name),
             destructiveHint: false,
             idempotentHint: true,
             openWorldHint: false,
@@ -897,6 +900,7 @@ export async function v2Fetch(request, env, ctx, identity) {
     return json({
       connections: (await repo.list("connection")).map(publicConnection),
     });
+  if(url.pathname==='/v2/product-context'&&request.method==='GET')return json(await readProductContext(repo,actor,{channelId:url.searchParams.get('channelId'),memberId:url.searchParams.get('memberId'),toolNames:url.searchParams.getAll('toolName')},TOOLS));
   if (url.pathname === "/v2/connections" && request.method === "POST")
     return json(
       await configureConnection(
