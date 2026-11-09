@@ -1,21 +1,27 @@
-MIT License
+DuolaWork — Interim Licensing Status
 
-Copyright (c) 2026 DuolaWork contributors
+Copyright (c) 2026 DuolaWork contributors.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This file is an interim licensing-status notice for this revision. It is not
+a finalized source-available license and does not make a new public license
+grant. Rights in original DuolaWork material are reserved, subject to any
+previously valid grants and applicable third-party licenses.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The approved publication direction is a source-available foundation alongside
+separately licensed commercial offerings. The intended foundation includes
+the local workbench, connector and tool specifications, collaboration state
+machine, handoff validation, and shared-file protocol. Planned commercial
+offerings include managed hosting and enterprise capabilities.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The intended free-use policy covers personal and small-team self-use,
+modification, and self-hosting. The exact eligibility criteria and the
+treatment of internal commercial use have not been finalized. Commercial
+resale, redistribution, and hosted-service rights are intended to require
+separately agreed terms. These intentions are not a substitute for a license
+grant; no team-size threshold, pricing, or production-use grant is supplied
+by this notice.
+
+This notice does not revoke or alter any license validly granted for a prior
+revision, nor does it relicense third-party code, dependencies, or assets.
+The repository history still contains the earlier MIT notice. Publication
+of a final license and selection of public release contents remain pending.
