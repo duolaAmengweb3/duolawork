@@ -144,6 +144,9 @@ test('T12 standalone task leader receives designated review result without wakin
 test('T09 equivalent structured JSON with reordered object keys is the same deliverable, not a new downstream execution',async t=>{
  const f=await setup(t),task=await f.task({workSpec:spec()});
  const first=await f.submit(task,{submission:{data:{alpha:1,beta:{x:2,y:3}},coverage:[{id:'outcome',location:'结构数据'}]},selfCheck:passed});
+ // Older installed writers used an order-sensitive fingerprint. Compare the
+ // stored business fields too, without rewriting their immutable evidence.
+ await f.repo.transact('old-fingerprint-fixture',{},async tx=>{for(const [kind,key] of [['channel_task_submission',first.currentSubmissionId],['channel_task_check',first.currentCheckId]]){const row=await tx.get(kind,key);tx.put(kind,{...row,fingerprint:'previous-format-fingerprint'});}});
  const again=await f.submit(first,{submission:{data:{beta:{y:3,x:2},alpha:1},coverage:[{location:'结构数据',id:'outcome'}]},selfCheck:passed});
  assert.equal(again.currentSubmissionId,first.currentSubmissionId);assert.equal(again.currentCheckId,first.currentCheckId);assert.equal(again.version,first.version);assert.equal((await f.repo.list('channel_task_submission')).length,1);
 });

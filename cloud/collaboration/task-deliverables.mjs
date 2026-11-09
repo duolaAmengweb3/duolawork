@@ -12,6 +12,7 @@ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 // JSON object key order is not a new business deliverable. Array order remains
 // meaningful (sections, tables), while retries with reordered object keys dedupe.
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+const duplicate=(old,data,fingerprint)=>old&&(old.fingerprint===fingerprint||same(canonical(Object.fromEntries(Object.keys(data).map(k=>[k,old[k]]))),canonical(data)));
 const terminal=t=>['done','canceled'].includes(t.status);
 const who=a=>a.owner?'owner':a.memberId;
 function str(v,path,max=12000,optional=false){
@@ -204,7 +205,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
   const coverage=array(input.coverage||[],'submission.coverage',150).map(c=>{keys(c,['id','location','gap'],'coverage');if(!ids.has(c.id)||used.has(c.id))fail('invalid_input','coverage.id 必须唯一且属于本次条件或共同问题');used.add(c.id);return{id:c.id,location:str(c.location,'coverage.location',2000,true),gap:str(c.gap,'coverage.gap',2000,true)};});
   const data={taskId:next.id,workSpecVersion:next.workSpec.version,requirementVersion:basis.requirementVersion,sourceVersions:(await sourceMessages(tx,channel,next)).map(m=>({id:m.id,version:m.version})),inputs:basis.inputs,body,sections:input.sections||[],data:input.data||null,refs,codeRef,coverage,authorId};
   const fingerprint=await digest(JSON.stringify(canonical(data))),previous=old?.currentSubmissionId?await tx.get('channel_task_submission',old.currentSubmissionId,false):null;
-  if(previous?.fingerprint===fingerprint){if(!cmd.selfCheck)return enrichTask(tx,old);next.currentSubmissionId=previous.id;}
+  if(duplicate(previous,data,fingerprint)){if(!cmd.selfCheck)return enrichTask(tx,old);next.currentSubmissionId=previous.id;}
   else {const submission=tx.put('channel_task_submission',{...data,id:id('submission'),scopeId:channel.id,parentId:next.id,fingerprint,supersedes:old?.currentSubmissionId||null,createdAt:tx.now});next.currentSubmissionId=submission.id;next.currentCheckId=null;next.acceptedSubmissionId=null;next.executionDecision=null;submitted=true;}
   next.status='doing';next.result=body||refs.map(r=>r.title).join('、')||'成果见提交记录';
   if(old?.status==='done')await reopenParent(tx,{...next,parentTaskId:old.parentTaskId},save,actor);
@@ -227,7 +228,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
   }
   const data={taskId:next.id,submissionId:submission.id,workSpecVersion:spec.version,requirementVersion:submission.requirementVersion,verdict:checkInput.verdict,reason,criterionResults,authorId};
   const fingerprint=await digest(JSON.stringify(canonical(data))),prior=next.currentCheckId?await tx.get('channel_task_check',next.currentCheckId,false):null;
-  if(prior?.fingerprint===fingerprint)return enrichTask(tx,old);
+  if(duplicate(prior,data,fingerprint))return enrichTask(tx,old);
   const check=tx.put('channel_task_check',{...data,id:id('check'),scopeId:channel.id,parentId:next.id,fingerprint,createdAt:tx.now});next.currentCheckId=check.id;checked=true;
   next.acceptedSubmissionId=check.verdict==='accept'?submission.id:null;next.status=check.verdict==='accept'?'done':'doing';
  }
