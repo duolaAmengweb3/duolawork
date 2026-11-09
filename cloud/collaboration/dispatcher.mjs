@@ -34,10 +34,11 @@ async function recoverUnclaimedWakes(repo, now) {
           connection.status !== 'verified' || connection.configVersion !== row.configVersion) return {};
       const resource = await tx.get('resource', await executionResource(tx, connection, channel.id), false);
       if (resource?.status === 'busy') return {};
-      if ((current.wakeGeneration||0) < maxUnclaimedWakes-1) {
+      if ((current.unclaimedRecoveries??current.wakeGeneration??0) < maxUnclaimedWakes-1) {
         tx.put('outbox', { ...current, status: 'retry', dueAt: now,
           wakeGeneration:(current.wakeGeneration||0)+1,
           wakeCreatedAt:now,
+          unclaimedRecoveries:(current.unclaimedRecoveries??current.wakeGeneration??0)+1,
           unclaimedRetry: true, reason: '平台已受理，但成员尚未接收；正在重新通知' });
       } else {
         await stallUnclaimedBatch(tx, current, '已多次通知原平台，但成员仍未接收；消息已保留，可重试或查看原 Agent。');

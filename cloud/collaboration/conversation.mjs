@@ -264,6 +264,7 @@ async function enqueue(tx, identity, channel, message, memberId) {
   if (available && !deferred) await outbox(tx, channel, turn, connection);
 }
 async function outbox(tx, channel, turn, c) {
+  const previous=await tx.get('outbox',`notice_${turn.id}`,false);
   const cursor = await tx.get(
     "channel_cursor",
     `${channel.id}:${turn.memberId}`,
@@ -292,6 +293,9 @@ async function outbox(tx, channel, turn, c) {
     transport: c.transport,
     status: c.transport === "muse-poll" ? "awaiting_poll" : "pending",
     attempts: 0,
+    wakeGeneration:previous?(previous.wakeGeneration||0)+1:0,
+    wakeCreatedAt:tx.now,
+    unclaimedRecoveries:0,
     createdAt: tx.now,
     dueAt,
   });
