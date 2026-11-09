@@ -168,8 +168,11 @@ try {
           : 15000,
       ),
     });
-    if (r.status === 409 && p === "/api/local/prepare-update" && !allowActiveWork && retry < 12) {
-      await sleep(500);
+    if (r.status === 409 && p === "/api/local/prepare-update" && retry < 120) {
+      // Build/session gates already passed. Wait for the running client's real
+      // idle handoff instead of rerunning the whole release or forcing a stop.
+      if (retry % 12 === 0) console.log("等待运行中的客户端安全交接，保留当前任务与登录资料");
+      await sleep(5000);
       return post(p, body, retry + 1);
     }
     if (!r.ok) throw Object.assign(new Error("更新交接失败 HTTP " + r.status),{status:r.status});
