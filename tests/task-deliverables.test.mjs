@@ -15,9 +15,9 @@ test('T01 T04 T22 short work submits with self-check in one call; actor and no e
  const done=await f.submit(task,{selfCheck:passed});
  assert.equal(done.status,'done');assert.equal(done.completedBy,'grok');assert.equal(done.delivery.valid,true);
  assert.equal(done.delivery.check.authorId,'grok');assert.equal(done.delivery.submission.authorId,'grok');
- assert.equal((await f.repo.list('channel_turn')).length,before+1); // only the actual task follower receives the result
+ assert.equal((await f.repo.list('channel_turn')).length,before); // standalone self-check needs no extra model wake-up
  assert.equal((await f.repo.list('channel_task_check')).length,1);
- const duplicate=await f.submit(done,{selfCheck:passed});assert.equal(duplicate.version,done.version);assert.equal((await f.repo.list('channel_task_check')).length,1);assert.equal((await f.repo.list('channel_turn')).length,before+1);
+ const duplicate=await f.submit(done,{selfCheck:passed});assert.equal(duplicate.version,done.version);assert.equal((await f.repo.list('channel_task_check')).length,1);assert.equal((await f.repo.list('channel_turn')).length,before);
 });
 test('T02 T03 dynamic sections and shared questions keep gaps; a complete form never auto-accepts content',async t=>{
  const f=await setup(t),task=await f.task({workSpec:spec({commonQuestions:[{id:'risk',text:'有哪些局限'}]})});
@@ -131,4 +131,12 @@ test('old stored tasks preserve history and do not acquire fabricated checks whe
  const grouped=await f.act(await f.read('historic'),'update',{parentTaskId:root.id},owner);assert.equal(grouped.status,'done');assert.equal(grouped.completedBy,'check');assert.equal(grouped.delivery.stage,'legacy');assert.equal((await f.repo.list('channel_task_check')).length,0);
  const a=await f.send('channel.post',{channelId:f.c.id,body:'用户实际要求'}),b=await f.send('channel.post',{channelId:f.c.id,body:'负责人转述',replyTo:a.id},worker);
  const task=await f.task({sourceMessageId:a.id});const changed=await f.act(task,'update',{sourceMessageId:b.id},owner);assert.deepEqual(changed.sourceMessageIds,[a.id,b.id]);assert.equal((await f.read(task.id)).sourceMessages[0].body,'用户实际要求');
+});
+
+
+test('T12 standalone task leader receives designated review result without waking an unrelated group coordinator',async t=>{
+ const f=await setup(t),task=await f.task({workSpec:spec({checkMode:'designated',reviewerId:'check',independentReview:true})}),sub=await f.submit(task);
+ const done=await f.act(sub,'check',{submissionId:sub.currentSubmissionId,workSpecVersion:1,...passed},reviewer);
+ const turns=(await f.repo.list('channel_turn')).filter(x=>x.taskEvent==='check:'+done.currentCheckId);
+ assert.deepEqual(turns.map(t=>t.memberId),['grok']);assert.equal(done.status,'done');
 });

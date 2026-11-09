@@ -253,7 +253,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
  const delivery=await taskDelivery(tx,result);
  if(submitted&&!checked&&next.workSpec.checkMode==='designated')await notify(tx,identity,channel,helpers,actor,result,next.workSpec.reviewerId,'review:'+next.currentSubmissionId,`请核对「${next.title}」当前成果。对照用户原话和实际原件；完成条件也可能不完整。read_todo 后 check，不改写执行者成果。`);
  if(checked){
-  const follower=parent?.assigneeId||channel.coordinatorId;
+  const follower=parent?.assigneeId||(!next.parentTaskId?next.assigneeId:null)||channel.coordinatorId;
   await notify(tx,identity,channel,helpers,actor,result,delivery.valid?follower:result.assigneeId,'check:'+next.currentCheckId,`「${next.title}」${delivery.label}：${delivery.check.reason}\n读取当前 Todo 和实际成果，再推进或补充。采纳纠正必须落实到产物，不能只说已采纳。`);
   if(delivery.valid&&next.parentTaskId)for(const t of await childrenOf(tx,next.parentTaskId))if(!terminal(t)&&t.dependsOn?.includes(next.id)&&(await currentTaskBasis(tx,t)).valid)await notify(tx,identity,channel,helpers,actor,t,t.assigneeId,'ready:'+next.currentCheckId,`「${t.title}」前置成果已通过，请读取当前 Todo、上游原件和用户要求后继续。`);
  }
