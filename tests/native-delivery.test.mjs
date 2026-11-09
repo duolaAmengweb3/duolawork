@@ -53,3 +53,10 @@ test('cached successful receipt cannot bypass a later message edit, retry genera
  const connection=await f.repo.get('connection','grok');await f.repo.transact('disconnect',{},tx=>tx.put('connection',{...connection,status:'disconnected'}));
  await assert.rejects(receiveDelivery(f.repo,{memberId:'grok'},fresh),e=>e.code==='disconnected');
 });
+test('a late native receiver can ACK an unclaimed notification timeout without replaying ended execution',async t=>{
+ const f=await setup(t),turn=await f.repo.get('channel_turn',f.work.stepId);
+ await f.repo.transact('unclaimed-timeout',{},tx=>tx.put('channel_turn',{...turn,status:'stalled',reason:'transport timeout'}));
+ assert.equal((await f.receipt()).applied,true);assert.equal((await conversationWork(f.repo,f.identity,'grok'))[0].status,'ready');
+ const current=await f.repo.get('channel_turn',turn.id);await f.repo.transact('native-stopped',{},tx=>tx.put('channel_turn',{...current,nativeReceptionFailed:true}));
+ assert.equal((await f.receipt({requestId:'after-native-stopped'})).applied,false);
+});

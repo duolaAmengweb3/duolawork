@@ -8,6 +8,7 @@ import { command } from "./engine.mjs";
 import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
+import {reconcileTaskNotification} from './task-deliverables.mjs';
 const sameDeliveryScope=(a,b)=>(a.deliveryReview||null)===(b.deliveryReview||null)&&(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
 const claimWaitMs = 2 * 60000;
 const maxUnclaimedWakes = 3;
@@ -24,6 +25,7 @@ async function recoverUnclaimedWakes(repo, now) {
       const turn = await tx.get('channel_turn', row.stepId);
       // Already-stalled historical work is not silently restarted on upgrade.
       if (turn.status !== 'ready' || turn.claimedAt || turn.lease) return {};
+      if((await reconcileTaskNotification(tx,turn)).state!=='current')return {};
       const channel = await tx.get('channel', row.scopeId);
       const connection = await tx.get('connection', row.memberId);
       if (channel.status !== 'active' || !channel.memberIds.includes(row.memberId) ||
@@ -80,6 +82,7 @@ export async function dispatchOne(
         row.dueAt > now
       )
         return null;
+      if(turn&&(await reconcileTaskNotification(tx,turn)).state!=='current')return null;
       const member = identity.members.find(
         (x) => x.id === row.memberId && x.status !== "disabled" && !x.paused,
       );
@@ -127,6 +130,7 @@ export async function dispatchOne(
           if(notice.id===row.id||notice.memberId!==row.memberId||!notice.conversation||notice.configVersion!==row.configVersion||!sameDeliveryScope(notice,row))continue;
           const notifiedTurn=await tx.get("channel_turn",notice.stepId,false);
           if(notifiedTurn?.status!=="ready")continue;
+          if((await reconcileTaskNotification(tx,notifiedTurn)).state!=='current')continue;
           tx.put("outbox",{...row,status:"coalesced",coalescedInto:notice.id});
           return null;
         }
@@ -139,7 +143,9 @@ export async function dispatchOne(
         tx.put("channel_cursor",{...cursor,id:cursorId,scopeId:channel.id,parentId:row.memberId,lastNotifiedAt:now});
         // One platform wake can read all queued messages for this group. Keep
         // every turn ready until the native Agent actually claims them.
-        for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation&&sameDeliveryScope(pending,row))tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
+        for(const pending of (await Promise.all(["pending","retry","waiting_subscription"].map(status=>tx.list("outbox",{scope:channel.id,status})))).flat())if(pending.id!==row.id&&pending.memberId===row.memberId&&pending.conversation&&sameDeliveryScope(pending,row)){
+          const other=await tx.get('channel_turn',pending.stepId);if((await reconcileTaskNotification(tx,other)).state==='current')tx.put("outbox",{...pending,status:"coalesced",coalescedInto:row.id});
+        }
       }
       if(turn&&!await chargeMeetingRetry(tx,turn,row.attempts)){tx.put('outbox',{...row,status:'canceled',reason:'达到本场自动重试预算'});return null;}
       row.status = "sending";
@@ -254,6 +260,7 @@ export async function dispatchOne(
     { rowId, lock, outcome },
     async (tx) => {
       const current = await tx.get("outbox", rowId);
+      if(current.conversation){const notice=await reconcileTaskNotification(tx,await tx.get('channel_turn',current.stepId));if(notice.state==='obsolete')return {status:notice.turn.status==='removed'?'canceled':current.status};}
       // A real claim can race with the webhook response; never downgrade its state.
       if (current.dispatchId !== lock)
         return { status: current.status };

@@ -1,4 +1,4 @@
-import {taskDeliveryProperties,taskTurnAllowed} from './task-deliverables.mjs';
+import {taskDeliveryProperties,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {manageChannel} from './channel-management.mjs';
@@ -321,11 +321,11 @@ export const receivableTurn = turn => turn.status === 'ready' ||
 
 // Runtime observations do not acknowledge delivery or fabricate an Agent reply.
 export async function conversationRuntime(repo,actor,args){
-  const turn=await repo.get('channel_turn',required(args.turnId,'通知'));
+  let turn=await repo.get('channel_turn',required(args.turnId,'通知'));
   if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能核对自己的通知',403);
   if(args.expectedSessionId&&turn.nativeSessionId!==args.expectedSessionId)fail('session_changed','运行观察不属于这段原生会话',403);
   const publicState=t=>({turnId:t.id,status:t.status,completedAt:t.completedAt||null,reason:t.reason||null,lease:t.lease||null,nativeSessionId:t.nativeSessionId||null,claimedAt:t.claimedAt||null,lastAckError:t.lastAckError||null});
-  if(args.action==='read')return publicState(turn);
+  if(args.action==='read'){if(turn.taskId&&turn.taskEvent)turn=(await refreshTaskNotification(repo,turn.id)).turn;return publicState(turn);}
   if(!['running','ended','unreachable'].includes(args.state))fail('invalid_state','运行观察状态无效');
   return repo.transact(args.requestId,{...args,actor},async tx=>{
     const current=await tx.get('channel_turn',turn.id);
@@ -356,12 +356,17 @@ export async function conversationWork(repo, identity, memberId,{delivery=false}
   if(!turns.length)return [];
   const selecting=new Set([...await repo.list('native-command',{parent:memberId,status:'pending',limit:501}),...await repo.list('native-command',{parent:memberId,status:'prepared',limit:501})].map(c=>c.channelId));
   const result = [];
-  for (const turn of turns) {
+  for (let turn of turns) {
     if(turn.status!=='active'&&selecting.has(turn.scopeId))continue;
     if (turn.status !== 'active' && !receivableTurn(turn)) continue;
     const channel = await repo.get("channel", turn.scopeId, false);
     if (!channel?.memberIds.includes(memberId) || channel.status !== "active")
       continue;
+    if(turn.taskId&&turn.taskEvent&&turn.status!=='active'){
+      const state=await refreshTaskNotification(repo,turn.id);
+      if(state.state!=='current'||!receivableTurn(state.turn))continue;
+      turn=state.turn;
+    }
     result.push({
       stepId: turn.id,
       turnId: turn.id,
@@ -395,6 +400,13 @@ export async function receiveDelivery(repo,actor,args){
   if(await executionResource(repo,currentConnection,existing.scopeId)!=='native-session:'+actor.memberId+':'+sessionKey)fail('session_changed','会话选择已变更，旧回执未应用',409);
   if(args.attempt!==(existing.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
   if(args.sourceVersion!==((await repo.get('channel_message',existing.messageId)).version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
+  if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
+  // A cached transport ACK is not an enduring permission to wake a model.
+  // Recheck eligibility before replaying its idempotent receipt.
+  if(existing.taskId&&existing.taskEvent&&existing.status!=='active'){
+    const state=await refreshTaskNotification(repo,existing.id);
+    if(state.state!=='current'||!(state.turn.status==='active'||receivableTurn(state.turn)))return {applied:false,status:state.turn.status,reason:state.reason||state.turn.reason};
+  }
   return repo.transact(required(args.requestId,'回执编号',180),{...args,actor},async tx=>{
     const turn=await tx.get('channel_turn',required(args.turnId,'消息通知'));
     if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
@@ -406,7 +418,9 @@ export async function receiveDelivery(repo,actor,args){
     const message=await tx.get('channel_message',turn.messageId);
     if(args.sourceVersion!==(message.version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
     if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
-    if(!['ready','active'].includes(turn.status))return {applied:false,status:turn.status};
+    const taskNotice=await reconcileTaskNotification(tx,turn);
+    if(taskNotice.state!=='current')return {applied:false,status:taskNotice.turn.status,reason:taskNotice.reason};
+    if(!(turn.status==='active'||receivableTurn(turn)))return {applied:false,status:turn.status};
     const field={received:'connectorReceivedAt',accepted:'nativeAcceptedAt',started:'nativeStartedAt',public_output:'firstPublicOutputAt'}[args.phase];
     const sessionKey=await digest(args.sessionId);
     if(turn.receiptAttempt!==args.attempt||turn.receiptSessionKey!==sessionKey||turn.receiptSourceVersion!==args.sourceVersion){
@@ -453,7 +467,7 @@ export async function claimConversation(
           const group = await tx.get("channel", candidate.scopeId, false);
           if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
           const occupied=await tx.get('resource',await executionResource(tx,connection,group.id),false);if(occupied?.status==='busy')continue;
-          if (!await taskTurnAllowed(tx,candidate)){tx.put('channel_turn',{...candidate,status:'removed',reason:'Todo 已取消、前置未就绪或成果已有新版'});const notice=await tx.get('outbox','notice_'+candidate.id,false);if(notice)tx.put('outbox',{...notice,status:'canceled'});continue;}
+          if ((await reconcileTaskNotification(tx,candidate)).state!=='current')continue;
           if (!await meetingTurnAllowed(tx, candidate)) { tx.put('channel_turn', { ...candidate, status: 'removed', reason: '会议阶段已经变化或结束' }); continue; }
           turn = candidate;
           channel = group;
@@ -469,9 +483,15 @@ export async function claimConversation(
       await scoped(channel, actor,tx);
       if (turn.memberId !== actor.memberId)
         fail("forbidden", "通知不属于此成员", 403);
+      if(args.expectedSessionId){const c=await tx.get('connection',actor.memberId);if(await executionResource(tx,c,channel.id)!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);}
+      const taskNotice=await reconcileTaskNotification(tx,turn);
+      if(taskNotice.state!=='current'||turn.resolution==='obsolete_task')return {
+        status:taskNotice.state==='waiting'?'waiting':'obsolete',claimed:false,needsResponse:false,
+        stepId:turn.id,channelId:channel.id,reason:taskNotice.reason||turn.reason,
+        instruction:taskNotice.state==='waiting'?'前置尚未就绪，本通知未领取；系统会等待后续状态，无需重发或领取其他通知。':'旧提醒已自动收尾，没有领取或重做任务，不需要回群确认，也不要领取其他通知。',
+      };
       if (!receivableTurn(turn))
         fail("turn_unavailable", "通知已处理或尚不可领取", 409);
-      if (!await taskTurnAllowed(tx,turn))fail('task_not_ready','Todo 已取消、前置未就绪或成果已有新版；请 read_todo',409);
       if (!await meetingTurnAllowed(tx, turn)) fail('meeting_changed', '会议阶段已变化或结束，原消息保留', 409);
       const member = activeMember(identity, actor.memberId),
         c = await tx.get("connection", actor.memberId);
@@ -492,10 +512,11 @@ export async function claimConversation(
       if (resource?.status === "busy")
         fail("resource_busy", "原 Agent 正在处理另一条通知，稍后再读", 409);
       tx.guardLegacyIdle(member.accountId);
-      const pending = (await pendingConversationTurns(tx, {
+      const candidates = (await pendingConversationTurns(tx, {
         scope: channel.id,
         parent: actor.memberId,
       })).filter(t => (t.deliveryReview || null) === (turn.deliveryReview || null) && (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
+      const pending=[];for(const candidate of candidates)if((await reconcileTaskNotification(tx,candidate)).state==='current')pending.push(candidate);
       const requirementVersions={};
       for(const root of new Set(pending.map(t=>t.coordinationRootId).filter(Boolean))){const r=await tx.get("channel_coordination",channel.id+":"+root,false);if(r)requirementVersions[root]=r.requirementVersion||1;}
       const lease = id("lease");
@@ -1249,6 +1270,7 @@ export async function conversationMaintenance(
   now = new Date().toISOString(),
 ) {
   await meetingMaintenance(repo, identity, meetingHelpers, now);
+  await taskNotificationMaintenance(repo,now);
   for (const turn of await repo.list("channel_turn", {
     status: "active",
     limit: 100,

@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 import {privateJson} from './storage.mjs';
 import {requestJson} from './transport.mjs';
 import {CodingMemberClient} from './coding-client.mjs';
-import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
+import {readNativeInbox,deliveryReceipt,deliveryIsCurrent,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import {NativeAgent,findExecutable,safeError} from './native-agent.mjs';
 import {NativeRuntime} from './native-runtime.mjs';
 import {CodexWorkingHost} from './codex-working-host.mjs';
@@ -262,7 +262,7 @@ export class CodingManager{
    if(this.dispatchBlocked(r))return;
    if(!first){r.inFlight=null;r.status='idle';r.message='已检查原回执，继续接收消息';await this.save();return;}
    const key=first.channelId||first.projectId||'verification';const binding=r.chatBindings?.[key]||(!first.channelId&&r.manualAssignments?Object.values(r.chatBindings||{}).find(b=>b.sessionId===r.verificationSessionId):null);r.inFlight={at:new Date().toISOString(),stepId:first.stepId,key,delivery:first.delivery,deliveryPhase:'received'};r.lastRunAt=r.inFlight.at;r.status='working';r.message='消息已收到，正在准备原工作对话';await this.save();
-   await deliveryReceipt(client,first,binding?.sessionId);
+   if(!deliveryIsCurrent(await deliveryReceipt(client,first,binding?.sessionId))){r.inFlight=null;r.receivedDelivery=null;r.status='idle';r.message='当前提醒暂不需投递，继续接收当前消息';await this.save();return;}
    r.inFlight.deliveryPhase='preparing';await this.save();
    if(r.engine==='antigravity-cli'&&binding){
     const host=this.workingHostFor(r);
@@ -374,7 +374,7 @@ export class CodingManager{
   const stopWatching=await this.workingHostFor(r).watch?.({sessionId:binding.sessionId,workMarker:first.stepId,onApproval:a=>this.approve(r,a)});
   try{
   if(!delivery){r.nativeDeliveries[first.stepId]={status:'sending',sessionId:binding.sessionId};await this.save();
-  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt,isCompleted:async()=>{if(!first.stepId.startsWith('turn_'))return false;const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));return ['done','silent'].includes(state.status);}});r.nativeDeliveries[first.stepId].status='sent';await this.save();await deliveryReceipt(client,first,binding.sessionId,'accepted').catch(()=>{});}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
+  try{await this.workingHostFor(r).queue({sessionId:binding.sessionId,workspace:binding.workspace,prompt,isCompleted:async()=>{if(!first.stepId.startsWith('turn_'))return false;const state=await client.api('/v2/self/conversation-state?turnId='+encodeURIComponent(first.stepId));return ['done','silent','removed','merged'].includes(state.status);}});r.nativeDeliveries[first.stepId].status='sent';await this.save();await deliveryReceipt(client,first,binding.sessionId,'accepted').catch(()=>{});}catch(e){r.nativeDeliveries[first.stepId].status=e.code==='native_queued'?'queued':'uncertain';await this.save();throw e;}}
   const deadline=Date.now()+20*60000;
   while(r.enabled&&!this.stopped&&Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,1500));const {work}=await client.tool('list_work');const pending=work.find(w=>w.stepId===first.stepId);
    if(!pending){if(await this.settleOriginal(r,client)){await this.save();return;}}

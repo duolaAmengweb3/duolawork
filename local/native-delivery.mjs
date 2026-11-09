@@ -10,6 +10,7 @@ export function subscribeNativeChanges(client,listener){
   Object.defineProperty(stop,'available',{get:()=>entry.watch.available});return stop;
 }
 export const readNativeInbox=client=>typeof client.inbox==='function'?client.inbox():client.tool('list_work');
+export const deliveryIsCurrent=receipt=>receipt?.applied!==false;
 export async function deliveryReceipt(client,work,sessionId,phase='received'){
   if(!work.delivery||!sessionId)return; // Older server / formal verification has no transport envelope.
   const attempt=work.delivery.attempt;

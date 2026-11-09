@@ -8,7 +8,7 @@ import {CodingMemberClient} from '../../local/coding-client.mjs';
 import {privateJson} from '../../local/storage.mjs';
 import {refreshSessionInfo} from './session-info.mjs';
 import {claimNativeConversation} from '../../local/session-routing.mjs';
-import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from '../../local/native-delivery.mjs';
+import {readNativeInbox,deliveryReceipt,deliveryIsCurrent,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from '../../local/native-delivery.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 export const sessionLinkTools=[
  {name:'link_current_conversation',description:'Link this exact original Claude conversation using the instruction copied by the user from DuolaWork. Reuses the existing account.',inputSchema:{type:'object',properties:{id:{type:'string'},code:{type:'string'}},required:['id','code']}},
@@ -45,7 +45,7 @@ export class ClaudeChannel {
     const w=work.find(w=>w.status==='ready');if(!w)return;
     const prior=this.sent[w.stepId];if(prior?.phase!=='received'&&prior&&(Date.now()-prior.at<120000||prior.count>=3))return;
     this.sent[w.stepId]={at:Date.now(),count:(prior?.count||0)+1,phase:'received',delivery:w.delivery};await this.save();
-    await deliveryReceipt(this.client,w,this.session.sessionId);
+    if(!deliveryIsCurrent(await deliveryReceipt(this.client,w,this.session.sessionId))){delete this.sent[w.stepId];await this.save();return;}
     try{await this.notify({method:'notifications/claude/channel',params:{content:`Hub 有一条发给你的消息。直接调用 claim_work，使用新的 requestId 及 ${JSON.stringify({stepId:w.stepId,...(w.channelId?{channelId:w.channelId}:{})})}；无需先查询工作列表。按领取结果回复原聊天。验证工作按原指令提交。用你当前会话的原生工具完成工作；不要把回复只留在终端。${CONTINUE_PRIMARY_WORK}`,meta:{step_id:w.stepId,session_id:this.session.sessionId,...(w.channelId?{channel_id:w.channelId}:{})}}});this.sent[w.stepId].phase='notified';await this.save();await deliveryReceipt(this.client,w,this.session.sessionId,'accepted').catch(()=>{});}
     catch(e){delete this.sent[w.stepId];await this.save();throw e;}
   })().finally(()=>{this.pending=null;if(this.tickAgain){this.tickAgain=false;void this.tick().catch(()=>{});}});}

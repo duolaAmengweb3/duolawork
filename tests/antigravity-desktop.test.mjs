@@ -25,6 +25,11 @@ test('official Sidecar config preserves all unrelated native settings and explic
 test('no Hub work does not start a model or read native conversation content',async t=>{
  const f=await fixture(t);await f.sidecar.poll();assert.equal(f.sends.length,0);assert.equal(f.tools.length,0);
 });
+test('a stale pushed inbox snapshot cannot notify the desktop after the server retires its task',async t=>{
+ const f=await fixture(t);f.client.inbox=async()=>({work:[{stepId:'retired',channelId:'channel_one',status:'ready',delivery:{attempt:0,message:{version:1}}}]});
+ f.client.api=async()=>({applied:false,status:'removed'});
+ await f.sidecar.poll();assert.equal(f.sends.length,0);assert.equal(f.sidecar.state.received['member_one:retired'],undefined);assert.equal(f.sidecar.state.deliveries['member_one:retired'],undefined);
+});
 test('an executing original conversation finishes first; the queued Hub message is sent once to the exact same conversation',async t=>{
  const f=await fixture(t);f.setWork(true);f.setBusy(true);await f.sidecar.poll();assert.equal(f.sends.length,0);assert.equal(f.sidecar.bindings.get(id).waitingForNative,true);assert.deepEqual(f.sidecar.state.deliveries,{});
  f.setBusy(false);await f.sidecar.poll();await f.sidecar.poll();assert.equal(f.sends.length,1);assert.equal(f.sends[0].session,id);assert.ok(f.sends[0].prompt.includes('turn_one'));assert.ok(!f.sends[0].prompt.includes('private-own-control'));assert.equal(f.sidecar.state.deliveries['member_one:turn_one'].status,'sent');

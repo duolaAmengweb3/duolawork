@@ -73,14 +73,73 @@ export async function taskDelivery(repo,task,{seen=new Set(),historical=false}={
  return {stage,label:{stale:'需复核',pending:'待提交',changes_requested:'需补充',accepted:'已通过',review:'待核对'}[stage],valid,gaps,submission,check,nextAction:gaps.length?'读取原要求与当前产物，处理列出的缺口后重新提交':valid?'接续相关工作；任务最终交付仍需单独核对':stage==='pending'?'提交成果；普通事项可同时 selfCheck':stage==='changes_requested'?'按核对意见补充后提交新版':'由实际核对人 check 当前成果'};
 }
 export async function enrichTask(repo,task,options){return {...task,delivery:await taskDelivery(repo,task,options)};}
-export async function taskTurnAllowed(tx,turn){
- if(!turn.taskId||!turn.taskEvent)return true;
+export async function taskNotificationState(tx,turn){
+ const valid={state:'current'};
+ if(!turn.taskId||!turn.taskEvent)return valid;
+ const obsolete=reason=>({state:'obsolete',reason});
  const task=await tx.get('channel_task',turn.taskId,false);
- if(!task||task.status==='canceled')return false;
- if(turn.taskEvent.startsWith('review:'))return turn.taskEvent==='review:'+task.currentSubmissionId&&task.status!=='done';
- if(turn.taskEvent.startsWith('check:'))return turn.taskEvent==='check:'+task.currentCheckId;
- if(turn.taskEvent.startsWith('ready:')){const check=await tx.get('channel_task_check',turn.taskEvent.slice(6),false);const upstream=check?await tx.get('channel_task',check.taskId,false):null;if(!upstream||upstream.currentCheckId!==check.id||!(await taskDelivery(tx,upstream)).valid)return false;}
- return !terminal(task)&&(await currentTaskBasis(tx,task)).valid;
+ if(!task||['canceled','deleted'].includes(task.status))return obsolete('任务已取消或移除，旧提醒已自动收尾');
+ if(turn.taskEvent.startsWith('review:')){
+  if(turn.taskEvent!=='review:'+task.currentSubmissionId||task.status==='done'||task.workSpec?.reviewerId!==turn.memberId)return obsolete('成果或核对安排已有变化，旧核对提醒已自动收尾');
+  const sub=await tx.get('channel_task_submission',task.currentSubmissionId,false);
+  if(!sub||sub.workSpecVersion!==task.workSpec?.version)return obsolete('交付约定已有新版，旧成果核对提醒已自动收尾');
+ }else if(turn.taskEvent.startsWith('check:')){
+  if(turn.taskEvent!=='check:'+task.currentCheckId)return obsolete('核对已有新结论，旧跟进提醒已自动收尾');
+  const check=await tx.get('channel_task_check',task.currentCheckId,false);
+  if(!check||check.workSpecVersion!==task.workSpec?.version||check.submissionId!==task.currentSubmissionId)return obsolete('交付约定或成果已有新版，旧结论提醒已自动收尾');
+  // A completed root's final result is still delivered to its leader. Child
+  // follow-ups cease once their aggregate task has already been settled.
+  const parent=task.parentTaskId?await tx.get('channel_task',task.parentTaskId,false):null;
+  if(task.parentTaskId&&(!parent||terminal(parent)))return obsolete('所属任务已收尾，不再重复提醒旧子项');
+  const follower=check.verdict==='accept'?(parent?.assigneeId||(!task.parentTaskId?task.assigneeId:null)||(await tx.get('channel',task.scopeId)).coordinatorId):task.assigneeId;
+  if(turn.memberId!==follower)return obsolete('任务跟进成员已变更，旧提醒已自动收尾');
+ }else{
+  if(terminal(task))return obsolete('任务已结束，旧执行提醒已自动收尾');
+  if(task.assigneeId!==turn.memberId)return obsolete('任务执行成员已变更，旧提醒已自动收尾');
+  if(turn.taskEvent.startsWith('ready:')){const check=await tx.get('channel_task_check',turn.taskEvent.slice(6),false);const upstream=check?await tx.get('channel_task',check.taskId,false):null;if(!upstream||upstream.currentCheckId!==check.id||!(await taskDelivery(tx,upstream)).valid)return obsolete('前置成果已有变化，旧接续提醒已自动收尾');}
+ }
+ const basis=await currentTaskBasis(tx,task);
+ return basis.valid?valid:{state:'waiting',reason:basis.gaps.join('；')};
+}
+export const taskTurnAllowed=async(tx,turn)=>(await taskNotificationState(tx,turn)).state==='current';
+const unclaimedNotice=t=>t&&!t.claimedAt&&!t.lease&&['ready','stalled','limited','unavailable'].includes(t.status);
+export async function reconcileTaskNotification(tx,turn){
+ if(!unclaimedNotice(turn)||!turn.taskId||!turn.taskEvent)return {state:'current',turn};
+ const state=await taskNotificationState(tx,turn);
+ if(state.state!=='obsolete'){
+  if((turn.taskWaitReason||null)!==(state.state==='waiting'?state.reason:null)){
+   const next={...turn};if(state.state==='waiting')next.taskWaitReason=state.reason;else delete next.taskWaitReason;turn=tx.put('channel_turn',next);
+  }
+  return {...state,turn};
+ }
+ const removed=tx.put('channel_turn',{...turn,status:'removed',resolution:'obsolete_task',reason:state.reason,retiredAt:tx.now,completedAt:tx.now,taskWaitReason:null});
+ const notice=await tx.get('outbox','notice_'+turn.id,false);
+ if(notice)tx.put('outbox',{...notice,status:'canceled',reason:state.reason,completedAt:tx.now});
+ const key=`${turn.taskId}:${turn.taskEvent}:${turn.memberId}`,followup=await tx.get('channel_task_followup',key,false);
+ if(followup)tx.put('channel_task_followup',{...followup,status:'superseded',reason:state.reason,completedAt:tx.now});
+ // A canceled doorbell may have coalesced unrelated, still-current messages.
+ // Restore those deliveries instead of stranding or consuming their content.
+ if(notice){let after='';for(;;){const page=await tx.list('outbox',{scope:turn.scopeId,status:'coalesced',after,limit:500,page:true});for(const child of page){
+  if(child.coalescedInto!==notice.id)continue;
+  const other=await tx.get('channel_turn',child.stepId,false);if(!unclaimedNotice(other))continue;
+  const next={...child,status:'pending',dueAt:tx.now,reason:null};delete next.coalescedInto;tx.put('outbox',next);
+ }if(page.length<500)break;after=page.at(-1).id;}}
+ return {...state,turn:removed};
+}
+export async function refreshTaskNotification(repo,turnId,now){
+ const turn=await repo.get('channel_turn',turnId);
+ if(!unclaimedNotice(turn)||!turn.taskId||!turn.taskEvent)return {state:'current',turn};
+ const state=await taskNotificationState(repo,turn);
+ if(state.state==='current'&&!turn.taskWaitReason||state.state==='waiting'&&turn.taskWaitReason===state.reason)return {...state,turn};
+ return repo.transact(id('task-notice'),{turnId},async tx=>reconcileTaskNotification(tx,await tx.get('channel_turn',turnId)),now);
+}
+export async function reconcileTaskNotifications(tx,channelId){
+ // Completed chat history is not part of a Todo mutation's critical path.
+ for(const status of ['ready','stalled','limited','unavailable']){let after='';for(;;){const page=await tx.list('channel_turn',{scope:channelId,status,after,limit:500,page:true});for(const turn of page)await reconcileTaskNotification(tx,turn);if(page.length<500)break;after=page.at(-1).id;}}
+}
+export async function taskNotificationMaintenance(repo,now){
+ // Indexed task-only scan; never read native chat histories or ordinary bodies.
+ let after='';for(;;){const page=await repo.db.prepare("SELECT id FROM hub_v2_records WHERE workspace_id=? AND kind='channel_turn' AND id>? AND status IN ('ready','stalled','limited','unavailable') AND json_extract(body,'$.taskId') IS NOT NULL AND json_extract(body,'$.claimedAt') IS NULL AND json_extract(body,'$.lease') IS NULL ORDER BY id LIMIT 100").bind(repo.workspaceId,after).all();for(const row of page.results)await refreshTaskNotification(repo,row.id,now);if(page.results.length<100)break;after=page.results.at(-1).id;}
 }
 export async function invalidateCoordinationTasks(tx,channel,coordination){
  let after='';
@@ -228,7 +287,9 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
   }
   const data={taskId:next.id,submissionId:submission.id,workSpecVersion:spec.version,requirementVersion:submission.requirementVersion,verdict:checkInput.verdict,reason,criterionResults,authorId};
   const fingerprint=await digest(JSON.stringify(canonical(data))),prior=next.currentCheckId?await tx.get('channel_task_check',next.currentCheckId,false):null;
-  if(duplicate(prior,data,fingerprint))return enrichTask(tx,old);
+  // Reconfirming after an explicit reopen/block is a real new check. A prior
+  // accepted receipt must not leave the dependency permanently unaccepted.
+  if(duplicate(prior,data,fingerprint)&&old.status===(checkInput.verdict==='accept'?'done':'doing')&&old.acceptedSubmissionId===(checkInput.verdict==='accept'?submission.id:null))return enrichTask(tx,old);
   const check=tx.put('channel_task_check',{...data,id:id('check'),scopeId:channel.id,parentId:next.id,fingerprint,createdAt:tx.now});next.currentCheckId=check.id;checked=true;
   next.acceptedSubmissionId=check.verdict==='accept'?submission.id:null;next.status=check.verdict==='accept'?'done':'doing';
  }
@@ -261,5 +322,6 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
   await notify(tx,identity,channel,helpers,actor,result,delivery.valid?follower:result.assigneeId,'check:'+next.currentCheckId,`「${next.title}」${delivery.label}：${delivery.check.reason}\n读取当前 Todo 和实际成果，再推进或补充。采纳纠正必须落实到产物，不能只说已采纳。`);
   if(delivery.valid&&next.parentTaskId)for(const t of await childrenOf(tx,next.parentTaskId))if(!terminal(t)&&t.dependsOn?.includes(next.id)&&(await currentTaskBasis(tx,t)).valid)await notify(tx,identity,channel,helpers,actor,t,t.assigneeId,'ready:'+next.currentCheckId,`「${t.title}」前置成果已通过，请读取当前 Todo、上游原件和用户要求后继续。`);
  }
+ await reconcileTaskNotifications(tx,channel.id);
  return {...result,delivery,...(legacyDone?{compatibilityNotice:'已保存成果，尚未核对。read_todo 后用 board_task check；普通小项可 submit 并附 selfCheck，不把旧 done 当核对通过。'}:{})};
 }

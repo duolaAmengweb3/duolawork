@@ -1,4 +1,4 @@
-import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
+import {readNativeInbox,deliveryReceipt,deliveryIsCurrent,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -89,7 +89,7 @@ export class AntigravitySidecar {
    if(work.some(w=>acceptsWork(b,w)&&this.state.deliveries[b.memberId+':'+w.stepId]?.sessionId===b.sessionId))return;const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w));if(!next)return;
    const key=b.memberId+':'+next.stepId,previous=this.state.deliveries[key];
    if(previous){if(previous.status==='uncertain')b.lastError='上次发送结果尚未确认，未重复执行；请查看原会话';return;}
-   if(next.delivery){this.state.received[key]=next.delivery;await this.save();await deliveryReceipt(b.client,next,b.sessionId);}
+   if(next.delivery){this.state.received[key]=next.delivery;await this.save();if(!deliveryIsCurrent(await deliveryReceipt(b.client,next,b.sessionId))){delete this.state.received[key];b.lastError=null;await this.save();return;}}
    const s=(await this.sessions()).items.find(s=>s.id===b.sessionId);if(!s)throw Error('原桌面会话暂不可用，未新建替代会话');
    if(!s.workspace||await fs.realpath(s.workspace)!==await fs.realpath(b.workspace))throw Error('原会话的项目发生变化，未向其他项目发送消息');
    if(s.running){b.waitingForNative=true;return;}

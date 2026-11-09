@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {CodingMemberClient} from './coding-client.mjs';
-import {readNativeInbox,deliveryReceipt,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
+import {readNativeInbox,deliveryReceipt,deliveryIsCurrent,subscribeNativeChanges,CONTINUE_PRIMARY_WORK} from './native-delivery.mjs';
 import {privateJson} from './storage.mjs';
 import {safeError} from './native-agent.mjs';
 import {acceptsWork,claimNativeConversation,receiveNativeConversation} from './session-routing.mjs';
@@ -165,7 +165,7 @@ export class DshConnector {
     if(work.some(w=>b.dispatched.has(deliveryKey(w))&&acceptsWork(b,w)))return;
     const next=work.find(w=>w.status==='ready'&&acceptsWork(b,w)&&!b.dispatched.has(deliveryKey(w)));
     if(!next)return;
-    if(next.delivery){b.received[next.stepId]=next.delivery;await this.save();await deliveryReceipt(b.client,next,b.sessionId);}
+    if(next.delivery){b.received[next.stepId]=next.delivery;await this.save();if(!deliveryIsCurrent(await deliveryReceipt(b.client,next,b.sessionId))){delete b.received[next.stepId];b.lastError=null;await this.save();return;}}
     await this.sessionInfo(b.sessionId);
     const found=await this.ctx.sessionController.resolveAgent(b.sessionId);if(found.error)throw found.error;
     if(this.closed||this.bindings.get(b.sessionId)!==b)return;this.attachAgent(found.agent);

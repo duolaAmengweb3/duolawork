@@ -33,6 +33,15 @@ test('failed receiver disk write cannot ACK or start native work; retry persists
   f.connector.stateFile=f.file;await f.connector.poll();assert.deepEqual(receipts.map(r=>r.phase),['received','accepted']);assert.equal(f.prompts.length,1);
  }finally{await f.cleanup();}
 });
+test('retired or waiting task snapshots never resolve a native agent or queue a DSH prompt',async()=>{
+ const f=await fixture();try{
+  await f.connector.bind({sessionId:f.agent.id,workspace:f.project,grantFile:f.grantFile,channelIds:['own']});
+  const client=f.options.clientFactory();client.api=async()=>({applied:false,status:'removed'});
+  f.options.ctx.sessionController.resolveAgent=async()=>assert.fail('obsolete tasks must not resolve/start the model');
+  f.setWork([{stepId:'retired',channelId:'own',status:'ready',delivery:{attempt:0,message:{version:1}}}]);
+  await f.connector.poll();assert.equal(f.prompts.length,0);assert.equal(f.connector.bindings.get(f.agent.id).received.retired,undefined);assert.equal(f.connector.bindings.get(f.agent.id).lastError,null);
+ }finally{await f.cleanup();}
+});
 
 test('local native connector rejects unauthenticated and cross-origin requests without exposing its token',async()=>{
  const f=await fixture();try{

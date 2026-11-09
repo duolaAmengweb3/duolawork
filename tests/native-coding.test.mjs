@@ -9,6 +9,12 @@ import {CodingMemberClient} from '../local/coding-client.mjs';
 import {CodingManager,rememberAccount} from '../local/coding-manager.mjs';
 import {privateJson} from '../local/storage.mjs';
 async function temp(t){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-native-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));return await fs.realpath(dir);}
+for(const engine of ['codex','antigravity-cli','claude'])test(`${engine}: retired native delivery never prepares or queues a model`,async t=>{
+ const m=new CodingManager({config:{},dataDir:await temp(t)}),r={memberId:'owned',engine,enabled:true,chatBindings:{group:{sessionId:'original',mode:'native-existing'}}};
+ m.records.owned=r;m.client=()=>({api:async()=>({applied:false,status:'removed'})});m.prepareNative=async()=>assert.fail('must not start a model');m.runExisting=async()=>assert.fail('must not queue original session');
+ await m.check(r,{work:[{stepId:'retired',channelId:'group',status:'ready',delivery:{attempt:0,message:{version:1}}}]});
+ assert.equal(r.inFlight,null);assert.equal(r.status,'idle');assert.equal(r.lastFailure,undefined);
+});
 test('account identity uses official metadata and prevents silent login replacement without storing credentials',()=>{
  const a=codexAccountSummary({type:'chatgpt',email:'original@example.test',access_token:'must-not-retain'}),r={engine:'codex'};
  assert.deepEqual(a,{kind:'chatgpt',loggedIn:true,accountLabel:'original@example.test'});rememberAccount(r,a);

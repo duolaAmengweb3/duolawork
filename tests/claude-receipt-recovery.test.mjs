@@ -31,6 +31,11 @@ async function setup(t){
  const end=(claims={},input={},overrides={})=>observeNativeEnd({client,session:bridge.session,connectionDir:dir,claims,work:()=>bridge.work(),input:{session_id:'original',hook_event_name:'Stop',...input},...overrides});
  return {...f,actor,dir,requestId,command,channels,scope,tool,client,bridge,notices,send,claim,end};
 }
+test('Claude rejects a retired cached notification before notifying the original session',async t=>{
+ const f=await setup(t),work={stepId:'retired',channelId:f.channels[0].id,status:'ready',delivery:{attempt:0,message:{version:1}}};
+ f.bridge.work=async()=>[work];f.client.api=async()=>({applied:false,status:'removed'});
+ await f.bridge.tick();assert.equal(f.notices.length,0);assert.equal(f.bridge.sent.retired,undefined);assert.equal(Object.keys(f.bridge.claims).length,0);
+});
 
 test('bad tool fields return controlled errors, observed aliases work, and another member remains forbidden',async t=>{
  const f=await setup(t),claim=await f.claim(0),doc=await f.tool('create_doc',{requestId:f.requestId(),channelId:f.channels[0].id,title:'scope',body:'actual stored bytes'});

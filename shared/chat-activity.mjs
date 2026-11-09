@@ -47,6 +47,7 @@ export function pendingTurnState(turn = {}, notice, native, activity = []) {
   }
   if(turn.status==='limited'&&turn.resumeAfter)return {kind:'delayed',label:'稍后自动继续',working:false,detail:'短时间内通知较多，系统会自动继续发送。原消息已保存，无需重发。'};
   if(turn.status!=='ready')return null;
+  if(turn.taskWaitReason)return {kind:'waiting',label:'等待前置条件',working:false,detail:turn.taskWaitReason+'。消息已保留，条件就绪后自动继续，无需重发。'};
   const problem=nativeReceptionProblem(native,turn.scopeId||turn.channelId);
   if(problem)return problem;
   if(turn.nativeStartedAt)return {kind:'processing',label:'已开始处理',working:true,detail:'原生运行端已报告本轮开始，等待 Agent 回传。无需重发。'};
