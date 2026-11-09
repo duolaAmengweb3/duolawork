@@ -159,6 +159,7 @@ export async function signedHeaders(
     "X-MCP-Subscription-Id": subscriptionId,
   };
 }
+import {receptionIssue} from '../../shared/receiver-reception.mjs';
 export const publicConnection = (c) =>
   c && {
     id: c.id,
@@ -173,9 +174,10 @@ export const publicConnection = (c) =>
     deliveryEvidence: c.deliveryEvidence || null,
     pollSeconds: c.pollSeconds || null,
     needsAuthorization: c.needsAuthorization || false,
+    receptionIssues: c.receptionIssues || {},
     // Old records can retain an earlier setup blocker after a real probe
     // succeeds. Only the server-owned verification state resolves it.
-    setup: c.status === "verified" && c.verifiedAt && (!c.setup?.at || c.setup.at <= c.verifiedAt)
+    setup: receptionIssue(c) || (c.status === "verified" && c.verifiedAt && (!c.setup?.at || c.setup.at <= c.verifiedAt)
       ? { stage: "verified", message: "原 Agent 已完成真实往返验证。", at: c.verifiedAt || null }
-      : c.setup || null,
+      : c.setup || null),
   };

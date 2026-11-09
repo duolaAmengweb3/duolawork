@@ -112,6 +112,7 @@ export async function configureConnection(repo, identity, input, secret) {
         status: changed ? "configured" : old.status,
         verifiedAt: changed ? null : old.verifiedAt,
         deliveryEvidence: changed ? null : old.deliveryEvidence,
+        receptionIssues: changed ? {} : old.receptionIssues,
         setup: changed ? { stage: "configuring", message: "接收方式已配置，等待原 Agent 真实回应验证。", at: tx.now } : old.setup,
         needsAuthorization:
           platform.id === "perplexity-computer" && (!old || changed),

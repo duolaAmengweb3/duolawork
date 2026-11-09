@@ -10,6 +10,7 @@ import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
 import {reconcileTaskNotification} from './task-deliverables.mjs';
 import {wakeExpired,wakeId,resolveReceptionBlock} from './receiver-wakes.mjs';
+import {receptionIssues} from '../../shared/receiver-reception.mjs';
 const sameDeliveryScope=(a,b)=>(a.deliveryReview||null)===(b.deliveryReview||null)&&(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
 const maxUnclaimedWakes = 3;
 
@@ -64,8 +65,10 @@ async function stallUnclaimedBatch(tx, notice, reason) {
     tx.put('outbox', { ...child, status: 'unclaimed', reason });
     stalled++;
   }
-  if(stalled&&connection?.status==='verified'&&connection.configVersion===notice.configVersion)
-    tx.put('connection',{...connection,setup:{stage:'blocked',channelId:notice.scopeId,code:'delivery_unclaimed',message:reason,at:tx.now}});
+  if(stalled&&connection?.status==='verified'&&connection.configVersion===notice.configVersion){
+    const issue={stage:'blocked',channelId:notice.scopeId,code:'delivery_unclaimed',message:reason,at:tx.now};
+    tx.put('connection',{...connection,receptionIssues:{...receptionIssues(connection),[notice.scopeId]:issue},setup:issue});
+  }
   // Drain historical accepted rows too, so they cannot starve newer receipts.
   const current = await tx.get('outbox', notice.id);
   if (['accepted','unknown','needs_review'].includes(current.status))
@@ -386,9 +389,11 @@ export async function maintenance(
   let afterConnection='';
   for(;;){
     const page=await repo.list('connection',{status:'verified',after:afterConnection,limit:100});
-    for(const c of page)if(c.setup?.stage==='blocked')await repo.transact(`reception-reconcile:${c.id}:${c.revision}:${now}`,{},async tx=>{
-      const turns=(await Promise.all(['done','silent'].map(status=>tx.list('channel_turn',{parent:c.id,...(c.setup.channelId?{scope:c.setup.channelId}:{}),status,order:'recent',limit:1})))).flat();
-      for(const turn of turns)await resolveReceptionBlock(tx,turn);
+    for(const c of page)if(Object.keys(receptionIssues(c)).length)await repo.transact(`reception-reconcile:${c.id}:${c.revision}:${now}`,{},async tx=>{
+      for(const issue of Object.values(receptionIssues(await tx.get('connection',c.id)))){
+        const turns=(await Promise.all(['done','silent'].map(status=>tx.list('channel_turn',{parent:c.id,...(issue.channelId?{scope:issue.channelId}:{}),status,order:'recent',limit:1})))).flat();
+        for(const turn of turns)await resolveReceptionBlock(tx,turn);
+      }
       return{};
     },now);
     if(page.length<100)break;afterConnection=page.at(-1).id;
