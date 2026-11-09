@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-11-09T07:25:22.867Z",
+  "records": [
+    {
+      "name": "claude",
+      "status": 200,
+      "declared": "31bf0ae43e3f3ee01938c009a0bcf7473542203736f949a2f3bf4af5ee6d21f6",
+      "sha256": "31bf0ae43e3f3ee01938c009a0bcf7473542203736f949a2f3bf4af5ee6d21f6"
+    },
+    {
+      "name": "native",
+      "status": 200,
+      "declared": "aad468a55c1df0d3b747f41a7b8c930207d801c6c23b6d0b85b50eaa446553ab",
+      "sha256": "aad468a55c1df0d3b747f41a7b8c930207d801c6c23b6d0b85b50eaa446553ab"
+    }
+  ]
+}

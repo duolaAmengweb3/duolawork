@@ -1,6 +1,6 @@
 {
-  "at": "2026-11-09T05:52:13.573Z",
-  "packaged": false,
+  "at": "2026-11-09T06:57:48.347Z",
+  "packaged": true,
   "isolated": true,
   "checks": [
     "真实 Electron 完整退出及重开",

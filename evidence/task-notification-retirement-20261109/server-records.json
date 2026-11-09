@@ -1,0 +1,23 @@
+{
+  "workerSha256": "e5867dbf1e203d54c82a9a97758bcf758d1a1bb1876197b2a80e4c8a6b5e420a",
+  "records": [
+    {
+      "kind": "outbox",
+      "id": "notice_turn_chat_87d6da8aa0944515a0fa49ff34b73017_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "canceled",
+      "attempts": 0,
+      "completedAt": "2026-11-09T06:59:53.032Z",
+      "reason": "任务已取消或移除，旧提醒已自动收尾"
+    },
+    {
+      "kind": "channel_task_followup",
+      "id": "board_8d254a3070954e42ac8aff86f3812768:assigned:1:member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "superseded",
+      "attempts": null,
+      "completedAt": "2026-11-09T06:59:53.032Z",
+      "reason": "任务已取消或移除，旧提醒已自动收尾"
+    }
+  ],
+  "localWorkerSha256": "e5867dbf1e203d54c82a9a97758bcf758d1a1bb1876197b2a80e4c8a6b5e420a",
+  "verifiedAt": "2026-11-09T07:23:05.847Z"
+}

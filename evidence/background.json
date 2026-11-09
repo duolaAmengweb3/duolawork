@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-09T05:51:22.450Z",
+  "at": "2026-11-09T06:57:39.659Z",
   "checks": [
     "windowless headed Chrome keeps the Chrome user agent and does not patch webdriver",
     "hidden page has no native window",

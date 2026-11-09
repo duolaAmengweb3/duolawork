@@ -1,0 +1,34 @@
+{
+  "build": "08bcf2216e7517b5",
+  "desktopBuild": "08bcf2216e7517b5",
+  "online": true,
+  "matches": [
+    {
+      "file": "local/native-delivery.mjs",
+      "source": "b0b015646f23073360ba42aa0a0e417b2a47e889fea43f0b7acf971cb9c34c15",
+      "installed": "b0b015646f23073360ba42aa0a0e417b2a47e889fea43f0b7acf971cb9c34c15"
+    },
+    {
+      "file": "local/coding-manager.mjs",
+      "source": "1a58248f80e4b37d567521d8029bbd9fd8009f51ebf2d0953efd2a2b458c2563",
+      "installed": "1a58248f80e4b37d567521d8029bbd9fd8009f51ebf2d0953efd2a2b458c2563"
+    },
+    {
+      "file": "local/antigravity-sidecar.mjs",
+      "source": "193ffccdd3f63419f14c4ade0f5343e42aab40c159e432676d7ec722740b9708",
+      "installed": "193ffccdd3f63419f14c4ade0f5343e42aab40c159e432676d7ec722740b9708"
+    },
+    {
+      "file": "local/dsh-connector.mjs",
+      "source": "da204d450d0d1a576989bdd06e30ab8f0bfeea5d34773e9fe9f32cac8160947e",
+      "installed": "da204d450d0d1a576989bdd06e30ab8f0bfeea5d34773e9fe9f32cac8160947e"
+    }
+  ],
+  "claude": {
+    "distribution": "server download",
+    "sha256": "31bf0ae43e3f3ee01938c009a0bcf7473542203736f949a2f3bf4af5ee6d21f6",
+    "localBundleSha256": "31bf0ae43e3f3ee01938c009a0bcf7473542203736f949a2f3bf4af5ee6d21f6",
+    "remoteSessionUpgradedThisTurn": false
+  },
+  "verifiedAt": "2026-11-09T07:23:44.164Z"
+}
