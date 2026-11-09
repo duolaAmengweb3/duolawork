@@ -178,11 +178,12 @@ export async function dispatchOne(
   );
   if (!row) return { skipped: true };
   const dispatchStartedAt = Date.now();
-  let outcome, failureStage = "prepare";
+  let outcome, receiverKind, failureStage = "prepare";
   try {
     const c = await repo.get("connection", row.memberId);
     if (row.transport === "grok-webhook") {
       const credentials = await unseal(c.credentials, env.ADMIN_KEY);
+      receiverKind=credentials.token.startsWith('whsec_')?'platform-automation':'bot-routine';
       const deliveryId = wakeId(row);
       const body = JSON.stringify({
         delivery_id: deliveryId,
@@ -271,6 +272,7 @@ export async function dispatchOne(
   }
   const attemptFinishedAt = new Date().toISOString();
   const timing = {
+    ...(receiverKind?{receiverKind}:{}),
     attemptFinishedAt,
     dispatchElapsedMs: Date.now() - dispatchStartedAt,
     platformRespondedAt: outcome.platformRespondedAt || (outcome.httpStatus ? attemptFinishedAt : null),

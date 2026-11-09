@@ -74,7 +74,7 @@ test('accepted receipt recovery is paginated and stops after three invitations w
  await f.tick(2400);assert.equal(f.calls.length,3,'no recurring paid model polling');
 });
 for(const transport of ['grok-webhook','dots-events'])test(`${transport}: explicitly retrying a timed-out message uses a new invitation and resets only its bounded recovery budget`,async t=>{
- const f=await setup(t,transport),a=await f.post('Retry this exact preserved requirement'),wait=transport==='dots-events'?600:120;await f.tick(0);
+ const f=await setup(t,transport),a=await f.post('Retry this exact preserved requirement'),wait=600;await f.tick(0);
  for(const s of [wait,wait*2,wait*3])await f.tick(s);
  assert.equal((await f.repo.get('channel_turn',a.turnId)).status,'stalled');
  const lastId=f.calls.at(-1).body.eventId||f.calls.at(-1).body.delivery_id;
@@ -83,4 +83,10 @@ for(const transport of ['grok-webhook','dots-events'])test(`${transport}: explic
  assert.notEqual(newId,lastId);assert.equal(f.accepted.size,4,'the platform must not deduplicate an explicit recovery against a previous event');
  await f.tick(wait*4+1);assert.equal(f.calls.length,5,'explicit retry gets a fresh bounded recovery budget, even with a monotonic wake generation');
  const claim=await f.receive(a,'real-receiver-after-manual-retry');assert.equal(claim.status,'claimed');assert.deepEqual(claim.input.triggerMessageIds,[a.message.id]);
+});
+test('signed platform automations get their asynchronous startup window; Bot routine recovery remains independent',async t=>{
+ const f=await setup(t,'grok-webhook');await f.post('Cloud automation startup');await f.tick(0);
+ await f.tick(120);await f.tick(599);assert.equal(f.calls.length,1,'do not report an asynchronous platform offline after two minutes');
+ await f.tick(600);assert.equal(f.calls.length,2);assert.equal(f.calls[1].body.member_id,'grok');
+ assert.notEqual(f.calls[0].body.delivery_id,f.calls[1].body.delivery_id);
 });
