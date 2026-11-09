@@ -25,5 +25,25 @@
     "manual login",
     "packaged Electron exit/reopen"
   ],
-  "activationBuild": "04b359e0ff6c7ac2"
+  "activationBuild": "04b359e0ff6c7ac2",
+  "finalCloudSourceCommit": "8a7cb0ba76516d477134adf7c47c41b2fa7800c9",
+  "finalFull": [
+    "ℹ tests 726",
+    "ℹ pass 726",
+    "ℹ fail 0",
+    "ℹ duration_ms 17914.768792"
+  ],
+  "finalRelated": {
+    "tests": 47,
+    "pass": 47,
+    "fail": 0
+  },
+  "independentBackground": {
+    "commit": "ed7f712",
+    "reviewMessage": "chat_f50e38f678ac49fbb80341b5a889c9e6",
+    "tests": 46,
+    "pass": 46,
+    "finalP2Patch": "8a7cb0b",
+    "p2Review": "pending root check"
+  }
 }
