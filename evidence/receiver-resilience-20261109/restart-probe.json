@@ -1,0 +1,72 @@
+{
+  "at": "2026-11-09T15:36:37.369Z",
+  "nonce": "receiver-restart-9849c2bf",
+  "messageId": "chat_f1b9f956b1344d3883afdca7c7c4903d",
+  "turns": [
+    {
+      "id": "turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "done",
+      "claimedAt": "2026-11-09T15:31:45.433Z",
+      "completedAt": "2026-11-09T15:32:29.229Z"
+    },
+    {
+      "id": "turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "done",
+      "claimedAt": "2026-11-09T15:19:09.488Z",
+      "completedAt": "2026-11-09T15:19:18.449Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "stepId": "turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 202,
+      "createdAt": "2026-11-09T15:13:31.735Z",
+      "completedAt": "2026-11-09T15:23:59.430Z",
+      "dueAt": "2026-11-09T15:25:59.430Z",
+      "sendingAt": "2026-11-09T15:23:59.430Z",
+      "attempts": 2,
+      "platformRespondedAt": "2026-11-09T15:23:59.709Z",
+      "dispatchElapsedMs": 177,
+      "attemptFinishedAt": "2026-11-09T15:23:59.709Z",
+      "unclaimedRetry": true
+    },
+    {
+      "id": "notice_turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "stepId": "turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": null,
+      "createdAt": "2026-11-09T15:13:31.735Z",
+      "completedAt": "2026-11-09T15:13:31.764Z",
+      "dueAt": "2026-11-09T15:14:31.764Z",
+      "sendingAt": "2026-11-09T15:13:31.764Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-09T15:13:32.306Z",
+      "dispatchElapsedMs": 465,
+      "attemptFinishedAt": "2026-11-09T15:13:32.318Z"
+    }
+  ],
+  "replies": [
+    {
+      "id": "chat_a4b735ce5b1a4d01b73010d5895a849f",
+      "number": 460,
+      "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "createdAt": "2026-11-09T15:19:18.449Z",
+      "body": "receiver-restart-9849c2bf Dot"
+    },
+    {
+      "id": "chat_2c7cb01946ce455b8f8370ab18e1eb15",
+      "number": 461,
+      "authorId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "createdAt": "2026-11-09T15:32:29.229Z",
+      "body": "receiver-restart-9849c2bf grok1"
+    }
+  ]
+}

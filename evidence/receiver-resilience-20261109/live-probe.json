@@ -1,0 +1,63 @@
+{
+  "at": "2026-11-09T15:06:13.366Z",
+  "nonce": "receiver-recovery-7210c73b",
+  "messageId": "chat_ce673b10f1014a87b43cb6ce40e7eb6a",
+  "turns": [
+    {
+      "id": "turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "merged",
+      "reason": null
+    },
+    {
+      "id": "turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "done",
+      "claimedAt": "2026-11-09T15:04:43.022Z",
+      "completedAt": "2026-11-09T15:05:11.747Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "stepId": "turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "claimed",
+      "createdAt": "2026-11-09T14:57:22.632Z",
+      "dueAt": "2026-11-09T14:57:22.632Z",
+      "attempts": 0,
+      "coalescedInto": "notice_turn_chat_8a7e58ef853d480d9528ac08a2c5338c_member_0ff5c20718654c9db5ab3b1d0334133e"
+    },
+    {
+      "id": "notice_turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "stepId": "turn_chat_ce673b10f1014a87b43cb6ce40e7eb6a_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "claimed",
+      "reason": "已多次通知原平台，但成员仍未接收；消息已保留，可重试或查看原 Agent。",
+      "httpStatus": 202,
+      "createdAt": "2026-11-09T14:57:22.632Z",
+      "completedAt": "2026-11-09T15:01:37.655Z",
+      "dueAt": "2026-11-09T15:04:37.655Z",
+      "sendingAt": "2026-11-09T15:01:37.655Z",
+      "attempts": 3,
+      "platformRespondedAt": "2026-11-09T15:01:37.903Z",
+      "dispatchElapsedMs": 153,
+      "attemptFinishedAt": "2026-11-09T15:01:37.903Z",
+      "unclaimedRetry": true
+    }
+  ],
+  "replies": [
+    {
+      "id": "chat_496051917b0b4c22835f5728e0a0cc34",
+      "authorId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "createdAt": "2026-11-09T15:05:11.747Z",
+      "body": "receiver-recovery-7210c73b grok1"
+    },
+    {
+      "id": "chat_3f90bb5ec62a47cc9c8df43e18da3fb4",
+      "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "createdAt": "2026-11-09T15:05:44.866Z",
+      "body": "receiver-recovery-7210c73b Dot"
+    }
+  ]
+}

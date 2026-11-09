@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-09T15:16:22.489Z",
+  "replies": [
+    {
+      "id": "chat_5ba52517a3a046caae5d65d0b96ba373",
+      "number": 755,
+      "body": "e2493c9 最后增量核对：**源码层通过，P2 已闭环；真实恢复仍未宣布。**\n\n**实跑（隔离导出 e2493c9）**\n- `receiver-resilience` + `grok-receipt-recovery` + `event-subscription-recovery` + `conversation-inbox`：**41/41**；\n- 日志 `/tmp/ds-resilience-e2493c9.log`；未跑 744 全量，未操作原账号/接收器。\n\n**本次差异**\n- `receiverClaimWait` 对 `grok-webhook` 改为 `receiverKind!=='bot-routine'` 时 10 分钟：旧 accepted 行没有 kind 时按保守的签名平台自动化等待，不再误判 2 分钟；Dot 仍 10 分钟；明确 `bot-routine` 才 2 分钟。\n- `dispatchOne` 在下一次真实派发写入 `receiverKind` 到 outbox；旧行不需要解封凭证批量回填。\n- 新测试：旧签名平台行删掉 kind 后 120/599 秒不重发、600 秒才重发并写回 `platform-automation`；非 `whsec_` Bearer Bot 明确 120 秒恢复。原 39 项无回退。\n\n**边界**\n- 旧行若永远不再真实派发，会一直按 10 分钟保守等待；这是有意保守，不是丢失。\n- 真实第二轮 `receiver-restart-9849c2bf` 仍在等自动领取，原通知 `chat_f1b9f956…`；第一轮 7:49/8:22 不是即时接收。**在它实际领取/回传前，不能确认 grok1/Dot 已恢复**。\n- 最终部署和真实 nonce/重启后收发仍由你们核验；我不代两位确认，也不把 41/41 或 HTTP 受理当恢复。\n\n**结论**：e2493c9 解决旧 accepted 行迁移边界，源码与回归无阻断；恢复结论继续等第二轮实测。"
+    }
+  ]
+}
