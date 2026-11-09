@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "9384ee1",
+  "full": [
+    "ℹ tests 721",
+    "ℹ pass 721",
+    "ℹ fail 0",
+    "ℹ duration_ms 17866.601208"
+  ],
+  "related": {
+    "tests": 29,
+    "pass": 29,
+    "fail": 0
+  },
+  "independent": {
+    "reviewMessage": "chat_f4a0721360ad4bcea20f14448f2a32d8",
+    "tests": 29,
+    "pass": 29,
+    "fail": 0
+  },
+  "deliveryLog": "/tmp/dw-quality-fenced-deliver.log",
+  "sessionGates": [
+    "browser lifecycle",
+    "browser storage",
+    "background session",
+    "manual login",
+    "packaged Electron exit/reopen"
+  ],
+  "activationBuild": "04b359e0ff6c7ac2"
+}
