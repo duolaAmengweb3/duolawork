@@ -160,3 +160,19 @@ test('platform acceptance is visible to peers but never invents an Agent claim, 
   assert.ok(!JSON.stringify(channel.participation).includes('private'));
  }
 });
+
+test('internal callers use the same complete tool catalog as the production API',async t=>{
+ const f=await setup(t),m=await f.message('Canonical registry.');
+ const raw=await claimConversation(f.repo,f.identity,f.actor,{requestId:f.requestId(),stepId:`turn_${m.id}_grok`,channelId:f.c.id,expectedSessionId:'original-session',contextMode:'incremental'});
+ const result=await withConversationContext(f.repo,f.identity,f.actor,raw);
+ assert.equal(result.input.productContext.revision,(await productRelease(TOOLS)).revision);
+ assert.ok(result.input.productContext.changed.tools.includes('vault'));assert.ok(result.input.productContext.changed.tools.includes('connector'));
+});
+
+test('the authenticated owner can select a member for diagnostics while the Agent tool stays self-scoped',async t=>{
+ const f=await setup(t);const claim=await f.claim(await f.message('Owner diagnostics.'));
+ const diagnostic=await readProductContext(f.repo,{owner:true},{channelId:f.c.id,memberId:'grok'},TOOLS);
+ assert.equal(diagnostic.deliveries[0].id,claim.turnId);
+ assert.ok(!('memberId' in TOOLS.find(t=>t.name==='read_product_context').inputSchema.properties));
+ await assert.rejects(f.tool('read_product_context',{channelId:f.c.id,memberId:'check'}),e=>e.code==='forbidden');
+});

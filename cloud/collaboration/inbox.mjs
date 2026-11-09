@@ -6,12 +6,11 @@ import {memoryEvents as pendingMemoryEvents,readGroupMemory} from './group-memor
 import {skillCatalog} from './skills.mjs';
 import {workspaceGrant} from './delegation.mjs';
 import { digest, fail, id, required } from "./repository.mjs";
-import { claimConversation, readChannel, CHANNEL_TOOLS } from "./conversation.mjs";
-import {prepareProductContext,PRODUCT_CONTEXT_TOOL} from './product-context.mjs';
+import { claimConversation, readChannel } from "./conversation.mjs";
+import {prepareProductContext} from './product-context.mjs';
 import { meetingTurnContext } from './meetings.mjs';
 export const MAX_MESSAGE_WAIT_SECONDS = 45;
 
-let defaultTools;
 export async function withConversationContext(repo, identity, actor, claim,options={}) {
   if (!claim.turnId) return claim;
   const contextStarted=performance.now();
@@ -96,7 +95,10 @@ export async function withConversationContext(repo, identity, actor, claim,optio
       },
     },
   };
-  const productContext=await prepareProductContext(repo,actor,turn,result.input,options.tools||(defaultTools??=[...CHANNEL_TOOLS,PRODUCT_CONTEXT_TOOL]));
+  // Resolve the canonical registry at call time, after module initialization;
+  // direct/internal callers must not silently report a partial tool catalog.
+  const tools=options.tools||(await import('./api.mjs')).TOOLS;
+  const productContext=await prepareProductContext(repo,actor,turn,result.input,tools);
   delete result.input.productContext; // A replay must not overwrite current metadata with the old response.
   result.input={productContext,...result.input};
   const metrics={preparedAt:new Date().toISOString(),prepareMs:Math.round(performance.now()-contextStarted),bytes:new TextEncoder().encode(JSON.stringify(result.input)).length,historyMode:history.history.mode,memoryRetrieval:memory.retrieval,pendingMemoryEvents:memoryEvents.pending,productContextRevision:productContext.revision};
