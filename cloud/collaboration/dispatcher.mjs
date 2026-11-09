@@ -9,7 +9,7 @@ import { startComputer, pollComputer } from "./computer.mjs";
 import { conversationMaintenance } from "./conversation.mjs";
 import { meetingTurnAllowed, chargeMeetingRetry } from './meetings.mjs';
 import {reconcileTaskNotification} from './task-deliverables.mjs';
-import {wakeExpired,wakeId} from './receiver-wakes.mjs';
+import {wakeExpired,wakeId,resolveReceptionBlock} from './receiver-wakes.mjs';
 const sameDeliveryScope=(a,b)=>(a.deliveryReview||null)===(b.deliveryReview||null)&&(a.meetingId||null)===(b.meetingId||null)&&(!a.meetingId||(a.meetingVersion===b.meetingVersion&&a.meetingRound===b.meetingRound&&a.meetingPurpose===b.meetingPurpose));
 const maxUnclaimedWakes = 3;
 
@@ -52,14 +52,20 @@ async function recoverUnclaimedWakes(repo, now) {
 }
 
 async function stallUnclaimedBatch(tx, notice, reason) {
+  const connection=await tx.get('connection',notice.memberId,false);
+  if(connection&&(await tx.get('resource',await executionResource(tx,connection,notice.scopeId),false))?.status==='busy')return;
   const turns = await tx.list('channel_turn', { scope: notice.scopeId, parent: notice.memberId, status: 'ready' });
+  let stalled=0;
   for (const turn of turns) {
     if (turn.claimedAt || turn.lease) continue;
     const child = await tx.get('outbox', `notice_${turn.id}`, false);
     if (child?.id !== notice.id && child?.coalescedInto !== notice.id) continue;
     tx.put('channel_turn', { ...turn, status: 'stalled', reason });
     tx.put('outbox', { ...child, status: 'unclaimed', reason });
+    stalled++;
   }
+  if(stalled&&connection?.status==='verified'&&connection.configVersion===notice.configVersion)
+    tx.put('connection',{...connection,setup:{stage:'blocked',channelId:notice.scopeId,code:'delivery_unclaimed',message:reason,at:tx.now}});
   // Drain historical accepted rows too, so they cannot starve newer receipts.
   const current = await tx.get('outbox', notice.id);
   if (['accepted','unknown','needs_review'].includes(current.status))
@@ -375,6 +381,18 @@ export async function maintenance(
   await conversationMaintenance(repo,identity,now);
   await secretaryMaintenance(repo,identity,now);
   await recoverUnclaimedWakes(repo, now);
+  // Reconcile old blockers against actual member receipts that predate this
+  // release. Never heal from a saved configuration or a platform HTTP receipt.
+  let afterConnection='';
+  for(;;){
+    const page=await repo.list('connection',{status:'verified',after:afterConnection,limit:100});
+    for(const c of page)if(c.setup?.stage==='blocked')await repo.transact(`reception-reconcile:${c.id}:${c.revision}:${now}`,{},async tx=>{
+      const turns=(await Promise.all(['done','silent'].map(status=>tx.list('channel_turn',{parent:c.id,...(c.setup.channelId?{scope:c.setup.channelId}:{}),status,order:'recent',limit:1})))).flat();
+      for(const turn of turns)await resolveReceptionBlock(tx,turn);
+      return{};
+    },now);
+    if(page.length<100)break;afterConnection=page.at(-1).id;
+  }
   const beganAt = Date.now();
   // Deliver current conversation work before schedule scans and recovery work.
   const summary = { ...(await dispatchPending(repo,identity,env,fetcher,now)), schedules:0,recovered:0 };

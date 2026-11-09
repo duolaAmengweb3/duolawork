@@ -20,6 +20,7 @@ export function memberAvailability(member,connection,native,channelId,turns=[]){
   if(['disconnected','waiting_login'].includes(native.status))return {state:'offline',label:'需要连接',detail:native.message||'请在原环境恢复连接。'};
   return {state:'connected',label:'已连接',detail:'连接可用；原对话是否正在执行其他工作尚未提供。'};
  }
+ if(connection?.status==='verified'&&connection.setup?.stage==='blocked'&&(!connection.setup.channelId||connection.setup.channelId===channelId))return {state:'offline',label:'接收异常',detail:connection.setup.message||'原 Agent 报告接收异常，连接和消息已保留。'};
  if(connection?.status==='verified')return {state:'connected',label:'已连接',detail:'已完成真实回复验证；当前原生工作状态未提供。'};
  return {state:'offline',label:'待连接',detail:'尚未完成原生回复验证。'};
 }

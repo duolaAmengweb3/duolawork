@@ -13,3 +13,16 @@ export function wakeExpired(row, now) {
 export const wakeId = row => row.wakeGeneration
   ? `${row.id}:wake:${row.wakeGeneration}` : row.id;
 export const eventDeliveryId = (row, subscriptionId) => `${wakeId(row)}:${subscriptionId}`;
+
+export async function resolveReceptionBlock(tx, turn) {
+  if(!['done','silent'].includes(turn.status)||!turn.claimedAt||!turn.completedAt)return;
+  const connection=await tx.get('connection',turn.memberId,false);
+  if(connection?.status!=='verified'||connection.setup?.stage!=='blocked'||!(connection.setup.at<=turn.completedAt))return;
+  if(connection.setup.channelId&&connection.setup.channelId!==turn.scopeId)return;
+  if(turn.status==='done'){
+    if(turn.responseRef?.kind!=='message')return;
+    const reply=await tx.get('channel_message',turn.responseRef.id,false);
+    if(reply?.authorId!==turn.memberId)return;
+  }
+  tx.put('connection',{...connection,previousSetupIssue:connection.setup,setup:{stage:'verified',message:'原 Agent 已实际接收并回执，旧接收异常已解除。',at:turn.completedAt}});
+}

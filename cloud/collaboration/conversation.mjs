@@ -1,4 +1,5 @@
 import {isMemoryMaintenance,foregroundWaiting,memoryBatch} from './background-memory.mjs';
+import {resolveReceptionBlock} from './receiver-wakes.mjs';
 import {taskDeliveryProperties,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
@@ -313,7 +314,10 @@ async function finishTurn(tx, actor, turnId, status, reason, responseRef) {
   if (["done", "silent", "merged", "removed"].includes(turn.status)) { await rejectStaleResponse(tx, actor, turn); return; }
   if (turn.status !== "active")
     fail("not_claimed", "请先领取通知，再回应或静默", 409);
-  tx.put("channel_turn", { ...turn, status, reason,...(responseRef?{responseRef}:{}),lastAckError:null, completedAt: tx.now });
+  const finished=tx.put("channel_turn", { ...turn, status, reason,...(responseRef?{responseRef}:{}),lastAckError:null, completedAt: tx.now });
+  // A real member ACK resolves an older reception blocker. Configuration saves
+  // and platform HTTP receipts must never clear it on the member's behalf.
+  await resolveReceptionBlock(tx,finished);
   await acknowledgeNativeContext(tx,turn);
   await acknowledgeProductContext(tx,turn,status);
   for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);

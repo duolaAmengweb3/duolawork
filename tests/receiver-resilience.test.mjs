@@ -6,6 +6,7 @@ import {callTool} from '../cloud/collaboration/api.mjs';
 import {eventMethod} from '../cloud/collaboration/events.mjs';
 import {dispatchOne,maintenance} from '../cloud/collaboration/dispatcher.mjs';
 import {seal} from '../cloud/collaboration/security.mjs';
+import {memberAvailability} from '../shared/member-availability.mjs';
 const secret='isolated-receiver-recovery',signing='whsec_'+Buffer.alloc(32,21).toString('base64');
 const base=Date.parse('2026-11-09T15:00:00Z'),at=s=>new Date(base+s*1000).toISOString();
 async function setup(t,transport='dots-events',receiverToken=signing){
@@ -100,4 +101,37 @@ test('Bearer Bot routines retain their two-minute recovery window independently 
  const f=await setup(t,'grok-webhook','crsr_isolated_routine'),a=await f.post('Native Bot invitation');await f.tick(0);
  assert.equal((await f.repo.get('outbox',a.noticeId)).receiverKind,'bot-routine');
  await f.tick(119);assert.equal(f.calls.length,1);await f.tick(120);assert.equal(f.calls.length,2);
+});
+test('historical verification cannot hide a later receiver failure; only an actual member ACK resolves it',async t=>{
+ const f=await setup(t),a=await f.post('Real response proves reception');
+ const issue={stage:'blocked',message:'原平台接收中断',at:at(0)};
+ await f.repo.transact('actual-receiver-failure',{},async tx=>{const c=await tx.get('connection','grok');tx.put('connection',{...c,setup:issue});return{};});
+ const member={id:'grok',platformId:'grok-bot'};
+ assert.equal(memberAvailability(member,await f.repo.get('connection','grok'),null,f.channel.id).label,'接收异常');
+ await f.tick(1);assert.equal((await f.repo.get('connection','grok')).setup.stage,'blocked','HTTP acceptance is not recovery');
+ const claim=await f.receive(a,'real-member-receives');assert.equal((await f.repo.get('connection','grok')).setup.stage,'blocked','a claim alone is not a reply');
+ await f.send('channel.post',{channelId:f.channel.id,turnId:claim.turnId,body:'本人真实回传'},{memberId:'grok'},611);
+ const c=await f.repo.get('connection','grok');assert.equal(c.setup.stage,'verified');assert.deepEqual(c.previousSetupIssue,issue);assert.equal(memberAvailability(member,c,null,f.channel.id).label,'已连接');
+});
+test('maintenance reconciles pre-upgrade real replies but cannot heal a newer blocker from an older receipt',async t=>{
+ const f=await setup(t),a=await f.post('Pre-upgrade actual round-trip');const claim=await f.receive(a,'historic-real-claim');
+ await f.send('channel.post',{channelId:f.channel.id,turnId:claim.turnId,body:'Actual member reply'},{memberId:'grok'},611);
+ const setBlock=atTime=>f.repo.transact('legacy-block-'+atTime,{},async tx=>{const c=await tx.get('connection','grok');tx.put('connection',{...c,setup:{stage:'blocked',message:'Saved legacy receiver error',at:at(atTime)}});return{};});
+ await setBlock(100);await f.tick(700);assert.equal((await f.repo.get('connection','grok')).setup.stage,'verified');
+ await setBlock(800);await f.tick(900);assert.equal((await f.repo.get('connection','grok')).setup.stage,'blocked','a previous reply cannot hide a later failure');
+ await f.repo.transact('late-old-runtime-ack',{},async tx=>{const turn=await tx.get('channel_turn',a.turnId);tx.put('channel_turn',{...turn,completedAt:at(1000)});return{};});
+ await f.tick(1100);assert.equal((await f.repo.get('connection','grok')).setup.stage,'verified','an empty reconciliation cannot be cached forever across later real ACKs');
+});
+test('an exhausted receiver is reported for its actual group; unrelated group replies cannot clear that issue',async t=>{
+ const f=await setup(t),a=await f.post('Unreceived group request');for(const s of [0,600,1200,1800])await f.tick(s);
+ let c=await f.repo.get('connection','grok');assert.equal(c.setup.code,'delivery_unclaimed');assert.equal(c.setup.channelId,f.channel.id);
+ assert.equal(memberAvailability({id:'grok',platformId:'grok-bot'},c,null,f.channel.id).label,'接收异常');
+ const other=await f.send('channel.create',{name:'Unaffected group',memberIds:['grok']},{owner:true},1801);
+ assert.equal(memberAvailability({id:'grok',platformId:'grok-bot'},c,null,other.id).label,'已连接');
+ await f.send('channel.post',{channelId:other.id,body:'Other actual work',mentions:['grok']},{owner:true},1802);
+ const claim=await callTool(f.repo,f.identity,{memberId:'grok'},'receive_messages',{requestId:'unrelated-actual-claim',channelId:other.id},{},{clock:()=>base+1803000});
+ await f.send('channel.post',{channelId:other.id,turnId:claim.turnId,body:'Other real response'},{memberId:'grok'},1804);
+ assert.equal((await f.repo.get('connection','grok')).setup.channelId,f.channel.id);
+ const own=await f.receive(a,'late-real-source-claim');await f.send('channel.post',{channelId:f.channel.id,turnId:own.turnId,body:'Original receiver really recovered'},{memberId:'grok'},1805);
+ assert.equal((await f.repo.get('connection','grok')).setup.stage,'verified');
 });

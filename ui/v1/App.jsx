@@ -2066,13 +2066,14 @@ export function ConnectWizard(props) {
   if(['codex','gemini-cli','antigravity','deepseek-harness'].includes(member.platformId)) return <React.Suspense fallback={<p>正在读取账号连接…</p>}><LocalCodingConnect {...props}/></React.Suspense>;
   if (advanced) return <><Button variant="ghost" size="sm" onClick={() => setAdvanced(false)}>返回快捷接入</Button><AdvancedConnectWizard {...props}/></>;
   const complete = connection?.status === "verified";
+  const receiverBlocked = complete && connection?.setup?.stage === 'blocked';
   const grok = member.platformId === "grok-bot";
   const paired = !!(connection?.authorizedAt || connection?.authSeenAt || connection?.toolSeenAt);
   const pending = !complete && ["running", "ready"].includes(connection?.probe?.status);
   const failed = !complete && connection?.probe?.status === "needs_review";
   const ownerNeeded = grok && paired && !complete && !pending;
   const routineName = connection?.setup?.ownerAction?.routineName || `DuolaWork 成员 ${member.name} 接收器`;
-  const stage = complete ? "已接入，可以开始聊天" : pending ? "正在等待原 Agent 回复" : failed ? "验证未通过，请核对后重试" : ownerNeeded ? "还差一次 Grok 确认" : paired ? "Agent 正在准备接入" : "先把接入说明发给 Agent";
+  const stage = receiverBlocked ? '接收异常，原连接与消息已保留' : complete ? "已接入，可以开始聊天" : pending ? "正在等待原 Agent 回复" : failed ? "验证未通过，请核对后重试" : ownerNeeded ? "还差一次 Grok 确认" : paired ? "Agent 正在准备接入" : "先把接入说明发给 Agent";
   async function perform(fn) {
     setBusy(true); setError("");
     try { await fn(); await refresh(); }
@@ -2080,12 +2081,12 @@ export function ConnectWizard(props) {
     finally { setBusy(false); }
   }
   return <div className="space-y-5 py-3">
-    <div><h3 className="text-lg font-semibold">{complete ? `${member.name} 接入完成` : `把 ${member.name} 加入团队`}</h3>
-      <p className="text-muted-foreground leading-7 mt-2">{complete ? '连接已保存，接下来可以单聊，或将它加入群聊协作。' : '把接入说明发给你正在使用的 Agent。它负责准备连接；需要你确认的步骤会直接显示在这里。'}</p></div>
+    <div><h3 className="text-lg font-semibold">{receiverBlocked ? `${member.name} 接收异常` : complete ? `${member.name} 接入完成` : `把 ${member.name} 加入团队`}</h3>
+      <p className="text-muted-foreground leading-7 mt-2">{receiverBlocked ? '连接配置保留，当前消息接收出现异常，具体原因如下。' : complete ? '连接已保存，接下来可以单聊，或将它加入群聊协作。' : '把接入说明发给你正在使用的 Agent。它负责准备连接；需要你确认的步骤会直接显示在这里。'}</p></div>
     <ol className="grid grid-cols-3 gap-2 text-sm" aria-label="接入进度">
       {[['发送说明', paired], ['完成确认', complete || pending], ['接入完成', complete]].map(([text, done], i) => <li key={text} className={`rounded-lg border px-3 py-2 ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'text-slate-500'}`}>{done ? '✓' : i + 1} {text}</li>)}
     </ol>
-    <div role="status" className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete && !failed && !pending ? "Agent 报告接入遇到问题" : stage}</span></div>
+    <div role="status" className="rounded-xl border bg-slate-50 p-4 flex items-center gap-3"><Check size={18} className={complete && !receiverBlocked ? "text-emerald-600" : "text-slate-400"}/><span>{connection?.setup?.stage === "blocked" && !complete && !failed && !pending ? "Agent 报告接入遇到问题" : stage}</span></div>
     {connection?.setup?.message && !complete && !pending && !failed && <p className="text-sm text-muted-foreground">{connection.setup.message}</p>}
     {!complete && !pending && !ownerNeeded && <Button disabled={busy} onClick={() => perform(async () => {
         const result = await api("/v2/connect/skill", { memberId: member.id });
@@ -2119,7 +2120,8 @@ export function ConnectWizard(props) {
     </section>}
     {pending && <p className="text-sm leading-7 text-muted-foreground">已自动发出验证，正在等原 Agent 实际回复。平台可能排队；不用重复点、不用再发送 Skill，可以关闭窗口，结果会保留。{connection?.lastDeliveryAt ? ' 原平台已受理通知。' : ''}</p>}
     {!grok && paired && !complete && !pending && <><p className="text-sm leading-7 text-muted-foreground">由 Agent 完成它自己的接收配置并自检。若它报告需要本人授权，请在原平台完成；这里会自动显示结果。</p>{failed && <Alert variant="destructive"><AlertDescription>{connection.probe.message || '验证尚未完成，请先查看 Agent 的接入说明。'}</AlertDescription></Alert>}{connection?.status === 'configured' && <Button disabled={busy} onClick={() => perform(()=>command('connection.probe',{memberId:member.id}))}>重新验证接入</Button>}</>}
-    {complete && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-3" aria-label="接入完成">
+    {receiverBlocked && <Alert><AlertTitle>当前接收出现异常</AlertTitle><AlertDescription>{connection.setup.message} 原接入配置和消息保留，待实际接收并回传后解除此提示。</AlertDescription>{props.onStartChat && <Button disabled={busy} onClick={()=>perform(()=>props.onStartChat(member))}><MessageSquare size={16}/>开始聊天</Button>}</Alert>}
+    {complete && !receiverBlocked && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 space-y-3" aria-label="接入完成">
       <h4 className="text-lg font-semibold text-emerald-900">✓ 现在可以开始使用</h4>
       <p className="text-sm leading-7 text-emerald-800">现在可以和它单聊，也可以把它加入群聊一起协作。本次配置已保存，下次打开软件无需重复接入。</p>
       {props.onStartChat && <Button disabled={busy} onClick={()=>perform(()=>props.onStartChat(member))}><MessageSquare size={16}/>开始聊天</Button>}
