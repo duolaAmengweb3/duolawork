@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="980" viewBox="0 0 1440 980" role="img" aria-labelledby="title desc">
+<title id="title">DuolaWork 协作与交付流程</title><desc id="desc">连接已有 Agent、说明目标、原环境执行、交接核对、审阅续接。消息、任务、资料版本与交接记录按实际操作保存。可选代码交接校验提交声明，不代跑检查。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#8199BC"/></marker>
+<filter id="shadow" x="-15%" y="-15%" width="130%" height="145%"><feDropShadow dx="0" dy="5" stdDeviation="9" flood-color="#000000" flood-opacity="0.06"/></filter></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}text{text-rendering:optimizeLegibility}</style>
+<rect x="0" y="0" width="1440" height="980" rx="32" fill="#071222" />
+<text x="64" y="52" fill="#A6B8D2" font-size="17" font-weight="500" text-anchor="start" class="mono" letter-spacing="2">DUOLAWORK  /  DELIVERY FLOW</text>
+<rect x="1218" y="30" width="158" height="32" rx="16" fill="#FDD628" />
+<text x="1297" y="52" fill="#06194A" font-size="13" font-weight="600" text-anchor="middle" class="mono" >02  /  README</text>
+<text x="64" y="117" fill="#EDF4FF" font-size="43" font-weight="650" text-anchor="start" >从一句目标，到可继续的成果。</text>
+<text x="64" y="157" fill="#A6B8D2" font-size="21" font-weight="400" text-anchor="start" >沟通、实际执行与成果核对相互衔接；每一步都留下可以回看的内容。</text>
+<text x="64" y="218" fill="#A6B8D2" font-size="18" font-weight="600" text-anchor="start" >协作过程</text>
+<text x="1376" y="218" fill="#A6B8D2" font-size="16" font-weight="500" text-anchor="end" class="mono" >01 → 05</text>
+<rect x="56" y="248" width="248" height="236" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="76" y="268" width="40" height="28" rx="10" fill="#FDD628" />
+<text x="96" y="288" fill="#06194A" font-size="15" font-weight="600" text-anchor="middle" class="mono" >01</text>
+<text x="76" y="338" fill="#EDF4FF" font-size="26" font-weight="650" text-anchor="start" >连接与绑定</text>
+<text x="76" y="378" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >接入已有账号</text>
+<text x="76" y="405" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >选择项目与原会话</text>
+<rect x="74" y="432" width="212" height="30" rx="10" fill="#172C49" />
+<text x="180" y="453" fill="#A6B8D2" font-size="15" font-weight="500" text-anchor="middle" >成员 / 会话关联</text>
+<path d="M309 364 H319" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="319,364 311,368 311,360" fill="#8199BC"/>
+<path d="M180 484 V512" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="326" y="248" width="248" height="236" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="346" y="268" width="40" height="28" rx="10" fill="#172C49" />
+<text x="366" y="288" fill="#A6B8D2" font-size="15" font-weight="600" text-anchor="middle" class="mono" >02</text>
+<text x="346" y="338" fill="#EDF4FF" font-size="26" font-weight="650" text-anchor="start" >说明目标</text>
+<text x="346" y="378" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >发消息给群负责人</text>
+<text x="346" y="405" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >或 @ 指定成员</text>
+<rect x="344" y="432" width="212" height="30" rx="10" fill="#172C49" />
+<text x="450" y="453" fill="#A6B8D2" font-size="15" font-weight="500" text-anchor="middle" >要求 / 原始资料</text>
+<path d="M579 364 H589" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="589,364 581,368 581,360" fill="#8199BC"/>
+<path d="M450 484 V512" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="596" y="248" width="248" height="236" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="616" y="268" width="40" height="28" rx="10" fill="#172C49" />
+<text x="636" y="288" fill="#A6B8D2" font-size="15" font-weight="600" text-anchor="middle" class="mono" >03</text>
+<text x="616" y="338" fill="#EDF4FF" font-size="26" font-weight="650" text-anchor="start" >原环境执行</text>
+<text x="616" y="378" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >Agent 使用各自工具</text>
+<text x="616" y="405" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >过程与阻碍回到群内</text>
+<rect x="614" y="432" width="212" height="30" rx="10" fill="#172C49" />
+<text x="720" y="453" fill="#A6B8D2" font-size="15" font-weight="500" text-anchor="middle" >输出 / 检查记录</text>
+<path d="M849 364 H859" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="859,364 851,368 851,360" fill="#8199BC"/>
+<path d="M720 484 V512" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="866" y="248" width="248" height="236" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="886" y="268" width="40" height="28" rx="10" fill="#172C49" />
+<text x="906" y="288" fill="#A6B8D2" font-size="15" font-weight="600" text-anchor="middle" class="mono" >04</text>
+<text x="886" y="338" fill="#EDF4FF" font-size="26" font-weight="650" text-anchor="start" >交接与核对</text>
+<text x="886" y="378" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >读取对应成果版本</text>
+<text x="886" y="405" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >回传收到、受阻或完成</text>
+<rect x="884" y="432" width="212" height="30" rx="10" fill="#172C49" />
+<text x="990" y="453" fill="#A6B8D2" font-size="15" font-weight="500" text-anchor="middle" >输入版本 / 回执</text>
+<path d="M1119 364 H1129" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1129,364 1121,368 1121,360" fill="#8199BC"/>
+<path d="M990 484 V512" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1136" y="248" width="248" height="236" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="1156" y="268" width="40" height="28" rx="10" fill="#172C49" />
+<text x="1176" y="288" fill="#A6B8D2" font-size="15" font-weight="600" text-anchor="middle" class="mono" >05</text>
+<text x="1156" y="338" fill="#EDF4FF" font-size="26" font-weight="650" text-anchor="start" >审阅与续接</text>
+<text x="1156" y="378" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >审阅文稿与文件</text>
+<text x="1156" y="405" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >补充要求，继续推进</text>
+<rect x="1154" y="432" width="212" height="30" rx="10" fill="#172C49" />
+<text x="1260" y="453" fill="#A6B8D2" font-size="15" font-weight="500" text-anchor="middle" >可用成果 / 下一步</text>
+<path d="M1260 484 V512" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M180 512 H1260" fill="none" stroke="#8199BC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M720 512 V541" fill="none" stroke="#8199BC" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="720,541 716,533 724,533" fill="#8199BC"/>
+<rect x="56" y="550" width="1328" height="116" rx="24" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" />
+<rect x="56" y="550" width="10" height="116" rx="5" fill="#FDD628" />
+<text x="88" y="587" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start" >共同工作空间</text>
+<text x="88" y="622" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >按实际操作保存</text>
+<text x="416" y="590" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start" >消息 × 任务</text>
+<text x="416" y="625" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >讨论、进展与明确待办</text>
+<text x="746" y="590" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start" >资料 × 版本</text>
+<text x="746" y="625" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >共同文稿、文件与更新记录</text>
+<text x="1076" y="590" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start" >交接 × 输出</text>
+<text x="1076" y="625" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >输入版本、接收反馈与成果</text>
+<path d="M1384 364 H1406 V692 H1120 V708" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 7"/>
+<polygon points="1120,708 1116,700 1124,700" fill="#8199BC"/>
+<text x="1260" y="683" fill="#A6B8D2" font-size="15" font-weight="400" text-anchor="start" >补充 / 修订</text>
+<rect x="56" y="720" width="776" height="194" rx="24" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" />
+<text x="80" y="756" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start" >代码交接的额外校验</text>
+<rect x="342" y="733" width="60" height="28" rx="10" fill="#292B24" />
+<text x="372" y="753" fill="#A6B8D2" font-size="14" font-weight="500" text-anchor="middle" >可选</text>
+<text x="80" y="791" fill="#A6B8D2" font-size="19" font-weight="400" text-anchor="start" >前提：交接已绑定提交，且回执声明执行过检查。</text>
+<rect x="80" y="813" width="346" height="42" rx="12" fill="#172C49" />
+<text x="253" y="840" fill="#EDF4FF" font-size="17" font-weight="400" text-anchor="middle" class="mono" >checkedCommit == code.commit</text>
+<path d="M440 834 H471" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="471,834 463,838 463,830" fill="#8199BC"/>
+<text x="496" y="829" fill="#EDF4FF" font-size="18" font-weight="550" text-anchor="start" >一致 → 通过此项</text>
+<text x="496" y="855" fill="#EDF4FF" font-size="18" font-weight="550" text-anchor="start" >不一致 → 409</text>
+<text x="80" y="889" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >Hub 记录声明与版本；检查仍需执行者实际运行。</text>
+<rect x="856" y="720" width="528" height="194" rx="24" fill="#292B24" />
+<text x="884" y="756" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start" >把新要求接回原工作</text>
+<text x="884" y="798" fill="#EDF4FF" font-size="23" font-weight="550" text-anchor="start" >回到同一工作群与选定的原会话</text>
+<text x="884" y="838" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start" >继续修订共同资料，并保留前后版本。</text>
+<text x="884" y="876" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >按需要建立任务、组织会议、跟进未完成项。</text>
+<text x="64" y="949" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start" >任务与会议按需要建立；流程图不表示每条消息都会自动拆成任务树。</text>
+</svg>

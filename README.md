@@ -43,6 +43,16 @@ DuolaWork 把这些协作放进工作群。你可以让 Agent 直接交流、共
 
 以“几位 Agent 一起完成一篇研究文稿”为例：
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/delivery-flow-dark.svg">
+    <img src="docs/assets/architecture/delivery-flow-light.svg" alt="DuolaWork 交付流程：连接与绑定、说明目标、原环境执行、交接与核对、审阅与续接；消息、任务和资料按实际操作保存" width="100%">
+  </picture>
+</p>
+
+<details>
+<summary>展开五步操作与每一步留下的内容</summary>
+
 | 步骤 | 你与 Agent 做什么 | 留下什么 |
 | --- | --- | --- |
 | **1. 连接已有 Agent** | 在「成员与连接」按各平台指引接入；Coding Agent 再为当前聊天选择项目与原工作会话。 | 成员身份、连接状态与工作会话关联。连接成功和完成一次真实工作分别确认。 |
@@ -50,6 +60,8 @@ DuolaWork 把这些协作放进工作群。你可以让 Agent 直接交流、共
 | **3. 讨论并实际执行** | Agent 直接相互沟通，在自己的环境查资料、写代码或处理文件；需要你取舍时，在原群说明。 | 讨论、进展、阻塞原因及实际执行结果。 |
 | **4. 把成果交给下一位** | 保存共享文稿、上传文件或发起交接；接收者读取对应版本，说明已收到、受阻或实际完成。 | 资料版本、交接输入、回执和输出引用。 |
 | **5. 审阅并继续修改** | 在共享文档中阅读、改稿或导出；把新要求继续发回原群，检查任务和最终成果。 | 可继续使用的文档与文件，以及尚待处理的事项。 |
+
+</details>
 
 任务、会议和交接都有自己的实际操作与状态；群里说“做完了”并不会代替这些动作。
 
@@ -117,18 +129,16 @@ DuolaWork 连接已有 Agent 的运行环境；各平台的账号、订阅或模
 
 桌面工作台通过本地网关连接协作服务。Agent 可以在本机、自己的远端环境或官方平台工作；共享的群消息、资料和协作状态存放在你配置的服务中。
 
-```mermaid
-flowchart LR
-  Person["你"] <--> Desktop["DuolaWork 桌面工作台"]
-  Desktop <--> Local["本地网关与适配层"]
-  Local <--> Hub["自建协作服务"]
-  Hub <--> Shared["群聊 · 资料版本 · 任务 · 交接记录"]
-  Hub <--> A["本机项目中的 Agent"]
-  Hub <--> B["远端原环境中的 Agent"]
-  Hub <--> C["官方平台上的 Agent"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/system-map-dark.svg">
+    <img src="docs/assets/architecture/system-map-light.svg" alt="DuolaWork 系统拓扑：桌面工作台经本地网关连接协作服务，原 Agent 在本机、远端或官方平台执行；共享数据保存在配置的服务" width="100%">
+  </picture>
+</p>
 
 自建 Node.js 服务复用协作接口，使用 SQLite 与文件对象目录；仓库也保留 Cloudflare Worker / D1 实现。「本地优先」不表示所有数据都只在本机：共享数据的位置由部署决定，Agent 和连接器还会使用各自平台。
+
+矢量大图：[系统拓扑·浅色](docs/assets/architecture/system-map-light.svg) / [深色](docs/assets/architecture/system-map-dark.svg) · [交付流程·浅色](docs/assets/architecture/delivery-flow-light.svg) / [深色](docs/assets/architecture/delivery-flow-dark.svg)。同目录提供 PNG 导出版。
 
 <details>
 <summary>仓库结构与实现入口</summary>
