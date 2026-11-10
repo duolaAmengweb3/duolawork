@@ -1,27 +1,109 @@
-DuolaWork — Interim Licensing Status
+DuolaWork Source-Available License 1.0
 
 Copyright (c) 2026 DuolaWork contributors.
 
-This file is an interim licensing-status notice for this revision. It is not
-a finalized source-available license and does not make a new public license
-grant. Rights in original DuolaWork material are reserved, subject to any
-previously valid grants and applicable third-party licenses.
+1. Scope and acceptance
 
-The approved publication direction is a source-available foundation alongside
-separately licensed commercial offerings. The intended foundation includes
-the local workbench, connector and tool specifications, collaboration state
-machine, handoff validation, and shared-file protocol. Planned commercial
-offerings include managed hosting and enterprise capabilities.
+This license applies to original DuolaWork software and documentation that
+the copyright holders make available under this license (the "Software").
+The copyright holders granting rights in their respective contributions are
+the "Licensor". "You" means the individual or legal entity exercising the
+rights granted here. By exercising these rights, you accept this license.
+No rights beyond those stated here are granted by implication.
 
-The intended free-use policy covers personal and small-team self-use,
-modification, and self-hosting. The exact eligibility criteria and the
-treatment of internal commercial use have not been finalized. Commercial
-resale, redistribution, and hosted-service rights are intended to require
-separately agreed terms. These intentions are not a substitute for a license
-grant; no team-size threshold, pricing, or production-use grant is supplied
-by this notice.
+2. Free internal-use grant
 
-This notice does not revoke or alter any license validly granted for a prior
-revision, nor does it relicense third-party code, dependencies, or assets.
-The repository history still contains the earlier MIT notice. Publication
-of a final license and selection of public release contents remain pending.
+Subject to this license, the Licensor grants you a worldwide, non-exclusive,
+royalty-free copyright license to access, copy, build, install, run, modify,
+and create derivative works of the Software for your own personal use or
+your organization's internal operations, including internal commercial and
+production use ("Internal Use"). You may self-host it on infrastructure you
+own, rent, or control, and make copies available to your authorized internal
+users for those purposes.
+
+Internal Use is free regardless of your organization's size, revenue, number
+of users, number of installations, or deployment scale. It does not require
+a paid subscription, registration with the Licensor, or a commercial license.
+This grant concerns licensing rights, not a guarantee of product capacity,
+support, or access to separately licensed products.
+
+Employees and contractors acting on behalf of your organization may use the
+Software solely for that organization's internal operations. Customers,
+unrelated organizations, and the public do not become internal users merely
+because you create accounts for them or act as their hosting provider.
+
+3. External offerings require a separate license
+
+Without a separate written license from the Licensor, you may not:
+
+(a) sell, resell, rent, sublicense, commercially redistribute, or supply a
+    rebranded or repackaged product containing the Software or a derivative
+    work of it, including a commercial bundle whose functionality includes
+    the Software;
+(b) offer the Software or a derivative work to external users as a hosted,
+    managed, SaaS, or white-label service, whether accessed directly or
+    through an API, connector, agent, proxy, or other wrapper; or
+(c) provide external users with the Software's collaboration, orchestration,
+    or workbench functionality as part of another product or service.
+
+Removing branding, changing names, modifying code, or bundling the Software
+with other components does not avoid these conditions. An external offering
+is not Internal Use merely because it is free, bundled with another service,
+or charged for indirectly. A separate commercial agreement must expressly
+grant the applicable external-offering and distribution rights.
+
+4. Source collaboration and notices
+
+You may share source-code forks and patches solely for noncommercial code
+review, research, and contributions back to the project, provided that they
+retain this license and the applicable copyright notices and do not offer
+a repackaged product, commercial distribution, or external hosted service.
+Recipients receive only the rights granted by this license; this permission
+does not authorize an external offering described in section 3.
+
+You must retain this license and applicable copyright and attribution
+notices in copies and modified versions of the Software. No trademark or
+branding rights are granted by this license.
+
+5. Business outputs and independent work
+
+You may use the Software internally to produce work for paying customers.
+Delivering documents, content, reports, or other independently created
+outputs does not by itself constitute an external offering of the Software.
+This license makes no claim to ownership of your independent outputs.
+An output containing or adapting the Software remains subject to this
+license; exposing the Software's functionality to customers remains subject
+to section 3. Independently written applications and connectors that do not
+copy or adapt the Software are not relicensed by this license.
+
+6. Third-party and prior rights
+
+Third-party code, dependencies, assets, and components carrying separate
+license notices remain governed by those licenses. This license does not
+relicense them, override their terms, or withdraw rights validly granted
+under a license for an earlier revision. Products or components expressly
+provided under a separate commercial agreement are governed by that
+agreement to the extent it specifies different rights.
+
+7. Termination
+
+The rights granted here continue while you comply with this license. They
+terminate automatically if you violate its conditions. Following termination,
+you must stop activities relying on this license; rights may be reinstated
+by the Licensor in writing. Termination does not affect rights independently
+available under applicable law or another valid license.
+
+8. Disclaimer and limitation of liability
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS",
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+THE LICENSOR IS NOT LIABLE FOR CLAIMS, DAMAGES, OR OTHER LIABILITY ARISING
+FROM THE SOFTWARE OR THIS LICENSE, WHETHER IN CONTRACT, TORT, OR OTHERWISE.
+
+9. License identity
+
+This is the project-specific DuolaWork Source-Available License, version 1.0.
+It is not the MIT License, Elastic License, Business Source License, or an
+OSI-approved open-source license. No future license version or automatic
+conversion to an open-source license is granted by this text.
