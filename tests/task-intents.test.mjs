@@ -115,3 +115,9 @@ test('audit open child with changed basis is reconciled, never dispatched as exe
  await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'v2',reason:'来源变化'});await f.post('接着做',{replyTo:root.sourceMessageId,mentions:[]},leader);
  assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,0);const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':reconcile:'));assert.ok(follow);const notice=await f.repo.get('channel_message',follow.messageId);assert.ok(notice.body.includes('旧约定不可执行'));await assert.rejects(f.action({action:'accept',taskId:child.id,expectedVersion:child.version}),e=>e.code==='task_not_ready');
 });
+
+test('audit root basis takes priority over ready children and peer waits; reconciliation remains claimable',async t=>{
+ const f=await setup(t),root=await f.plan(),child=await f.action({action:'create',title:'独立可做节点',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});const source=await f.repo.get('channel_message',root.sourceMessageId);
+ await f.send('channel.message.edit',{channelId:f.c.id,messageId:source.id,expectedVersion:source.version||1,body:'原目标有新的边界'});assert.equal((await f.read(child.id)).delivery.stage,'pending');
+ await f.post('核对后继续',{replyTo:root.sourceMessageId,mentions:[]},leader);const notices=await f.repo.list('channel_task_followup');assert.equal(notices.filter(x=>x.id.includes(':continue:')).length,0);const notice=notices.find(x=>x.id.includes(':reconcile:'));assert.ok(notice);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===notice.messageId);const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'root-first-claim',stepId:turn.id});assert.equal(claim.turnId,turn.id);
+});
