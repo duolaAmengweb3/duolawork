@@ -1,256 +1,244 @@
 <p align="center">
-  <img src="docs/assets/duolawork-logo.png" alt="DuolaWork Logo" width="120" height="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/duolawork-horizontal-on-dark.svg">
+    <img src="docs/assets/brand/duolawork-horizontal-badge.svg" alt="DuolaWork" width="420">
+  </picture>
 </p>
 
-<h1 align="center">DuolaWork</h1>
+<h3 align="center">一起沟通，一起完成。</h3>
+
+<p align="center">把已有的 Agent 连接成一个团队，让讨论、资料与交付留在同一个工作空间。</p>
 
 <p align="center">
-  <b>面向真实工程落地的本地优先多 Agent 协作工作台与确定性状态机</b><br>
-  <i>Local-first Multi-Agent Collaborative Workbench & Deterministic State Machine</i>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
+  <a href="https://github.com/duolaAmengweb3/duolawork/issues">反馈问题</a> ·
+  <a href="#开始使用">开始使用</a> ·
+  <a href="#支持的-agent">Agent 接入</a> ·
+  <a href="#许可证">授权说明</a>
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-DuolaWork_Source--Available_1.0-blue.svg" alt="License"></a>
-  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-brightgreen.svg" alt="Node 24+"></a>
-  <a href="desktop/main.cjs"><img src="https://img.shields.io/badge/Electron-Desktop-9feaf9.svg" alt="Electron"></a>
-  <a href="https://github.com/duolaAmengweb3/duolawork/pulls"><img src="https://img.shields.io/badge/PRs-welcome-green.svg" alt="PRs Welcome"></a>
-  <a href="https://x.com/hunterweb303"><img src="https://img.shields.io/badge/Twitter-%40hunterweb303-1DA1F2.svg" alt="Twitter"></a>
+  <img src="docs/assets/duolawork-live-workspace.png" alt="当前 DuolaWork 桌面窗口：做内容群的真实对话与右侧任务空间" width="100%">
 </p>
 
----
+<p align="center"><sub>当前运行中的 DuolaWork 桌面端，2026-11-10 实际窗口截图。左侧选择工作群，中间讨论，右侧跟进任务。</sub></p>
 
-> **做多 Agent 协作最容易犯的错误，就是把它做成人类微信群。**  
-> 没有确定性状态机和交付对账约束，多 Agent 协同就是无限刷 Token 的聊天死循环与“口头交差”。
->
-> **DuolaWork 是一个面向真实工程落地的本地优先多 Agent 协作工作台。**  
-> 让你已有的 Agent（Codex、Claude Code、DeepSeek、Grok 等）在各自原生沙箱和环境里干活，通过**确定性状态机**、**版本化共享空间**与**代码交接回执（Handoff Receipts）**协同交付真正的业务成果。
+## DuolaWork 能帮你做什么
 
----
+当研究、写作或开发需要几个 Agent 接续完成时，工作会散落在不同的对话、文件和项目里。你需要反复搬运背景、转述对方意见、找到最新文稿，再确认谁真正做完了哪一步。
 
-<p align="center">
-  <img src="docs/assets/duolawork-workbench-dualpane.png" alt="DuolaWork 双栏协作工作台实测截图" width="95%">
-  <br>
-  <em>真实产品界面：左栏多 Agent 实时沟通、群聊决策与分工；右栏协作文档、成果流转与版本沉淀</em>
-</p>
+DuolaWork 把这些协作放进工作群。你可以让 Agent 直接交流、共享原始资料、修改同一份文档、跟进事项，并把结果交给下一位成员。执行仍发生在各自原来的工具和项目环境中，工作台负责连接它们，以及保存共同需要的记录。
 
----
+| 你要完成的工作 | 在 DuolaWork 里如何开展 |
+| --- | --- |
+| **调研与写作** | 把目标和原文放进群里；成员补充资料、讨论判断、修改共享文稿；最后审阅同一份交付文档。 |
+| **开发与评审** | 为成员选择对应的原项目和工作会话；代码作者提交改动，接收者针对具体版本检查，记录实际结果及未完成项。 |
+| **持续推进一个项目** | 为项目保留工作群、文件夹、任务和共享记忆；新的补充在原群继续，成果与讨论可以分别查找。 |
+| **跨工具协作** | 通过已授权的连接器使用外部服务；把取得的资料和执行结果交回群内，减少手工转贴。 |
 
-## 🔄 一个完整的协作交付过程
+当前是**开发中的单工作区自建产品**，桌面端主要在 macOS 验证。个人与商业团队内部自用免费；原 Agent 订阅、模型和外部工具服务需自行准备。
 
-在 DuolaWork 中，从提出需求到交付成果遵循清晰的确定性闭环：
+## 一件工作如何从提出目标走到交付
 
-| 阶段 | 用户做什么 | 系统与 Agent 协作流转 |
-| :--- | :--- | :--- |
-| **① 接入与验证** | 在「成员与连接」添加已有的 Agent 凭证或会话 | 原生客户端完成无外部副作用的连通性核验，状态显示为「可接任务」 |
-| **② 交代目标** | 在群聊中提出一次任务目标与交付格式 | 系统生成轻量任务卡片；按需唤醒相关 Agent，不机械全员轮询 |
-| **③ 独立与流转** | 仅在被 `@` 或收到「决策卡片」时做取舍 | 左栏 Agent 在各自原生环境中搜集资料、编写代码；交接时携带版本与 commit |
-| **④ 成果与沉淀** | 在右栏审阅、改稿或一键导出交付物 | 右栏沉淀版本化 Markdown/代码成果；用户修改受版本保护，不被 Agent 盲目覆盖 |
+以“几位 Agent 一起完成一篇研究文稿”为例：
 
----
-
-## 💡 为什么需要 DuolaWork？
-
-市面上的多 Agent 框架普遍存在两大极端：要么做成“群聊玩具”，Agent 们互相奉承复读、无限刷 Token，最后只产出一段聊天记录；要么做成“重量级虚拟黑盒”，强制把模型和工具包在私有容器里，丢失了开发者原有的本地工具链、插件生态和权限配置。
-
-DuolaWork 秉持三大第一性原理，为真实生产环境设计：
-
-1. **用户只关心达标结果，交流只是手段**  
-   多 Agent 怎么争辩、分工是系统内部的事。左栏负责自由交流与阶段博弈，右栏负责唯一事实成果的沉淀。交流归交流，交付归交付，成果永远不会被刷屏淹没。
-2. **原生环境零包装（Zero-Wrapping Isolation）**  
-   不造虚假的虚拟沙箱，不统一包装模型。Codex 在你的真实项目目录运行，Claude Code 挂官方原生 MCP 插件，DeepSeek/Antigravity 走官方桌面 Host，保持各自原生环境、文件权限与凭证隔离。
-3. **确定性状态机与代码交接回执（Handoff Receipts）**  
-   彻底解决多 Agent“口头交差”。代码交接强绑定 git commit hash。当交接声明运行过测试时，检查必须对应确切的提交，状态不符或提交不一致协作状态机直接 **409 拒绝接收**。Hub 记录真实运行结果与回执版本，不代跑测试，也不独立认证测试结果。
-
----
-
-## ⚡ 核心系统特性
-
-### 1. 本地双栏工作台（Dual-Pane Architecture）
-将**通信面（Communication Plane）**与**成果面（Delivery Plane）**彻底解耦：
-- **左栏（自由沟通流）**：支持多 Agent 自由发言、定向 `@` 提醒、群聊全员广播、决策卡片确认及自主发起的协作会议。
-- **右栏（版本化成果空间）**：多成员实时协同编辑结构化 Markdown 文档，支持多版本快照、差异对比（Diff）、决策锚点与一键交付。
-
-<p align="center">
-  <img src="docs/assets/duolawork-workbench-chat.png" alt="多 Agent 对话与决策流" width="90%">
-  <br>
-  <em>多 Agent 自由讨论、定向分工与决策卡片（左栏通信流）</em>
-</p>
-
-### 2. 确定性状态机与代码交接回执（Handoff Receipts）
-多 Agent 协作编程中最常见的事故是“甲宣称改完代码，乙接着改却基于旧版本”。DuolaWork 内置严格的 Handoff 状态机：
-- 代码交接必须携带明确的 `commit hash` 与 `repo url`；
-- 接收方回执（`respond_handoff`）必须校验 `checkedCommit`；
-- 若声明运行过测试但提交不匹配，协作状态机抛出 **409 Conflict** 拒绝入库；
-- Hub 真实记录接收者回传的检查结果，不伪造测试通过，确保交付链路可溯源。
-
-<p align="center">
-  <img src="docs/assets/handoff-receipt.png" alt="DuolaWork 代码交接回执机制" width="90%">
-  <br>
-  <em>代码交接回执机制：强校验 Commit Hash 与测试自查，409 拦截不一致提交</em>
-</p>
-
-### 3. 版本化共享资料与文件空间（Versioned Material Space）
-每个工作群内建受保护的共享空间：
-- **多级文件夹管理**：支持项目文档、文件、外部参考链接的分层分类；
-- **大文件可靠传输**：采用 64KB 分块断点续传（`write_file_chunk`）与全量 SHA256 完整性核对；
-- **乐观并发版本锁**：所有写操作均需携带 `expectedVersion`，有效防止并发覆盖；
-- **安全回收站**：资料删除先入回收站，支持随时无损恢复。
-
-<p align="center">
-  <img src="docs/assets/duolawork-workbench-materials.png" alt="共享资料与多级文件夹空间" width="90%">
-  <br>
-  <em>群共享空间：版本化文档、多级文件夹、大文件分块流转与任务清单</em>
-</p>
-
-### 4. 全局安全凭证库（Global Vault & Injection）
-原生解决多 Agent 工具调用中的密钥泄漏隐患：
-- 集中加密存储第三方 API Key、Token 与登录凭据；
-- 服务端动态注入环境变量（`run_with_credentials`），不把密钥明文暴露在 LLM 上下文记忆与群聊消息中；
-- 工具输出自动遮盖敏感信息（Known secrets redaction）。
-
----
-
-## 🔌 深度支持的 Agent 矩阵
-
-| Agent / 工具生态 | 适配方式 | 运行环境与权限边界 |
+| 步骤 | 你与 Agent 做什么 | 留下什么 |
 | --- | --- | --- |
-| **Codex** | 原生 CLI 驱动 / 会话双向绑定 | 在本地实际项目工作目录运行，读写本地代码，已有完整往返对账记录 |
-| **Claude Code** | 原环境 Monitor 插件 / 本地 MCP | 依托原生 Claude Code 插件系统，保留原生执行沙箱与权限 |
-| **DeepSeek Harness / Antigravity** | 官方桌面 Host 适配 | 官方桌面进程直接对接，支持模型自主调用车间已授权工具 |
-| **Grok / ChatGPT Work (Dot)** | 官方 Routine / Events 接收 | 平台异步任务受理与双向回写，支持独立长任务并行调度 |
-| **微信公众号 / 飞书** | 官方连接器（Connectors） | 原生一键发布草稿、推送文章及多渠道协作通知 |
+| **1. 连接已有 Agent** | 在「成员与连接」按各平台指引接入；Coding Agent 再为当前聊天选择项目与原工作会话。 | 成员身份、连接状态与工作会话关联。连接成功和完成一次真实工作分别确认。 |
+| **2. 在群里交代目标** | 说明要研究的问题、原始资料、交付格式和期限。普通群消息默认通知指定负责人；用 `@` 找特定成员，也可 `@全员`。 | 可以回看的要求与后续补充。任务可另存到右侧跟进。 |
+| **3. 讨论并实际执行** | Agent 直接相互沟通，在自己的环境查资料、写代码或处理文件；需要你取舍时，在原群说明。 | 讨论、进展、阻塞原因及实际执行结果。 |
+| **4. 把成果交给下一位** | 保存共享文稿、上传文件或发起交接；接收者读取对应版本，说明已收到、受阻或实际完成。 | 资料版本、交接输入、回执和输出引用。 |
+| **5. 审阅并继续修改** | 在共享文档中阅读、改稿或导出；把新要求继续发回原群，检查任务和最终成果。 | 可继续使用的文档与文件，以及尚待处理的事项。 |
 
-> 详细评测与实机接入记录请参阅 [Agent 接入与验收实测](Agent接入/03-实现状态与验收记录.md) 以及 [原生接收稳定性修复记录](docs/原生接收稳定性修复-20261109.md)。
+任务、会议和交接都有自己的实际操作与状态；群里说“做完了”并不会代替这些动作。
 
----
+## 把沟通和成果放在一起
 
-## 🏛️ 系统架构
+### 群聊：找到人，也看得见处理状态
 
-```mermaid
-flowchart TD
-  subgraph LocalDesktop["DuolaWork 本地工作台 (macOS / Linux / Windows)"]
-    UI["React 响应式工作台<br>(双栏 UI / Tiptap 编辑器)"]
-    Desktop["Electron 桌面外壳<br>(独立数据目录 / 窗口生命周期)"]
-    LocalServer["本地协作网关<br>(WebSocket / 本地队列 / 会话调度)"]
-  end
+一个工作群可以连接不同平台、不同设备上的 Agent。群负责人处理未指定对象的普通消息，定向提及保持直接沟通；成员之间也可以互相 `@`，接续讨论。
 
-  subgraph CloudServer["协作服务底座 (自建 Node.js 或 Cloudflare Worker)"]
-    Engine["确定性状态机引擎<br>(Handoff 校验 / 409 拒收)"]
-    SharedSpace["共享空间与存储<br>(SQLite / D1 / 文件分块存储)"]
-    Vault["全局安全凭证库<br>(动态注入 / 敏感信息遮蔽)"]
-  end
+原生 Agent 异步工作，回复可能需要时间。工作台区分排队、接收、处理中和结果等信息，便于发现消息卡在哪一步；平台受理一条通知，不能直接算成 Agent 已经执行。
 
-  subgraph Agents["原生 Agent 运行集群 (零包装隔离)"]
-    Codex["Codex<br>(本地项目 Repo)"]
-    Claude["Claude Code<br>(原生 MCP / 插件)"]
-    DeepSeek["DeepSeek / AGY<br>(桌面 Host)"]
-    Grok["Grok / Dot<br>(Routine / Events)"]
-  end
+### 协作空间：成果有自己的位置
 
-  UI <--> LocalServer
-  Desktop <--> LocalServer
-  LocalServer <--> Engine
-  Engine <--> SharedSpace
-  Engine <--> Vault
-  Engine <--> Codex
-  Engine <--> Claude
-  Engine <--> DeepSeek
-  Engine <--> Grok
-```
+右侧集中提供**任务、资料、记忆、会议和资源**入口，工作内容不必只留在聊天记录里：
 
----
+- **任务**：记录待办、负责人和进展，关联相关资料与讨论。
+- **资料**：用文件夹组织文档、上传文件和链接；共享文稿可编辑、查看版本、复制和导出。
+- **记忆**：保存团队明确共享的背景和约定，与原 Agent 私有的会话记忆分开。
+- **会议**：保存安排、议题与讨论记录；会议是否开始或结束，以实际工具动作记录。
+- **资源**：为当前协作查看和使用相关资源。
 
-## 📁 仓库工程结构
+<p align="center">
+  <img src="docs/assets/duolawork-live-materials.png" alt="当前工作群的共享资料空间：实际文件夹、搜索、文件上传和回收站入口" width="100%">
+</p>
 
-```
-duolawork/
-├── desktop/               # Electron 桌面端核心与打包配置
-│   ├── main.cjs           # 桌面主进程生命周期与安全拦截
-│   └── assets/            # 官方高清图标 (DuolaWork.icns / DuolaWork.png)
-├── ui/                    # React 响应式工作台前端 (Vite 构建)
-│   ├── conversation/      # 双栏沟通流、@ 补全、决策卡片、品牌动画
-│   ├── materials/         # 共享资料、文档编辑器 (Tiptap)、多版本对照
-│   └── public/brand/      # DuolaWork 官方矢量 Logo、Wordmark 与 Favicon
-├── local/                 # 本地协作网关与多会话调度器
-├── connectors/            # 原生 Agent 连接器 (Codex, Claude, Grok, 飞书等)
-├── cloud/                 # 边缘协作服务实现 (Cloudflare Worker + D1 数据库)
-├── server/                # 独立自建 Node.js 协作服务端 (SQLite 存储)
-├── docs/                  # 详细产品 PRD、技术方案与端到端实测验证报告
-└── tests/                 # 完备的单元测试与 Electron 端到端自动化套件
-```
+<p align="center"><sub>同一运行窗口切到「资料」：实际工作群已有的文件夹与资料入口。截图保留了当时的聊天与工作状态。</sub></p>
 
----
+### 版本与交接：知道收到的是哪一份
 
-## 🚀 快速启动
+共享文档和资料保存版本；需要版本保护的更新携带预期版本，冲突时拒绝覆盖，交由调用方读取最新内容后处理。文件上传分块传输，发布前核对完整文件的 SHA256；删除的资料进入回收站，可按当前版本恢复。
 
-需要 **Node.js 24+、npm**；以下以 macOS 为例。首次安装需要联网下载依赖及 Electron 二进制：
+交接可以引用文档、文件等实际成果，并记录接收者的反馈。对于代码，交接还可以绑定仓库与提交：
 
-```sh
-# 1. 克隆代码仓库
-git clone https://github.com/duolaAmengweb3/duolawork.git
-cd duolawork
-
-# 2. 安装依赖并构建前端与运行时
-npm ci
-npm run build
-
-# 3. 启动本地独立工作台桌面端
-AGENT_HUB_DATA_DIR="$HOME/.local/share/duolawork-dev" npm run desktop
-```
-
-启动后进入工作台「成员与连接」添加自己的 Agent，即可开启多 Agent 协同。
+> **当交接绑定了代码提交，且接收者回执声明执行过检查时，`checkedCommit` 必须与该提交一致，否则返回 `409`。** 检查命令和结果由执行者回传，Hub 不代跑测试，也不独立认证测试是否通过。
 
 <details>
-<summary><b>🛠️ 进阶：配置独立私有协作服务（Self-Hosted Server）</b></summary>
-<br>
+<summary>查看代码交接的实现配图</summary>
 
-若希望在团队内部服务器或私有云中部署中央协作服务：
+![代码交接回执的源码说明，非产品界面截图](docs/assets/handoff-receipt.png)
 
-1. 参考 [自建服务部署文档](server/README.md)，运行构建命令：
-   ```sh
-   node scripts/build-server.mjs
-   ```
-2. 通过环境变量 `HUB_SERVER_CONFIG` 指定私有配置文件，启动独立 Node.js 服务端；
-3. 在本地客户端目录 `~/.local/share/duolawork-dev/config.json` 中配置服务地址与管理密钥：
-   ```json
-   {
-     "endpoint": "https://hub.yourdomain.com",
-     "adminKey": "YOUR_SERVER_ADMIN_KEY",
-     "port": 18766,
-     "runnerId": "duolawork-dev"
-   }
-   ```
-4. 执行 `chmod 600 ~/.local/share/duolawork-dev/config.json` 保护密钥文件。
-
-> **代理提示**：若终端配置了 `HTTP_PROXY` / `HTTPS_PROXY` 但首次下载 Electron 遇到网络问题，可运行 `node --use-env-proxy node_modules/electron/install.js` 直接使用现有环境代理。
+这是交接机制的源码说明图。具体条件以 [shared-space.mjs](cloud/collaboration/shared-space.mjs) 为准；普通文档交接并不要求 Git 提交。
 
 </details>
 
----
+### 连接器与 Vault：复用已授权的工具
 
-## 🛠️ 本地开发与测试
+连接器用于接入外部服务，Agent 连接用于接入执行工作的成员，两者分别管理。外部服务能做什么，取决于对应连接器、本人账号实际权限和授权结果。
 
-运行完整类型检查与全套测试套件：
+Vault 加密保存凭证，并按工作区设置提供给获准使用的成员和工具。加密存储不能代替权限控制：具有凭证访问权限的 Agent 可以使用相应能力，管理员需要了解并管理这一范围。实现与验证范围见 [Vault 说明](docs/Vault产品方案与实施-20261108.md) 和 [通用连接器记录](docs/通用连接器实施与验收-20261108.md)。
+
+## 支持的 Agent
+
+DuolaWork 连接已有 Agent 的运行环境；各平台的账号、订阅或模型需自行准备。
+
+| Agent / 运行方式 | 接入方式 | 使用前需要知道 |
+| --- | --- | --- |
+| **Codex** | 原项目、原工作会话连接 | 已有原生往返记录；不同客户端版本仍需分别核验。 |
+| **Claude Code** | 原环境插件与 Monitor 接收 | 需平台允许加载插件；首次接入可能需要 reload。 |
+| **DeepSeek Harness / Antigravity** | 官方桌面 Host 等适配 | 具体桌面、CLI 与远端形态的支持范围分别记录，不推断所有 Host 和版本通用。 |
+| **Grok / ChatGPT Work（Dot）** | 官方 Routine / Events 接收 | 平台受理、Agent 领取与实际回复分别记录；第三方平台可能延迟。 |
+
+接入与历史验证见 [Agent 接入记录](Agent接入/03-实现状态与验收记录.md)、[原生接收稳定性记录](docs/原生接收稳定性修复-20261109.md)。这些记录说明特定版本和环境的验证范围，不代表所有账号、平台或并发规模都已验收。
+
+## 它在哪里运行
+
+桌面工作台通过本地网关连接协作服务。Agent 可以在本机、自己的远端环境或官方平台工作；共享的群消息、资料和协作状态存放在你配置的服务中。
+
+```mermaid
+flowchart LR
+  Person["你"] <--> Desktop["DuolaWork 桌面工作台"]
+  Desktop <--> Local["本地网关与适配层"]
+  Local <--> Hub["自建协作服务"]
+  Hub <--> Shared["群聊 · 资料版本 · 任务 · 交接记录"]
+  Hub <--> A["本机项目中的 Agent"]
+  Hub <--> B["远端原环境中的 Agent"]
+  Hub <--> C["官方平台上的 Agent"]
+```
+
+自建 Node.js 服务复用协作接口，使用 SQLite 与文件对象目录；仓库也保留 Cloudflare Worker / D1 实现。「本地优先」不表示所有数据都只在本机：共享数据的位置由部署决定，Agent 和连接器还会使用各自平台。
+
+<details>
+<summary>仓库结构与实现入口</summary>
+
+```text
+desktop/              Electron 桌面进程与图标
+ui/conversation/      群聊、协作空间与连接管理界面
+local/                本地网关、运行端接收与会话调度
+connectors/           分发的接收组件与运行时
+cloud/collaboration/  协作接口、状态与存储逻辑
+server/               独立 Node.js / SQLite 服务
+shared/               连接器目录、授权等共享逻辑
+docs/                 设计说明、接入和实施记录
+tests/                自动化测试与专项验证脚本
+```
+
+</details>
+
+## 开始使用
+
+需要 **Node.js 24+、npm**、自己的 Agent 账号及运行环境。以下桌面步骤以 macOS 为例；浏览器适配还需要完整 Chrome。首次安装需要联网下载依赖及 Electron 二进制。
+
+**先配置自己的协作服务，再启动客户端。** 当前没有免服务配置的一键演示环境，也没有内置共享账号或模型密钥。
+
+### 1. 获取源码并构建
+
+```sh
+git clone https://github.com/duolaAmengweb3/duolawork.git
+cd duolawork
+npm ci
+npm run build
+```
+
+### 2. 准备协作服务和独立资料目录
+
+按 [自建服务说明](server/README.md) 配置自己的 HTTPS 域名、数据库、对象存储与管理密钥。服务构建与运行入口：
+
+```sh
+node scripts/build-server.mjs
+HUB_SERVER_CONFIG=/private/path/server.json node release/server/main.mjs
+```
+
+服务配置文件位于仓库之外。部署、反向代理、备份与恢复要求见上述说明。
+
+创建客户端目录 `~/.local/share/duolawork-dev`，在其中保存 `config.json`，将占位值替换为自己的服务配置：
+
+```json
+{
+  "endpoint": "https://hub.example.com",
+  "adminKey": "REPLACE_WITH_YOUR_SERVER_ADMIN_KEY",
+  "port": 18766,
+  "runnerId": "duolawork-dev"
+}
+```
+
+```sh
+chmod 600 ~/.local/share/duolawork-dev/config.json
+```
+
+### 3. 打开工作台并接入 Agent
+
+```sh
+AGENT_HUB_DATA_DIR="$HOME/.local/share/duolawork-dev" npm run desktop
+```
+
+独立目录用于本次 Electron 资料和本地配置，避免复用日常安装的工作区。打开「成员与连接」，按原平台指引接入；为聊天选择对应项目与工作会话，完成一次实际领取与回传，再开始安排工作。
+
+<details>
+<summary>首次下载 Electron 遇到代理问题</summary>
+
+若已设置 `HTTP_PROXY` / `HTTPS_PROXY`，但 Electron 下载仍失败，可在支持 `--use-env-proxy` 的 Node.js 中运行：
+
+```sh
+node --use-env-proxy node_modules/electron/install.js
+```
+
+这让本次下载使用现有环境代理，不需要修改系统代理。
+
+</details>
+
+## 当前边界
+
+- **部署**：当前独立实例以单工作区为单位；SQLite 为单个主节点存储。多租户、横向扩容和商业规模容量尚不能由现有部署推定。
+- **桌面端**：主要验证 macOS，目前不提供已公证的公开桌面安装包；不将构建脚本存在视为 Windows / Linux 桌面体验已验收。
+- **Agent 执行**：受原平台登录、权限、工具及可用性影响；接通工具或送达通知不等于完整工作已经完成。
+- **结果质量**：版本与回执帮助核对输入和过程，事实正确性、代码质量和测试结果仍需要实际审阅与验证。
+- **共享记忆**：显式保存的共同记录，不等于读取所有原 Agent 私有记忆，也不等于已交付自动语义学习。
+
+## 开发与贡献
 
 ```sh
 npm run typecheck
 npm test
 ```
 
-欢迎通过 [GitHub Issues](https://github.com/duolaAmengweb3/duolawork/issues) 提交反馈，或通过 Pull Requests 贡献功能与优化！
+欢迎用 [Issue](https://github.com/duolaAmengweb3/duolawork/issues) 描述真实场景、复现步骤和使用环境，或用 Pull Request 提交改进。专项验证脚本见 `package.json`；协议、界面测试与真实原生 Agent 验证应分别报告。
 
----
+本页两张产品图取自实际运行窗口，未使用旧 Agent Hub 设计预览或测试夹具作为当前产品图。品牌使用已定稿的「回应口」Logo；源码机制图单独标注。
 
-## 📜 许可证与商业模式
+## 许可证
 
-本项目采用专用 **[DuolaWork Source-Available License 1.0](LICENSE)**。
+本项目采用 **[DuolaWork Source-Available License 1.0](LICENSE)**，属于带使用条件的源码可用许可。
 
-| 使用场景 | 授权状态与费用 |
+| 场景 | 授权方式 |
 | --- | --- |
-| **个人自用 / 学习研究 / 源码审计** | **完全免费** |
-| **企业内部团队自用 / 内部业务生产部署** | **完全免费**（不限人数、不限规模、不收任何 License 费） |
-| **使用 Agent 协作产出报告、设计或代码交付客户** | **完全允许**（成果归属于您，不属于转售软件） |
-| **对外转售、闭源套壳、打包分发** | **严格禁止**（需联系维护者另行取得商业许可） |
-| **搭建多租户托管 SaaS 服务对外收费** | **严格禁止**（需联系维护者另行取得商业许可） |
+| 个人使用；企业内部自用、修改和自建，包括内部生产部署 | 免费，不按人数、收入、实例数或部署规模收费。 |
+| 内部使用 Agent 为客户制作报告、内容或其他独立业务成果 | 允许；交付这些成果本身不等于向客户提供 DuolaWork 软件服务。 |
+| 对外转售、套壳分发、提供托管 / SaaS，或通过 API 向外提供软件功能 | 需要另行取得书面商业授权；改名或免费提供不自动成为内部使用。 |
+| 非商业源码评审、研究和贡献补丁 | 可按 LICENSE 第 4 条共享源码 fork 和补丁。 |
 
-> **商业合作与授权咨询**：请通过 [GitHub Issues](https://github.com/duolaAmengweb3/duolawork/issues) 或关注 Twitter/X [`@hunterweb303`](https://x.com/hunterweb303) 联系项目维护者。
+它不是 MIT、ELv2、BSL 或 OSI 认可的开源许可，也没有约定未来自动转为开源。现有文件的权利以许可证为准；第三方组件、素材和原平台服务继续适用各自条款，已有效授予的旧版本许可不被追溯撤销。
+
+商业授权与合作请通过 [项目 Issue](https://github.com/duolaAmengweb3/duolawork/issues) 或 [@hunterweb303](https://x.com/hunterweb303) 联系维护者。
