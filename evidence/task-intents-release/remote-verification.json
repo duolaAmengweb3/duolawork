@@ -1,0 +1,7 @@
+{
+  "observedAt": "2026-11-10T04:33:13.629Z",
+  "scope": "developer actual read-only SSH; independent reviewer rebuilt matching artifact",
+  "command": "sha256sum /opt/agent-hub-server/worker.mjs; systemctl show agent-hub -p ActiveEnterTimestamp --value",
+  "exitCode": 0,
+  "stdout": "21d610a3312c556cd43b05fb0ed4309358adb15e96055ad802ea8bd0e5601d77  /opt/agent-hub-server/worker.mjs\nTue 2026-11-10 04:23:21 UTC\n"
+}
