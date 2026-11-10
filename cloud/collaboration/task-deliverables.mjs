@@ -89,7 +89,7 @@ export async function taskNotificationState(tx,turn){
   for(const tid of new Set([task.id,...(message?.taskIds||[])])){
    const node=await tx.get('channel_task',tid,false);
    if(!node||node.scopeId!==task.scopeId||node.id!==task.id&&node.parentTaskId!==task.id)return obsolete('接续节点已移出原任务，请按新的归属继续');
-   if(node.status==='canceled'||node.id!==task.id&&node.assigneeId!==turn.memberId)return {state:'reconcile',reason:'排期后节点状态或跟进成员已变化，请核对当前计划'};
+   if(['canceled','blocked'].includes(node.status)||node.id!==task.id&&node.assigneeId!==turn.memberId)return {state:'reconcile',reason:'排期后节点状态或跟进成员已变化，请核对当前计划'};
    const current=await currentTaskBasis(tx,node);
    if(!current.valid||node.status==='done'&&node.workSpec&&!(await taskDelivery(tx,node)).valid)return {state:'reconcile',reason:'排期后依据或成果已有变化：'+current.gaps.join('；')};
   }
@@ -225,7 +225,7 @@ async function reopenParent(tx,next,save,actor){
 }
 export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,validateRefs}){
  const authorId=who(actor),action=cmd.action;
- if(intentActions.includes(action))return taskIntentCommand(tx,identity,actor,cmd,channel,helpers,{save,basisSources:sourceMessages,run:args=>taskCommand(tx,identity,actor,{...args,type:'channel.task'},channel,helpers,{save,validateRefs})});
+ if(intentActions.includes(action))return taskIntentCommand(tx,identity,actor,cmd,channel,helpers,{save,basisSources:sourceMessages,makeSpec:(goal,refs)=>normalizeSpec(tx,channel,{expectedOutcome:goal,criteria:[{id:'outcome',text:goal.slice(0,2000),required:true}],basisRefs:refs||[]},null,validateRefs),run:args=>taskCommand(tx,identity,actor,{...args,type:'channel.task'},channel,helpers,{save,validateRefs})});
  if(!['create','update','accept','configure','submit','check','bind_execution_decision'].includes(action))fail('invalid_action','Todo 操作无效');
  const old=action==='create'?null:await tx.get('channel_task',cmd.taskId);
  if(old&&old.scopeId!==channel.id)fail('forbidden','Todo 不属于本群',403);

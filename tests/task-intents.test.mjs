@@ -134,3 +134,16 @@ test('adaptive changes require current versions even for metadata actions and go
  await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'变化'},changes:[{taskId:child.id,action:'update',body:'覆盖'}]}),e=>e.code==='version_conflict');assert.equal((await f.read(child.id)).body,child.body);
  await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'x'.repeat(4001)}}),e=>e.code==='invalid_input');assert.equal((await f.read(task.id)).intentVersion,1);
 });
+
+test('audit claim state matrix rechecks blocked root and child plus reassignment and cancellation',async t=>{
+ for(const scenario of ['blocked-root','blocked-child','reassigned-child','canceled-child','canceled-root']){
+  const f=await setup(t),root=await f.plan(scenario),child=await f.action({action:'create',title:'原排期节点',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});await f.post('继续执行',{replyTo:root.sourceMessageId,mentions:[]},leader);const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':continue:'));const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===follow.messageId);
+  if(scenario==='canceled-root')await f.action({action:'update',taskId:child.id,expectedVersion:child.version,status:'canceled'});
+  const target=scenario.endsWith('root')?root:child;await f.action({action:'update',taskId:target.id,expectedVersion:(await f.read(target.id)).version,...(scenario.startsWith('blocked')?{status:'blocked',blocker:'等待实际依赖恢复'}:scenario.startsWith('reassigned')?{assigneeId:'grok',notifyAssignee:false}:{status:'canceled'})});
+  const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'state-matrix-'+scenario,stepId:turn.id});const state=await f.repo.get('channel_turn',turn.id);assert.ok(state.status==='removed'||state.taskEvent.startsWith('reconcile:'),scenario);if(scenario==='canceled-root')assert.equal(claim.claimed,false);else assert.equal(claim.turnId,turn.id);
+ }
+});
+test('adopting a legacy task installs a real work spec and keeps its old result without fabricating acceptance',async t=>{
+ const f=await setup(t);await f.repo.transact('legacy-task',{},tx=>tx.put('channel_task',{id:'legacy-root',scopeId:f.c.id,parentId:f.c.id,title:'历史事项',body:'原说明',result:'历史结果',status:'done',version:1,assigneeId:'write',authorId:'write'}));
+ const adopted=await f.action({action:'revise',taskId:'legacy-root',expectedVersion:1,intent:{goal:'接续并核对历史成果'}});assert.equal(adopted.status,'doing');assert.equal(adopted.workSpec.version,1);assert.equal(adopted.result,'历史结果');assert.equal((await f.read(adopted.id)).delivery.valid,false);assert.equal((await f.repo.list('channel_task_check')).length,0);
+});

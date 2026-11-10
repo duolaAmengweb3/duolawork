@@ -26,7 +26,7 @@ async function messages(tx,channel,ids){
  for(const mid of new Set(ids)){const m=await tx.get('channel_message',mid);if(m.scopeId!==channel.id||m.hidden)fail('forbidden','来源消息不可访问',403);out.push(m);}
  return out;
 }
-export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{save,run,basisSources}){
+export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{save,run,basisSources,makeSpec}){
  // Old native MCP catalogs already expose action:string and body:string.
  let cmd=raw;
  if(raw.body?.trim().startsWith('{')){let value;try{value=JSON.parse(raw.body);}catch{fail('invalid_input','结构化任务 body 不是有效 JSON');}cmd={...value,...raw,body:value.body};}
@@ -69,8 +69,9 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
   }
   task=await tx.get('channel_task',task.id);
   const requirementSources=(await basisSources(tx,channel,task)).map(m=>({id:m.id,version:m.version}));
-  const changed=JSON.stringify(task.intent)!==JSON.stringify(intent)||JSON.stringify(task.requirementSources)!==JSON.stringify(requirementSources);
-  task=await save(tx,'channel_task',{...task,intent,requirementSources,...(task.title===task.intent?.goal?.slice(0,150)?{title:intent.goal.slice(0,150)}:{}),...(task.body===task.intent?.goal?{body:intent.goal}:{}),intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:task.workSpec?{...task.workSpec,version:task.workSpec.version+1,expectedOutcome:intent.goal}:task.workSpec}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
+  const workSpec=task.workSpec||await makeSpec(intent.goal,task.refs);
+  const changed=!task.workSpec||JSON.stringify(task.intent)!==JSON.stringify(intent)||JSON.stringify(task.requirementSources)!==JSON.stringify(requirementSources);
+  task=await save(tx,'channel_task',{...task,intent,requirementSources,...(task.title===task.intent?.goal?.slice(0,150)?{title:intent.goal.slice(0,150)}:{}),...(task.body===task.intent?.goal?{body:intent.goal}:{}),intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:{...workSpec,version:task.workSpec?workSpec.version+1:workSpec.version,expectedOutcome:intent.goal}}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
  }else if(cmd.action==='associate'){
   if(!sources.length)fail('invalid_input','请指定要关联的 messageIds');
   if(cmd.fromTaskId){
