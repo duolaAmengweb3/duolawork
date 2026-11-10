@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-10T04:25:24.970Z",
+  "sourceCommit": "071bb1fb807504b1f47e5a70eefd42142c6843e3",
+  "workerSha256": "21d610a3312c556cd43b05fb0ed4309358adb15e96055ad802ea8bd0e5601d77",
+  "localMatchesRemote": true,
+  "serviceStarted": "Tue 2026-11-10 04:23:21 UTC",
+  "testSummary": {
+    "full": {
+      "passed": 774,
+      "failed": 0,
+      "source": "cdd89a9"
+    },
+    "related": {
+      "passed": 72,
+      "failed": 0
+    },
+    "independent": {
+      "passed": 85,
+      "failed": 0,
+      "source": "DeepSeek cdd89a9"
+    },
+    "finalGuidance": {
+      "passed": 39,
+      "failed": 0,
+      "source": "071bb1f"
+    }
+  },
+  "desktopBuildId": "fdc611155a3fcbbe",
+  "rootDeliveryVerified": {
+    "id": "board_c2ce7958798f4c3bbcc0979e9780d460",
+    "status": "done",
+    "valid": true,
+    "nextAction": "任务成果已按约定核对通过，向用户交付结果，不额外要求确认"
+  }
+}

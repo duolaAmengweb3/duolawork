@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-10T03:40:24.049Z",
+  "at": "2026-11-10T03:55:40.778Z",
   "scope": "isolated real HTTP/browser, not native model acceptance",
   "checks": [
     "群内意图卡片打开当前任务，动态范围可读，无确认关卡",
