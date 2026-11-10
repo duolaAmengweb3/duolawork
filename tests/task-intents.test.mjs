@@ -64,3 +64,28 @@ test('reply does not finish a runnable managed task; continuation is durable and
  const notices=(await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:'));assert.equal(notices.length,1);assert.ok(await f.repo.get('outbox','notice_'+(await f.repo.list('channel_turn')).find(x=>x.messageId===notices[0].messageId).id));
  await f.post('无新状态',{replyTo:msg.id,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,1);
 });
+
+test('reassociation is explicit and retains a history trail rather than silently overwriting earlier interpretation',async t=>{
+ const f=await setup(t),left=await f.plan('目标甲'),right=await f.plan('目标乙'),m=await f.post('补充乙的要求',{refs:[{kind:'task',id:left.id}]});
+ await f.action({action:'associate',taskId:right.id,expectedVersion:right.version,fromTaskId:left.id,fromVersion:(await f.read(left.id)).version,messageIds:[m.id],reason:'纠正归属'});
+ assert.deepEqual((await f.repo.get('channel_message',m.id)).taskIds,[right.id]);assert.ok(!(await f.read(left.id)).intentSourceIds.includes(m.id));assert.ok((await f.read(right.id)).intentSourceIds.includes(m.id));assert.ok((await f.read(left.id)).versions.some(v=>v.intentSourceIds?.includes(m.id)));
+});
+test('waiting on peers or dependencies creates no continuation polling; work in another task still proceeds',async t=>{
+ const f=await setup(t),task=await f.plan('等待核查');await f.action({action:'create',title:'其他成员的工作',parentTaskId:task.id,assigneeId:'grok',notifyAssignee:false});
+ await f.post('等待成员回传',{replyTo:(await f.read(task.id)).sourceMessageId,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,0);
+ const other=await f.plan('独立可做');await f.post('推进独立事项',{replyTo:(await f.read(other.id)).sourceMessageId,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,1);
+});
+test('concurrent supplements and intent revisions retain both original messages without restarting native work',async t=>{
+ const f=await setup(t),task=await f.plan();const outcomes=await Promise.allSettled([f.post('补充一',{refs:[{kind:'task',id:task.id}]}),f.post('补充二',{refs:[{kind:'task',id:task.id}]})]);
+ assert.ok(outcomes.every(o=>o.status==='fulfilled'));const current=await f.read(task.id);assert.ok(current.sourceMessages.some(m=>m.body==='补充一'));assert.ok(current.sourceMessages.some(m=>m.body==='补充二'));assert.equal(current.status,'todo');
+ const revisions=await Promise.allSettled([f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'版本A'}}),f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'版本B'}})]);assert.equal(revisions.filter(r=>r.status==='fulfilled').length,1);assert.equal(revisions.filter(r=>r.status==='rejected'&&r.reason.code==='version_conflict').length,1);
+});
+
+test('editing an original owner message does not invalidate every child; explicit revision refreshes aggregate basis',async t=>{
+ const f=await setup(t),task=await f.plan('方案要求'),child=await done(f,await f.action({action:'create',title:'已核对的独立证据',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false}));
+ const detail=await f.read(task.id),source=await f.repo.get('channel_message',detail.sourceMessageId);
+ await f.send('channel.message.edit',{channelId:f.c.id,messageId:source.id,expectedVersion:source.version||1,body:'方案要求，加一个交付维度'});
+ assert.equal((await f.read(child.id)).delivery.valid,true);assert.ok((await f.read(child.id)).sourceMessages.some(m=>m.body.includes('加一个交付维度')));
+ const current=await f.read(task.id);const revised=await f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'方案要求，加一个交付维度'}});
+ assert.equal(revised.requirementSources[0].version,2);assert.equal((await f.read(child.id)).delivery.valid,true);assert.ok(!(await f.read(task.id)).delivery.gaps.some(g=>g.includes('原始用户要求已有变化')));
+});

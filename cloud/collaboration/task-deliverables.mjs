@@ -185,7 +185,7 @@ async function sourceMessages(tx,channel,task){
  const out=[];for(const mid of ids){const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden)out.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});}
  return out;
 }
-export async function taskSourceMessages(tx,channel,task){const original=await sourceMessages(tx,channel,task);const ids=new Set(original.map(m=>m.id));for(const mid of task.intentSourceIds||[]){if(ids.has(mid))continue;const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden){original.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});ids.add(mid);}}return original;}
+export async function taskSourceMessages(tx,channel,task){const original=await sourceMessages(tx,channel,task);const ids=new Set(original.map(m=>m.id));const root=task.intentRootId?await tx.get('channel_task',task.intentRootId,false):null;for(const mid of [...(task.intentSourceIds||[]),...(root?.intentSourceIds||[]),...(root?.sourceMessageIds||[]),...(root?.sourceMessageId?[root.sourceMessageId]:[])]){if(ids.has(mid))continue;const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden){original.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});ids.add(mid);}}return original;}
 async function notify(tx,identity,channel,helpers,actor,task,memberId,event,body){
  if(!memberId||memberId==='owner'||memberId===who(actor)||!channel.memberIds.includes(memberId))return;
  const key=`${task.id}:${event}:${memberId}`;if(await tx.get('channel_task_followup',key,false))return;
@@ -202,7 +202,7 @@ async function reopenParent(tx,next,save,actor){
 }
 export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,validateRefs}){
  const authorId=who(actor),action=cmd.action;
- if(intentActions.includes(action))return taskIntentCommand(tx,identity,actor,cmd,channel,helpers,{save,run:args=>taskCommand(tx,identity,actor,{...args,type:'channel.task'},channel,helpers,{save,validateRefs})});
+ if(intentActions.includes(action))return taskIntentCommand(tx,identity,actor,cmd,channel,helpers,{save,basisSources:sourceMessages,run:args=>taskCommand(tx,identity,actor,{...args,type:'channel.task'},channel,helpers,{save,validateRefs})});
  if(!['create','update','accept','configure','submit','check','bind_execution_decision'].includes(action))fail('invalid_action','Todo 操作无效');
  const old=action==='create'?null:await tx.get('channel_task',cmd.taskId);
  if(old&&old.scopeId!==channel.id)fail('forbidden','Todo 不属于本群',403);
@@ -231,7 +231,8 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
  if(cmd.sourceMessageId!==undefined){const m=await tx.get('channel_message',cmd.sourceMessageId);if(m.scopeId!==channel.id||m.hidden)fail('forbidden','原消息不在本群',403);next.sourceMessageId=m.id;}
  if(cmd.coordinationRef!==undefined){if(!manager)fail('forbidden','需求关联由负责人调整',403);keys(cmd.coordinationRef,['id','requirementVersion'],'coordinationRef');const r=await tx.get('channel_coordination',cmd.coordinationRef.id);if(r.scopeId!==channel.id||r.requirementVersion!==cmd.coordinationRef.requirementVersion)fail('version_conflict','请关联本群当前要求',409);next.coordinationRef={id:r.id,requirementVersion:r.requirementVersion};}
  if(!next.coordinationRef&&parent?.coordinationRef)next.coordinationRef=parent.coordinationRef;
- if(!next.sourceMessageId&&parent?.sourceMessageId)next.sourceMessageId=parent.sourceMessageId;
+ if(!next.sourceMessageId&&parent?.sourceMessageId&&!parent.managedIntent)next.sourceMessageId=parent.sourceMessageId;
+ if(parent?.managedIntent)next.intentRootId=parent.id;
  next.sourceMessageIds=[...new Set([...(old?.sourceMessageIds||[]),...(old?.sourceMessageId?[old.sourceMessageId]:[]),...(next.sourceMessageId?[next.sourceMessageId]:[])])];
  if(cmd.workSpec!==undefined&&!['create','configure'].includes(action))fail('invalid_action','请用 configure 调整交付约定，不能清除既有检查');
  if(cmd.workSpec!==undefined)next.workSpec=await normalizeSpec(tx,channel,cmd.workSpec,old?.workSpec,validateRefs);

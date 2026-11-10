@@ -26,7 +26,7 @@ async function messages(tx,channel,ids){
  for(const mid of new Set(ids)){const m=await tx.get('channel_message',mid);if(m.scopeId!==channel.id||m.hidden)fail('forbidden','来源消息不可访问',403);out.push(m);}
  return out;
 }
-export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{save,run}){
+export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{save,run,basisSources}){
  // Old native MCP catalogs already expose action:string and body:string.
  let cmd=raw;
  if(raw.body?.trim().startsWith('{')){let value;try{value=JSON.parse(raw.body);}catch{fail('invalid_input','结构化任务 body 不是有效 JSON');}cmd={...value,...raw,body:value.body};}
@@ -66,8 +66,9 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
    await run({...change,action:change.action||'configure',taskId:node.id,expectedVersion:change.expectedVersion,channelId:channel.id});
   }
   task=await tx.get('channel_task',task.id);
-  const changed=JSON.stringify(task.intent)!==JSON.stringify(intent);
-  task=await save(tx,'channel_task',{...task,intent,intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:task.workSpec?{...task.workSpec,version:task.workSpec.version+1,expectedOutcome:intent.goal}:task.workSpec}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
+  const requirementSources=(await basisSources(tx,channel,task)).map(m=>({id:m.id,version:m.version}));
+  const changed=JSON.stringify(task.intent)!==JSON.stringify(intent)||JSON.stringify(task.requirementSources)!==JSON.stringify(requirementSources);
+  task=await save(tx,'channel_task',{...task,intent,requirementSources,intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:task.workSpec?{...task.workSpec,version:task.workSpec.version+1,expectedOutcome:intent.goal}:task.workSpec}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
  }else if(cmd.action==='associate'){
   if(!sources.length)fail('invalid_input','请指定要关联的 messageIds');
   if(cmd.fromTaskId){
@@ -76,7 +77,7 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
    if(!actor.owner&&who(actor)!==channel.coordinatorId&&who(actor)!==previous.assigneeId&&who(actor)!==previous.authorId)fail('forbidden','由原任务负责人调整归属',403);
    const moved=new Set(sources.map(m=>m.id));
    await save(tx,'channel_task',{...previous,intentSourceIds:(previous.intentSourceIds||[]).filter(mid=>!moved.has(mid))},previous,actor,cmd.reason||'纠正消息归属，历史保留');
-   for(const m of sources)m.taskIds=(m.taskIds||[]).filter(tid=>tid!==previous.id);
+   for(const m of sources){m.taskIds=(m.taskIds||[]).filter(tid=>tid!==previous.id);if(m.taskId===previous.id){m.taskId=task.id;m.taskCard={action:'supplement',intent:task.intent||{goal:task.title},intentVersion:task.intentVersion||1};}}
   }
   task=await save(tx,'channel_task',{...task,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])]},task,actor,cmd.reason||'关联消息，保留有效成果');
  }
@@ -106,7 +107,10 @@ export async function bindMessageTasks(tx,channel,message,parent){
   if(message.authorId==='owner'&&(message.refs||[]).some(r=>r.kind==='task')){
    const task=tasks[0];message.taskId=task.id;message.taskCard={action:'supplement',intent:task.intent||{goal:task.title},intentVersion:task.intentVersion||1};tx.put('channel_message',message);
   }
-  if(message.authorId==='owner')for(const task of tasks)tx.put('channel_task',{...task,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),message.id])],updatedAt:tx.now});
+  if(message.authorId==='owner')for(const task of tasks){
+   const next={...task,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),message.id])],version:(task.version||1)+1,lastEditorId:'owner',updatedAt:tx.now};
+   tx.put('channel_task',next);tx.put('channel_task_version',{...next,id:task.id+':'+next.version,parentId:task.id,reason:'用户补充，保留有效工作并交由成员判断影响',createdAt:tx.now});
+  }
  }
  return tasks;
 }
@@ -131,7 +135,7 @@ export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,b
   if(open.length&&!ready.length)continue;
   const stamp=[task,...ready].map(t=>t.id+':'+t.version).sort().join('|'),key=task.id+':continue:'+await digest(stamp);
   if(await tx.get('channel_task_followup',key,false))continue;
-  const message=await helpers.channelMessage(tx,channel,actor,'任务仍在推进：'+task.title+'。本次回复只结束通知；请按最新要求继续可做节点，完成后提交实际结果。等待其他成员时无需轮询，回传会再次唤醒。',{hidden:true,type:'todo',taskId:task.id,taskIds:[task.id,...ready.map(t=>t.id)],hops:0});
+  const message=await helpers.channelMessage(tx,channel,actor,'任务仍在推进：'+task.title+'。本次回复只结束通知；请按最新要求继续可做节点，完成后提交实际结果。等待其他成员时无需轮询，回传会再次唤醒。',{hidden:true,type:'todo',taskId:task.id,taskEvent:'continue:'+await digest(stamp),taskIds:[task.id,...ready.map(t=>t.id)],hops:0});
   tx.put('channel_task_followup',{id:key,scopeId:channel.id,parentId:task.id,memberId:actor.memberId,messageId:message.id,status:'pending',createdAt:tx.now});
   await helpers.enqueue(tx,identity,channel,message,actor.memberId);
  }
