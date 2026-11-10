@@ -74,7 +74,7 @@ export async function taskDelivery(repo,task,{seen=new Set(),historical=false}={
  }
  const valid=!!submission&&check?.verdict==='accept'&&check.submissionId===submission.id&&check.workSpecVersion===task.workSpec.version&&task.acceptedSubmissionId===submission.id&&!gaps.length;
  const stage=gaps.length?'stale':!submission?'pending':check?.submissionId===submission.id&&check.verdict==='changes_requested'?'changes_requested':valid?'accepted':'review';
- return {stage,label:{stale:'需复核',pending:'待提交',changes_requested:'需补充',accepted:'已通过',review:'待核对'}[stage],valid,gaps,submission,check,nextAction:gaps.length?'读取原要求与当前产物，处理列出的缺口后重新提交':valid?'接续相关工作；任务最终交付仍需单独核对':stage==='pending'?'提交成果；普通事项可同时 selfCheck':stage==='changes_requested'?'按核对意见补充后提交新版':'由实际核对人 check 当前成果'};
+ return {stage,label:{stale:'需复核',pending:'待提交',changes_requested:'需补充',accepted:'已通过',review:'待核对'}[stage],valid,gaps,submission,check,nextAction:gaps.length?'读取原要求与当前产物，处理列出的缺口后重新提交':valid?(task.parentTaskId?'子项已通过，接续所属任务并核对最终交付':'任务成果已按约定核对通过，向用户交付结果，不额外要求确认'): stage==='pending'?'提交成果；普通事项可同时 selfCheck':stage==='changes_requested'?'按核对意见补充后提交新版':'由实际核对人 check 当前成果'};
 }
 export async function enrichTask(repo,task,options){return {...task,delivery:await taskDelivery(repo,task,options)};}
 export async function taskNotificationState(tx,turn){

@@ -13,7 +13,7 @@ test('T01 T04 T22 short work submits with self-check in one call; actor and no e
  const f=await setup(t),task=await f.task({workSpec:spec()});
  const before=(await f.repo.list('channel_turn')).length;
  const done=await f.submit(task,{selfCheck:passed});
- assert.equal(done.status,'done');assert.equal(done.completedBy,'grok');assert.equal(done.delivery.valid,true);
+ assert.equal(done.status,'done');assert.equal(done.completedBy,'grok');assert.equal(done.delivery.valid,true);assert.ok(done.delivery.nextAction.includes('不额外要求确认'));
  assert.equal(done.delivery.check.authorId,'grok');assert.equal(done.delivery.submission.authorId,'grok');
  assert.equal((await f.repo.list('channel_turn')).length,before); // standalone self-check needs no extra model wake-up
  assert.equal((await f.repo.list('channel_task_check')).length,1);
@@ -39,7 +39,7 @@ test('T04 T05 T12 designated reviewer cannot edit executor result or self-audit'
 });
 test('T06 T07 metadata preserves acceptance; actual specification revision reopens parent and keeps immutable history',async t=>{
  const f=await setup(t),root=await f.task({title:'最终交付'}),task=await f.task({parentTaskId:root.id,workSpec:spec()});
- const childDone=await f.submit(task,{selfCheck:passed});const rootDone=await f.submit(await f.read(root.id),{selfCheck:passed});assert.equal(rootDone.status,'done');
+ const childDone=await f.submit(task,{selfCheck:passed});assert.ok(childDone.delivery.nextAction.includes('所属任务'));const rootDone=await f.submit(await f.read(root.id),{selfCheck:passed});assert.equal(rootDone.status,'done');
  const named=await f.act(childDone,'update',{title:'更清楚的标题',progress:'记录进展'});assert.equal(named.workSpec.version,1);assert.equal(named.status,'done');assert.equal(named.completedBy,'grok');assert.equal(named.delivery.valid,true);
  const revised=await f.act(named,'configure',{workSpec:spec({criteria:[{id:'outcome',text:'现在需要增加证据',required:true}]})},owner);
  assert.equal(revised.workSpec.version,2);assert.equal(revised.status,'todo');assert.equal((await f.read(root.id)).status,'todo');assert.equal(revised.acceptedSubmissionId,null);
