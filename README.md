@@ -41,6 +41,12 @@ DuolaWork 把这些协作放进工作群。你可以让 Agent 直接交流、共
 
 ## 一件工作如何从提出目标走到交付
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-workflow-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/architecture/duolawork-workflow-light.svg">
+  <img alt="DuolaWork 5 阶段确定性协作流程" src="docs/assets/architecture/duolawork-workflow-light.svg" width="100%">
+</picture>
+
 以“几位 Agent 一起完成一篇研究文稿”为例：
 
 | 步骤 | 你与 Agent 做什么 | 留下什么 |
@@ -117,16 +123,11 @@ DuolaWork 连接已有 Agent 的运行环境；各平台的账号、订阅或模
 
 桌面工作台通过本地网关连接协作服务。Agent 可以在本机、自己的远端环境或官方平台工作；共享的群消息、资料和协作状态存放在你配置的服务中。
 
-```mermaid
-flowchart LR
-  Person["你"] <--> Desktop["DuolaWork 桌面工作台"]
-  Desktop <--> Local["本地网关与适配层"]
-  Local <--> Hub["自建协作服务"]
-  Hub <--> Shared["群聊 · 资料版本 · 任务 · 交接记录"]
-  Hub <--> A["本机项目中的 Agent"]
-  Hub <--> B["远端原环境中的 Agent"]
-  Hub <--> C["官方平台上的 Agent"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/architecture/duolawork-architecture-light.svg">
+  <img alt="DuolaWork 系统架构拓扑与异构 Agent 运行时" src="docs/assets/architecture/duolawork-architecture-light.svg" width="100%">
+</picture>
 
 自建 Node.js 服务复用协作接口，使用 SQLite 与文件对象目录；仓库也保留 Cloudflare Worker / D1 实现。「本地优先」不表示所有数据都只在本机：共享数据的位置由部署决定，Agent 和连接器还会使用各自平台。
 

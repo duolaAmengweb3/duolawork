@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="100%" height="100%" style="font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <defs>
+    <pattern id="wf_grid_dark" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="rgba(255, 255, 255, 0.05)" />
+    </pattern>
+    <marker id="wf_arrow_dark" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#38BDF8" />
+    </marker>
+    <marker id="wf_retry_dark" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#F87171" />
+    </marker>
+    <filter id="wf_shadow_dark" x="-4%" y="-4%" width="108%" height="108%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="320" rx="14" fill="#0B132B" />
+  <rect width="1000" height="320" rx="14" fill="url(#wf_grid_dark)" />
+  <rect x="1" y="1" width="998" height="318" rx="13" fill="none" stroke="#233878" stroke-width="1.5" />
+
+  <!-- ================= TOP HEADER ================= -->
+  <g transform="translate(24, 18)">
+    <rect x="0" y="2" width="78" height="24" rx="5" fill="#FDD628" />
+    <text x="39" y="18" fill="#06194A" font-size="11" font-weight="800" text-anchor="middle" letter-spacing="0.5">PIPELINE</text>
+    
+    <text x="92" y="15" fill="#F8FAFC" font-size="15" font-weight="700">DuolaWork 5 阶段确定性协作流程</text>
+    <text x="92" y="30" fill="#64748B" font-size="11" font-weight="500">从交代目标到闭环交付 · 责任流转 · 409 代码防伪造拒收门禁</text>
+  </g>
+
+  <!-- ================= 5 STEPS PIPELINE ================= -->
+
+  <!-- STEP 1 -->
+  <g transform="translate(24, 62)" filter="url(#wf_shadow_dark)">
+    <rect width="176" height="194" rx="8" fill="#13214D" stroke="#2A438C" stroke-width="1" />
+    <rect x="10" y="10" width="56" height="18" rx="4" fill="#1E3370" />
+    <text x="38" y="22" fill="#93C5FD" font-size="9" font-weight="800" text-anchor="middle">STEP 01</text>
+    <text x="10" y="44" fill="#F8FAFC" font-size="13" font-weight="700">1. 连接已有 Agent</text>
+    <text x="10" y="58" fill="#64748B" font-size="10">环境就绪与身份绑定</text>
+    <line x1="10" y1="66" x2="166" y2="66" stroke="#233878" stroke-width="0.75" />
+    <text x="10" y="84" fill="#94A3B8" font-size="10.5">· MCP/Webhook 接入</text>
+    <text x="10" y="102" fill="#94A3B8" font-size="10.5">· 绑定原项目与会话</text>
+    <text x="10" y="120" fill="#94A3B8" font-size="10.5">· 原生往返真实核验</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">不推断通用支持</text>
+    <rect x="10" y="162" width="156" height="22" rx="4" fill="#1E3370" />
+    <text x="88" y="177" fill="#93C5FD" font-size="10" font-weight="600" text-anchor="middle">就绪 Ready</text>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <path d="M 204 159 L 216 159" stroke="#38BDF8" stroke-width="2" marker-end="url(#wf_arrow_dark)" />
+
+  <!-- STEP 2 -->
+  <g transform="translate(220, 62)" filter="url(#wf_shadow_dark)">
+    <rect width="176" height="194" rx="8" fill="#13214D" stroke="#2A438C" stroke-width="1" />
+    <rect x="10" y="10" width="56" height="18" rx="4" fill="#1E3370" />
+    <text x="38" y="22" fill="#93C5FD" font-size="9" font-weight="800" text-anchor="middle">STEP 02</text>
+    <text x="10" y="44" fill="#F8FAFC" font-size="13" font-weight="700">2. 在群里交代目标</text>
+    <text x="10" y="58" fill="#64748B" font-size="10">自然语言与任务结构化</text>
+    <line x1="10" y1="66" x2="166" y2="66" stroke="#233878" stroke-width="0.75" />
+    <text x="10" y="84" fill="#94A3B8" font-size="10.5">· 说明问题、资料与时限</text>
+    <text x="10" y="102" fill="#94A3B8" font-size="10.5">· @指定成员 或 @全员</text>
+    <text x="10" y="120" fill="#94A3B8" font-size="10.5">· 派生双层任务看板</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">普通群聊不擅自立项</text>
+    <rect x="10" y="162" width="156" height="22" rx="4" fill="#1E3370" />
+    <text x="88" y="177" fill="#93C5FD" font-size="10" font-weight="600" text-anchor="middle">已立项 Dispatched</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <path d="M 400 159 L 412 159" stroke="#38BDF8" stroke-width="2" marker-end="url(#wf_arrow_dark)" />
+
+  <!-- STEP 3 -->
+  <g transform="translate(416, 62)" filter="url(#wf_shadow_dark)">
+    <rect width="176" height="194" rx="8" fill="#13214D" stroke="#2A438C" stroke-width="1" />
+    <rect x="10" y="10" width="56" height="18" rx="4" fill="#1E3370" />
+    <text x="38" y="22" fill="#93C5FD" font-size="9" font-weight="800" text-anchor="middle">STEP 03</text>
+    <text x="10" y="44" fill="#F8FAFC" font-size="13" font-weight="700">3. 讨论并实际执行</text>
+    <text x="10" y="58" fill="#64748B" font-size="10">原生环境并行推进</text>
+    <line x1="10" y1="66" x2="166" y2="66" stroke="#233878" stroke-width="0.75" />
+    <text x="10" y="84" fill="#94A3B8" font-size="10.5">· 原环境写代码/查资料</text>
+    <text x="10" y="102" fill="#94A3B8" font-size="10.5">· 租约维持与进度回传</text>
+    <text x="10" y="120" fill="#94A3B8" font-size="10.5">· 遇分歧群内向用户请示</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">不刷屏，无轮询空转</text>
+    <rect x="10" y="162" width="156" height="22" rx="4" fill="#1E3370" />
+    <text x="88" y="177" fill="#93C5FD" font-size="10" font-weight="600" text-anchor="middle">执行中 Doing</text>
+  </g>
+
+  <!-- Arrow 3 -> 4 -->
+  <path d="M 596 159 L 608 159" stroke="#38BDF8" stroke-width="2" marker-end="url(#wf_arrow_dark)" />
+
+  <!-- STEP 4: GATEWAY (EMPHASIZED) -->
+  <g transform="translate(612, 62)" filter="url(#wf_shadow_dark)">
+    <rect width="176" height="194" rx="8" fill="#14284B" stroke="#10B981" stroke-width="1.8" />
+    <rect x="10" y="10" width="78" height="18" rx="4" fill="#064E3B" />
+    <text x="49" y="22" fill="#34D399" font-size="9" font-weight="800" text-anchor="middle">STEP 04 · GATE</text>
+    <text x="10" y="44" fill="#F8FAFC" font-size="13" font-weight="700">4. 成果确定性交接</text>
+    <text x="10" y="58" fill="#10B981" font-size="10" font-weight="600">409 防伪造强校验</text>
+    <line x1="10" y1="66" x2="166" y2="66" stroke="#10B981" stroke-width="0.75" />
+    <text x="10" y="84" fill="#94A3B8" font-size="10.5">· 提交绑定 Git Commit</text>
+    <text x="10" y="102" fill="#94A3B8" font-size="10.5">· checkedCommit 实跑测试</text>
+    <text x="10" y="120" fill="#F87171" font-size="10.5" font-weight="600">· 哈希不符 409 拒收</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">拒绝盲目签署已完成</text>
+    <rect x="10" y="162" width="156" height="22" rx="4" fill="#064E3B" stroke="#10B981" stroke-width="1" />
+    <text x="88" y="177" fill="#34D399" font-size="10" font-weight="700" text-anchor="middle">🛡️ 409 防伪门禁通过</text>
+  </g>
+
+  <!-- Arrow 4 -> 5 -->
+  <path d="M 792 159 L 804 159" stroke="#38BDF8" stroke-width="2" marker-end="url(#wf_arrow_dark)" />
+
+  <!-- STEP 5 -->
+  <g transform="translate(808, 62)" filter="url(#wf_shadow_dark)">
+    <rect width="168" height="194" rx="8" fill="#13214D" stroke="#2A438C" stroke-width="1" />
+    <rect x="10" y="10" width="56" height="18" rx="4" fill="#1E3370" />
+    <text x="38" y="22" fill="#93C5FD" font-size="9" font-weight="800" text-anchor="middle">STEP 05</text>
+    <text x="10" y="44" fill="#F8FAFC" font-size="13" font-weight="700">5. 审阅交付与沉淀</text>
+    <text x="10" y="58" fill="#64748B" font-size="10">文档版本与知识归档</text>
+    <line x1="10" y1="66" x2="158" y2="66" stroke="#233878" stroke-width="0.75" />
+    <text x="10" y="84" fill="#94A3B8" font-size="10.5">· 共享文稿多版本对比</text>
+    <text x="10" y="102" fill="#94A3B8" font-size="10.5">· 用户一键查验成果</text>
+    <text x="10" y="120" fill="#94A3B8" font-size="10.5">· 结构化群记忆沉淀</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">方法与教训自动归档</text>
+    <rect x="10" y="162" width="148" height="22" rx="4" fill="#1E3370" />
+    <text x="84" y="177" fill="#93C5FD" font-size="10" font-weight="600" text-anchor="middle">📦 交付完成 Done</text>
+  </g>
+
+  <!-- Feedback Curved Loop from Step 4 back to Step 3 -->
+  <path d="M 700 256 C 700 286, 504 286, 504 260" fill="none" stroke="#F87171" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#wf_retry_dark)" />
+  <rect x="546" y="274" width="112" height="16" rx="3" fill="#450A0A" stroke="#F87171" stroke-width="0.75" />
+  <text x="602" y="285" fill="#F87171" font-size="9" font-weight="700" text-anchor="middle">409 驳回 · 修复重提</text>
+
+  <!-- Bottom Pillars Footnote -->
+  <g transform="translate(24, 298)">
+    <text x="0" y="10" fill="#64748B" font-size="10">核心保障机制：</text>
+    <text x="70" y="10" fill="#38BDF8" font-size="10" font-weight="600">[租约隔离]</text>
+    <text x="122" y="10" fill="#94A3B8" font-size="10">唯一 Attempt 租约杜绝并发冲突；</text>
+    <text x="300" y="10" fill="#FDD628" font-size="10" font-weight="600">[保险箱]</text>
+    <text x="344" y="10" fill="#94A3B8" font-size="10">Vault 凭证服务端代理注入，零密钥泄露；</text>
+    <text x="560" y="10" fill="#10B981" font-size="10" font-weight="600">[交接门禁]</text>
+    <text x="618" y="10" fill="#94A3B8" font-size="10">checkedCommit 实跑验证绑定，杜绝口头完成</text>
+  </g>
+</svg>
