@@ -1,0 +1,44 @@
+✔ 原生Grok Bot接受Cursor官方Webhook路径，拒绝其他Cursor路径和伪造域名 (2.808834ms)
+▶ Cursor原生Bot接收完整Bearer，严格200受理不等于成员已经回应
+  ✔ 200 (18.93075ms)
+  ✔ 204 (12.186625ms)
+✔ Cursor原生Bot接收完整Bearer，严格200受理不等于成员已经回应 (31.482625ms)
+✔ 原生接入测试被拒时明确结束等待，可重新自检且不影响业务工作 (11.752583ms)
+✔ Grok automation rejects clipboard text and truncated previews before storage (1.806542ms)
+✔ Grok automation uses signed exact bytes; 202 is acceptance without an Agent claim (4.396167ms)
+✔ Grok redirect is rejected without forwarding signed credentials (6.715375ms)
+✔ Grok通知200只是受理；并发派发只发送一次，不替原Agent领取 (4.813416ms)
+✔ 发送状态不明不会重发；进程中断保留unknown；没领取不会永远显示成功 (8.303667ms)
+✔ paused member becomes an explicit missing delivery without canceling or freeing running work (5.990833ms)
+✔ 429按退避重试，失败不伪装交付，真实claim胜过迟到通知回执 (8.653417ms)
+✔ 连接凭证加密，切通道清掉验证证据，但不修改旧账号身份 (1.74125ms)
+✔ 回调拒绝内网、伪造后缀、账号密码、非HTTPS；签名与标准HMAC一致 (1.178375ms)
+✔ Dots订阅验证、续期幂等、签名轮换、过滤与撤销持久化 (5.577625ms)
+✔ 文件真实字节往返、校验哈希、拒绝其他成员借用lease和无权限下载 (5.440583ms)
+✔ a replacement subscription receives still-unclaimed work; old callback acceptance must not strand it (42.273375ms)
+✔ the first valid subscription immediately wakes work waiting for a subscription, without waiting for its retry timer (8.671375ms)
+✔ subscription replacement never restarts claimed execution or another member work (10.77925ms)
+✔ replacement retires an obsolete task notice instead of replaying it, and leaves other members untouched (17.762292ms)
+✔ a new subscription does not requeue a notice from an older connection configuration (7.44625ms)
+✔ subscription recovery covers all pages of still-unclaimed work without a fixed conversation count (101.244667ms)
+✔ new messages cannot coalesce behind a historical receipt belonging only to a replaced receiver (7.122375ms)
+✔ a durable receive is not a model start or a lease; receipts cannot cross members, sessions or recovery attempts (31.032208ms)
+✔ lost receipt ACK is replayable; binding changes clear stale status and reject late old-session receipts (9.81625ms)
+✔ fast chat projection excludes materials without losing messages, addressing, receipts or access checks (9.6985ms)
+✔ cached successful receipt cannot bypass a later message edit, retry generation or connection revocation (9.335542ms)
+✔ a late native receiver can ACK an unclaimed notification timeout without replaying ended execution (16.294667ms)
+✔ cancel atomically retires unclaimed turns, outbox and task followup; active execution remains owned (28.885416ms)
+✔ explicit claim of a pre-upgrade canceled notice commits retirement and returns no execution lease (9.783458ms)
+✔ inbox and runtime reads heal old records, and a previously successful cached receipt cannot wake them again (12.172917ms)
+✔ new submission, changed specification and changed assignee invalidate only their obsolete notices; root completion still notifies (14.416584ms)
+✔ temporary unmet basis waits without a model lease or lost notice, then resumes; ordinary messages remain claimable (14.492417ms)
+✔ obsolete webhook anchor releases coalesced human messages; late HTTP success cannot resurrect it (23.553083ms)
+✔ maintenance repairs all unclaimed legacy states without replaying ordinary messages or touching active execution (17.274208ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 359.442084

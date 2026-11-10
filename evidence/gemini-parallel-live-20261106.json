@@ -1,0 +1,510 @@
+{
+  "at": "2026-11-06T10:03:33.430Z",
+  "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+  "originalBindings": {
+    "channel_3da3fd272b314a14aa9f8513ae94872a": {
+      "sessionId": "b82af396-133e-4c75-a70b-e7929c8fb6e3",
+      "title": "Checking Bot Status",
+      "workspace": "/home/claude/workspace",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    },
+    "channel_6a49d2912d4d40c2aef05141bdf1a9ab": {
+      "sessionId": "d5b48625-82c3-43e5-b434-9a5d0a14987d",
+      "title": "验收 · 项目与对话修复",
+      "workspace": "/home/claude/workspace",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    },
+    "channel_4ef452e331904b758d7d3c375215cb48": {
+      "sessionId": "b82af396-133e-4c75-a70b-e7929c8fb6e3",
+      "title": "Checking Bot Status",
+      "workspace": "/home/claude/workspace",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    },
+    "channel_6d302b18e24841f6a449b88f86b24aae": {
+      "sessionId": "5a63e05a-1fdb-4052-9cba-5f2e6cf2d152",
+      "title": "X内容",
+      "workspace": "/home/claude/.config/duolawork-runtime/member_ccdf940ba6d3426da01b9f65048909e2/coding/member_ccdf940ba6d3426da01b9f65048909e2/chats/channel_6d302b18e24841f6a449b88f86b24aae",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    },
+    "channel_f0bf1704a50348789524283bea56e2fd": {
+      "sessionId": "b4ad5435-58fe-4d89-96e4-12c9b4d583dd",
+      "title": "ATEL",
+      "workspace": "/home/claude/.config/duolawork-runtime/member_ccdf940ba6d3426da01b9f65048909e2/coding/member_ccdf940ba6d3426da01b9f65048909e2/chats/channel_f0bf1704a50348789524283bea56e2fd",
+      "mode": "existing",
+      "runtimeId": "9de3f1a3-ef75-48bd-b89b-4b20c69e6578"
+    }
+  },
+  "updatedReceiver": "65fe72fdedf466629b8a8fa6d6d642c9cd41064ceaad24bcb84739929550f682",
+  "channels": [
+    {
+      "id": "channel_e32a44cd842e4e1b9479d69a18fc5354",
+      "name": "验收 · Gemini 并行 1",
+      "commandId": "nativecmd_d6744c671baa490d82714355645d9ebb",
+      "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+      "requestMessageId": "chat_d45d727bd8704b1fafcd619124effb2f",
+      "replies": [
+        {
+          "id": "chat_1891c92e88b24e50ab4a9ac78ac04844",
+          "body": "{\"marker\": \"DW-PARALLEL-1793963697904\", \"slot\": 1, \"start\": 1793963750.2301424, \"end\": 1793963775.230463}",
+          "at": "2026-11-06T11:16:23.201Z"
+        }
+      ],
+      "recoveryMessageId": "chat_f1883bb0754d4c79bc5ed89799e9fa28",
+      "continuationRequestId": "chat_7ce945e321ed45afb375342e858530fe",
+      "continuationReplies": [
+        {
+          "id": "chat_4ef64a781d3e451b811d8e98b09a738b",
+          "body": "DW-CONTINUE-DW-PARALLEL-1793963697904-1",
+          "at": "2026-11-06T11:20:22.669Z"
+        }
+      ],
+      "afterUpdate": {
+        "token": "DW-UPDATED-bed70093-1",
+        "requestId": "chat_7555e5c548ec415aaf62bc896ab564e6",
+        "replies": [
+          {
+            "id": "chat_b5074973c546456e91dfbf7b79c6a493",
+            "body": "DW-UPDATED-bed70093-1",
+            "at": "2026-11-06T11:29:21.931Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+      "name": "验收 · Gemini 并行 2",
+      "commandId": "nativecmd_a6b71d77a6da4836a872499e9b339dfc",
+      "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+      "requestMessageId": "chat_3d0b683521ed43d5bb85dae8f74eb2fe",
+      "replies": [
+        {
+          "id": "chat_9b73860d72ed48b1a50887937214d7a9",
+          "body": "{\"marker\": \"DW-PARALLEL-1793963697904\", \"slot\": 2, \"start\": 1793963752.5246167, \"end\": 1793963777.5249221}",
+          "at": "2026-11-06T11:16:24.070Z"
+        }
+      ],
+      "recoveryMessageId": "chat_f4b11703b9cc40d89cb09e1a481de5ad",
+      "continuationRequestId": "chat_4b68d9f450ae479f94e47f65b9520680",
+      "continuationReplies": [
+        {
+          "id": "chat_ba9fa16c9a3244dab29144b26ad95ac6",
+          "body": "DW-CONTINUE-DW-PARALLEL-1793963697904-2",
+          "at": "2026-11-06T11:20:27.302Z"
+        }
+      ],
+      "afterUpdate": {
+        "token": "DW-UPDATED-bed70093-2",
+        "requestId": "chat_81482c42f6be4243be6bc23e189a2915",
+        "replies": [
+          {
+            "id": "chat_6637c50327cf48bdbb55ed8d5f9fa1b9",
+            "body": "DW-UPDATED-bed70093-2",
+            "at": "2026-11-06T11:29:29.871Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+      "name": "验收 · Gemini 并行 3",
+      "commandId": "nativecmd_c640a1f7346a4cd2847b2fc07c4dfe12",
+      "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+      "requestMessageId": "chat_4fe1b3c1863e45f19b1ecef0f0b4964e",
+      "replies": [
+        {
+          "id": "chat_2055b79ffa8749a8a779f60d4ac502bd",
+          "body": "{\"marker\": \"DW-PARALLEL-1793963697904\", \"slot\": 3, \"start\": 1793963756.4015317, \"end\": 1793963781.402002}",
+          "at": "2026-11-06T11:16:30.669Z"
+        }
+      ],
+      "recoveryMessageId": "chat_f11111b33db549e48c59f078b377f5f9",
+      "continuationRequestId": "chat_0c2b6c03939b4be4b8c15953d9a590cb",
+      "continuationReplies": [
+        {
+          "id": "chat_7400e0c2575e4b589c48ba858b21c8b0",
+          "body": "DW-CONTINUE-DW-PARALLEL-1793963697904-3",
+          "at": "2026-11-06T11:20:30.048Z"
+        }
+      ],
+      "afterUpdate": {
+        "token": "DW-UPDATED-bed70093-3",
+        "requestId": "chat_72e92b3208154864aa25c04b205b6494",
+        "replies": [
+          {
+            "id": "chat_737916e022a84d4e9cd4844b00a7fabe",
+            "body": "DW-UPDATED-bed70093-3",
+            "at": "2026-11-06T11:29:37.625Z"
+          }
+        ]
+      }
+    }
+  ],
+  "finalUpdate": {
+    "at": "2026-11-06T11:25:19.380Z",
+    "id": "member_ccdf940ba6d3426da01b9f65048909e2",
+    "requestId": "final-contract-update-1793964317022",
+    "targetRevision": "bed70093a178fd05c95ee0a0822060fbde60d8d6cf699939dc74b24acaa5ae2a",
+    "messageId": "chat_63db37b842e84be5aee51092f082f9f3",
+    "channelId": "channel_3da3fd272b314a14aa9f8513ae94872a",
+    "requestedAt": "2026-11-06T11:25:18.435Z",
+    "status": "requested",
+    "kind": "native-update",
+    "revision": 5,
+    "updatedAt": "2026-11-06T11:25:18.435Z"
+  },
+  "marker": "DW-PARALLEL-1793963697904",
+  "sentAt": "2026-11-06T11:14:57.904Z",
+  "observedReceiver": "6b588ed7e6afa7d80db41b90f0748ed4b9b7fcf6e3654c100877df374e836d77",
+  "originalBindingsPreserved": true,
+  "backgroundUpdate": {
+    "id": "member_ccdf940ba6d3426da01b9f65048909e2",
+    "requestId": "gemini-background-update-1289634f04210542",
+    "targetRevision": "1289634f0421054261e6ca33d3bb02878dd2bf8a4e10073a4398e7b0e519db13",
+    "messageId": "chat_30cf85f422dd4b2989c558caa9ceb94e",
+    "channelId": "channel_3da3fd272b314a14aa9f8513ae94872a",
+    "requestedAt": "2026-11-06T10:32:04.058Z",
+    "status": "requested",
+    "kind": "native-update",
+    "revision": 2,
+    "updatedAt": "2026-11-06T10:32:04.058Z"
+  },
+  "failedAttempt": {
+    "marker": "DW-PARALLEL-1793960382157",
+    "sentAt": "2026-11-06T10:19:42.157Z",
+    "receiver": "12107eed77aa1914c2a46c3a5c21714511dd946dba294f4f597c92c9810d5565",
+    "outcome": "native commands ran concurrently but original receiver ended MCP scope before background replies",
+    "nativeResults": [
+      {
+        "slot": 1,
+        "start": 1793960420.6688046,
+        "end": 1793960445.6691852
+      },
+      {
+        "slot": 2,
+        "start": 1793960424.8324633,
+        "end": 1793960449.8326066
+      },
+      {
+        "slot": 3,
+        "start": 1793960420.5515707,
+        "end": 1793960445.5518131
+      }
+    ]
+  },
+  "previousAttempts": [
+    {
+      "marker": "DW-PARALLEL-1793960382157",
+      "sentAt": "2026-11-06T10:19:42.157Z",
+      "channels": [
+        {
+          "id": "channel_e32a44cd842e4e1b9479d69a18fc5354",
+          "name": "验收 · Gemini 并行 1",
+          "commandId": "nativecmd_d6744c671baa490d82714355645d9ebb",
+          "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+          "requestMessageId": "chat_69e7dadc780c470387ce69bc8dcc1078",
+          "replies": [
+            {
+              "id": "chat_4462de4b4c9d4bae8389fd139320138b",
+              "body": "{\"marker\": \"DW-PARALLEL-1793960382157\", \"slot\": 1, \"start\": 1793960420.6688046, \"end\": 1793960445.6691852}",
+              "at": "2026-11-06T10:34:36.447Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f1883bb0754d4c79bc5ed89799e9fa28"
+        },
+        {
+          "id": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+          "name": "验收 · Gemini 并行 2",
+          "commandId": "nativecmd_a6b71d77a6da4836a872499e9b339dfc",
+          "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+          "requestMessageId": "chat_605b8fe0872b48a2aa57028ecaec3597",
+          "replies": [
+            {
+              "id": "chat_29153683e9de425cb4ed2efd339faa12",
+              "body": "{\"marker\": \"DW-PARALLEL-1793960382157\", \"slot\": 2, \"start\": 1793960424.8324633, \"end\": 1793960449.8326066}",
+              "at": "2026-11-06T10:34:37.976Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f4b11703b9cc40d89cb09e1a481de5ad"
+        },
+        {
+          "id": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+          "name": "验收 · Gemini 并行 3",
+          "commandId": "nativecmd_c640a1f7346a4cd2847b2fc07c4dfe12",
+          "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+          "requestMessageId": "chat_c19ea77ac4c0421094fd8af6b34060ec",
+          "replies": [
+            {
+              "id": "chat_2482a641870d4f8cb79b166b41ae7bb0",
+              "body": "{\"marker\": \"DW-PARALLEL-1793960382157\", \"slot\": 3, \"start\": 1793960420.5515707, \"end\": 1793960445.5518131}",
+              "at": "2026-11-06T10:35:16.625Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f11111b33db549e48c59f078b377f5f9"
+        }
+      ],
+      "receiver": "1289634f0421054261e6ca33d3bb02878dd2bf8a4e10073a4398e7b0e519db13"
+    },
+    {
+      "marker": "DW-PARALLEL-1793961363612",
+      "sentAt": "2026-11-06T10:36:03.612Z",
+      "channels": [
+        {
+          "id": "channel_e32a44cd842e4e1b9479d69a18fc5354",
+          "name": "验收 · Gemini 并行 1",
+          "commandId": "nativecmd_d6744c671baa490d82714355645d9ebb",
+          "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+          "requestMessageId": "chat_ec2530f8d0d34a77a5a602706114decf",
+          "replies": [
+            {
+              "id": "chat_8eefc408725d4551a2c20791d280a3a5",
+              "body": "{\"marker\": \"DW-PARALLEL-1793961363612\", \"slot\": 1, \"start\": 1793961397.0123653, \"end\": 1793961422.020827}",
+              "at": "2026-11-06T10:37:10.518Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f1883bb0754d4c79bc5ed89799e9fa28"
+        },
+        {
+          "id": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+          "name": "验收 · Gemini 并行 2",
+          "commandId": "nativecmd_a6b71d77a6da4836a872499e9b339dfc",
+          "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+          "requestMessageId": "chat_70e00acc4ff44dc6904a2a415e85773c",
+          "replies": [
+            {
+              "id": "chat_66fdae1e42e141d48a2f4cc892a5afab",
+              "body": "{\"marker\": \"DW-PARALLEL-1793961363612\", \"slot\": 2, \"start\": 1793961400.5868113, \"end\": 1793961425.5870843}",
+              "at": "2026-11-06T10:37:13.687Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f4b11703b9cc40d89cb09e1a481de5ad"
+        },
+        {
+          "id": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+          "name": "验收 · Gemini 并行 3",
+          "commandId": "nativecmd_c640a1f7346a4cd2847b2fc07c4dfe12",
+          "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+          "requestMessageId": "chat_32638b982e404dcba4b642d8b35934bc",
+          "replies": [],
+          "recoveryMessageId": "chat_f11111b33db549e48c59f078b377f5f9"
+        }
+      ],
+      "receiver": "1289634f0421054261e6ca33d3bb02878dd2bf8a4e10073a4398e7b0e519db13"
+    },
+    {
+      "marker": "DW-PARALLEL-1793962068583",
+      "sentAt": "2026-11-06T10:47:48.583Z",
+      "channels": [
+        {
+          "id": "channel_e32a44cd842e4e1b9479d69a18fc5354",
+          "name": "验收 · Gemini 并行 1",
+          "commandId": "nativecmd_d6744c671baa490d82714355645d9ebb",
+          "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+          "requestMessageId": "chat_f37440b0bcdb44e5bcfc4ca4df3bce80",
+          "replies": [
+            {
+              "id": "chat_517016e92bc74dd9882e85ce703c9239",
+              "body": "{\"marker\": \"DW-PARALLEL-1793962068583\", \"slot\": 1, \"start\": 1793962098.744662, \"end\": 1793962123.7452693}",
+              "at": "2026-11-06T10:48:50.596Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f1883bb0754d4c79bc5ed89799e9fa28"
+        },
+        {
+          "id": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+          "name": "验收 · Gemini 并行 2",
+          "commandId": "nativecmd_a6b71d77a6da4836a872499e9b339dfc",
+          "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+          "requestMessageId": "chat_c0ed6185f4f4460bab11f478c00607e2",
+          "replies": [
+            {
+              "id": "chat_1577428de07d4eda9e1f28762330f026",
+              "body": "{\"marker\": \"DW-PARALLEL-1793962068583\", \"slot\": 2, \"start\": 1793962100.759397, \"end\": 1793962125.7595627}",
+              "at": "2026-11-06T10:48:51.911Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f4b11703b9cc40d89cb09e1a481de5ad"
+        },
+        {
+          "id": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+          "name": "验收 · Gemini 并行 3",
+          "commandId": "nativecmd_c640a1f7346a4cd2847b2fc07c4dfe12",
+          "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+          "requestMessageId": "chat_6933f66db68b4ba89237453fc4685e45",
+          "replies": [
+            {
+              "id": "chat_868a976962034a3db53da31265d9fc12",
+              "body": "{\"marker\": \"DW-PARALLEL-1793962068583\", \"slot\": 3, \"start\": 1793962106.6921432, \"end\": 1793962131.6933608}",
+              "at": "2026-11-06T10:49:02.561Z"
+            }
+          ],
+          "recoveryMessageId": "chat_f11111b33db549e48c59f078b377f5f9"
+        }
+      ],
+      "receiver": "97dd666925d0c24b1a1ec712712f95482e39a07d280949638e90094728af1f51"
+    }
+  ],
+  "selfUpdateVerification": {
+    "at": "2026-11-06T10:38:17.033Z",
+    "requestedRevision": "1289634f0421054261e6ca33d3bb02878dd2bf8a4e10073a4398e7b0e519db13",
+    "observedRevision": "1289634f0421054261e6ca33d3bb02878dd2bf8a4e10073a4398e7b0e519db13",
+    "agentReplyMessageId": "chat_812216fa1fcc43ad881860aca0b35f3c",
+    "sameMember": true,
+    "originalBindingsPreserved": true,
+    "passed": true
+  },
+  "permissionUpdate": {
+    "id": "member_ccdf940ba6d3426da01b9f65048909e2",
+    "requestId": "gemini-permission-update-97dd666925d0c24b",
+    "targetRevision": "97dd666925d0c24b1a1ec712712f95482e39a07d280949638e90094728af1f51",
+    "messageId": "chat_61b8eefb69e4459c943658d8a16a691f",
+    "channelId": "channel_3da3fd272b314a14aa9f8513ae94872a",
+    "requestedAt": "2026-11-06T10:45:24.763Z",
+    "status": "requested",
+    "kind": "native-update",
+    "revision": 3,
+    "updatedAt": "2026-11-06T10:45:24.763Z"
+  },
+  "testCleanup": [
+    {
+      "channelId": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+      "issueId": "delivery_channel_81d9795c7b4b454bb5dcbffb13db41b8_chat_32638b982e404dcba4b642d8b35934bc",
+      "status": "resolved",
+      "resolution": "dismiss-not-success"
+    }
+  ],
+  "lifecycleUpdate": {
+    "at": "2026-11-06T11:12:47.289Z",
+    "id": "member_ccdf940ba6d3426da01b9f65048909e2",
+    "requestId": "lifecycle-update-1793963564052",
+    "targetRevision": "6b588ed7e6afa7d80db41b90f0748ed4b9b7fcf6e3654c100877df374e836d77",
+    "messageId": "chat_99ac088eab8845f880e9977ee4cf3770",
+    "channelId": "channel_3da3fd272b314a14aa9f8513ae94872a",
+    "requestedAt": "2026-11-06T11:12:47.056Z",
+    "status": "requested",
+    "kind": "native-update",
+    "revision": 4,
+    "updatedAt": "2026-11-06T11:12:47.056Z"
+  },
+  "nativeCompletion": [
+    {
+      "session": "5ecb1fde-52d8-4175-8236-3059662c3054",
+      "status": "idle",
+      "inFlight": null,
+      "completion": {
+        "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+        "stepId": "turn_chat_d45d727bd8704b1fafcd619124effb2f_member_ccdf940ba6d3426da01b9f65048909e2",
+        "fullyIdle": true,
+        "terminationReason": "NO_TOOL_CALL",
+        "observedAt": "2026-11-06T11:16:28.919Z"
+      }
+    },
+    {
+      "session": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+      "status": "idle",
+      "inFlight": null,
+      "completion": {
+        "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+        "stepId": "turn_chat_3d0b683521ed43d5bb85dae8f74eb2fe_member_ccdf940ba6d3426da01b9f65048909e2",
+        "fullyIdle": true,
+        "terminationReason": "NO_TOOL_CALL",
+        "observedAt": "2026-11-06T11:16:30.419Z"
+      }
+    },
+    {
+      "session": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+      "status": "idle",
+      "inFlight": null,
+      "completion": {
+        "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+        "stepId": "turn_chat_4fe1b3c1863e45f19b1ecef0f0b4964e_member_ccdf940ba6d3426da01b9f65048909e2",
+        "fullyIdle": true,
+        "terminationReason": "NO_TOOL_CALL",
+        "observedAt": "2026-11-06T11:16:45.311Z"
+      }
+    }
+  ],
+  "overlapSeconds": 18.82893133163452,
+  "nativeConcurrencyVerified": true,
+  "finalUpdateVerification": {
+    "at": "2026-11-06T11:28:57.680Z",
+    "expectedRevision": "bed70093a178fd05c95ee0a0822060fbde60d8d6cf699939dc74b24acaa5ae2a",
+    "observedRevision": "bed70093a178fd05c95ee0a0822060fbde60d8d6cf699939dc74b24acaa5ae2a",
+    "sha256": "0b34e32cc0bb4e139214761efd620c246d0f298df6043674ea989a966d8bee8c",
+    "originalBindingsPreserved": true,
+    "originalSessionContinuation": true,
+    "nativeSettled": [
+      {
+        "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+        "status": "idle",
+        "inFlight": null,
+        "completion": {
+          "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+          "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+          "stepId": "turn_chat_7555e5c548ec415aaf62bc896ab564e6_member_ccdf940ba6d3426da01b9f65048909e2",
+          "fullyIdle": true,
+          "terminationReason": "NO_TOOL_CALL",
+          "observedAt": "2026-11-06T11:29:25.054Z"
+        }
+      },
+      {
+        "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+        "status": "idle",
+        "inFlight": null,
+        "completion": {
+          "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+          "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+          "stepId": "turn_chat_81482c42f6be4243be6bc23e189a2915_member_ccdf940ba6d3426da01b9f65048909e2",
+          "fullyIdle": true,
+          "terminationReason": "NO_TOOL_CALL",
+          "observedAt": "2026-11-06T11:29:34.022Z"
+        }
+      },
+      {
+        "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+        "status": "idle",
+        "inFlight": null,
+        "completion": {
+          "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+          "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+          "stepId": "turn_chat_72e92b3208154864aa25c04b205b6494_member_ccdf940ba6d3426da01b9f65048909e2",
+          "fullyIdle": true,
+          "terminationReason": "NO_TOOL_CALL",
+          "observedAt": "2026-11-06T11:29:49.736Z"
+        }
+      }
+    ]
+  },
+  "nativeCommandLogs": [
+    {
+      "sessionId": "5ecb1fde-52d8-4175-8236-3059662c3054",
+      "log": "task-66.log",
+      "marker": "DW-PARALLEL-1793963697904",
+      "slot": 1,
+      "start": 1793963750.2301424,
+      "end": 1793963775.230463
+    },
+    {
+      "sessionId": "18e09c18-35a4-4a4a-bf27-6165a07f52f8",
+      "log": "task-68.log",
+      "marker": "DW-PARALLEL-1793963697904",
+      "slot": 2,
+      "start": 1793963752.5246167,
+      "end": 1793963777.5249221
+    },
+    {
+      "sessionId": "e26b8f75-ce98-4c61-a857-1ccae26e158c",
+      "log": "task-93.log",
+      "marker": "DW-PARALLEL-1793963697904",
+      "slot": 3,
+      "start": 1793963756.4015317,
+      "end": 1793963781.402002
+    }
+  ]
+}

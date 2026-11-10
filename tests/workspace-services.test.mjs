@@ -1,0 +1,48 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {fixture} from './collaboration-helper.mjs';
+import {conversationCommand,conversationTool} from '../cloud/collaboration/conversation.mjs';
+import {managementSettings,manageWorkspace} from '../cloud/collaboration/management.mjs';
+import {connectorSettings,connectorTool} from '../cloud/collaboration/connectors.mjs';
+import {skillSettings,skillTool,parseSkill} from '../cloud/collaboration/skills.mjs';
+const owner={owner:true},actor={memberId:'grok'},other={memberId:'check'};
+async function setup(t){const f=await fixture(t);const c=await conversationCommand(f.repo,f.identity,owner,{type:'channel.create',requestId:'group',name:'隔离服务',memberIds:['check'],direct:true});return {...f,c};}
+test('secretary manages existing DMs as its own identity and is immediately revoked on replacement',async t=>{const {repo,identity,c}=await setup(t);
+ await assert.rejects(manageWorkspace(repo,identity,actor,{action:'read',channelId:c.id}),e=>e.code==='forbidden');
+ await managementSettings(repo,identity,owner,{requestId:'assign',expectedVersion:0,memberId:'grok'});
+ assert.equal((await manageWorkspace(repo,identity,actor,{action:'read',channelId:c.id})).channel.id,c.id);
+ const group=await manageWorkspace(repo,identity,actor,{action:'create_group',requestId:'create',name:'官网',memberIds:['grok','check'],coordinatorId:'check'});
+ assert.equal(group.createdBy,'grok');assert.equal((await manageWorkspace(repo,identity,actor,{action:'create_group',requestId:'create',name:'官网',memberIds:['grok','check'],coordinatorId:'check'})).id,group.id);
+ await managementSettings(repo,identity,owner,{requestId:'replace',expectedVersion:1,memberId:'check'});
+ await assert.rejects(manageWorkspace(repo,identity,actor,{action:'read',channelId:c.id}),e=>e.code==='forbidden');
+ assert.equal((await manageWorkspace(repo,identity,other,{action:'read',channelId:c.id})).channel.id,c.id);
+ assert.equal((await repo.list('management_event')).find(e=>e.action==='create_group').actorId,'grok');
+});
+test('two GitHub authorizations retain identity and enforce both channel and member boundaries including in-flight revocation',async t=>{const {repo,identity,c}=await setup(t),env={ADMIN_KEY:'isolated-secret-key'};
+ const mock=async(url,options)=>new Response(JSON.stringify(url.endsWith('/user')?{id:options.headers.Authorization.endsWith('one')?1:2,login:options.headers.Authorization.endsWith('one')?'one':'two'}:{name:'project'}),{status:200,headers:{'content-type':'application/json'}});
+ const one=await connectorSettings(repo,identity,owner,{action:'connect',requestId:'one',token:'one',repositories:['org/project'],channelIds:[c.id],memberIds:['check']},env,mock);
+ const two=await connectorSettings(repo,identity,owner,{action:'connect',requestId:'two',token:'two',repositories:['org/project'],memberIds:['grok']},env,mock);
+ assert.equal(one.account,'one');assert.equal(two.account,'two');assert.equal(one.credentials,undefined);
+ const args={channelId:c.id,connectionId:one.id,action:'repository',repository:'org/project'};
+ assert.equal((await connectorTool(repo,other,args,env,mock)).account,'one');
+ await assert.rejects(connectorTool(repo,other,{...args,connectionId:two.id},env,mock),e=>e.code==='forbidden');
+ await assert.rejects(connectorTool(repo,other,args,env,async(...params)=>{await connectorSettings(repo,identity,owner,{action:'disconnect',requestId:'revoke',connectionId:one.id,expectedVersion:1},env,mock);return mock(...params);}),e=>e.code==='connection_changed');
+});
+test('standard SKILL.md imports actual resources; restrictions and rollback preserve versions',async t=>{const {repo,identity,c}=await setup(t),files={'SKILL.md':'---\nname: evidence-review\ndescription: 核对证据\n---\nRead references/check.md','references/check.md':'核对原文','scripts/probe.mjs':'console.log(1)'};
+ assert.throws(()=>parseSkill({...files,'../secrets':'no'}));
+ const skill=await skillSettings(repo,identity,owner,{action:'save',requestId:'skill-1',files,channelIds:[c.id],memberIds:['check']});
+ assert.equal(skill.hasScripts,true);const read=await skillTool(repo,other,'read_skill',{channelId:c.id,skillId:skill.id,path:'references/check.md'});assert.equal(read.body,'核对原文');assert.equal(read.sha256.length,64);
+ await assert.rejects(skillTool(repo,actor,'read_skill',{channelId:c.id,skillId:skill.id}),e=>e.code==='forbidden');
+ await skillSettings(repo,identity,owner,{action:'save',requestId:'disable',skillId:skill.id,expectedVersion:1,enabled:false});
+ await assert.rejects(skillTool(repo,other,'read_skill',{channelId:c.id,skillId:skill.id}),e=>e.code==='forbidden');
+ const restored=await skillSettings(repo,identity,owner,{action:'rollback',requestId:'restore',skillId:skill.id,expectedVersion:2,version:1,enabled:true});assert.equal(restored.version,3);
+ await assert.rejects(skillTool(repo,other,'report_skill_use',{requestId:'old-report',channelId:c.id,skillId:skill.id,version:1,summary:'old'}),e=>e.code==='version_conflict');
+});
+
+test('secretary pairing retries return the same short-lived code and replacement revokes the operation',async t=>{
+ const {repo,identity}=await setup(t);identity.members.find(m=>m.id==='check').platformId='claude-code';
+ await managementSettings(repo,identity,owner,{requestId:'secretary',expectedVersion:0,memberId:'grok'});
+ const args={action:'prepare_connection',requestId:'prepare-one',memberId:'check'},env={PUBLIC_ORIGIN:'https://hub.example.com'};
+ const first=await manageWorkspace(repo,identity,actor,args,env),retry=await manageWorkspace(repo,identity,actor,args,env);assert.deepEqual(retry,first);assert.match(JSON.stringify(first),/Claude/);
+ await managementSettings(repo,identity,owner,{requestId:'replace',expectedVersion:1,memberId:'check'});
+ await assert.rejects(manageWorkspace(repo,identity,actor,args,env),e=>e.code==='forbidden');
+});

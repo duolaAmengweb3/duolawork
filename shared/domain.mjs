@@ -77,6 +77,13 @@ export function reduce(input, action, now = new Date().toISOString()) {
       a.updatedAt = now; result = a;
       emit('account.updated', `账号状态更新：${a.label}`, { accountId: a.id }); break;
     }
+    case 'member.disconnect': {
+      const m = byId(state.members, action.memberId, '成员');
+      if (state.tasks.some(t => t.steps.some(s => s.memberId === m.id && s.status === 'running'))) fail('member_busy', '此成员正在执行，请等它完成后再解除连接', 409);
+      m.status = 'disabled'; m.tokenHash = ''; m.paused = true; m.disconnectedAt = now;
+      result = { memberId: m.id, name: m.name, disconnected: true };
+      emit('member.disconnected', `已解除 ${m.name} 的连接；聊天记录和原平台登录保留`, { memberId: m.id, accountId: m.accountId }); break;
+    }
     case 'account.remove': {
       const a = byId(state.accounts, action.accountId, '账号');
       const members = state.members.filter(m => m.accountId === a.id);
@@ -84,6 +91,14 @@ export function reduce(input, action, now = new Date().toISOString()) {
       a.status = 'disabled'; a.removedAt = now;
       emit('account.removed', `已断开 ${a.label}，${members.length} 名关联成员停止派发；历史成果保留`, { accountId: a.id });
       result = { affectedMembers: members.map(m => m.id) }; break;
+    }
+    case 'workspace.prepare-member': {
+      const p=action.payload;requireText(p.requestId,'操作编号',150);const name=requireText(p.name,'成员名称',80);byId(state.platforms,p.platformId,'平台');
+      const prior=state.members.find(m=>m.preparedRequestId===p.requestId);
+      if(prior){if(prior.name!==name||prior.platformId!==p.platformId)fail('idempotency_conflict','同一请求不能添加不同成员',409);result=prior;break;}
+      const account={id:uid('account'),platformId:p.platformId,label:name,entryUrl:'',identity:'',status:'pending',createdAt:now,updatedAt:now};
+      const member={id:uid('member'),ownerId:'owner',accountId:account.id,platformId:account.platformId,name,roleId:'research',mode:'connector',kind:'role-context',nativeAgentId:'',instructions:'',status:'unverified',tokenHash:'',createdAt:now,lastSeenAt:null,evidence:null,paused:false,preparedRequestId:p.requestId};
+      state.accounts.push(account);state.members.push(member);result=member;emit('member.prepared',`秘书准备了成员：${name}`,{memberId:member.id,actorMemberId:action.actorMemberId});break;
     }
     case 'member.create': {
       const p = action.payload, a = byId(state.accounts, p.accountId, '账号');

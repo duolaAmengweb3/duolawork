@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {startHarness} from './v1-harness.mjs';
+const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');
+const {start}=await import('../local/server.mjs');let local,browser;
+const checks=[],errors=[];
+try{
+ await h.request('/admin/action',{type:'settings.update',payload:{automation:false}});
+ await h.request('/admin/action',{type:'platform.create',payload:{id:'antigravity',name:'Gemini'}});
+ const member=await h.member('antigravity','Gemini'),channel=await h.command('channel.create',{name:'接收进度验收',memberIds:[member.id],coordinatorId:member.id});
+ await h.command('channel.post',{channelId:channel.id,body:'你在线吗'});
+ const work=(await member.call('list_work')).work.find(w=>w.channelId===channel.id);
+ let deliveryState=null,pendingStepId=null;
+ local=await start({port:0,maintenance:true,vaultKey:Buffer.alloc(32,32),config:{endpoint:h.base,adminKey:h.key,runnerId:'pending-receipt'}});
+ browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:900}});page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(id=>localStorage.setItem('hub-communication',JSON.stringify({channelId:id,chatKind:'group'})),channel.id);
+ await page.route('**/api/local/coding/status',route=>route.fulfill({json:{members:[{memberId:member.id,enabled:true,status:'working',assignments:[{channelId:channel.id,sessionId:'original',pendingStepId,deliveryState,workState:deliveryState?'working':'idle'},{channelId:'other-group',sessionId:'other',pendingStepId:'foreign-turn',deliveryState:'working',workState:'working'}]}],approvals:[]}}));
+ await page.goto(local.url);await page.getByRole('heading',{name:'接收进度验收',exact:true}).waitFor();
+ await page.locator('.pending-member').filter({hasText:'等待接收'}).waitFor();await page.locator('.pending-member').click();
+ const card=page.locator('.delivery-auto .delivery-case');await card.getByText('等待接收',{exact:true}).waitFor();
+ assert.doesNotMatch(await card.innerText(),/排队|正在处理时收到的补充/);checks.push('No claim and another busy conversation show waiting, never a fictitious queue');
+ pendingStepId=work.stepId;deliveryState='working';
+ await page.locator('.pending-member').filter({hasText:'正在接收'}).waitFor();await card.getByText('正在接收',{exact:true}).waitFor();
+ assert.match(await card.innerText(),/原对话已开始接收/);assert.doesNotMatch(await card.innerText(),/排队/);
+ await page.screenshot({path:'evidence/pending-receipt-ui.png'});checks.push('Exact native started step appears in chat and detail before formal claim');
+ deliveryState='sent';await card.getByText('已送达，等待接收',{exact:true}).waitFor();assert.doesNotMatch(await card.innerText(),/排队/);
+ deliveryState='queued';await card.getByText('排队中',{exact:true}).waitFor();assert.match(await card.innerText(),/这段原对话正在工作/);checks.push('Actual native queued receipt alone shows queue and its reason');
+ const claim=await member.call('claim_work',{requestId:crypto.randomUUID(),stepId:work.stepId});
+ await card.getByText('处理中',{exact:true}).waitFor();assert.doesNotMatch(await card.innerText(),/排队/);checks.push('Formal claim overrides old native queue');
+ await member.call('post_message',{requestId:crypto.randomUUID(),channelId:channel.id,turnId:claim.turnId,body:'在的'});
+ await page.locator('.chat-message').filter({hasText:'在的'}).waitFor();await card.waitFor({state:'hidden'});assert.equal(await page.locator('.pending-member').count(),0);checks.push('Reply clears pending indicators despite stale native state');
+ assert.deepEqual(errors,[]);await fs.writeFile('evidence/pending-receipt-ui.json',JSON.stringify({at:new Date().toISOString(),scope:'isolated browser, real HTTP and claim/reply; native telemetry simulated',checks,errors},null,2)+'\n');console.log(JSON.stringify({checks}));
+}finally{await browser?.close();await local?.close();await h.stop();}

@@ -1,0 +1,1238 @@
+{
+  "scope": "Actual callback dispatch/signature/idempotency code, in-memory SQLite source, real loopback HTTP + fsync receiver; no official platform or model; not native received SLA",
+  "transports": [
+    {
+      "kind": "grok-bearer",
+      "count": 100,
+      "errors": [],
+      "p95Ms": 14,
+      "maxMs": 24,
+      "samples": [
+        {
+          "i": 0,
+          "saveToCallbackResponseMs": 24
+        },
+        {
+          "i": 1,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 2,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 3,
+          "saveToCallbackResponseMs": 20
+        },
+        {
+          "i": 4,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 5,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 6,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 7,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 8,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 9,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 10,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 11,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 12,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 13,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 14,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 15,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 16,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 17,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 18,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 19,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 20,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 21,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 22,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 23,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 24,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 25,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 26,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 27,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 28,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 29,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 30,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 31,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 32,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 33,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 34,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 35,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 36,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 37,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 38,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 39,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 40,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 41,
+          "saveToCallbackResponseMs": 19
+        },
+        {
+          "i": 42,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 43,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 44,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 45,
+          "saveToCallbackResponseMs": 15
+        },
+        {
+          "i": 46,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 47,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 48,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 49,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 50,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 51,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 52,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 53,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 54,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 55,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 56,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 57,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 58,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 59,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 60,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 61,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 62,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 63,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 64,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 65,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 66,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 67,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 68,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 69,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 70,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 71,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 72,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 73,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 74,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 75,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 76,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 77,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 78,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 79,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 80,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 81,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 82,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 83,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 84,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 85,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 86,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 87,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 88,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 89,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 90,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 91,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 92,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 93,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 94,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 95,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 96,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 97,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 98,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 99,
+          "saveToCallbackResponseMs": 12
+        }
+      ],
+      "duplicateDeliveries": 0,
+      "fabricatedNativeClaims": 0
+    },
+    {
+      "kind": "grok-signed",
+      "count": 100,
+      "errors": [],
+      "p95Ms": 13,
+      "maxMs": 16,
+      "samples": [
+        {
+          "i": 0,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 1,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 2,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 3,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 4,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 5,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 6,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 7,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 8,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 9,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 10,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 11,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 12,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 13,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 14,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 15,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 16,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 17,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 18,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 19,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 20,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 21,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 22,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 23,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 24,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 25,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 26,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 27,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 28,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 29,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 30,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 31,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 32,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 33,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 34,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 35,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 36,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 37,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 38,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 39,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 40,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 41,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 42,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 43,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 44,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 45,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 46,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 47,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 48,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 49,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 50,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 51,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 52,
+          "saveToCallbackResponseMs": 15
+        },
+        {
+          "i": 53,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 54,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 55,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 56,
+          "saveToCallbackResponseMs": 16
+        },
+        {
+          "i": 57,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 58,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 59,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 60,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 61,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 62,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 63,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 64,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 65,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 66,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 67,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 68,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 69,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 70,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 71,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 72,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 73,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 74,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 75,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 76,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 77,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 78,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 79,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 80,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 81,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 82,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 83,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 84,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 85,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 86,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 87,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 88,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 89,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 90,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 91,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 92,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 93,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 94,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 95,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 96,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 97,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 98,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 99,
+          "saveToCallbackResponseMs": 12
+        }
+      ],
+      "duplicateDeliveries": 0,
+      "fabricatedNativeClaims": 0
+    },
+    {
+      "kind": "dot-events",
+      "count": 100,
+      "errors": [],
+      "p95Ms": 24,
+      "maxMs": 33,
+      "samples": [
+        {
+          "i": 0,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 1,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 2,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 3,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 4,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 5,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 6,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 7,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 8,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 9,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 10,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 11,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 12,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 13,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 14,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 15,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 16,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 17,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 18,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 19,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 20,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 21,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 22,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 23,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 24,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 25,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 26,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 27,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 28,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 29,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 30,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 31,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 32,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 33,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 34,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 35,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 36,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 37,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 38,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 39,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 40,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 41,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 42,
+          "saveToCallbackResponseMs": 14
+        },
+        {
+          "i": 43,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 44,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 45,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 46,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 47,
+          "saveToCallbackResponseMs": 10
+        },
+        {
+          "i": 48,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 49,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 50,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 51,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 52,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 53,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 54,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 55,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 56,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 57,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 58,
+          "saveToCallbackResponseMs": 17
+        },
+        {
+          "i": 59,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 60,
+          "saveToCallbackResponseMs": 21
+        },
+        {
+          "i": 61,
+          "saveToCallbackResponseMs": 24
+        },
+        {
+          "i": 62,
+          "saveToCallbackResponseMs": 18
+        },
+        {
+          "i": 63,
+          "saveToCallbackResponseMs": 33
+        },
+        {
+          "i": 64,
+          "saveToCallbackResponseMs": 24
+        },
+        {
+          "i": 65,
+          "saveToCallbackResponseMs": 25
+        },
+        {
+          "i": 66,
+          "saveToCallbackResponseMs": 19
+        },
+        {
+          "i": 67,
+          "saveToCallbackResponseMs": 26
+        },
+        {
+          "i": 68,
+          "saveToCallbackResponseMs": 21
+        },
+        {
+          "i": 69,
+          "saveToCallbackResponseMs": 27
+        },
+        {
+          "i": 70,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 71,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 72,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 73,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 74,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 75,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 76,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 77,
+          "saveToCallbackResponseMs": 15
+        },
+        {
+          "i": 78,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 79,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 80,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 81,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 82,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 83,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 84,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 85,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 86,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 87,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 88,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 89,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 90,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 91,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 92,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 93,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 94,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 95,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 96,
+          "saveToCallbackResponseMs": 12
+        },
+        {
+          "i": 97,
+          "saveToCallbackResponseMs": 11
+        },
+        {
+          "i": 98,
+          "saveToCallbackResponseMs": 13
+        },
+        {
+          "i": 99,
+          "saveToCallbackResponseMs": 14
+        }
+      ],
+      "duplicateDeliveries": 0,
+      "fabricatedNativeClaims": 0
+    }
+  ]
+}

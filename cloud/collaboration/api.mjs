@@ -1,3 +1,32 @@
+import {channelResources,CHANNEL_RESOURCE_TOOL} from './channel-resources.mjs';
+import {responseMetrics} from './response-metrics.mjs';
+import {changes} from './change-feed.mjs';
+import {GROUP_MEMORY_TOOLS,groupMemoryTool,readGroupMemory} from './group-memory.mjs';
+import {secretaryOverview,secretaryCommand} from './secretary.mjs';
+import {registerExecutionBindings} from './execution-bindings.mjs';
+import {conversationRuntime,receiveDelivery} from './conversation.mjs';
+import {MEMORY_TOOLS,memoryTool,recallMemory} from './memory-context.mjs';
+import {SKILL_TOOLS,skillSettings,skillTool} from './skills.mjs';
+import {CONNECTOR_TOOLS,connectorSettings,connectorTool} from './connectors.mjs';
+import {mcpConnectorTool} from './mcp-connectors.mjs';
+import {finishConnectorOAuth} from './connector-oauth.mjs';
+import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
+import {validateToolArguments} from './tool-validation.mjs';
+import {connectorHostRequest} from './connector-hosts.mjs';
+import {VAULT_TOOL,vaultTool,vaultSettings,redeemVaultLease} from './vault.mjs';
+import {bytes as toolHostBytes,sha256 as toolHostSHA} from './tool-host-download.mjs';
+import {MANAGEMENT_TOOLS,managementSettings,manageWorkspace,workspaceOverview} from './management.mjs';
+import {channelUnread} from './chat-experience.mjs';
+import {listChannels} from './channel-management.mjs';
+import {SHARED_TOOLS, SHARED_TOOL_ENVELOPE, sharedToolEnvelope, sharedTool, sharedCommand, listSharedFiles, fileDetails, fileBytes, uploadStatus, readHandoff} from './shared-space.mjs';
+import {sha256 as claudeSHA,compressed as claudeDownload} from './claude-download.mjs';
+import {claudeRecipe,claudeSkill} from './claude-setup.mjs';
+import {remoteSessions,assignRemoteSession} from './native-sessions.mjs';
+import {runtimeOwner,runtimeSelf,remoteRuntimeMembers} from './remote-runtime.mjs';
+import {sessionLinks} from './session-links.mjs';
+import {runtimeRecipe,runtimeSkill} from './runtime-setup.mjs';
+import {sha256 as runtimeSHA,archive as runtimeArchive} from './runtime-download.mjs';
+import {nativeForm} from '../../shared/native-forms.mjs';
 import { oauthFetch, startPairing } from "./pairing.mjs";
 import { fileStore } from "./file-store.mjs";
 import { Repository, fail, digest, required, id } from "./repository.mjs";
@@ -27,6 +56,12 @@ import {
   respondComputer,
 } from "./computer.mjs";
 import { uploadFile, downloadFile } from "./files.mjs";
+import { CHANNEL_TOOLS, conversationCommand, conversationTool, conversationWork, claimConversation, readChannel } from "./conversation.mjs";
+import { MAX_MESSAGE_WAIT_SECONDS, receiveMessages, withConversationContext } from "./inbox.mjs";
+import {PRODUCT_CONTEXT_TOOL,readProductContext} from './product-context.mjs';
+import { readSpaceObject } from './workspace-objects.mjs';
+import { meetingDetail } from './meetings.mjs';
+import { AGENT_TARGETS, issueAgentSkill, publicOnboarding, selfConnection, selfCheck, selfStatus, reportSetup, completeGuidedConnection } from "./onboarding.mjs";
 
 const json = (body, status = 200) =>
   Response.json(body, {
@@ -50,6 +85,7 @@ function decodeCursor(raw) {
     fail("invalid_cursor", "分页游标无效");
   }
 }
+const quietSharedTools = new Set(['read_product_context','shared_files','begin_file','write_file_chunk','file_upload_status','read_shared_file','read_handoff','vault']);
 const string = { type: "string" };
 const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   type: "object",
@@ -58,6 +94,34 @@ const schema = (properties, requiredKeys = Object.keys(properties)) => ({
   additionalProperties: false,
 });
 export const TOOLS = [
+  ...CHANNEL_TOOLS,
+  PRODUCT_CONTEXT_TOOL,
+  ...MANAGEMENT_TOOLS,
+  ...MEMORY_TOOLS,...GROUP_MEMORY_TOOLS,CHANNEL_RESOURCE_TOOL,...SKILL_TOOLS,
+  ...CONNECTOR_TOOLS,
+  VAULT_TOOL,
+  ...SHARED_TOOLS,
+  {
+    name: "report_setup_status",
+    description: "上报你自己的接入进度或平台卡点，显示在 Hub；不能自行标记验证通过。",
+    inputSchema: schema({ stage: { type: "string", enum: ["configuring", "waiting_owner", "waiting_platform", "blocked"] }, message: string, action: { type: "string", enum: ["grok_routine"] }, routineName: string }, ["stage", "message"]),
+  },
+  {
+    name: "setup_connection",
+    description: "替用户配置你自己的 Hub 接收方式，回填原生接收地址与密钥。只能配置当前成员；不会修改其他成员。随后调用 check_connection 验证真实往返。",
+    inputSchema: schema({ requestId: string, transport: { type: "string", enum: ["webhook", "events", "pull"] }, url: string, token: string, pollSeconds: { type: "integer", minimum: 15 } }, ["requestId", "transport"]),
+  },
+  {
+    name: "check_connection",
+    description: "启动自己的无外部副作用往返验证。启动不等于验证通过；由下一次原生接收运行领取并回传验证消息。",
+    inputSchema: schema({ requestId: string }),
+  },
+  {
+    name: "receive_messages",
+    description: "一次领取自己的群消息并返回群上下文，直接交流或使用共享工具，无需先 list_work/read_channel。回应后可按 input.continuation 等待同群下一条一次（最多45秒）；empty/busy 后结束，不空转。",
+    inputSchema: schema({ requestId: string, channelId: string, afterTurnId: string, expectedMemberId: string, notificationTurnId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]},
+      waitSeconds: { type: "integer", minimum: 0, maximum: MAX_MESSAGE_WAIT_SECONDS } }, ["requestId"]),
+  },
   {
     name: "read_file",
     description: "读取本项目附件的真实字节，按64KB分页，不截断伪装完整文件。",
@@ -74,8 +138,8 @@ export const TOOLS = [
   {
     name: "claim_work",
     description:
-      "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整任务上下文。",
-    inputSchema: schema({ requestId: string, stepId: string }),
+      "领取指派给自己的步骤，获得唯一 attemptId、lease 和完整上下文。群聊 stepId=inbox 一次接收；回应后 stepId=inbox:after:<turnId> 有限等待一次。不改变真实步骤 ID 的原领取语义。",
+    inputSchema: schema({ requestId: string, stepId: string, expectedMemberId: string, channelId: string, expectedSessionId: string, contextMode: {type:"string",enum:["full","incremental"]} }, ["requestId", "stepId"]),
   },
   {
     name: "report_progress",
@@ -274,16 +338,87 @@ async function readDocument(repo, actor, documentId) {
     : null;
   return { ...document, original, working, candidate };
 }
-export async function callTool(repo, identity, actor, name, args, env) {
+export async function callTool(repo, identity, actor, name, args, env, options = {}) {
+  let canonical;
+  try{
+    canonical=normalizeToolArguments(name,args);
+    validateToolArguments(TOOLS.find(t=>t.name===name),canonical);
+    return await dispatchTool(repo,identity,actor,name,canonical,env,options);
+  }catch(error){
+    const turnId=canonical?.turnId||(name==='submit_work'&&canonical?.attemptId?.startsWith('turn_')?canonical.attemptId:null);
+    if(actor.memberId&&['stay_silent','post_message','submit_work'].includes(name)&&typeof turnId==='string')try{
+      await repo.transact(id('ack-error'),{},async tx=>{const turn=await tx.get('channel_turn',turnId,false);if(turn?.memberId!==actor.memberId||turn.status!=='active'||canonical.channelId&&turn.scopeId!==canonical.channelId)return {};return tx.put('channel_turn',{...turn,lastAckError:{code:typeof error.code==='string'?error.code:'server_error',message:'回执未成功保存，原消息与执行记录保留',at:tx.now}});});
+    }catch{/* Preserve the original controlled tool error even if diagnostics fail. */}
+    throw error;
+  }
+}
+async function dispatchTool(repo, identity, actor, name, args, env, options = {}) {
   if (!actor.memberId)
     fail(
       "member_required",
       "原生工具必须使用成员身份，不能用管理凭证冒充",
       403,
     );
+  // A host can share one MCP login across several Bots. Check the intended
+  // recipient before reading an idempotency receipt or claiming any work.
+  if (args.expectedMemberId !== undefined && args.expectedMemberId !== actor.memberId)
+    fail("receiver_identity_mismatch", "当前工具连接属于另一位成员。请使用接收器绑定的本成员凭证调用 REST；不要重配共享 MCP 或领取其他成员的消息。", 403);
+  if(name==='read_product_context')return readProductContext(repo,actor,args,TOOLS);
+  if(name==='group_memory')return groupMemoryTool(repo,actor,args);
+  if(name==='search_memory')return recallMemory(repo,actor,args,env.MEMORY);
+  if(MEMORY_TOOLS.some(t=>t.name===name))return memoryTool(repo,actor,name,args,identity);
+  if(name==='channel_resources')return channelResources(repo,actor,args);
+  if(name==='github')return connectorTool(repo,actor,args,env);
+  if(name==='connector')return mcpConnectorTool(repo,actor,args,env);
+  if(name==='vault')return vaultTool(repo,identity,actor,args,env);
+  if(SKILL_TOOLS.some(t=>t.name===name))return skillTool(repo,actor,name,args);
+  if(name==='manage_workspace')return manageWorkspace(repo,identity,actor,args,env);
+  if (SHARED_TOOLS.some(t=>t.name===name)) return sharedTool(repo,identity,actor,name,args,env);
+  if (name === 'post_message' && typeof args.body === 'string' && args.body.startsWith(SHARED_TOOL_ENVELOPE)) {
+    let envelope;try{envelope=JSON.parse(args.body.slice(SHARED_TOOL_ENVELOPE.length));}catch{fail('invalid_tool_envelope','工具请求无效');}
+    if(['channel_resources','read_product_context','resolve_delivery','manage_workspace','github','connector','vault','search_memory','group_memory',...MEMORY_TOOLS.map(t=>t.name),...SKILL_TOOLS.map(t=>t.name)].includes(envelope.name)){
+      const definition=TOOLS.find(t=>t.name===envelope.name),a=envelope.arguments;
+      if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!Object.hasOwn(definition.inputSchema.properties,k)))fail('invalid_tool_envelope','工具参数无效');
+      if(envelope.name!=='manage_workspace'&&a.channelId!==args.channelId)fail('forbidden','请使用当前聊天的工具范围',403);
+      return callTool(repo,identity,actor,envelope.name,{...a,requestId:args.requestId},env,options);
+    }
+    return sharedToolEnvelope(repo,identity,actor,args,env);
+  }
+  if (CHANNEL_TOOLS.some(t=>t.name===name)) return conversationTool(repo,identity,actor,name,args);
+  if (name === "setup_connection") return selfConnection(repo, identity, actor, args, env.ADMIN_KEY);
+  if (name === "report_setup_status") return reportSetup(repo, actor, args);
+  if (name === "check_connection") return selfCheck(repo, identity, actor, args);
+  if (name === "receive_messages") return receiveMessages(repo, identity, actor, args, {...options,tools:TOOLS});
+  // Stable write-tool transport for hosts caching their MCP catalog. Both
+  // entries use the same inbox implementation and member-scoped authorization.
+  if (name === "claim_work" && (args.stepId === "inbox" || args.stepId?.startsWith("inbox:after:")))
+    return receiveMessages(repo, identity, actor, {
+      requestId: args.requestId,
+      ...(args.channelId?{channelId:args.channelId}:{}),
+      ...(args.expectedSessionId?{expectedSessionId:args.expectedSessionId}:{}),
+      ...(args.contextMode?{contextMode:args.contextMode}:{}),
+      ...(args.stepId === "inbox" ? {} : { afterTurnId: args.stepId.slice(12), waitSeconds: MAX_MESSAGE_WAIT_SECONDS }),
+    }, {...options,tools:TOOLS});
   if (name === "list_work")
-    return { work: await workForMember(repo, identity, actor.memberId) };
+    return { work: [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)] };
+  // Preserve approved legacy tool semantics while platforms refresh their tool
+  // lists. The response explicitly identifies a conversation delivery. No run,
+  // formal task, document, fabricated speaker or silent tool-scope expansion.
+  if (name === "claim_work" && args.stepId?.startsWith("turn_")) {
+    const claim=await claimConversation(repo,identity,actor,args);
+    return withConversationContext(repo, identity, actor, claim,{tools:TOOLS});
+  }
+  if (["submit_work","report_progress"].includes(name) && args.attemptId?.startsWith("turn_")) {
+    const turn=await repo.get("channel_turn",args.attemptId);
+    if(turn.memberId!==actor.memberId||turn.lease!==args.lease||turn.status!=="active") fail("invalid_lease","通知领取已失效",409);
+    if(name==="submit_work")return conversationCommand(repo,identity,actor,{type:"channel.post",requestId:args.requestId,channelId:turn.scopeId,turnId:turn.id,body:args.items?.map(i=>i.body).join("\n\n")});
+    return repo.transact(args.requestId,{...args,actor},async tx=>{const current=await tx.get("channel_turn",turn.id);if(current.status!=="active")fail("invalid_lease","通知已结束",409);return tx.put("channel_turn",{...current,progress:required(args.message,"进度",2000),expiresAt:new Date(Date.now()+30*60000).toISOString()});});
+  }
   if (name === "read_file") {
+    // Existing native sessions may retain their original catalog. Preserve the
+    // read-only contract and the same group authorization for shared resources.
+    const shared=String(args.fileId||'').match(/^(shared_file_[a-z0-9]+)(?::v([1-9][0-9]*))?$/);
+    if(shared)return fileBytes(repo,actor,{resourceId:shared[1],...(shared[2]?{version:Number(shared[2])}:{}),offset:args.offset},env);
     const file = await repo.get("file", args.fileId),
       offset = args.offset || 0;
     if (!Number.isInteger(offset) || offset < 0 || offset >= file.size)
@@ -344,7 +479,7 @@ function openapi(origin) {
     ),
   };
 }
-async function mcp(repo, identity, actor, request, env) {
+async function mcp(repo, identity, actor, request, env, kick = () => {}) {
   if (!actor.memberId) fail("member_required", "插件使用成员授权", 403);
   if (request.method === "GET" || request.method === "DELETE")
     return new Response(null, { status: 405, headers: { Allow: "POST" } });
@@ -397,7 +532,7 @@ async function mcp(repo, identity, actor, request, env) {
         tools: TOOLS.map((t) => ({
           ...t,
           annotations: {
-            readOnlyHint: ["list_work", "read_document"].includes(t.name),
+            readOnlyHint: ["read_product_context", "list_work", "read_document", "read_channel", "read_doc", "read_file", "shared_files", "read_shared_file", "read_handoff", "file_upload_status"].includes(t.name),
             destructiveHint: false,
             idempotentHint: true,
             openWorldHint: false,
@@ -413,7 +548,9 @@ async function mcp(repo, identity, actor, request, env) {
           rpc.params?.name,
           rpc.params?.arguments || {},
           env,
+          { signal: request.signal },
         );
+        if(!quietSharedTools.has(rpc.params?.name))kick();
         result = {
           content: [{ type: "text", text: JSON.stringify(value) }],
           structuredContent: value,
@@ -432,7 +569,7 @@ async function mcp(repo, identity, actor, request, env) {
           ],
         };
       }
-    } else if (rpc.method.startsWith("events/"))
+    } else if (rpc.method.startsWith("events/")) {
       result = await eventMethod(
         repo,
         actor.memberId,
@@ -440,7 +577,8 @@ async function mcp(repo, identity, actor, request, env) {
         rpc.params || {},
         env.ADMIN_KEY,
       );
-    else
+      kick();
+    } else
       return json({
         jsonrpc: "2.0",
         id: rpc.id,
@@ -465,7 +603,29 @@ async function mcp(repo, identity, actor, request, env) {
 export async function v2Fetch(request, env, ctx, identity) {
   const url = new URL(request.url),
     repo = new Repository(env.DB, env.WORKSPACE_ID);
+  env={...env,CONNECTOR_ORIGIN:url.origin};
+  if(url.pathname==='/v2/connectors/host/guide')return json({node:'Node.js 22.19 或更新版本，建议 Node.js 24；旧环境为工具安装独立 Node，不改系统 PATH',download:url.origin+'/v2/connectors/host/download',sha256:toolHostSHA,install:'下载程序到独立目录，核对 SHA-256，保存为 tool-host.cjs。将接入说明中的 JSON 从标准输入传入 node tool-host.cjs setup。setup 会保存本运行端的私有授权，安装自己的后台服务；不读取 Agent 登录。若系统不支持自动启动，会明确报告并给出已安装的 host.cjs run 命令。'});
+  if(url.pathname==='/v2/connectors/host/download')return new Response(Uint8Array.from(atob(toolHostBytes),c=>c.charCodeAt(0)),{headers:{'Content-Type':'application/javascript','Content-Disposition':'attachment; filename="tool-host.cjs"','Cache-Control':'no-store','X-Content-SHA256':toolHostSHA}});
+  if(url.pathname==='/v2/connectors/host'&&request.method==='POST')return json(await connectorHostRequest(repo,identity,await readJSON(request,2000000),request.headers.get('authorization')?.replace(/^Bearer /i,''),env));
+  if(url.pathname==='/v2/connectors/oauth/client.json')return json({client_id:url.href,client_name:'DuolaWork',client_uri:url.origin,redirect_uris:[url.origin+'/v2/connectors/oauth/callback'],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'});
+  if(url.pathname==='/v2/connectors/oauth/callback'){
+    let text='授权已保存，请回到 DuolaWork 查看连接状态。';try{const c=await finishConnectorOAuth(repo,env,url.searchParams);const result=await connectorSettings(repo,identity,{owner:true},{action:'check',connectionId:c.id},env);if(result.issue)text='授权已保存，服务暂未就绪。请回到连接器查看原因并重试。';}catch(e){text=e.code?e.message:'授权未完成，请回到连接器重试。';}
+    return new Response('<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DuolaWork 连接器</title><body style="font-family:system-ui;padding:48px"><h1>DuolaWork</h1><p>'+text.replace(/[<>&"]/g,'')+'</p><p>可以关闭此页面。</p></body></html>',{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"}});
+  }
+  repo.memoryService=env.MEMORY;repo.persistMemoryForget=env.PERSIST_MEMORY_FORGET;
+  if(url.pathname==='/v2/connectors/claude/guide'&&request.method==='GET')return json(claudeRecipe(url.origin,claudeSHA));
+  if(url.pathname==='/v2/connectors/native/guide'&&request.method==='GET')return json(runtimeRecipe(url.origin,runtimeSHA));
+  if(url.pathname==='/v2/connectors/native/download'&&request.method==='GET'){
+    if(url.searchParams.get('version')!==runtimeSHA)return json({message:'连接器已更新，请重新复制接入说明'},409);
+    return new Response(Uint8Array.from(atob(runtimeArchive),c=>c.charCodeAt(0)),{headers:{'Content-Type':'application/gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':runtimeSHA}});
+  }
+  if(url.pathname==='/v2/connectors/claude/download'&&request.method==='GET'){
+    if(url.searchParams.has('version')&&url.searchParams.get('version')!==claudeSHA)return json({message:'连接器已更新，请重新生成安装步骤'},409);
+    return new Response(Uint8Array.from(atob(claudeDownload),c=>c.charCodeAt(0)),{encodeBody:'manual',headers:{'Content-Type':'application/javascript','Content-Encoding':'gzip','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Content-SHA256':claudeSHA}});
+  }
   if (url.pathname === "/v2/openapi.json") return json(openapi(url.origin));
+  const onboarding = await publicOnboarding(request, repo, identity, env, url.origin);
+  if (onboarding) return onboarding;
   if (url.pathname === "/v2/oauth/callback")
     return json(
       await finishComputerAuth(
@@ -506,14 +666,79 @@ export async function v2Fetch(request, env, ctx, identity) {
         ),
       ),
     );
+  if(url.pathname==='/v2/vault'){
+   if(!['GET','POST'].includes(request.method))fail('method_not_allowed','此接口仅支持 GET / POST',405);
+   const args=request.method==='GET'?{action:'list',...Object.fromEntries(url.searchParams)}:await readJSON(request,8000000);
+   if(request.method==='GET'&&!['list','get','activity'].includes(args.action))fail('method_not_allowed','查看凭证值、备份与变更必须使用 POST',405);
+   return json(await vaultSettings(repo,identity,actor,args,env));
+  }
+  if(url.pathname==='/v2/self/vault/redeem'&&request.method==='POST')return json(await redeemVaultLease(repo,actor,await readJSON(request),env));
+  if(url.pathname==='/v2/changes'&&request.method==='GET'){
+    const page=await changes(repo,actor,{after:url.searchParams.get('after'),signal:request.signal,
+    waitMs:url.searchParams.has('waitMs')?Number(url.searchParams.get('waitMs')):8000,
+    authorize:async()=>resolveActor(request,env,env.loadIdentity?await env.loadIdentity():identity)});
+    if(actor.memberId&&(page.reset||page.changes.some(c=>['channel_turn','step','execution_binding','connection','channel'].includes(c.kind)))){
+      const freshIdentity=env.loadIdentity?await env.loadIdentity():identity;
+      const freshActor=await resolveActor(request,env,freshIdentity);
+      const [chat,work]=await Promise.all([conversationWork(repo,freshIdentity,freshActor.memberId,{delivery:true}),workForMember(repo,freshIdentity,freshActor.memberId)]);
+      page.inbox={work:[...chat,...work]};
+    }
+    return json(page);
+  }
+  if(url.pathname==='/v2/connect/claude'&&request.method==='POST'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    const {memberId}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.platformId==='claude-code');if(!m)fail('invalid_member','请选择 Claude Code 成员');
+    const pair=await issueAgentSkill(repo,identity,memberId,url.origin),alias='claude-'+memberId.slice(7),entry='"$HOME/.local/share/agent-hub-claude/connector.cjs"';
+    return json({pairingCode:pair.pairingCode,expiresAt:pair.expiresAt,sha256:claudeSHA,alias,
+      skill:claudeSkill({origin:url.origin,member:m,alias,pairingCode:pair.pairingCode}),
+      install:claudeRecipe(url.origin,claudeSHA).install,
+      pair:'node '+entry+' pair '+url.origin+' '+alias,start:'node '+entry+' start '+alias+' --resume'});
+  }
+  if(url.pathname==='/v2/connect/native'&&request.method==='POST'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    const {memberId,form}=await readJSON(request),m=identity.members.find(m=>m.id===memberId&&m.status!=='disabled');if(!m)fail('invalid_member','成员不可用');
+    const f=nativeForm(form,m.platformId);if(f.manager==='claude')fail('use_claude','Claude 使用官方 Channel 连接入口');
+    const pair=await issueAgentSkill(repo,identity,memberId,url.origin);
+    return json({skill:runtimeSkill({origin:url.origin,member:m,form,pairingCode:pair.pairingCode}),expiresAt:pair.expiresAt,form,sha256:runtimeSHA});
+  }
+  if(url.pathname==='/v2/self/runtime')return json(await runtimeSelf(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
+  if(url.pathname==='/v2/session-links'||url.pathname==='/v2/self/session-links')return json(await sessionLinks(repo,identity,actor,request.method==='POST'?await readJSON(request):Object.fromEntries(url.searchParams),request.method==='POST',url.origin));
+  if(url.pathname==='/v2/native-runtime')return json(await runtimeOwner(repo,identity,actor,request.method==='POST'?await readJSON(request):Object.fromEntries(url.searchParams),request.method==='POST',url.origin));
+  if(url.pathname==='/v2/self/native-sessions')return json(await remoteSessions(repo,identity,actor,request.method==='POST'?await readJSON(request):{},request.method==='POST'));
+  if(url.pathname==='/v2/native-sessions'){
+    if(!actor.owner)fail('forbidden','需要所有者身份',403);
+    if(request.method==='POST')return json(await assignRemoteSession(repo,identity,actor,await readJSON(request)));
+    const memberId=url.searchParams.get('memberId');
+    if(memberId)return json(await remoteSessions(repo,identity,actor,{memberId,commandId:url.searchParams.get('commandId')||undefined}));
+    const members=[];for(const m of identity.members.filter(m=>m.platformId==='claude-code'&&m.status!=='disabled')){const c=await repo.get('connection',m.id,false);if(c?.status!=='disconnected')members.push((await remoteSessions(repo,identity,actor,{memberId:m.id})).record);}
+    return json({members:[...members,...await remoteRuntimeMembers(repo,identity)]});
+  }
+  if(url.pathname==='/v2/self/execution-bindings'&&request.method==='POST')return json(await registerExecutionBindings(repo,identity,actor,await readJSON(request)));
+  if (url.pathname === "/v2/self/connection" && request.method === "POST") {
+    const result = await selfConnection(repo, identity, actor, await readJSON(request), env.ADMIN_KEY);
+    return json(result);
+  }
+  if (url.pathname === "/v2/self/check" && request.method === "POST") {
+    const result = await selfCheck(repo, identity, actor, await readJSON(request));
+    kick();
+    return json(result);
+  }
+  if(url.pathname==='/v2/self/conversation-state')return json(await conversationRuntime(repo,actor,request.method==='GET'?{action:'read',turnId:url.searchParams.get('turnId')}:await readJSON(request)));
+  if(url.pathname==='/v2/self/delivery'&&request.method==='POST')return json(await receiveDelivery(repo,actor,await readJSON(request)));
+  if(url.pathname==='/v2/self/inbox'&&request.method==='GET'){
+    if(!actor.memberId)fail('member_required','需要成员身份',403);
+    const [chat,work]=await Promise.all([conversationWork(repo,identity,actor.memberId,{delivery:true}),workForMember(repo,identity,actor.memberId)]);
+    return json({work:[...chat,...work]});
+  }
+  if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
+  if (url.pathname === "/v2/self/status" && request.method === "POST") return json(await reportSetup(repo, actor, await readJSON(request)));
   if (url.pathname === "/v2/mcp") {
-    const result = await mcp(repo, identity, actor, request, env);
-    if (request.method === "POST") kick();
+    const result = await mcp(repo, identity, actor, request, env, kick);
     return result;
   }
   if (url.pathname === "/v2/signal" && request.method === "GET") {
     if (!actor.memberId) fail("member_required", "需要成员身份", 403);
-    const work = await workForMember(repo, identity, actor.memberId);
+    const work = [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)];
     return json({
       hasWork: work.some((x) => x.status === "ready"),
       pending: work.filter((x) => x.status === "ready").length,
@@ -529,9 +754,21 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
       await readJSON(request),
       env,
+      { signal: request.signal },
     );
-    kick();
+    if(!quietSharedTools.has(url.pathname.slice(10)))kick();
     return json(result);
+  }
+  if (url.pathname === '/v2/shared' && request.method === 'POST') {
+    const input=await readJSON(request),result=await sharedCommand(repo,identity,actor,input,env);if(['finish','handoff','respond','delete','restore'].includes(input.action))kick();return json(result);
+  }
+  if (url.pathname === '/v2/shared' && request.method === 'GET') {
+    const args=Object.fromEntries(url.searchParams);if(args.version)args.version=Number(args.version);
+    if(args.uploadId)return json(await uploadStatus(repo,actor,args));
+    if(args.handoffId)return json(await readHandoff(repo,actor,args));
+    if(args.resourceId&&args.download==='1'){const response=await fileBytes(repo,actor,args,env,{download:true});if(response instanceof Response)return response;return json({error:'download_failed',message:'下载未完成'},500);}
+    if(args.resourceId)return json(await fileDetails(repo,actor,args));
+    return json(await listSharedFiles(repo,actor,args));
   }
   if (url.pathname === "/v2/files" && request.method === "POST") {
     let metadata;
@@ -563,6 +800,48 @@ export async function v2Fetch(request, env, ctx, identity) {
       url.pathname.slice(10),
     );
   if (!actor.owner) fail("forbidden", "管理操作需要用户身份", 403);
+  if (url.pathname === "/v2/connect/skill" && request.method === "POST")
+    return json(await issueAgentSkill(repo, identity, (await readJSON(request)).memberId, url.origin));
+  if (url.pathname === "/v2/connect/complete" && request.method === "POST") {
+    const result = await completeGuidedConnection(repo, identity, await readJSON(request), env.ADMIN_KEY);
+    kick();
+    return json(result);
+  }
+  if(url.pathname==="/v2/active-work"&&request.method==="GET"){
+    const r=await env.DB.prepare("SELECT COUNT(*) AS total FROM hub_v2_records WHERE workspace_id=? AND ((kind='channel_turn' AND status='active') OR (kind='run' AND status='running'))").bind(repo.workspaceId).first();
+    return json({active:r.total});
+  }
+  if(url.pathname==='/v2/channel-resources'){if(!['GET','POST'].includes(request.method))fail('method_not_allowed','请使用 GET 或 POST',405);return json(await channelResources(repo,actor,request.method==='GET'?{channelId:url.searchParams.get('channelId'),action:'list'}:await readJSON(request)));}
+  if(url.pathname==='/v2/skills'){
+    const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||(url.searchParams.has('skillId')?'read':'list')}:await readJSON(request);
+    if(request.method==='GET'&&!['read','list','catalog','activity'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    return json(await skillSettings(repo,identity,actor,args));
+  }
+  if(url.pathname==='/v2/skill-activity'&&request.method==='GET')return json(await skillTool(repo,actor,'skill_activity',Object.fromEntries(url.searchParams)));
+  if(url.pathname==='/v2/connectors'){
+    const args=request.method==='GET'?{...Object.fromEntries(url.searchParams),action:url.searchParams.get('action')||'list'}:await readJSON(request);
+    if(request.method==='GET'&&!['list','activity','catalog','hosts','tools','setup'].includes(args.action))fail('invalid_method','此操作需要提交请求',405);
+    return json(await connectorSettings(repo,identity,actor,args,env));
+  }
+  if(url.pathname==='/v2/memory-status')return json(env.MEMORY?await env.MEMORY.status():{configured:false,state:'unconfigured'});
+  if(url.pathname==='/v2/response-metrics'&&request.method==='GET')return json(await responseMetrics(repo,actor,{channelId:url.searchParams.get('channelId')}));
+  if(url.pathname==='/v2/group-memory'&&request.method==='GET')return json(await readGroupMemory(repo,actor,Object.fromEntries(url.searchParams)));
+  if(url.pathname==='/v2/group-memory'&&request.method==='POST')return json(await groupMemoryTool(repo,actor,await readJSON(request)));
+  if(url.pathname==='/v2/memory-forget'&&request.method==='POST')return json(await memoryTool(repo,actor,'forget_memory',await readJSON(request),identity));
+  if(url.pathname==='/v2/memory-search'&&request.method==='GET')return json(await recallMemory(repo,actor,Object.fromEntries(url.searchParams),env.MEMORY));
+  if(url.pathname==='/v2/secretary'){const result=request.method==='GET'?await secretaryOverview(repo,identity,actor):await secretaryCommand(repo,identity,actor,await readJSON(request));if(request.method!=='GET')kick();return json(result);}
+  if(url.pathname==='/v2/management')return json(request.method==='GET'?await workspaceOverview(repo,identity,actor):await managementSettings(repo,identity,actor,await readJSON(request)));
+  if(url.pathname==='/v2/channel-unread'&&request.method==='POST')return json(await channelUnread(repo,(await readJSON(request)).cursors));
+  if(url.pathname==="/v2/channels"&&request.method==="GET") return json({items:await listChannels(repo,{deleted:url.searchParams.get('deleted')==='1'})});
+  if(url.pathname==="/v2/channel"&&request.method==="GET")return json(await readChannel(repo,identity,actor,{channelId:url.searchParams.get("id"),view:url.searchParams.get('view'),...(url.searchParams.has("before")?{before:Number(url.searchParams.get("before"))}:{})}));
+  if(url.pathname==='/v2/meeting'&&request.method==='GET') return json(await meetingDetail(repo,identity,actor,{meetingId:url.searchParams.get('id'),cursor:url.searchParams.get('cursor')||undefined}));
+  if(url.pathname==='/v2/meetings'&&request.method==='GET'){
+    const channel=await repo.get('channel',url.searchParams.get('channelId'));
+    const rows=await repo.list('channel_meeting',{scope:channel.id,order:'recent',limit:101,...(url.searchParams.get('cursor')?{cursor:decodeCursor(url.searchParams.get('cursor'))}:{})});
+    return json({items:rows.slice(0,100),nextCursor:rows.length>100?encodeCursor(rows[99]):null});
+  }
+  if(url.pathname==="/v2/space-object"&&request.method==="GET")return json(await readSpaceObject(repo,actor,Object.fromEntries(url.searchParams)));
+  if(url.pathname==="/v2/channel-doc"&&request.method==="GET")return json(await conversationTool(repo,identity,actor,"read_doc",{documentId:url.searchParams.get("id")}));
   if (url.pathname === "/v2/pairing" && request.method === "POST")
     return json(
       await startPairing(
@@ -581,6 +860,7 @@ export async function v2Fetch(request, env, ctx, identity) {
           ...m,
           ownerId: m.ownerId || env.WORKSPACE_ID,
         })),
+      formerMembers: identity.members.filter(m => m.status === "disabled").map(({id,name}) => ({id,name})),
       accounts: identity.accounts.map(({ id, name, platformId, status }) => ({
         id,
         name,
@@ -609,16 +889,21 @@ export async function v2Fetch(request, env, ctx, identity) {
               ?.updatedAt || null,
           probe: (await repo.list("run", { scope: `probe_${c.id}` }))
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .slice(0, 1).map(({ id, status }) => ({ id, status }))[0] || null,
+            .slice(0, 1).map(({ id, status, probeError }) => ({ id, status, message: probeError || null }))[0] || null,
         })),
       ),
     });
   if (url.pathname === "/v2/catalog")
-    return json({ recipes: RECIPES, platforms: PLATFORMS, version: 2 });
+    return json({ recipes: RECIPES, platforms: [
+      ...PLATFORMS,
+      ...AGENT_TARGETS.filter(target => !PLATFORMS.some(p => p.id === target.id))
+        .map(target => ({ ...target, auth: "接入 Skill；逐家真实验证后才显示接通", transport: "member-selected" })),
+    ].map(platform => ({ ...platform, registered: identity.platforms?.some(p => p.id === platform.id) || false })), version: 3 });
   if (url.pathname === "/v2/connections" && request.method === "GET")
     return json({
       connections: (await repo.list("connection")).map(publicConnection),
     });
+  if(url.pathname==='/v2/product-context'&&request.method==='GET')return json(await readProductContext(repo,actor,{channelId:url.searchParams.get('channelId'),memberId:url.searchParams.get('memberId'),toolNames:url.searchParams.getAll('toolName')},TOOLS));
   if (url.pathname === "/v2/connections" && request.method === "POST")
     return json(
       await configureConnection(
@@ -652,11 +937,12 @@ export async function v2Fetch(request, env, ctx, identity) {
       await respondComputer(repo, identity, await readJSON(request), env),
     );
   if (url.pathname === "/v2/commands" && request.method === "POST") {
-    const result = await command(
+    const input=await readJSON(request);
+    const result = await (input.type?.startsWith("channel.")?conversationCommand:command)(
       repo,
       identity,
       actor,
-      await readJSON(request),
+      input,
     );
     kick();
     return json({ result });

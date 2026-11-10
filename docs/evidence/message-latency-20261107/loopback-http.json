@@ -1,0 +1,711 @@
+{
+  "scope": "isolated Node HTTP/SQLite loopback, connector private-file persistence and server ACK; no provider/model; not production WAN SLA",
+  "count": 100,
+  "errors": [],
+  "p95SaveToReceiveAckMs": 12,
+  "p95RoundTripMs": 13.352666999999883,
+  "maxSaveToReceiveAckMs": 15,
+  "samples": [
+    {
+      "i": 0,
+      "messageId": "chat_32908825561b4d269bf9849bf5dcde46",
+      "turnId": "turn_chat_32908825561b4d269bf9849bf5dcde46_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 18.596749999999986,
+      "saveToReceiveAckMs": 15
+    },
+    {
+      "i": 1,
+      "messageId": "chat_d81c690b6b554c6e9378a11a322dc6bb",
+      "turnId": "turn_chat_d81c690b6b554c6e9378a11a322dc6bb_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.503832999999986,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 2,
+      "messageId": "chat_999588d9679b486f8183fc9d8c381fdf",
+      "turnId": "turn_chat_999588d9679b486f8183fc9d8c381fdf_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.846042000000011,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 3,
+      "messageId": "chat_27b1d56f53174dc995fa93f6f3993c81",
+      "turnId": "turn_chat_27b1d56f53174dc995fa93f6f3993c81_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.470249999999993,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 4,
+      "messageId": "chat_ea81e6d24a77423fb2957d7d101a7937",
+      "turnId": "turn_chat_ea81e6d24a77423fb2957d7d101a7937_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.587333000000001,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 5,
+      "messageId": "chat_54d2d54231804d05a5ccd9bcdfbd65ca",
+      "turnId": "turn_chat_54d2d54231804d05a5ccd9bcdfbd65ca_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.08141599999999,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 6,
+      "messageId": "chat_f65f00d969e64c0483e21a6c0fb929b8",
+      "turnId": "turn_chat_f65f00d969e64c0483e21a6c0fb929b8_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.884625000000028,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 7,
+      "messageId": "chat_48256a4aad5c459b8b5c099f196474f1",
+      "turnId": "turn_chat_48256a4aad5c459b8b5c099f196474f1_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.353875000000016,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 8,
+      "messageId": "chat_31479b257fc54c2f8d19d72202f46980",
+      "turnId": "turn_chat_31479b257fc54c2f8d19d72202f46980_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.94987500000002,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 9,
+      "messageId": "chat_35053cdf9a5a4627ba18b2cbc2f2724b",
+      "turnId": "turn_chat_35053cdf9a5a4627ba18b2cbc2f2724b_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.654750000000035,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 10,
+      "messageId": "chat_55f2a9d6ba994f929d40008c0bbdfdcf",
+      "turnId": "turn_chat_55f2a9d6ba994f929d40008c0bbdfdcf_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.355542000000014,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 11,
+      "messageId": "chat_e09eea4842cb4e43851ab45465c80c51",
+      "turnId": "turn_chat_e09eea4842cb4e43851ab45465c80c51_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.263540999999975,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 12,
+      "messageId": "chat_9859853546ea4d8ba4da99da186023c9",
+      "turnId": "turn_chat_9859853546ea4d8ba4da99da186023c9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.445290999999997,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 13,
+      "messageId": "chat_d5aaa635d9384557bb2951370fd2b864",
+      "turnId": "turn_chat_d5aaa635d9384557bb2951370fd2b864_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.713917000000038,
+      "saveToReceiveAckMs": 9
+    },
+    {
+      "i": 14,
+      "messageId": "chat_654aac8626cf4f50b396ac33e467f42b",
+      "turnId": "turn_chat_654aac8626cf4f50b396ac33e467f42b_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.093208000000004,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 15,
+      "messageId": "chat_b0248fc099a04a979f4c6d006769b9cb",
+      "turnId": "turn_chat_b0248fc099a04a979f4c6d006769b9cb_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.787750000000017,
+      "saveToReceiveAckMs": 9
+    },
+    {
+      "i": 16,
+      "messageId": "chat_b6f7d962998d4208a2b0e086f9137db7",
+      "turnId": "turn_chat_b6f7d962998d4208a2b0e086f9137db7_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.421749999999975,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 17,
+      "messageId": "chat_ed9c48d03910468a8567c5f9c540f0da",
+      "turnId": "turn_chat_ed9c48d03910468a8567c5f9c540f0da_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.635582999999997,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 18,
+      "messageId": "chat_f9e2f0dcccf64cc7994c86c0d94eb37b",
+      "turnId": "turn_chat_f9e2f0dcccf64cc7994c86c0d94eb37b_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.956208000000004,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 19,
+      "messageId": "chat_28cbc9bf2aea494c893f0ee88eacb8db",
+      "turnId": "turn_chat_28cbc9bf2aea494c893f0ee88eacb8db_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.484292000000039,
+      "saveToReceiveAckMs": 9
+    },
+    {
+      "i": 20,
+      "messageId": "chat_5d86592c05014c4f9550858e88f57e94",
+      "turnId": "turn_chat_5d86592c05014c4f9550858e88f57e94_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.706000000000017,
+      "saveToReceiveAckMs": 9
+    },
+    {
+      "i": 21,
+      "messageId": "chat_e7225ded2c3c448db050d620dd319bdb",
+      "turnId": "turn_chat_e7225ded2c3c448db050d620dd319bdb_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.051165999999967,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 22,
+      "messageId": "chat_40af8ee3114f4c908116299d6eca5ec2",
+      "turnId": "turn_chat_40af8ee3114f4c908116299d6eca5ec2_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.269167000000039,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 23,
+      "messageId": "chat_0898a3a8cc834247b51905c25e31a473",
+      "turnId": "turn_chat_0898a3a8cc834247b51905c25e31a473_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.59949999999992,
+      "saveToReceiveAckMs": 9
+    },
+    {
+      "i": 24,
+      "messageId": "chat_dec765f301a34f239659b343ddddf749",
+      "turnId": "turn_chat_dec765f301a34f239659b343ddddf749_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.242624999999975,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 25,
+      "messageId": "chat_68090ab3ae1d4c4b9f472ab434cab6d0",
+      "turnId": "turn_chat_68090ab3ae1d4c4b9f472ab434cab6d0_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.319458000000054,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 26,
+      "messageId": "chat_189f6dd3975e49658045f17eab857983",
+      "turnId": "turn_chat_189f6dd3975e49658045f17eab857983_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.300292000000013,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 27,
+      "messageId": "chat_75e33108f5f4428caee34f2b827c68be",
+      "turnId": "turn_chat_75e33108f5f4428caee34f2b827c68be_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.644499999999994,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 28,
+      "messageId": "chat_0b790acad81847b690ab19a1eb416844",
+      "turnId": "turn_chat_0b790acad81847b690ab19a1eb416844_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.531582999999955,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 29,
+      "messageId": "chat_99f8687f7444469bb69d9896ecda1971",
+      "turnId": "turn_chat_99f8687f7444469bb69d9896ecda1971_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.698917000000051,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 30,
+      "messageId": "chat_62e37a2283a44e2282fdcbea72870280",
+      "turnId": "turn_chat_62e37a2283a44e2282fdcbea72870280_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.99254099999996,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 31,
+      "messageId": "chat_e67e997a767e4fc5a216772f48177a14",
+      "turnId": "turn_chat_e67e997a767e4fc5a216772f48177a14_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.197000000000003,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 32,
+      "messageId": "chat_94447482dfae45708d37051bdf35950d",
+      "turnId": "turn_chat_94447482dfae45708d37051bdf35950d_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.581916999999976,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 33,
+      "messageId": "chat_5f7271de7cb3411e823456fc67989770",
+      "turnId": "turn_chat_5f7271de7cb3411e823456fc67989770_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.723082999999974,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 34,
+      "messageId": "chat_a24792f9f34040f7895da6d5fd616cfc",
+      "turnId": "turn_chat_a24792f9f34040f7895da6d5fd616cfc_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.164709000000016,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 35,
+      "messageId": "chat_ea830db5c1d3412c8ef42f1638f3e7a7",
+      "turnId": "turn_chat_ea830db5c1d3412c8ef42f1638f3e7a7_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.298749999999927,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 36,
+      "messageId": "chat_0f5fa3f31b304280998158cd42795a5f",
+      "turnId": "turn_chat_0f5fa3f31b304280998158cd42795a5f_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.344124999999963,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 37,
+      "messageId": "chat_f1c97dc4460a4fc6beaec4a3032edf2d",
+      "turnId": "turn_chat_f1c97dc4460a4fc6beaec4a3032edf2d_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.073000000000093,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 38,
+      "messageId": "chat_f348d2eb646042e9b43928f66c05d388",
+      "turnId": "turn_chat_f348d2eb646042e9b43928f66c05d388_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.412583999999924,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 39,
+      "messageId": "chat_3af3044be0674a0e9c77fe8c9bfeb22d",
+      "turnId": "turn_chat_3af3044be0674a0e9c77fe8c9bfeb22d_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.900582999999983,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 40,
+      "messageId": "chat_8b8b781d7963436ab84e2cfa3016a9eb",
+      "turnId": "turn_chat_8b8b781d7963436ab84e2cfa3016a9eb_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.066542000000027,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 41,
+      "messageId": "chat_eaf8a65787874b428a2b2aaf6d79e9ad",
+      "turnId": "turn_chat_eaf8a65787874b428a2b2aaf6d79e9ad_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.039625000000001,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 42,
+      "messageId": "chat_3fd612e3030249cdaeb1ab9af785f0cf",
+      "turnId": "turn_chat_3fd612e3030249cdaeb1ab9af785f0cf_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.466958999999974,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 43,
+      "messageId": "chat_9fe00d4777b148bdab23979e5cc33df9",
+      "turnId": "turn_chat_9fe00d4777b148bdab23979e5cc33df9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.241959000000065,
+      "saveToReceiveAckMs": 13
+    },
+    {
+      "i": 44,
+      "messageId": "chat_1a843e93ab5542669cf64f6f150ed3e4",
+      "turnId": "turn_chat_1a843e93ab5542669cf64f6f150ed3e4_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.494832999999971,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 45,
+      "messageId": "chat_a6988668b66b42f6a31c01ab45774eac",
+      "turnId": "turn_chat_a6988668b66b42f6a31c01ab45774eac_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.698750000000018,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 46,
+      "messageId": "chat_982e8c9fff4242ec9808cfdc4a796e69",
+      "turnId": "turn_chat_982e8c9fff4242ec9808cfdc4a796e69_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.696791000000076,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 47,
+      "messageId": "chat_e470575ff963415f91dd504bf8e5300f",
+      "turnId": "turn_chat_e470575ff963415f91dd504bf8e5300f_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.86379199999999,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 48,
+      "messageId": "chat_e8e186cb71aa4b7a9158574ec5067851",
+      "turnId": "turn_chat_e8e186cb71aa4b7a9158574ec5067851_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.15316699999994,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 49,
+      "messageId": "chat_831d966a9454461da05a831547e850d0",
+      "turnId": "turn_chat_831d966a9454461da05a831547e850d0_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.194416000000047,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 50,
+      "messageId": "chat_d7fa6ccd3ef34ee781f1bc271315fa89",
+      "turnId": "turn_chat_d7fa6ccd3ef34ee781f1bc271315fa89_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.301124999999956,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 51,
+      "messageId": "chat_08a95faaa9bd4d4eb1b8b085e3eb9100",
+      "turnId": "turn_chat_08a95faaa9bd4d4eb1b8b085e3eb9100_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.178666999999905,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 52,
+      "messageId": "chat_deec9410cafb45fba14e41b725483a7a",
+      "turnId": "turn_chat_deec9410cafb45fba14e41b725483a7a_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.328375000000051,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 53,
+      "messageId": "chat_e2d5c3565d984257b466ee856045b898",
+      "turnId": "turn_chat_e2d5c3565d984257b466ee856045b898_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.892833999999993,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 54,
+      "messageId": "chat_a830fcd422c145e99d3ee012087a4d50",
+      "turnId": "turn_chat_a830fcd422c145e99d3ee012087a4d50_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.081625000000031,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 55,
+      "messageId": "chat_efdd7eb90031482989c56435747dab53",
+      "turnId": "turn_chat_efdd7eb90031482989c56435747dab53_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.683790999999928,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 56,
+      "messageId": "chat_7c81ff3457bc495e8a5958c490d0161f",
+      "turnId": "turn_chat_7c81ff3457bc495e8a5958c490d0161f_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.115749999999935,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 57,
+      "messageId": "chat_c2ef4e88ba5043e68f5aa9097dfebb28",
+      "turnId": "turn_chat_c2ef4e88ba5043e68f5aa9097dfebb28_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.652499999999918,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 58,
+      "messageId": "chat_49e05a433c7545d1919b91f4efcf950d",
+      "turnId": "turn_chat_49e05a433c7545d1919b91f4efcf950d_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.610165999999936,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 59,
+      "messageId": "chat_abea1dbe01d748df8ab57bf21303e8e6",
+      "turnId": "turn_chat_abea1dbe01d748df8ab57bf21303e8e6_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.973208999999997,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 60,
+      "messageId": "chat_53dd5aa94f2541ff9ac925b1ee2449d8",
+      "turnId": "turn_chat_53dd5aa94f2541ff9ac925b1ee2449d8_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.498458000000028,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 61,
+      "messageId": "chat_db26907b03374885a794fd4f7d303a09",
+      "turnId": "turn_chat_db26907b03374885a794fd4f7d303a09_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.122749999999996,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 62,
+      "messageId": "chat_b4e9938257c443999225cfd73f332da1",
+      "turnId": "turn_chat_b4e9938257c443999225cfd73f332da1_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.10550000000012,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 63,
+      "messageId": "chat_64011710dbb54b6d90dae799b2c21be8",
+      "turnId": "turn_chat_64011710dbb54b6d90dae799b2c21be8_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.231874999999945,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 64,
+      "messageId": "chat_965d557b4db64e78bfed343c68fa55f9",
+      "turnId": "turn_chat_965d557b4db64e78bfed343c68fa55f9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.807999999999993,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 65,
+      "messageId": "chat_062c37f249f1487c90d4336aedee3a2e",
+      "turnId": "turn_chat_062c37f249f1487c90d4336aedee3a2e_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 14.857416999999941,
+      "saveToReceiveAckMs": 13
+    },
+    {
+      "i": 66,
+      "messageId": "chat_7f6fdbba933045de8ffd34f1215b5b83",
+      "turnId": "turn_chat_7f6fdbba933045de8ffd34f1215b5b83_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.286167000000205,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 67,
+      "messageId": "chat_8b27cdb7d30b48649df5eaf0ddfc8e69",
+      "turnId": "turn_chat_8b27cdb7d30b48649df5eaf0ddfc8e69_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.497957999999926,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 68,
+      "messageId": "chat_94319b1b91334cfcb1d898788e777370",
+      "turnId": "turn_chat_94319b1b91334cfcb1d898788e777370_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.295583000000079,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 69,
+      "messageId": "chat_e27fe9af1f384a95abdc93fd8769e3f9",
+      "turnId": "turn_chat_e27fe9af1f384a95abdc93fd8769e3f9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.672708000000057,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 70,
+      "messageId": "chat_1a644dc802ff437cbf66515ad8323b48",
+      "turnId": "turn_chat_1a644dc802ff437cbf66515ad8323b48_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.620333999999957,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 71,
+      "messageId": "chat_76702c08ed604ab6a63f205be417dad7",
+      "turnId": "turn_chat_76702c08ed604ab6a63f205be417dad7_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.81229200000007,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 72,
+      "messageId": "chat_8e2956ad9f4143819bb89c8f869366bd",
+      "turnId": "turn_chat_8e2956ad9f4143819bb89c8f869366bd_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.220416999999998,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 73,
+      "messageId": "chat_73a6b67d26274ccabcd5bde3f6d2521f",
+      "turnId": "turn_chat_73a6b67d26274ccabcd5bde3f6d2521f_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.333374999999933,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 74,
+      "messageId": "chat_f377e13321b54e329b1d8272d1baa83c",
+      "turnId": "turn_chat_f377e13321b54e329b1d8272d1baa83c_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.54320900000016,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 75,
+      "messageId": "chat_66cfbd3f7e7f464a9e0caff4cb81e2c9",
+      "turnId": "turn_chat_66cfbd3f7e7f464a9e0caff4cb81e2c9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.311374999999998,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 76,
+      "messageId": "chat_935ea92bd0294aca86ac1eccc8af28e8",
+      "turnId": "turn_chat_935ea92bd0294aca86ac1eccc8af28e8_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.495458999999983,
+      "saveToReceiveAckMs": 13
+    },
+    {
+      "i": 77,
+      "messageId": "chat_be87b6d6d3724363949a09422b20b348",
+      "turnId": "turn_chat_be87b6d6d3724363949a09422b20b348_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.73133299999995,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 78,
+      "messageId": "chat_e46b016bca0f4d6ba0677ac5d4ea70fe",
+      "turnId": "turn_chat_e46b016bca0f4d6ba0677ac5d4ea70fe_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.380833999999822,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 79,
+      "messageId": "chat_4decf9561960494a99fa1f56095e842b",
+      "turnId": "turn_chat_4decf9561960494a99fa1f56095e842b_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.159833000000162,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 80,
+      "messageId": "chat_846d9a60a4ad47fb93b4e3d929176ff6",
+      "turnId": "turn_chat_846d9a60a4ad47fb93b4e3d929176ff6_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.730416999999989,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 81,
+      "messageId": "chat_a99d9d4ccfff4efeb4e8239f29b2bc12",
+      "turnId": "turn_chat_a99d9d4ccfff4efeb4e8239f29b2bc12_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.148957999999993,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 82,
+      "messageId": "chat_08d862f8c5b843da9dfd6fa091a40292",
+      "turnId": "turn_chat_08d862f8c5b843da9dfd6fa091a40292_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.985957999999982,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 83,
+      "messageId": "chat_76b4dccaa16f4e2fb929e3a4e8832d02",
+      "turnId": "turn_chat_76b4dccaa16f4e2fb929e3a4e8832d02_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.815875000000005,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 84,
+      "messageId": "chat_8f43519ea27442bc8d7566df5fd0c9cd",
+      "turnId": "turn_chat_8f43519ea27442bc8d7566df5fd0c9cd_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.024040999999897,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 85,
+      "messageId": "chat_a83df9384bca4c93bd3c4f4b9ccbf4aa",
+      "turnId": "turn_chat_a83df9384bca4c93bd3c4f4b9ccbf4aa_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 12.992250000000013,
+      "saveToReceiveAckMs": 12
+    },
+    {
+      "i": 86,
+      "messageId": "chat_46c5b7ff17684c8bb5ede55d853ad401",
+      "turnId": "turn_chat_46c5b7ff17684c8bb5ede55d853ad401_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 13.352666999999883,
+      "saveToReceiveAckMs": 13
+    },
+    {
+      "i": 87,
+      "messageId": "chat_5cd169c84be74163816b85e1069b7dbb",
+      "turnId": "turn_chat_5cd169c84be74163816b85e1069b7dbb_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.325166999999965,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 88,
+      "messageId": "chat_be2d250f3f404c93bb9fed0b3f1a76e9",
+      "turnId": "turn_chat_be2d250f3f404c93bb9fed0b3f1a76e9_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.926791000000094,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 89,
+      "messageId": "chat_3e8d3ceb731649f8aff5afbeb445fa2e",
+      "turnId": "turn_chat_3e8d3ceb731649f8aff5afbeb445fa2e_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.402957999999899,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 90,
+      "messageId": "chat_f74699ee440e4a52a6d9bef06fa35599",
+      "turnId": "turn_chat_f74699ee440e4a52a6d9bef06fa35599_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.607665999999881,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 91,
+      "messageId": "chat_210f4fe12c114148898d8af3b8064f98",
+      "turnId": "turn_chat_210f4fe12c114148898d8af3b8064f98_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.368166999999858,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 92,
+      "messageId": "chat_493bc8d0a2ae4895b3b9ac303be1dfc7",
+      "turnId": "turn_chat_493bc8d0a2ae4895b3b9ac303be1dfc7_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.032875000000104,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 93,
+      "messageId": "chat_24b154d169644813aaab9fd42f3036b8",
+      "turnId": "turn_chat_24b154d169644813aaab9fd42f3036b8_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.075874999999996,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 94,
+      "messageId": "chat_dae6c7d6aa63420c9d80c20ebd63e418",
+      "turnId": "turn_chat_dae6c7d6aa63420c9d80c20ebd63e418_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.208665999999994,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 95,
+      "messageId": "chat_37600417ffda42e28c6a0e5f8f30118f",
+      "turnId": "turn_chat_37600417ffda42e28c6a0e5f8f30118f_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.461291999999958,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 96,
+      "messageId": "chat_76e226f496654078a235cd1da4de7b57",
+      "turnId": "turn_chat_76e226f496654078a235cd1da4de7b57_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.672542000000021,
+      "saveToReceiveAckMs": 11
+    },
+    {
+      "i": 97,
+      "messageId": "chat_3b561fbb994c4588a1a9135bf02e3998",
+      "turnId": "turn_chat_3b561fbb994c4588a1a9135bf02e3998_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.674166000000014,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 98,
+      "messageId": "chat_8b2e393cb1b9491fa70dd72603153711",
+      "turnId": "turn_chat_8b2e393cb1b9491fa70dd72603153711_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 10.890791000000036,
+      "saveToReceiveAckMs": 10
+    },
+    {
+      "i": 99,
+      "messageId": "chat_051a3b0e922049228cb90a1b483477a6",
+      "turnId": "turn_chat_051a3b0e922049228cb90a1b483477a6_member_0ec2bca884504d00a1849217717fec3b",
+      "roundTripMs": 11.039833999999928,
+      "saveToReceiveAckMs": 10
+    }
+  ],
+  "restartRecovery": true
+}

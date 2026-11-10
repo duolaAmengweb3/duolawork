@@ -1,0 +1,39 @@
+{
+  "taskId": "board_8d254a3070954e42ac8aff86f3812768",
+  "turnId": "turn_chat_87d6da8aa0944515a0fa49ff34b73017_member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "taskStatus": "canceled",
+  "claim": {
+    "status": "obsolete",
+    "claimed": false,
+    "needsResponse": false,
+    "stepId": "turn_chat_87d6da8aa0944515a0fa49ff34b73017_member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "reason": "任务已取消或移除，旧提醒已自动收尾",
+    "instruction": "旧提醒已自动收尾，没有领取或重做任务，不需要回群确认，也不要领取其他通知。"
+  },
+  "turn": {
+    "id": "turn_chat_87d6da8aa0944515a0fa49ff34b73017_member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "messageId": "chat_87d6da8aa0944515a0fa49ff34b73017",
+    "queuedResourceKey": "native-session:member_26ac2c60371e4158bd6df1b0fa0db37d:4e7383f939c95173bc1a8a5a261dadf715c25d5e828a22777e104eeca340c173",
+    "taskId": "board_8d254a3070954e42ac8aff86f3812768",
+    "taskEvent": "assigned:1",
+    "wakeSource": "user",
+    "number": 615,
+    "rootId": "chat_87d6da8aa0944515a0fa49ff34b73017",
+    "hops": 0,
+    "status": "removed",
+    "createdAt": "2026-11-09T06:59:52.503Z",
+    "reason": "任务已取消或移除，旧提醒已自动收尾",
+    "kind": "channel_turn",
+    "revision": 2,
+    "updatedAt": "2026-11-09T06:59:53.032Z",
+    "resolution": "obsolete_task",
+    "retiredAt": "2026-11-09T06:59:53.032Z",
+    "completedAt": "2026-11-09T06:59:53.032Z",
+    "taskWaitReason": null
+  },
+  "verifiedAt": "2026-11-09T06:59:55.477Z"
+}

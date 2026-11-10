@@ -1,0 +1,50 @@
+{
+  "at": "2026-11-07T09:31:08.089Z",
+  "build": {
+    "id": "49cd7f08ff41a675",
+    "version": "0.1.0",
+    "builtAt": "2026-11-07T09:24:25.338Z"
+  },
+  "reads": [
+    {
+      "status": 200,
+      "bytes": 522903,
+      "elapsedMs": 1886,
+      "contentLength": "522903",
+      "jsonComplete": true
+    },
+    {
+      "status": 200,
+      "bytes": 522903,
+      "elapsedMs": 2339,
+      "contentLength": "522903",
+      "jsonComplete": true
+    },
+    {
+      "status": 200,
+      "bytes": 522903,
+      "elapsedMs": 2845,
+      "contentLength": "522903",
+      "jsonComplete": true
+    },
+    {
+      "status": 200,
+      "bytes": 522903,
+      "elapsedMs": 1743,
+      "contentLength": "522903",
+      "jsonComplete": true
+    },
+    {
+      "status": 200,
+      "bytes": 522903,
+      "elapsedMs": 1816,
+      "contentLength": "522903",
+      "jsonComplete": true
+    }
+  ],
+  "metricSamples": 100,
+  "limits": [
+    "5 successful current reads are finite acceptance, not indefinite network reliability",
+    "upstream failure cause previously observed remains unknown"
+  ]
+}

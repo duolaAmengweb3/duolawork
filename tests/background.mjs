@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {BrowserManager} from '../local/browser.mjs';
 import {BackgroundPage} from '../local/background-page.mjs';
 
-const server=http.createServer((_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<textarea></textarea><div id="out"></div><script>document.querySelector("textarea").addEventListener("keydown",e=>{if(e.key==="Enter"){document.querySelector("#out").textContent=e.target.value;e.target.value="";}});</script>');});
+const server=http.createServer((_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<textarea></textarea><div id="out"></div><script>document.querySelector("textarea").addEventListener("keydown",e=>{if(e.key==="Enter"){document.querySelector("#out").dataset.trusted=String(e.isTrusted);document.querySelector("#out").textContent=e.target.value;e.target.value="";}});</script>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hub-background-gate-')),url=`http://127.0.0.1:${server.address().port}`,root=path.join(dir,'profiles'),account={id:'account_backgroundgate',entryUrl:url};
 let current=new BrowserManager({root,testMode:true}),holder,next;
@@ -18,7 +18,11 @@ try{
  assert.equal(await page.evaluate(()=>navigator.webdriver),true,'original remote-debugging-port=0 flag is retained, not spoofed');
  await assert.rejects(page.send('Browser.getWindowForTarget',{targetId:page.targetId}),/window not found/);
  await page.locator('textarea:visible').fill('real keyboard delivery');await page.locator('textarea:visible').press('Enter');
+ const receiptDeadline=Date.now()+2000;while(Date.now()<receiptDeadline&&!(await page.evaluate(()=>document.querySelector('#out').textContent)))await new Promise(r=>setTimeout(r,25));
  assert.equal(await page.evaluate(()=>document.querySelector('#out').textContent),'real keyboard delivery');
+ assert.equal(await page.evaluate(()=>document.querySelector('#out').dataset.trusted),'true','the real CDP keyboard event must reach the page, not a synthetic DOM event');
+ assert.equal(entry.context.pages().length,0,'keyboard focus must not create a foreground window');
+ await assert.rejects(page.send('Browser.getWindowForTarget',{targetId:page.targetId}),/window not found/);
  // Two persistent account sessions must coexist even at execution limit 1.
  const other={id:'account_secondlogin',entryUrl:url};await current.ensureBackground(other);
  assert.equal(current.list().length,2,'an idle logged-in session cannot block another account login');
@@ -29,6 +33,9 @@ try{
  // Keep a target owned by the updater until the successor has its own one.
  const pid=entry.child.pid;holder=await BackgroundPage.create(entry.endpoint,'about:blank');
  await entry.browser.close();entry.workPage.close();
+ // The successor owns this exact PID now. The obsolete test manager must not
+ // close an already-disconnected Playwright handle a second time in cleanup.
+ current.active.delete(account.id);
  next=new BrowserManager({root,testMode:true});await next.recover([account]);await next.ensureBackground(account);
  holder.close();holder=null;entry=next.active.get(account.id);page=entry.workPage;
  assert.equal(entry.child.pid,pid,'windowless update retains the same Chrome PID');

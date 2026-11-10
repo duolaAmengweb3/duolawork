@@ -1,0 +1,91 @@
+{
+  "at": "2026-11-07T08:56:31.353Z",
+  "modelStudy": {
+    "source": "group-memory-model-study.json",
+    "rows": 48,
+    "readerCalls": 48,
+    "backgroundCalls": 36,
+    "paths": {
+      "reader": "runs[*].reader",
+      "writer": "runs[*].background"
+    },
+    "totals": {
+      "B1": {
+        "cases": 12,
+        "errors": 0,
+        "readerTokens": 6920,
+        "backgroundTokens": 0,
+        "usageCoverage": {
+          "reader": 12,
+          "background": 0
+        }
+      },
+      "B2": {
+        "cases": 12,
+        "errors": 0,
+        "readerTokens": 7047,
+        "backgroundTokens": 5979,
+        "usageCoverage": {
+          "reader": 12,
+          "background": 12
+        }
+      },
+      "B3": {
+        "cases": 12,
+        "errors": 0,
+        "readerTokens": 7704,
+        "backgroundTokens": 7769,
+        "usageCoverage": {
+          "reader": 12,
+          "background": 12
+        }
+      },
+      "B4": {
+        "cases": 12,
+        "errors": 0,
+        "readerTokens": 7603,
+        "backgroundTokens": 8773,
+        "usageCoverage": {
+          "reader": 12,
+          "background": 12
+        }
+      }
+    }
+  },
+  "responseMetrics": {
+    "source": "response-production-baseline.json",
+    "metrics": {
+      "saveToClaimMs": {
+        "n": 38,
+        "medianMs": 15795.5,
+        "p95NearestRankMs": 128462
+      },
+      "claimToReceiptMs": {
+        "n": 38,
+        "medianMs": 56431.5,
+        "p95NearestRankMs": 195641
+      }
+    },
+    "medianMethod": "mean of two middle values for even N"
+  },
+  "atelWebhook": {
+    "source": "t07-atel46-current.json",
+    "notification": {
+      "id": "notice_turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+      "stepId": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "status": "claimed",
+      "reason": "尚未确认成员接收；消息已保留，可重试或查看原 Agent。",
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "completedAt": "2026-11-06T05:07:22.218Z",
+      "dueAt": "2026-11-06T05:08:22.218Z",
+      "sendingAt": "2026-11-06T05:07:22.218Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T05:07:22.714Z",
+      "dispatchElapsedMs": 473,
+      "attemptFinishedAt": "2026-11-06T05:07:22.714Z"
+    },
+    "timestampField": "platformRespondedAt, not sentAt"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "at": "2026-11-04T07:06:27.245Z",
+  "realCodex": true,
+  "originalProviderUnchanged": true,
+  "isolatedHub": true,
+  "claudeTouched": false,
+  "checks": [
+    "Two working members share one account; connecting reuses native login and creates no model turn or work session",
+    "Two real Codex members reply in the same Hub group using their separate native sessions, local projects and conversation-only memories",
+    "The same work member uses a different native session in another group; no conversation-only markers carried over",
+    "All exact per-chat native session IDs and project bindings survive receiver restart",
+    "Existing project notes preserved; no provider, model or login configuration modified"
+  ],
+  "receipts": [
+    {
+      "channelId": "channel_98fcd628e73b411cab2863509ec3e13b",
+      "memberId": "member_6b55941fa64048368464a96f9b1ac85e",
+      "messageId": "chat_7030049e118a418b81721a15e3db0e80",
+      "body": "本原生会话记住的标识词是 website_bbfd8ff8。已检查自己项目 project-0 的 notes.txt，文件仍在，大小为 20 字节。未修改文件。"
+    },
+    {
+      "channelId": "channel_98fcd628e73b411cab2863509ec3e13b",
+      "memberId": "member_b23a0bb2a13b426db0f8ae2181ed6406",
+      "messageId": "chat_3d65081893dc4729af828da8ec5e0203",
+      "body": "我在本原生会话记住的标识词是 app_28734beb。已检查自己项目的 notes.txt，文件仍在，大小为 20 字节。未修改文件，未创建任务或文档。"
+    },
+    {
+      "channelId": "channel_c3682a6d545c4172866de5f787ced9f9",
+      "memberId": "member_6b55941fa64048368464a96f9b1ac85e",
+      "messageId": "chat_8d4de575650e4574bcdcd1c9a46329d5",
+      "body": "不知道。本会话没有其他项目会话秘密标识词的证据。"
+    }
+  ],
+  "members": [
+    {
+      "id": "member_6b55941fa64048368464a96f9b1ac85e",
+      "name": "Codex · 测试网站",
+      "accountId": "account_0021e03a5e7641f5844dd7b691c02c9c"
+    },
+    {
+      "id": "member_b23a0bb2a13b426db0f8ae2181ed6406",
+      "name": "Codex · 测试App",
+      "accountId": "account_0021e03a5e7641f5844dd7b691c02c9c"
+    }
+  ],
+  "bindings": [
+    {
+      "memberId": "member_6b55941fa64048368464a96f9b1ac85e",
+      "bindings": {
+        "channel_98fcd628e73b411cab2863509ec3e13b": {
+          "sessionId": "01a1a561-753d-72e1-99e8-c0224573ca1a",
+          "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-nhTln0/project-0",
+          "title": "project-0",
+          "mode": "new"
+        },
+        "channel_c3682a6d545c4172866de5f787ced9f9": {
+          "sessionId": "01a1a562-c254-71e2-b849-a5d415189423",
+          "workspace": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-nhTln0/local/coding/member_6b55941fa64048368464a96f9b1ac85e/chats/channel_c3682a6d545c4172866de5f787ced9f9",
+          "title": "channel_c3682a6d545c4172866de5f787ced9f9",
+          "mode": "new"
+        }
+      }
+    },
+    {
+      "memberId": "member_b23a0bb2a13b426db0f8ae2181ed6406",
+      "bindings": {
+        "channel_98fcd628e73b411cab2863509ec3e13b": {
+          "sessionId": "01a1a561-b2f0-7d13-bc32-d3c1a60a3f93",
+          "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-nhTln0/project-1",
+          "title": "project-1",
+          "mode": "new"
+        }
+      }
+    }
+  ],
+  "finishedAt": "2026-11-04T07:08:17.939Z"
+}

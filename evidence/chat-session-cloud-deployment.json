@@ -1,0 +1,45 @@
+{
+  "at": "2026-11-04T08:03:59.041000+00:00",
+  "worker": "agent-hub-local",
+  "accountId": "d9d2d3d737a0e4f3f99bee632ed94f45",
+  "before": [
+    {
+      "id": "12568aa4-2e68-4720-b53b-a2fa867e21c5",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "e472151f-c6e5-40f1-88ab-06cd3d7dadc4",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-11-03T10:09:08.321924Z"
+    }
+  ],
+  "after": [
+    {
+      "id": "d2c2da4d-613c-41f2-a861-687f63ba8749",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "e2c910e9-b118-4d4f-a60d-2a9a0c5858b2",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-11-04T08:03:53.296351Z"
+    }
+  ],
+  "scope": "Independent native coding member resource locks; personal-agent locks unchanged; preserve first native chat while its context verifies, but prohibit claim until verified",
+  "priorRollout": [
+    {
+      "id": "90611586-53a8-4261-b921-4b43c21fabdd",
+      "strategy": "percentage",
+      "versions": [
+        {
+          "version_id": "27f7cebf-76bd-483c-b738-8e4413780586",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-11-04T07:52:44.53248Z"
+    }
+  ]
+}

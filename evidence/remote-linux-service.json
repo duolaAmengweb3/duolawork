@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-05T06:22:51.672Z",
+  "platform": "linux",
+  "node": "v22.23.4",
+  "realNativeModelTested": false,
+  "checks": [
+    "actual systemd service installation and enablement",
+    "receiver polls with member-scoped fixture grant",
+    "SIGKILL causes automatic service recovery with same runtime identity",
+    "repeated installation restarts receiver without replacing authorization or configuration"
+  ],
+  "passed": true
+}

@@ -1,0 +1,83 @@
+{
+  "at": "2026-11-02T05:09:37.572Z",
+  "buildId": "7ce21538549996ad",
+  "workerVersionId": "689e57a1-f289-4045-9c94-26c57414d23d",
+  "kind": "real native Grok + Dot short reply timing",
+  "rounds": [
+    {
+      "round": 1,
+      "finished": false,
+      "metrics": [
+        {
+          "member": "grok1",
+          "status": "ready",
+          "createdAt": "2026-11-02T05:09:37.791Z",
+          "dueAt": "2026-11-02T05:10:38.148Z",
+          "sendingAt": "2026-11-02T05:09:38.148Z",
+          "queuedSeconds": null,
+          "responseSeconds": null,
+          "totalSeconds": null
+        },
+        {
+          "member": "Dot",
+          "status": "done",
+          "createdAt": "2026-11-02T05:09:37.791Z",
+          "claimedAt": "2026-11-02T05:10:20.016Z",
+          "completedAt": "2026-11-02T05:10:32.020Z",
+          "dueAt": "2026-11-02T05:10:38.148Z",
+          "sendingAt": "2026-11-02T05:09:38.148Z",
+          "queuedSeconds": 42.225,
+          "responseSeconds": 12.004,
+          "totalSeconds": 54.229
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-11-02T05:11:35.154Z",
+  "baseline": [
+    {
+      "member": "grok1",
+      "totalSeconds": 24.574,
+      "toClaimSeconds": 9.5,
+      "claimedToReplySeconds": 15.074
+    },
+    {
+      "member": "Dot",
+      "totalSeconds": 60.599,
+      "toClaimSeconds": 49.891,
+      "claimedToReplySeconds": 10.708
+    },
+    {
+      "member": "grok1",
+      "totalSeconds": 26.869,
+      "toClaimSeconds": 15.284,
+      "claimedToReplySeconds": 11.585
+    }
+  ],
+  "regressionChecks": {
+    "newCases": 4,
+    "totalPassed": 128,
+    "typecheckPassed": true,
+    "uiFlowsPassed": 8
+  },
+  "nativeRealtimeAcceptancePassed": false,
+  "timeoutObservationSeconds": 117.363,
+  "timestampLimits": {
+    "sendingAt": "logical dispatch-start timestamp, not actual HTTP completion",
+    "dueAt": "rewritten to retry scheduling timestamp after delivery; not original eligibility"
+  },
+  "platformInspection": {
+    "method": "read-only existing Chrome tab, native Grok Automation run page",
+    "title": "No work ready from webhook wake-up",
+    "shownAt": "Nov 2 1:11 PM",
+    "agentWorkSeconds": 11,
+    "result": "list_work reported no ready work",
+    "limits": "UI time is minute-granularity; cannot establish whether lookup preceded or followed test group archive"
+  },
+  "remaining": "Native wake accepted but claim latency is long or absent within test deadline. Provider internal timing has not been established.",
+  "finalLocalUIBuildId": "11c167f954f1b846",
+  "issues": {
+    "design": "https://github.com/duolaAmengweb3/agent-hub/issues/22",
+    "latency": "https://github.com/duolaAmengweb3/agent-hub/issues/23"
+  }
+}

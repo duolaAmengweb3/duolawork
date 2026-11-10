@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-07T06:23:10.543Z",
+  "scope": "isolated protocol Hub and Chromium UI; native status fixtures, not production model proof",
+  "checks": [
+    "已绑定但离线不显示绿点，待接收消息展示真实阻断原因",
+    "消息进度可直接看到原因，不要求翻聊天记录猜测",
+    "连接恢复不重建会话、不清草稿、不伪造消息完成"
+  ],
+  "errors": []
+}

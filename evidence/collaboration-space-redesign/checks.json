@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-09T14:02:09.891Z",
+  "unit": {
+    "tests": 736,
+    "passed": 736,
+    "failed": 0,
+    "command": "npm run deliver:local -> verify:session -> npm test",
+    "targetedAfterInstructionWiring": {
+      "tests": 25,
+      "passed": 25
+    }
+  },
+  "browserSuites": [
+    "collaboration-space-redesign-ui.mjs",
+    "collaboration-space-ui.mjs",
+    "task-groups-ui.mjs",
+    "task-deliverables-ui.mjs"
+  ],
+  "packagedUi": {
+    "tests": "task-deliverables-ui.mjs",
+    "passed": true,
+    "scope": "packaged Electron, isolated data and protocol peer"
+  },
+  "boundaries": [
+    "fixture external accounts are protocol samples, not new commercial-service authorization",
+    "external write already in flight is not undone by disabling a group switch",
+    "native model comprehension is not proven by delivering updated product instructions"
+  ]
+}

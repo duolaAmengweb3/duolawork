@@ -1,0 +1,267 @@
+{
+  "at": "2026-11-08T03:14:41.716Z",
+  "criterion": "Only explicit historical acceptance/integration group names. Reversible group deletion; retain original Agent projects/sessions and all chat/material records.",
+  "candidates": [
+    {
+      "id": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+      "name": "验收 · 项目与对话修复",
+      "status": "active",
+      "revision": 34,
+      "messageSequence": 30
+    },
+    {
+      "id": "channel_8ac79a0812c24fa0b1360f2161d9205d",
+      "name": "验收 · Gemini 并行 2",
+      "status": "active",
+      "revision": 21,
+      "messageSequence": 19
+    },
+    {
+      "id": "channel_81d9795c7b4b454bb5dcbffb13db41b8",
+      "name": "验收 · Gemini 并行 3",
+      "status": "active",
+      "revision": 19,
+      "messageSequence": 17
+    },
+    {
+      "id": "channel_6bdf752d19b54ad0af3b185404039384",
+      "name": "验收·秘书跨群代办·1107",
+      "status": "active",
+      "revision": 2,
+      "messageSequence": 1
+    },
+    {
+      "id": "channel_f3ada76f59884b1f8b0cc146b35edbf4",
+      "name": "验收 · Claude 独立新建 C · 1107",
+      "status": "archived",
+      "revision": 8,
+      "messageSequence": 6
+    },
+    {
+      "id": "channel_dc41c3b569eb4470a68d0e6c29529124",
+      "name": "验收 · Claude 独立新建 B · 1107",
+      "status": "archived",
+      "revision": 4,
+      "messageSequence": 2
+    },
+    {
+      "id": "channel_162d9918c11d4822865186310b8c6b7a",
+      "name": "验收 · Claude 独立新建 A · 1107",
+      "status": "archived",
+      "revision": 4,
+      "messageSequence": 2
+    },
+    {
+      "id": "channel_e32a44cd842e4e1b9479d69a18fc5354",
+      "name": "验收 · Gemini 并行 1",
+      "status": "active",
+      "revision": 21,
+      "messageSequence": 19
+    },
+    {
+      "id": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "name": "验收 · Grok 多身份协作 1106",
+      "status": "active",
+      "revision": 13,
+      "messageSequence": 12
+    },
+    {
+      "id": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "name": "验收 · 新版协作与记忆 1106",
+      "status": "active",
+      "revision": 18,
+      "messageSequence": 15
+    },
+    {
+      "id": "channel_67114773929c4d139eb5be4a5716b165",
+      "name": "验收 · 侧栏资料与 Todo",
+      "status": "active",
+      "revision": 7,
+      "messageSequence": 6
+    },
+    {
+      "id": "channel_16f45a95c8b045a1a15fc5a1561e2918",
+      "name": "验收 · Claude 原对话监听",
+      "status": "active",
+      "revision": 12,
+      "messageSequence": 10
+    },
+    {
+      "id": "channel_6ade8e6e6db3438d9c82914b999d2543",
+      "name": "验收 · Codex 与 Gemini 原生协作",
+      "status": "active",
+      "revision": 6,
+      "messageSequence": 3
+    },
+    {
+      "id": "channel_99a1d1d4ce654568aa068abdab6585f3",
+      "name": "验收 · antigravity 完整授权与重开恢复",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 4
+    },
+    {
+      "id": "channel_ce37b34919c3483c888cd3a69e8e8b31",
+      "name": "验收 · codex 完整授权与重开恢复",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 4
+    },
+    {
+      "id": "channel_e584ae2bbea74a80a6b462e571b6d933",
+      "name": "验收 · Codex 原生工具与续接",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 1
+    },
+    {
+      "id": "channel_cc75bd598f3b461b94085d8f516c503e",
+      "name": "验收 · Codex 原生工具与续接",
+      "status": "archived",
+      "revision": 4,
+      "messageSequence": 2
+    },
+    {
+      "id": "channel_79efc59f3afd4bc2a926bb2595f717d4",
+      "name": "验收 · Codex 原生工具与续接",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 4
+    },
+    {
+      "id": "channel_14700d79bcc548cd81c167d87647ac48",
+      "name": "验收 · 通知并发与响应 20261103",
+      "status": "archived",
+      "revision": 7,
+      "messageSequence": 5
+    },
+    {
+      "id": "channel_eec22cec73e2478b8c1715fcc19ef7d6",
+      "name": "验收 · 负责人会议 20261103",
+      "status": "active",
+      "revision": 19,
+      "messageSequence": 34
+    },
+    {
+      "id": "channel_a890cf9af5d340a5b85c2c59940b1ed9",
+      "name": "验收 · 新成员从零接入",
+      "status": "active",
+      "revision": 13,
+      "messageSequence": 11
+    },
+    {
+      "id": "channel_92a353c8d0ff46818d614e1b9316862c",
+      "name": "联测 · Grok2 原生接入",
+      "status": "active",
+      "revision": 10,
+      "messageSequence": 9
+    },
+    {
+      "id": "channel_0668d2915a094d4a92bbdbfecd336cd4",
+      "name": "联测 · 完整交流与共写文档 11-02",
+      "status": "archived",
+      "revision": 8,
+      "messageSequence": 6
+    },
+    {
+      "id": "channel_8472c98f746d48c09891f41dcfe145ce",
+      "name": "联测 · 自由交流与共写文档 11-02",
+      "status": "archived",
+      "revision": 8,
+      "messageSequence": 6
+    },
+    {
+      "id": "channel_72371082ed034a8f816832c0d5539d66",
+      "name": "联测 · Grok 原生会话续接 11-02",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 4
+    },
+    {
+      "id": "channel_c72a522ce29a4ca0b015a62146a5795c",
+      "name": "联测 · 接入刷新后连续追问 11-02",
+      "status": "archived",
+      "revision": 6,
+      "messageSequence": 4
+    },
+    {
+      "id": "channel_c3ed915a552b45e1a6fd0b05a32f1ecb",
+      "name": "联测 · 正常聊天与连续追问 11-02",
+      "status": "archived",
+      "revision": 9,
+      "messageSequence": 7
+    },
+    {
+      "id": "channel_2cfbdc1472514258911c281d98df918e",
+      "name": "联测 · 正常聊天与连续追问 11-02",
+      "status": "archived",
+      "revision": 2,
+      "messageSequence": 0
+    },
+    {
+      "id": "channel_707ac6a757534729a33f0fd94b0336ca",
+      "name": "联测 · 回复时延 11-02",
+      "status": "archived",
+      "revision": 4,
+      "messageSequence": 2
+    },
+    {
+      "id": "channel_06fde2a01a5c4592abcd074c83b86255",
+      "name": "联测 · 共同文档交付",
+      "status": "active",
+      "revision": 9,
+      "messageSequence": 8
+    },
+    {
+      "id": "channel_deb6fbb6cc7242909b90e37ca67f0464",
+      "name": "联测 · 多轮协作",
+      "status": "active",
+      "revision": 12,
+      "messageSequence": 11
+    },
+    {
+      "id": "channel_ec69ce0eacb746d7b0934d55a7ac9f99",
+      "name": "联测 · 自由沟通",
+      "status": "active",
+      "revision": 7,
+      "messageSequence": 6
+    }
+  ],
+  "retained": [
+    {
+      "id": "channel_6d302b18e24841f6a449b88f86b24aae",
+      "name": "X内容",
+      "status": "active",
+      "revision": 189,
+      "messageSequence": 188
+    },
+    {
+      "id": "channel_4ef452e331904b758d7d3c375215cb48",
+      "name": "duolawork项目组",
+      "status": "active",
+      "revision": 518,
+      "messageSequence": 525
+    },
+    {
+      "id": "channel_f0bf1704a50348789524283bea56e2fd",
+      "name": "ATEL",
+      "status": "active",
+      "revision": 240,
+      "messageSequence": 238
+    },
+    {
+      "id": "channel_2d341c238cd74ba18c6f00bd93f3227a",
+      "name": "测试22",
+      "status": "active",
+      "revision": 1,
+      "messageSequence": 0
+    },
+    {
+      "id": "channel_08089687ab684913a21b049878db9732",
+      "name": "测试",
+      "status": "active",
+      "revision": 9,
+      "messageSequence": 7
+    }
+  ]
+}

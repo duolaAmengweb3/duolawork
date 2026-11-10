@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-09T14:00:19.270Z",
+  "cloudHealthy": true,
+  "resources": {
+    "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "version": 0,
+    "connectionCount": 6,
+    "skillCount": 7,
+    "defaultFolderId": null
+  },
+  "metadataReadMs": 1179,
+  "workerHashMatches": true,
+  "workerSha256": "fbb7db315eac9f1e3f52aa58847d084e895e28bd59bfddae08a4330e6ddfed1d",
+  "verifiedAt": "2026-11-09T14:01:24.185Z"
+}

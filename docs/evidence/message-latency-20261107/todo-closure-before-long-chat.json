@@ -1,0 +1,53 @@
+{
+  "at": "2026-11-07T16:31:51.926Z",
+  "parent": {
+    "id": "board_25d66ae1bd524ce2a6affd29ad713ff7",
+    "status": "done",
+    "version": 3
+  },
+  "items": [
+    {
+      "id": "board_0433198065be4382af2b9d125374fda9",
+      "title": "D｜真实回执与状态分层",
+      "status": "done",
+      "version": 3
+    },
+    {
+      "id": "board_0a6032b9032e463aa9440fbadbaffdcb",
+      "title": "B｜可靠收发与事件通知",
+      "status": "done",
+      "version": 3
+    },
+    {
+      "id": "board_731c0d1cf27e41aaaa8f679918d884cc",
+      "title": "C｜会话调度与并行边界",
+      "status": "done",
+      "version": 3
+    },
+    {
+      "id": "board_8f076b1b84784250b9edc126a7e4fcf1",
+      "title": "A｜消息与状态实时通知",
+      "status": "done",
+      "version": 4
+    },
+    {
+      "id": "board_993230637b664844a295bf5db2c543ce",
+      "title": "E｜准备链路复用与上下文保真",
+      "status": "done",
+      "version": 3
+    },
+    {
+      "id": "board_b7bfb579b81d4ce4b67a8fed147e9d99",
+      "title": "F｜通用观测与分段计量",
+      "status": "done",
+      "version": 3
+    },
+    {
+      "id": "board_dfabe0da50fc4eaf9e4f4e9045695ba1",
+      "title": "【独立验收】通用消息链路提速与可靠性 A–F",
+      "status": "done",
+      "version": 4
+    }
+  ],
+  "independentReviewMessage": "chat_f09fe216a70f4a01a7773a4cb87386b3"
+}

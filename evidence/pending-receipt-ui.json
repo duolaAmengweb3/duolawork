@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-06T11:45:14.007Z",
+  "scope": "isolated browser, real HTTP and claim/reply; native telemetry simulated",
+  "checks": [
+    "No claim and another busy conversation show waiting, never a fictitious queue",
+    "Exact native started step appears in chat and detail before formal claim",
+    "Actual native queued receipt alone shows queue and its reason",
+    "Formal claim overrides old native queue",
+    "Reply clears pending indicators despite stale native state"
+  ],
+  "errors": []
+}

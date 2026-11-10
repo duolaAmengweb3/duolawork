@@ -1,0 +1,16 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: 正在阅读的消息被移出了列表
+    at hold (file:///Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/tests/chat-reading-position-ui.mjs:15:64)
+    at async file:///Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/tests/chat-reading-position-ui.mjs:19:77 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

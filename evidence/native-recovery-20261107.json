@@ -1,0 +1,289 @@
+{
+  "at": "2026-11-07T06:14:26.751214+00:00",
+  "scope": "production readbacks and restoration of the same existing DeepSeek binding; no model/session replacement",
+  "initial": {
+    "deepseekHostReady": true,
+    "deepseekActiveBindings": 0,
+    "errors": [
+      "old listed session workspace ENOENT",
+      "healthy session startup bind failed during cloud connection interruption"
+    ],
+    "managerError": "old session ENOENT aborts subsequent syncBindings",
+    "claudeNativeSessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+    "claudeNativeState": "done",
+    "claudeLastSeenAt": "2026-11-06T18:13:01.118Z",
+    "claudeExitCause": "unknown; no restart or environment edit performed"
+  },
+  "deepseekReceipts": [
+    {
+      "id": "turn_chat_74951585fb4f47d499a33cfef735e554_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 338,
+      "status": "ready",
+      "createdAt": "2026-11-07T06:14:20.516Z",
+      "claimedAt": null,
+      "completedAt": null,
+      "nativeSessionId": null
+    },
+    {
+      "id": "turn_chat_013bb63b24624198ae2b24e2e4547312_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 336,
+      "status": "done",
+      "createdAt": "2026-11-07T06:13:52.235Z",
+      "claimedAt": "2026-11-07T06:13:57.248Z",
+      "completedAt": "2026-11-07T06:14:14.307Z",
+      "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+    },
+    {
+      "id": "turn_chat_8e32d34b0ca24e17b4fd45ad7a2bee5d_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 333,
+      "status": "done",
+      "createdAt": "2026-11-07T06:11:58.854Z",
+      "claimedAt": "2026-11-07T06:12:06.794Z",
+      "completedAt": "2026-11-07T06:12:18.060Z",
+      "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+    },
+    {
+      "id": "turn_chat_ebe9fcb1ebd7445fb0cd9e04c2bfe4c2_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 331,
+      "status": "done",
+      "createdAt": "2026-11-07T06:11:21.110Z",
+      "claimedAt": "2026-11-07T06:11:25.639Z",
+      "completedAt": "2026-11-07T06:11:42.761Z",
+      "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+    },
+    {
+      "id": "turn_chat_0408a89d58824a17aa21276f878a4de5_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 326,
+      "status": "done",
+      "createdAt": "2026-11-07T06:10:36.790Z",
+      "claimedAt": "2026-11-07T06:10:42.385Z",
+      "completedAt": "2026-11-07T06:11:12.965Z",
+      "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+    },
+    {
+      "id": "turn_chat_cf0c4a48d5054f5ca23efa4958e91244_member_acbea6620d534e6682d8009db6403f1e",
+      "number": 316,
+      "status": "done",
+      "createdAt": "2026-11-07T05:50:12.183Z",
+      "claimedAt": "2026-11-07T06:07:46.692Z",
+      "completedAt": "2026-11-07T06:08:49.275Z",
+      "nativeSessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+    }
+  ],
+  "initialPendingMessageNumber": 316,
+  "nativeSessionPreserved": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+  "status": "desktop and backend deployed; original DeepSeek and Claude sessions recovered with real receipts; inaccessible old DeepSeek project correctly isolated",
+  "final": {
+    "at": "2026-11-07T06:29:44.713Z",
+    "build": {
+      "id": "0d8b11ea5032edbf",
+      "version": "0.1.0",
+      "builtAt": "2026-11-07T06:21:45.567Z"
+    },
+    "clientView": {
+      "kind": "desktop",
+      "ready": true,
+      "buildId": "0d8b11ea5032edbf"
+    },
+    "cloudOnline": true,
+    "records": [
+      {
+        "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+        "status": "idle",
+        "sourceReady": true,
+        "message": "Claude 工作会话已在线",
+        "assignments": [
+          {
+            "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+            "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+            "title": "新电脑迁移",
+            "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+            "nativeState": "unknown",
+            "observedAt": "2026-11-07T06:29:40.920Z"
+          },
+          {
+            "channelId": "channel_01fac83ae8334f64921e53ccc6e8a3d6",
+            "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+            "title": "新电脑迁移",
+            "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+            "nativeState": "unknown",
+            "observedAt": "2026-11-07T06:29:40.920Z"
+          },
+          {
+            "channelId": "channel_f0bf1704a50348789524283bea56e2fd",
+            "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+            "title": "新电脑迁移",
+            "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+            "nativeState": "unknown",
+            "observedAt": "2026-11-07T06:29:40.920Z"
+          },
+          {
+            "channelId": "channel_162d9918c11d4822865186310b8c6b7a",
+            "sessionId": "8525efec-a7d4-4299-afe5-c65580be254e",
+            "title": "验收 · Claude 独立新建 A · 1107",
+            "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+            "mode": "new",
+            "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+            "nativeState": "unavailable",
+            "observedAt": "2026-11-07T06:29:40.920Z",
+            "nativeIssueCode": "session_offline",
+            "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+          },
+          {
+            "channelId": "channel_dc41c3b569eb4470a68d0e6c29529124",
+            "sessionId": "9f831ffa-b20d-4fd1-b5e4-8bf31f926d9d",
+            "title": "验收 · Claude 独立新建 B · 1107",
+            "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_dc41c3b569eb4470a68d0e6c29529124",
+            "mode": "new",
+            "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+            "nativeState": "unavailable",
+            "observedAt": "2026-11-07T06:29:40.920Z",
+            "nativeIssueCode": "session_offline",
+            "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+          },
+          {
+            "channelId": "channel_f3ada76f59884b1f8b0cc146b35edbf4",
+            "sessionId": "a3e369b7-7fef-410b-8d7a-0eb8ee87e78d",
+            "title": "验收 · Claude 独立新建 C · 1107",
+            "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_f3ada76f59884b1f8b0cc146b35edbf4",
+            "mode": "new",
+            "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+            "nativeState": "unavailable",
+            "observedAt": "2026-11-07T06:29:40.920Z",
+            "nativeIssueCode": "session_offline",
+            "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+          }
+        ]
+      },
+      {
+        "memberId": "member_acbea6620d534e6682d8009db6403f1e",
+        "status": "idle",
+        "sourceReady": true,
+        "message": "1 段工作对话暂不可用，其他对话继续接收；原绑定保留",
+        "assignments": [
+          {
+            "channelId": "channel_6de5af59d9624e70b0003af45a6d5efb",
+            "sessionId": "session-858da21e-98de-431d-88a0-ce73b83a07d2",
+            "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-jiv4Ml/local/dsh-members/member_7e795b2d4cfa41f9b676219c41a3d845/workspace",
+            "title": "Hub 工作任务领取与执行",
+            "mode": "existing",
+            "migrated": true,
+            "nativeState": "unavailable",
+            "observedAt": "2026-11-07T06:29:43.402Z",
+            "nativeMessage": "这段原对话的项目文件夹无法打开。请恢复原文件夹或为这个聊天选择其他对话。",
+            "nativeIssueCode": "workspace_unavailable"
+          },
+          {
+            "channelId": "channel_2d341c238cd74ba18c6f00bd93f3227a",
+            "sessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+            "workspace": "/Users/duola/.config/agent-hub/dsh-members/member_acbea6620d534e6682d8009db6403f1e/chats/channel_2d341c238cd74ba18c6f00bd93f3227a",
+            "title": "测试22",
+            "mode": "new",
+            "nativeState": "idle",
+            "observedAt": "2026-11-07T06:29:43.402Z"
+          },
+          {
+            "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+            "sessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+            "workspace": "/Users/duola/.config/agent-hub/dsh-members/member_acbea6620d534e6682d8009db6403f1e/chats/channel_2d341c238cd74ba18c6f00bd93f3227a",
+            "title": "新会话",
+            "mode": "existing",
+            "nativeState": "idle",
+            "observedAt": "2026-11-07T06:29:43.402Z"
+          }
+        ]
+      }
+    ],
+    "claudeOriginal": {
+      "id": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+      "title": "新电脑迁移",
+      "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+      "createdAt": "2026-11-06T16:57:22.669Z",
+      "seenAt": "2026-11-07T06:29:42.956Z",
+      "status": "online",
+      "canCreate": true,
+      "online": true
+    },
+    "claudeAssignments": [
+      {
+        "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+        "title": "新电脑迁移",
+        "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+        "nativeState": "unknown",
+        "observedAt": "2026-11-07T06:29:44.614Z"
+      },
+      {
+        "channelId": "channel_01fac83ae8334f64921e53ccc6e8a3d6",
+        "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+        "title": "新电脑迁移",
+        "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+        "nativeState": "unknown",
+        "observedAt": "2026-11-07T06:29:44.614Z"
+      },
+      {
+        "channelId": "channel_f0bf1704a50348789524283bea56e2fd",
+        "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+        "title": "新电脑迁移",
+        "workspace": "/home/claude/projects/agent-hub/.claude/worktrees/product-docs",
+        "nativeState": "unknown",
+        "observedAt": "2026-11-07T06:29:44.614Z"
+      },
+      {
+        "channelId": "channel_162d9918c11d4822865186310b8c6b7a",
+        "sessionId": "8525efec-a7d4-4299-afe5-c65580be254e",
+        "title": "验收 · Claude 独立新建 A · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_162d9918c11d4822865186310b8c6b7a",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+        "nativeState": "unavailable",
+        "observedAt": "2026-11-07T06:29:44.614Z",
+        "nativeIssueCode": "session_offline",
+        "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+      },
+      {
+        "channelId": "channel_dc41c3b569eb4470a68d0e6c29529124",
+        "sessionId": "9f831ffa-b20d-4fd1-b5e4-8bf31f926d9d",
+        "title": "验收 · Claude 独立新建 B · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_dc41c3b569eb4470a68d0e6c29529124",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+        "nativeState": "unavailable",
+        "observedAt": "2026-11-07T06:29:44.614Z",
+        "nativeIssueCode": "session_offline",
+        "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+      },
+      {
+        "channelId": "channel_f3ada76f59884b1f8b0cc146b35edbf4",
+        "sessionId": "a3e369b7-7fef-410b-8d7a-0eb8ee87e78d",
+        "title": "验收 · Claude 独立新建 C · 1107",
+        "workspace": "/home/claude/.config/agent-hub-claude/claude-bf4fdac30b4542c8988bb6725f47ec0b/workspaces/channel_f3ada76f59884b1f8b0cc146b35edbf4",
+        "mode": "new",
+        "runtimeId": "1b2b18c5-3e05-4b0d-bce2-f5e03b7cd95d",
+        "nativeState": "unavailable",
+        "observedAt": "2026-11-07T06:29:44.614Z",
+        "nativeIssueCode": "session_offline",
+        "nativeMessage": "这段原对话的接收连接已离线。请在原环境检查或打开这段对话；原项目与历史保留。"
+      }
+    ]
+  },
+  "claudeRecovery": {
+    "authorized": true,
+    "method": "official claude --bg --resume exact original ID; preserved saved options",
+    "sessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+    "claimedAt": "2026-11-07T06:19:54.341Z",
+    "completedAt": "2026-11-07T06:20:57.386Z",
+    "turnId": "turn_chat_cf0c4a48d5054f5ca23efa4958e91244_member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "status": "done"
+  },
+  "validation": {
+    "unitTests": 503,
+    "passed": 503,
+    "failed": 0,
+    "sessionGate": true,
+    "ui": "evidence/native-recovery-ui.json",
+    "activation": "evidence/activation.json",
+    "serverDeployment": "2026-11-07T06:24:41.550Z",
+    "serverPerBindingStateConfirmed": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-09T09:52:26.904Z",
+  "online": true,
+  "build": {
+    "id": "08bcf2216e7517b5",
+    "version": "0.1.0",
+    "builtAt": "2026-11-09T08:20:46.483Z"
+  },
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "08bcf2216e7517b5"
+  },
+  "activation": "deliver:local gates passed, safe activation waited on actual running work then failed on transient 502 during backend deployment; current unchanged desktop retained",
+  "scope": "This fix is deployed on server; same desktop build remains ready."
+}

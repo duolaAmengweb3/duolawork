@@ -1,0 +1,109 @@
+{
+  "at": "2026-11-07T13:11:42.881Z",
+  "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+  "parent": {
+    "id": "board_cbcd90752fdc43e2b9120f865e8a555d",
+    "status": "done",
+    "version": 2,
+    "subtasks": {
+      "total": 6,
+      "done": 6,
+      "canceled": 0,
+      "blocked": 0,
+      "active": 0
+    }
+  },
+  "rootCount": 8,
+  "checked": [
+    {
+      "id": "board_0206df89286d491f933eaec559c3ee23",
+      "title": "T02-D 群聊与会议统一交互",
+      "version": 5,
+      "originalVersion": 3,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    },
+    {
+      "id": "board_08a2efebc85947d688cb125f621a990f",
+      "title": "T02-B 需求与结果跟进闭环",
+      "version": 5,
+      "originalVersion": 3,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    },
+    {
+      "id": "board_1bab9f6bf3bf4111b228bf23bdc4917b",
+      "title": "T02-C 通知透明度与兼容",
+      "version": 5,
+      "originalVersion": 3,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    },
+    {
+      "id": "board_3b97d7d1c11f4cd296843e0969122645",
+      "title": "T02-F 不降级验收与交付闭环",
+      "version": 14,
+      "originalVersion": 12,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    },
+    {
+      "id": "board_5f1dcc750c9f40fbbe5e47a625a734e3",
+      "title": "T02-A 负责人及成员共同协作指引",
+      "version": 5,
+      "originalVersion": 3,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    },
+    {
+      "id": "board_6d768a4687fc4ab1a82af346cb0917e8",
+      "title": "T02-E 独立意见与集中核验",
+      "version": 5,
+      "originalVersion": 3,
+      "fieldsPreserved": [
+        "status",
+        "result",
+        "assigneeId",
+        "completedAt",
+        "completedBy",
+        "meetingIds"
+      ],
+      "originalHistoryRetained": true
+    }
+  ]
+}

@@ -1,0 +1,849 @@
+{
+  "scope": "Mac to deployed VPS code in isolated Node/SQLite through direct TLS with pinned temporary certificate; independent TCP connections, no SSH tunnel for data; no CDN/model benchmark",
+  "count": 100,
+  "errors": [],
+  "networkRecoveries": [
+    {
+      "route": "/v2/commands",
+      "method": "POST",
+      "attempt": 1,
+      "code": "UND_ERR_SOCKET",
+      "at": "2026-11-07T16:11:13.546Z"
+    },
+    {
+      "route": "/v2/tools/post_message",
+      "method": "POST",
+      "attempt": 1,
+      "code": "UND_ERR_SOCKET",
+      "at": "2026-11-07T16:13:06.396Z"
+    }
+  ],
+  "rttSamplesMs": [
+    173.53195899999992,
+    172.20650000000023,
+    168.59058299999924,
+    185.56566600000042,
+    168.8936250000006,
+    179.75254099999984,
+    3509.205167000002,
+    184.25500000000102,
+    179.84804099999747,
+    187.16187499999796,
+    377.3833330000016,
+    179.55004199999894,
+    171.16445799999929,
+    175.46258300000045,
+    174.88274999999703,
+    177.73816599999918,
+    178.78529200000048,
+    174.31812499999796,
+    177.0515830000004,
+    178.04966599999898
+  ],
+  "p95RttMs": 377.3833330000016,
+  "p95SaveToReceiveAckMs": 926,
+  "maxSaveToReceiveAckMs": 2585,
+  "samples": [
+    {
+      "i": 0,
+      "saveToReceiveAckMs": 213,
+      "roundTripMs": 406.54770799999824,
+      "postStartToEnvelopeMs": 215.3821250000001,
+      "receiverPersistMs": 8.459832999997161,
+      "receiptRequestMs": 182.52041700000336
+    },
+    {
+      "i": 1,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 714.6558750000004,
+      "postStartToEnvelopeMs": 528.8565830000007,
+      "receiverPersistMs": 9.34400000000096,
+      "receiptRequestMs": 176.401084000001
+    },
+    {
+      "i": 2,
+      "saveToReceiveAckMs": 186,
+      "roundTripMs": 356.0530839999992,
+      "postStartToEnvelopeMs": 175.247374999999,
+      "receiverPersistMs": 9.367959000002884,
+      "receiptRequestMs": 171.38045799999963
+    },
+    {
+      "i": 3,
+      "saveToReceiveAckMs": 735,
+      "roundTripMs": 906.5856249999997,
+      "postStartToEnvelopeMs": 723.4243749999987,
+      "receiverPersistMs": 10.26312500000131,
+      "receiptRequestMs": 172.82708300000013
+    },
+    {
+      "i": 4,
+      "saveToReceiveAckMs": 516,
+      "roundTripMs": 1207.405999999999,
+      "postStartToEnvelopeMs": 504.7483749999992,
+      "receiverPersistMs": 8.55962499999805,
+      "receiptRequestMs": 694.0294580000009
+    },
+    {
+      "i": 5,
+      "saveToReceiveAckMs": 348,
+      "roundTripMs": 518.8528330000008,
+      "postStartToEnvelopeMs": 335.81733299999905,
+      "receiverPersistMs": 9.569792000002053,
+      "receiptRequestMs": 173.41541700000016
+    },
+    {
+      "i": 6,
+      "saveToReceiveAckMs": 206,
+      "roundTripMs": 376.4992080000011,
+      "postStartToEnvelopeMs": 188.38874999999825,
+      "receiverPersistMs": 14.71308300000237,
+      "receiptRequestMs": 173.28341699999874
+    },
+    {
+      "i": 7,
+      "saveToReceiveAckMs": 196,
+      "roundTripMs": 373.942665999999,
+      "postStartToEnvelopeMs": 180.8569580000003,
+      "receiverPersistMs": 10.307416999999987,
+      "receiptRequestMs": 182.67570799999885
+    },
+    {
+      "i": 8,
+      "saveToReceiveAckMs": 692,
+      "roundTripMs": 860.4435830000002,
+      "postStartToEnvelopeMs": 680.6551250000011,
+      "receiverPersistMs": 8.667083000000275,
+      "receiptRequestMs": 171.041792
+    },
+    {
+      "i": 9,
+      "saveToReceiveAckMs": 1088,
+      "roundTripMs": 1470.7047909999965,
+      "postStartToEnvelopeMs": 1074.2763750000013,
+      "receiverPersistMs": 11.295249999995576,
+      "receiptRequestMs": 385.05083300000115
+    },
+    {
+      "i": 10,
+      "saveToReceiveAckMs": 545,
+      "roundTripMs": 713.6887499999939,
+      "postStartToEnvelopeMs": 535.143207999994,
+      "receiverPersistMs": 8.192750000001979,
+      "receiptRequestMs": 170.26900000000023
+    },
+    {
+      "i": 11,
+      "saveToReceiveAckMs": 214,
+      "roundTripMs": 765.7844170000026,
+      "postStartToEnvelopeMs": 205.85829199999716,
+      "receiverPersistMs": 10.389042000002519,
+      "receiptRequestMs": 549.4661659999983
+    },
+    {
+      "i": 12,
+      "saveToReceiveAckMs": 192,
+      "roundTripMs": 2887.282916999997,
+      "postStartToEnvelopeMs": 183.5014169999995,
+      "receiverPersistMs": 8.465167000002111,
+      "receiptRequestMs": 172.91320799999812
+    },
+    {
+      "i": 13,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 902.2344999999987,
+      "postStartToEnvelopeMs": 183.28241700000217,
+      "receiverPersistMs": 8.936832999999751,
+      "receiptRequestMs": 709.9589169999963
+    },
+    {
+      "i": 14,
+      "saveToReceiveAckMs": 564,
+      "roundTripMs": 740.5773330000011,
+      "postStartToEnvelopeMs": 552.4701249999998,
+      "receiverPersistMs": 10.205708000001323,
+      "receiptRequestMs": 177.83604199999536
+    },
+    {
+      "i": 15,
+      "saveToReceiveAckMs": 191,
+      "roundTripMs": 367.56324999999924,
+      "postStartToEnvelopeMs": 179.47958300000028,
+      "receiverPersistMs": 8.314166999996814,
+      "receiptRequestMs": 179.7179580000011
+    },
+    {
+      "i": 16,
+      "saveToReceiveAckMs": 768,
+      "roundTripMs": 941.8516660000023,
+      "postStartToEnvelopeMs": 761.5199159999975,
+      "receiverPersistMs": 8.81300000000192,
+      "receiptRequestMs": 171.46945899999992
+    },
+    {
+      "i": 17,
+      "saveToReceiveAckMs": 193,
+      "roundTripMs": 368.26066600000195,
+      "postStartToEnvelopeMs": 180.9997499999954,
+      "receiverPersistMs": 9.356208000004699,
+      "receiptRequestMs": 177.85974999999598
+    },
+    {
+      "i": 18,
+      "saveToReceiveAckMs": 193,
+      "roundTripMs": 915.6444999999949,
+      "postStartToEnvelopeMs": 181.7496669999964,
+      "receiverPersistMs": 9.764875000000757,
+      "receiptRequestMs": 724.0729999999967
+    },
+    {
+      "i": 19,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 376.6464999999953,
+      "postStartToEnvelopeMs": 184.0531669999982,
+      "receiverPersistMs": 9.191874999996799,
+      "receiptRequestMs": 183.34587500000634
+    },
+    {
+      "i": 20,
+      "saveToReceiveAckMs": 1023,
+      "roundTripMs": 1191.483583000001,
+      "postStartToEnvelopeMs": 1012.6840420000008,
+      "receiverPersistMs": 9.102999999995518,
+      "receiptRequestMs": 169.64749999999913
+    },
+    {
+      "i": 21,
+      "saveToReceiveAckMs": 722,
+      "roundTripMs": 890.1759999999995,
+      "postStartToEnvelopeMs": 708.0757080000039,
+      "receiverPersistMs": 10.375208999997994,
+      "receiptRequestMs": 171.65904099999898
+    },
+    {
+      "i": 22,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 372.94283300000825,
+      "postStartToEnvelopeMs": 184.49258299999929,
+      "receiverPersistMs": 9.51995899999747,
+      "receiptRequestMs": 178.04091600001266
+    },
+    {
+      "i": 23,
+      "saveToReceiveAckMs": 402,
+      "roundTripMs": 574.115082999997,
+      "postStartToEnvelopeMs": 389.78329099999974,
+      "receiverPersistMs": 9.221166999996058,
+      "receiptRequestMs": 175.0677080000023
+    },
+    {
+      "i": 24,
+      "saveToReceiveAckMs": 398,
+      "roundTripMs": 574.3186249999999,
+      "postStartToEnvelopeMs": 389.4528750000027,
+      "receiverPersistMs": 8.11074999999255,
+      "receiptRequestMs": 176.71074999999837
+    },
+    {
+      "i": 25,
+      "saveToReceiveAckMs": 192,
+      "roundTripMs": 368.5089169999992,
+      "postStartToEnvelopeMs": 189.87308399999165,
+      "receiverPersistMs": 7.52470799999719,
+      "receiptRequestMs": 171.06112500000745
+    },
+    {
+      "i": 26,
+      "saveToReceiveAckMs": 1213,
+      "roundTripMs": 1381.050958000007,
+      "postStartToEnvelopeMs": 1201.9895419999957,
+      "receiverPersistMs": 9.095625000001746,
+      "receiptRequestMs": 169.92008300000452
+    },
+    {
+      "i": 27,
+      "saveToReceiveAckMs": 216,
+      "roundTripMs": 1124.259791000004,
+      "postStartToEnvelopeMs": 538.3142500000104,
+      "receiverPersistMs": 9.221540999991703,
+      "receiptRequestMs": 173.39029200001096
+    },
+    {
+      "i": 28,
+      "saveToReceiveAckMs": 190,
+      "roundTripMs": 360.4798330000049,
+      "postStartToEnvelopeMs": 178.35279099999752,
+      "receiverPersistMs": 11.26308400000562,
+      "receiptRequestMs": 170.80558299999393
+    },
+    {
+      "i": 29,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 365.158792000002,
+      "postStartToEnvelopeMs": 182.23991699999897,
+      "receiverPersistMs": 9.207207999992534,
+      "receiptRequestMs": 173.6720830000122
+    },
+    {
+      "i": 30,
+      "saveToReceiveAckMs": 399,
+      "roundTripMs": 895.6030419999879,
+      "postStartToEnvelopeMs": 711.0808749999997,
+      "receiverPersistMs": 9.25608399999328,
+      "receiptRequestMs": 175.21808299999975
+    },
+    {
+      "i": 31,
+      "saveToReceiveAckMs": 926,
+      "roundTripMs": 1637.5449170000065,
+      "postStartToEnvelopeMs": 917.3086670000048,
+      "receiverPersistMs": 8.059917000005953,
+      "receiptRequestMs": 712.1229999999923
+    },
+    {
+      "i": 32,
+      "saveToReceiveAckMs": 190,
+      "roundTripMs": 362.61154199999874,
+      "postStartToEnvelopeMs": 180.79733299999498,
+      "receiverPersistMs": 8.506124999999884,
+      "receiptRequestMs": 173.2583750000049
+    },
+    {
+      "i": 33,
+      "saveToReceiveAckMs": 192,
+      "roundTripMs": 363.5821670000005,
+      "postStartToEnvelopeMs": 182.9912089999998,
+      "receiverPersistMs": 10.101791000008234,
+      "receiptRequestMs": 170.44795899999735
+    },
+    {
+      "i": 34,
+      "saveToReceiveAckMs": 349,
+      "roundTripMs": 1260.8869169999962,
+      "postStartToEnvelopeMs": 713.8543749999953,
+      "receiverPersistMs": 9.505999999993946,
+      "receiptRequestMs": 537.4834170000104
+    },
+    {
+      "i": 35,
+      "saveToReceiveAckMs": 187,
+      "roundTripMs": 369.8988329999993,
+      "postStartToEnvelopeMs": 190.18775000001187,
+      "receiverPersistMs": 9.602124999990338,
+      "receiptRequestMs": 170.046583000003
+    },
+    {
+      "i": 36,
+      "saveToReceiveAckMs": 197,
+      "roundTripMs": 383.8005830000038,
+      "postStartToEnvelopeMs": 195.94337500000256,
+      "receiverPersistMs": 16.24087499998859,
+      "receiptRequestMs": 171.56812500000524
+    },
+    {
+      "i": 37,
+      "saveToReceiveAckMs": 739,
+      "roundTripMs": 913.6191249999974,
+      "postStartToEnvelopeMs": 727.7659999999887,
+      "receiverPersistMs": 10.290916000012658,
+      "receiptRequestMs": 175.52416699999594
+    },
+    {
+      "i": 38,
+      "saveToReceiveAckMs": 2585,
+      "roundTripMs": 3096.258791,
+      "postStartToEnvelopeMs": 2905.879958000005,
+      "receiverPersistMs": 8.999374999999418,
+      "receiptRequestMs": 181.34266700000444
+    },
+    {
+      "i": 39,
+      "saveToReceiveAckMs": 205,
+      "roundTripMs": 791.9423340000067,
+      "postStartToEnvelopeMs": 185.38029200000165,
+      "receiverPersistMs": 9.43483300000662,
+      "receiptRequestMs": 183.3454589999892
+    },
+    {
+      "i": 40,
+      "saveToReceiveAckMs": 199,
+      "roundTripMs": 373.11066700000083,
+      "postStartToEnvelopeMs": 177.633582999988,
+      "receiverPersistMs": 10.14229200000409,
+      "receiptRequestMs": 185.27516699998523
+    },
+    {
+      "i": 41,
+      "saveToReceiveAckMs": 761,
+      "roundTripMs": 928.6010840000235,
+      "postStartToEnvelopeMs": 740.264542000019,
+      "receiverPersistMs": 9.252833000005921,
+      "receiptRequestMs": 179.044458999997
+    },
+    {
+      "i": 42,
+      "saveToReceiveAckMs": 594,
+      "roundTripMs": 765.0034159999923,
+      "postStartToEnvelopeMs": 574.7487499999988,
+      "receiverPersistMs": 8.492165999981808,
+      "receiptRequestMs": 181.71045900002355
+    },
+    {
+      "i": 43,
+      "saveToReceiveAckMs": 200,
+      "roundTripMs": 715.8713329999882,
+      "postStartToEnvelopeMs": 520.1485410000023,
+      "receiverPersistMs": 10.273125000006985,
+      "receiptRequestMs": 185.40091699999175
+    },
+    {
+      "i": 44,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 585.2436250000028,
+      "postStartToEnvelopeMs": 180.82029199998942,
+      "receiverPersistMs": 9.356167000019923,
+      "receiptRequestMs": 395.0226660000044
+    },
+    {
+      "i": 45,
+      "saveToReceiveAckMs": 744,
+      "roundTripMs": 916.2589169999992,
+      "postStartToEnvelopeMs": 728.661791999999,
+      "receiverPersistMs": 9.486375000007683,
+      "receiptRequestMs": 178.05520800000522
+    },
+    {
+      "i": 46,
+      "saveToReceiveAckMs": 196,
+      "roundTripMs": 915.4257499999949,
+      "postStartToEnvelopeMs": 176.97708300000522,
+      "receiverPersistMs": 9.129125000006752,
+      "receiptRequestMs": 729.0893749999814
+    },
+    {
+      "i": 47,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 370.14737500000047,
+      "postStartToEnvelopeMs": 181.9574159999902,
+      "receiverPersistMs": 8.820542000001296,
+      "receiptRequestMs": 179.33391699998174
+    },
+    {
+      "i": 48,
+      "saveToReceiveAckMs": 197,
+      "roundTripMs": 365.95429100000183,
+      "postStartToEnvelopeMs": 179.25325000000885,
+      "receiverPersistMs": 8.501290999993216,
+      "receiptRequestMs": 178.14341700001387
+    },
+    {
+      "i": 49,
+      "saveToReceiveAckMs": 416,
+      "roundTripMs": 584.7469580000034,
+      "postStartToEnvelopeMs": 397.0023330000113,
+      "receiverPersistMs": 9.378832999995211,
+      "receiptRequestMs": 178.3047919999808
+    },
+    {
+      "i": 50,
+      "saveToReceiveAckMs": 365,
+      "roundTripMs": 536.2386249999981,
+      "postStartToEnvelopeMs": 346.4336659999972,
+      "receiverPersistMs": 10.638375000009546,
+      "receiptRequestMs": 179.10358399999677
+    },
+    {
+      "i": 51,
+      "saveToReceiveAckMs": 204,
+      "roundTripMs": 562.5235000000102,
+      "postStartToEnvelopeMs": 177.3165839999856,
+      "receiverPersistMs": 13.427916000015102,
+      "receiptRequestMs": 184.78316699998686
+    },
+    {
+      "i": 52,
+      "saveToReceiveAckMs": 199,
+      "roundTripMs": 368.5799579999875,
+      "postStartToEnvelopeMs": 177.4805420000048,
+      "receiverPersistMs": 9.062416000000667,
+      "receiptRequestMs": 181.99929199999315
+    },
+    {
+      "i": 53,
+      "saveToReceiveAckMs": 193,
+      "roundTripMs": 956.2560839999933,
+      "postStartToEnvelopeMs": 175.9316669999971,
+      "receiverPersistMs": 8.655208000011044,
+      "receiptRequestMs": 771.6186249999737
+    },
+    {
+      "i": 54,
+      "saveToReceiveAckMs": 204,
+      "roundTripMs": 379.90916699997615,
+      "postStartToEnvelopeMs": 182.463791999995,
+      "receiverPersistMs": 9.238207999995211,
+      "receiptRequestMs": 188.13850000000093
+    },
+    {
+      "i": 55,
+      "saveToReceiveAckMs": 204,
+      "roundTripMs": 380.4650829999882,
+      "postStartToEnvelopeMs": 193.3240410000144,
+      "receiverPersistMs": 8.338624999974854,
+      "receiptRequestMs": 178.73962500001653
+    },
+    {
+      "i": 56,
+      "saveToReceiveAckMs": 200,
+      "roundTripMs": 371.7815410000039,
+      "postStartToEnvelopeMs": 181.31112500000745,
+      "receiverPersistMs": 9.412332999985665,
+      "receiptRequestMs": 180.8980000000156
+    },
+    {
+      "i": 57,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 376.419332999998,
+      "postStartToEnvelopeMs": 187.1875,
+      "receiverPersistMs": 7.869333000009647,
+      "receiptRequestMs": 181.31991699998616
+    },
+    {
+      "i": 58,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 707.104250000004,
+      "postStartToEnvelopeMs": 514.7014999999956,
+      "receiverPersistMs": 10.221584000013536,
+      "receiptRequestMs": 182.145583000005
+    },
+    {
+      "i": 59,
+      "saveToReceiveAckMs": 210,
+      "roundTripMs": 388.0475419999857,
+      "postStartToEnvelopeMs": 180.35170899998047,
+      "receiverPersistMs": 14.880875000002561,
+      "receiptRequestMs": 192.7664999999979
+    },
+    {
+      "i": 60,
+      "saveToReceiveAckMs": 805,
+      "roundTripMs": 987.1023750000168,
+      "postStartToEnvelopeMs": 785.1216249999998,
+      "receiverPersistMs": 8.580916000006255,
+      "receiptRequestMs": 193.35308400000213
+    },
+    {
+      "i": 61,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 362.6509589999914,
+      "postStartToEnvelopeMs": 175.8344999999972,
+      "receiverPersistMs": 8.127833999984432,
+      "receiptRequestMs": 178.58833300002152
+    },
+    {
+      "i": 62,
+      "saveToReceiveAckMs": 1143,
+      "roundTripMs": 1321.6366669999843,
+      "postStartToEnvelopeMs": 1122.901332999987,
+      "receiverPersistMs": 8.405959000025177,
+      "receiptRequestMs": 190.27670799999032
+    },
+    {
+      "i": 63,
+      "saveToReceiveAckMs": 201,
+      "roundTripMs": 732.9788750000007,
+      "postStartToEnvelopeMs": 529.1988329999731,
+      "receiverPersistMs": 9.294042000023182,
+      "receiptRequestMs": 184.93608299997868
+    },
+    {
+      "i": 64,
+      "saveToReceiveAckMs": 200,
+      "roundTripMs": 376.42862500000047,
+      "postStartToEnvelopeMs": 183.38920800000778,
+      "receiverPersistMs": 8.245916999992914,
+      "receiptRequestMs": 184.7400830000115
+    },
+    {
+      "i": 65,
+      "saveToReceiveAckMs": 205,
+      "roundTripMs": 389.6408339999907,
+      "postStartToEnvelopeMs": 194.75433399999747,
+      "receiverPersistMs": 9.264666000002762,
+      "receiptRequestMs": 185.55616700000246
+    },
+    {
+      "i": 66,
+      "saveToReceiveAckMs": 204,
+      "roundTripMs": 932.3139159999846,
+      "postStartToEnvelopeMs": 736.0439579999947,
+      "receiverPersistMs": 8.101292000006652,
+      "receiptRequestMs": 188.1158749999886
+    },
+    {
+      "i": 67,
+      "saveToReceiveAckMs": 196,
+      "roundTripMs": 366.9064580000122,
+      "postStartToEnvelopeMs": 179.78820800001267,
+      "receiverPersistMs": 9.46366699997452,
+      "receiptRequestMs": 177.57070800001384
+    },
+    {
+      "i": 68,
+      "saveToReceiveAckMs": 208,
+      "roundTripMs": 385.4956250000105,
+      "postStartToEnvelopeMs": 192.19325000001118,
+      "receiverPersistMs": 7.8329999999841675,
+      "receiptRequestMs": 185.43295800001943
+    },
+    {
+      "i": 69,
+      "saveToReceiveAckMs": 196,
+      "roundTripMs": 368.1983750000072,
+      "postStartToEnvelopeMs": 177.17570900000283,
+      "receiverPersistMs": 9.255415999999968,
+      "receiptRequestMs": 181.71195900000748
+    },
+    {
+      "i": 70,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 826.9660840000142,
+      "postStartToEnvelopeMs": 641.3545420000155,
+      "receiverPersistMs": 9.192167000001064,
+      "receiptRequestMs": 176.37629099999322
+    },
+    {
+      "i": 71,
+      "saveToReceiveAckMs": 720,
+      "roundTripMs": 1242.3962909999827,
+      "postStartToEnvelopeMs": 1055.546915999992,
+      "receiverPersistMs": 8.263959000003524,
+      "receiptRequestMs": 178.5480830000015
+    },
+    {
+      "i": 72,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 370.56783299997915,
+      "postStartToEnvelopeMs": 185.07158300001174,
+      "receiverPersistMs": 8.248041999991983,
+      "receiptRequestMs": 177.21087499998976
+    },
+    {
+      "i": 73,
+      "saveToReceiveAckMs": 206,
+      "roundTripMs": 761.354083000042,
+      "postStartToEnvelopeMs": 200.85616700001992,
+      "receiverPersistMs": 10.366207999992184,
+      "receiptRequestMs": 550.0789579999982
+    },
+    {
+      "i": 74,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 370.1558340000338,
+      "postStartToEnvelopeMs": 183.51554200000828,
+      "receiverPersistMs": 10.490583000006154,
+      "receiptRequestMs": 176.11166699999012
+    },
+    {
+      "i": 75,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 923.9337079999968,
+      "postStartToEnvelopeMs": 185.4945000000298,
+      "receiverPersistMs": 8.526749999960884,
+      "receiptRequestMs": 729.8655410000356
+    },
+    {
+      "i": 76,
+      "saveToReceiveAckMs": 794,
+      "roundTripMs": 974.5564170000143,
+      "postStartToEnvelopeMs": 785.4974589999765,
+      "receiverPersistMs": 8.438166000007186,
+      "receiptRequestMs": 180.58358400000725
+    },
+    {
+      "i": 77,
+      "saveToReceiveAckMs": 202,
+      "roundTripMs": 1010.5389160000486,
+      "postStartToEnvelopeMs": 193.20133300003363,
+      "receiverPersistMs": 9.51433299999917,
+      "receiptRequestMs": 177.12404199998127
+    },
+    {
+      "i": 78,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 924.0524999999907,
+      "postStartToEnvelopeMs": 722.4213749999763,
+      "receiverPersistMs": 10.593290999997407,
+      "receiptRequestMs": 179.919458999997
+    },
+    {
+      "i": 79,
+      "saveToReceiveAckMs": 567,
+      "roundTripMs": 737.9467499999446,
+      "postStartToEnvelopeMs": 549.6821249999921,
+      "receiverPersistMs": 9.862499999988358,
+      "receiptRequestMs": 178.33004199998686
+    },
+    {
+      "i": 80,
+      "saveToReceiveAckMs": 578,
+      "roundTripMs": 747.3559999999707,
+      "postStartToEnvelopeMs": 563.1539590000175,
+      "receiverPersistMs": 8.43104100000346,
+      "receiptRequestMs": 175.73004199995194
+    },
+    {
+      "i": 81,
+      "saveToReceiveAckMs": 565,
+      "roundTripMs": 1108.9543330000015,
+      "postStartToEnvelopeMs": 548.1754160000128,
+      "receiverPersistMs": 9.681666999997105,
+      "receiptRequestMs": 551.0352079999866
+    },
+    {
+      "i": 82,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 364.959291999985,
+      "postStartToEnvelopeMs": 178.74579200003063,
+      "receiverPersistMs": 8.718541999987792,
+      "receiptRequestMs": 177.45141599996714
+    },
+    {
+      "i": 83,
+      "saveToReceiveAckMs": 412,
+      "roundTripMs": 581.619915999996,
+      "postStartToEnvelopeMs": 393.0854579999577,
+      "receiverPersistMs": 13.088750000053551,
+      "receiptRequestMs": 175.37445799994748
+    },
+    {
+      "i": 84,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 365.2534160000505,
+      "postStartToEnvelopeMs": 180.2034580000327,
+      "receiverPersistMs": 8.374167000001762,
+      "receiptRequestMs": 176.6334579999675
+    },
+    {
+      "i": 85,
+      "saveToReceiveAckMs": 197,
+      "roundTripMs": 366.3068750000093,
+      "postStartToEnvelopeMs": 179.1339170000283,
+      "receiverPersistMs": 9.944458000012673,
+      "receiptRequestMs": 177.18966699996963
+    },
+    {
+      "i": 86,
+      "saveToReceiveAckMs": 562,
+      "roundTripMs": 730.9721659999923,
+      "postStartToEnvelopeMs": 544.8054999999586,
+      "receiverPersistMs": 9.584750000038184,
+      "receiptRequestMs": 176.5258329999633
+    },
+    {
+      "i": 87,
+      "saveToReceiveAckMs": 202,
+      "roundTripMs": 372.31220799998846,
+      "postStartToEnvelopeMs": 185.34995800000615,
+      "receiverPersistMs": 9.561291999998502,
+      "receiptRequestMs": 177.35866700002225
+    },
+    {
+      "i": 88,
+      "saveToReceiveAckMs": 563,
+      "roundTripMs": 737.6919999999809,
+      "postStartToEnvelopeMs": 552.0964579999563,
+      "receiverPersistMs": 9.55783300002804,
+      "receiptRequestMs": 175.975999999966
+    },
+    {
+      "i": 89,
+      "saveToReceiveAckMs": 197,
+      "roundTripMs": 370.7612499999814,
+      "postStartToEnvelopeMs": 183.94204200000968,
+      "receiverPersistMs": 8.963165999972261,
+      "receiptRequestMs": 177.8117500000517
+    },
+    {
+      "i": 90,
+      "saveToReceiveAckMs": 197,
+      "roundTripMs": 366.5948339999886,
+      "postStartToEnvelopeMs": 179.811166999978,
+      "receiverPersistMs": 9.303957999974955,
+      "receiptRequestMs": 177.43362500000512
+    },
+    {
+      "i": 91,
+      "saveToReceiveAckMs": 195,
+      "roundTripMs": 382.76412499998696,
+      "postStartToEnvelopeMs": 177.20120800001314,
+      "receiverPersistMs": 9.79787499998929,
+      "receiptRequestMs": 195.68329199997243
+    },
+    {
+      "i": 92,
+      "saveToReceiveAckMs": 198,
+      "roundTripMs": 583.594832999981,
+      "postStartToEnvelopeMs": 180.2829999999958,
+      "receiverPersistMs": 11.538667000015266,
+      "receiptRequestMs": 391.7158749999944
+    },
+    {
+      "i": 93,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 364.1060830000206,
+      "postStartToEnvelopeMs": 179.40595799998846,
+      "receiverPersistMs": 8.618584000039846,
+      "receiptRequestMs": 176.04645799996797
+    },
+    {
+      "i": 94,
+      "saveToReceiveAckMs": 192,
+      "roundTripMs": 362.90995899995323,
+      "postStartToEnvelopeMs": 177.5868339999579,
+      "receiverPersistMs": 8.459582999988925,
+      "receiptRequestMs": 176.80450000002747
+    },
+    {
+      "i": 95,
+      "saveToReceiveAckMs": 191,
+      "roundTripMs": 576.2541670000064,
+      "postStartToEnvelopeMs": 175.62891699996544,
+      "receiverPersistMs": 8.668500000028871,
+      "receiptRequestMs": 391.9217499999795
+    },
+    {
+      "i": 96,
+      "saveToReceiveAckMs": 205,
+      "roundTripMs": 374.16499999997905,
+      "postStartToEnvelopeMs": 188.43679200002225,
+      "receiverPersistMs": 8.480207999993581,
+      "receiptRequestMs": 177.20545800001128
+    },
+    {
+      "i": 97,
+      "saveToReceiveAckMs": 194,
+      "roundTripMs": 364.7577080000192,
+      "postStartToEnvelopeMs": 178.21483300003456,
+      "receiverPersistMs": 9.397458999999799,
+      "receiptRequestMs": 177.10224999999627
+    },
+    {
+      "i": 98,
+      "saveToReceiveAckMs": 422,
+      "roundTripMs": 674.8883749999804,
+      "postStartToEnvelopeMs": 404.7180839999928,
+      "receiverPersistMs": 9.450582999968901,
+      "receiptRequestMs": 177.0659169999999
+    },
+    {
+      "i": 99,
+      "saveToReceiveAckMs": 196,
+      "roundTripMs": 708.3402089999872,
+      "postStartToEnvelopeMs": 178.13554199994542,
+      "receiverPersistMs": 9.349333000020124,
+      "receiptRequestMs": 179.856958999997
+    }
+  ],
+  "restartRecovery": true
+}

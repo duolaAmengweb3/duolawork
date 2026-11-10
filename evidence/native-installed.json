@@ -1,0 +1,95 @@
+{
+  "at": "2026-11-03T09:49:08.969Z",
+  "build": "e383b7c0a546a87b",
+  "realNativeAgents": true,
+  "modelApiReplacement": false,
+  "perToolOwnerApprovals": 0,
+  "members": [
+    {
+      "engine": "codex",
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "channelId": "channel_ce37b34919c3483c888cd3a69e8e8b31",
+      "cwd": "/Users/duola/.config/agent-hub/coding/member_26ac2c60371e4158bd6df1b0fa0db37d/workspace",
+      "file": "hub-installed-codex-8af4ed5b-b59.txt",
+      "marker": "8af4ed5b-b59",
+      "first": {
+        "replyId": "chat_93526f9f01c0475f8e63186eaecc6dfd",
+        "body": "文件已写入：hub-installed-codex-8af4ed5b-b59.txt",
+        "seconds": 29.923
+      },
+      "sessionId": "01a1a0d0-12a0-7cf1-967a-92874fbb0ce1",
+      "afterRestart": {
+        "replyId": "chat_78c9dc057684425a9e8138563975caab",
+        "body": "8af4ed5b-b59\n重开后继续成功",
+        "seconds": 33.128
+      },
+      "sameSession": true,
+      "archived": true
+    },
+    {
+      "engine": "antigravity",
+      "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+      "channelId": "channel_99a1d1d4ce654568aa068abdab6585f3",
+      "cwd": "/Users/duola/.config/agent-hub/coding/member_57804695524e4e8cad1d8dd3bb272736/workspace",
+      "file": "hub-installed-antigravity-045a79ad-89d.txt",
+      "marker": "045a79ad-89d",
+      "first": {
+        "replyId": "chat_499ad9ac95c34f8ba1fa17536253da5f",
+        "body": "文件已写入：hub-installed-antigravity-045a79ad-89d.txt",
+        "seconds": 57.046
+      },
+      "sessionId": "33771e81-ca24-4214-b3bb-56a29a592961",
+      "afterRestart": {
+        "replyId": "chat_1da1f61453204783aa5078bcc9af401d",
+        "body": "045a79ad-89d\n重开后继续成功",
+        "seconds": 68.182
+      },
+      "sameSession": true,
+      "archived": true
+    }
+  ],
+  "checks": [
+    "两家在已安装软件内真实回群并写入指定本地文件，完整授权无需逐次批准",
+    "安装版真实退出重开后，Google/Codex 未重新登录，两家使用同一原生会话读取并继续原文件",
+    "Codex 在 Hub 主动 @Gemini 并收到同群真实回复，无人工转述"
+  ],
+  "collaboration": {
+    "channelId": "channel_6ade8e6e6db3438d9c82914b999d2543",
+    "triggerId": "chat_81ad50e2f77341eeb3cd5d05e12a79a4",
+    "forwardedId": "chat_7e8b513d76144339afb387e3d9078653",
+    "gemini": {
+      "replyId": "chat_af83f31695a54a54b34710764a34e6d9",
+      "body": "可以正常交流",
+      "seconds": 60.528
+    }
+  },
+  "finishedAt": "2026-11-03T09:53:31.526Z",
+  "chatExperienceFix": {
+    "at": "2026-11-03T10:14:00.734Z",
+    "build": "2331faabcd16d36b",
+    "workerVersion": "e472151f-c6e5-40f1-88ab-06cd3d7dadc4",
+    "displayedGroupRestored": "channel_6ade8e6e6db3438d9c82914b999d2543",
+    "oldChatComposerObservedEnabled": true,
+    "unitTestsPassed": 203,
+    "isolatedUIFlowsPassed": 12,
+    "actualUserDirectChat": {
+      "channelId": "channel_d4eba0c36c8b46938c5db48de728b93c",
+      "userMessageId": "chat_4b0c5d244bad49daa64e1623abfe1b4a",
+      "replyMessageId": "chat_2a4dc57d3fbe48af925281f671df23d6",
+      "nativeMemberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "active"
+    },
+    "pendingApprovals": 0,
+    "nativePermissionModes": [
+      {
+        "engine": "codex",
+        "permissionMode": "full"
+      },
+      {
+        "engine": "antigravity",
+        "permissionMode": "full"
+      }
+    ],
+    "note": "旧状态直接发消息的完整行为由隔离端到端界面测试覆盖；安装版观察到旧聊天输入框启用，以及用户自行发起的 Codex 单聊真实回复。没有要求用户暂停操作，没有代发这条单聊。"
+  }
+}

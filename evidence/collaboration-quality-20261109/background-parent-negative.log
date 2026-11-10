@@ -1,0 +1,92 @@
+✔ interleaved topics retain identity and owner changes without page interaction or human approval (11.569208ms)
+✔ concurrent dissent is appended and cannot silently replace a newer understanding (4.181083ms)
+✔ coverage counts exact sources, preserves holes, rejects fake coverage and tracks edited originals (3.188583ms)
+✔ source changes retire derived memory in recall, direct reads and channel context; forgetting cannot revive episodes (3.348208ms)
+✔ cross-channel source and private membership boundaries apply to topics and compatibility calls (3.576667ms)
+✔ automatic maintenance waits for normal work, coalesces once and keeps incomplete coverage pending (3.341333ms)
+✔ a new result does not erase unresolved dissent; explicit versioned reconciliation is required (2.7225ms)
+✔ split and merge preserve stable aliases and source history without overwriting new episodes (2.997333ms)
+✔ forgetting more than 500 episodes removes all bodies, revisions and cached source keys (43.785208ms)
+✔ topic search covers later pages without exposing invalidated source text (5.324ms)
+✔ direct group-memory readers receive a withdrawal without leaking the forgotten content (2.684667ms)
+✔ correcting an overinterpreted episode marks it historical and preserves unresolved questions (2.90075ms)
+✔ later episodes preserve earlier source dependencies across recall and edits (legacy=false) (3.958167ms)
+✔ later episodes preserve earlier source dependencies across recall and edits (legacy=true) (4.604208ms)
+✖ background memory freezes its event batch and yields on tool boundaries without consuming foreground work (4.886375ms)
+✖ foreground wins over an unclaimed background batch, and the batch is not merged or falsely completed (4.631959ms)
+✖ background scheduling respects shared native execution across groups without blocking independent sessions (2.72275ms)
+✖ legacy queued maintenance also yields to foreground in receiveNext without merging the hidden instruction (3.999166ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 14
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 227.50175
+
+✖ failing tests:
+
+test at tests/group-memory.test.mjs:141:1
+✖ background memory freezes its event batch and yields on tool boundaries without consuming foreground work (4.886375ms)
+  TypeError: Cannot read properties of undefined (reading 'eventIds')
+      at TestContext.<anonymous> (file:///private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/dw-bg-parent-8bz57ahr/tests/group-memory.test.mjs:143:46)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at tests/group-memory.test.mjs:163:1
+✖ foreground wins over an unclaimed background batch, and the batch is not merged or falsely completed (4.631959ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - false
+  
+      at TestContext.<anonymous> (file:///private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/dw-bg-parent-8bz57ahr/tests/group-memory.test.mjs:166:102)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/group-memory.test.mjs:174:1
+✖ background scheduling respects shared native execution across groups without blocking independent sessions (2.72275ms)
+  AssertionError [ERR_ASSERTION]: shared execution stays with foreground work
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/dw-bg-parent-8bz57ahr/tests/group-memory.test.mjs:180:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/group-memory.test.mjs:186:1
+✖ legacy queued maintenance also yields to foreground in receiveNext without merging the hidden instruction (3.999166ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'chat_1a4b8759263646d5bfe57c07404f9440',
+      'chat_93f7b429930f4391942290a9edd48c08'
+    ]
+  
+      at TestContext.<anonymous> (file:///private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/dw-bg-parent-8bz57ahr/tests/group-memory.test.mjs:191:9)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'chat_1a4b8759263646d5bfe57c07404f9440', 'chat_93f7b429930f4391942290a9edd48c08' ],
+    expected: [ 'chat_93f7b429930f4391942290a9edd48c08' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

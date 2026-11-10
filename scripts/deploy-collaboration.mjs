@@ -63,6 +63,10 @@ const api = (suffix, options = {}) =>
 const cfg = JSON.parse(
   await fs.readFile(path.join(root, "cloud/wrangler.jsonc"), "utf8"),
 );
+if (mode === "production" && cfg.vars?.HUB_RELAY_ORIGIN) {
+  console.log(await run(["scripts/deploy-server.mjs"]));
+  process.exit(0);
+}
 if (cfg.d1_databases[0].database_id !== "890d1e07-1ad5-42fb-a982-b99215b2ff99")
   throw new Error("Wrong D1");
 const before = await requestJson(local.endpoint + "/admin/state", {
@@ -131,7 +135,7 @@ if (mode === "production") {
     ...cfg,
     name: "agent-hub-acceptance",
     main: path.join(root, "cloud/worker.ts"),
-    vars: { ...cfg.vars, WORKSPACE_ID: workspace },
+    vars: { ...cfg.vars, WORKSPACE_ID: workspace, HUB_RELAY_ORIGIN: "", HUB_MAINTENANCE: "0" },
     triggers: { crons: [] },
     d1_databases: cfg.d1_databases.map((x) => ({
       ...x,

@@ -1,4 +1,6 @@
 import { digest, fail, id } from "./repository.mjs";
+import {reconcileTaskNotification} from './task-deliverables.mjs';
+import {eventDeliveryId} from './receiver-wakes.mjs';
 import {
   platformURL,
   readJSON,
@@ -10,7 +12,7 @@ import {
 
 export const EVENT = {
   name: "work.ready",
-  description: "本成员有待领取的项目工作。仅包含标识，完整资料从工具读取。",
+  description: "本成员有待处理的群消息或项目工作。仅包含标识；list_work、claim_work 返回真实类型与上下文。普通群聊不创建正式任务。",
   delivery: ["webhook"],
   inputSchema: {
     type: "object",
@@ -30,6 +32,23 @@ export const EVENT = {
     additionalProperties: false,
   },
 };
+
+// A platform receipt can cover only the currently active destinations. This is
+// also checked when new messages would otherwise coalesce behind an old wake.
+export async function eventReceiptCurrent(repo,row,now){
+  let after='',found=false;
+  for(;;){
+    const page=await repo.list('subscription',{parent:row.memberId,status:'active',after,limit:500,page:true});
+    for(const sub of page){
+      if(sub.expiresAt<=now)continue;
+      found=true;
+      if((await repo.get('event_delivery',eventDeliveryId(row,sub.id),false))?.status!=='accepted')return false;
+    }
+    if(page.length<500)break;
+    after=page.at(-1).id;
+  }
+  return found;
+}
 
 export async function eventMethod(
   repo,
@@ -145,6 +164,32 @@ export async function eventMethod(
         expiresAt: refreshBefore,
         verifiedUntil: new Date(Date.parse(now) + 300000).toISOString(),
       });
+      // Acceptance belongs to a particular receiver subscription. After a
+      // receiver replacement, its predecessor's receipt cannot cover delivery
+      // to the new receiver. Keep each event ID stable for that destination.
+      const current=await tx.get('connection',memberId);
+      if(current.transport!=='dots-events'||!['configured','verified'].includes(current.status)||current.configVersion!==c.configVersion)return {};
+      for(const status of ['accepted','waiting_subscription']){
+        let after='';
+        for(;;){
+          const page=await tx.list('outbox',{status,after,limit:500,page:true});
+          for(const row of page){
+            if(row.memberId!==memberId||row.transport!=='dots-events'||row.configVersion!==current.configVersion)continue;
+            if((await tx.get('event_delivery',eventDeliveryId(row,subscriptionId),false))?.status==='accepted')continue;
+            if(row.conversation){
+              const turn=await tx.get('channel_turn',row.stepId,false),channel=await tx.get('channel',row.scopeId,false);
+              if(!turn||turn.memberId!==memberId||turn.status!=='ready'||turn.claimedAt||turn.lease||channel?.status!=='active'||!channel.memberIds.includes(memberId))continue;
+              if((await reconcileTaskNotification(tx,turn)).state!=='current')continue;
+            }else{
+              const step=await tx.get('step',row.stepId,false),run=await tx.get('run',row.parentId,false);
+              if(step?.memberId!==memberId||step.status!=='ready'||step.generation!==row.generation||run?.status!=='running')continue;
+            }
+            tx.put('outbox',{...row,status:'pending',dueAt:tx.now,reason:null});
+          }
+          if(page.length<500)break;
+          after=page.at(-1).id;
+        }
+      }
       return {};
     },
     now,
@@ -162,9 +207,9 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
   ).filter((s) => s.expiresAt > now);
   if (!subscriptions.length)
     return { status: "waiting_subscription", retry: true, delay: 60000 };
-  let allAccepted = true;
+  let allAccepted = true, platformRespondedAt = null;
   for (const sub of subscriptions) {
-    const deliveryId = `${row.id}:${sub.id}`,
+    const deliveryId = eventDeliveryId(row,sub.id),
       prior = await repo.get("event_delivery", deliveryId, false);
     if (prior?.status === "accepted") continue;
     if (prior?.status === "stopped") {
@@ -176,7 +221,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
     const event = {
       eventId: deliveryId,
       name: EVENT.name,
-      timestamp: row.createdAt,
+      timestamp: row.wakeCreatedAt || row.createdAt,
       data: {
         member_id: row.memberId,
         step_id: row.stepId,
@@ -204,6 +249,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
         body,
       });
       httpStatus = r.status;
+      platformRespondedAt = new Date().toISOString();
       await r.body?.cancel();
       status = r.ok
         ? "accepted"
@@ -223,6 +269,7 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
           parentId: row.id,
           status,
           httpStatus,
+          platformRespondedAt,
         });
         if (httpStatus === 410)
           tx.put("subscription", { ...sub, status: "revoked" });
@@ -236,5 +283,6 @@ export async function deliverEvents(repo, row, secret, fetcher, now) {
     status: allAccepted ? "accepted" : "event_retry",
     retry: !allAccepted,
     delay: 60000,
+    platformRespondedAt,
   };
 }

@@ -1,0 +1,16 @@
+✔ a replacement subscription receives still-unclaimed work; old callback acceptance must not strand it (15.99175ms)
+✔ the first valid subscription immediately wakes work waiting for a subscription, without waiting for its retry timer (4.440125ms)
+✔ subscription replacement never restarts claimed execution or another member work (4.397708ms)
+✔ replacement retires an obsolete task notice instead of replaying it, and leaves other members untouched (9.797959ms)
+✔ a new subscription does not requeue a notice from an older connection configuration (3.602542ms)
+✔ subscription recovery covers all pages of still-unclaimed work without a fixed conversation count (59.952875ms)
+✔ new messages cannot coalesce behind a historical receipt belonging only to a replaced receiver (6.114333ms)
+✔ an inconsistent ready record with a previous lease cannot absorb newly published work (4.735625ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 190.854375

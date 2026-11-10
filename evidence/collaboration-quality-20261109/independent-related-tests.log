@@ -1,0 +1,37 @@
+✔ monitor identifies only its actual native ancestor; never latest or unrelated session (1.141375ms)
+✔ monitor and MCP processes share exact routing but preserve independent receipt state across restart (4579.963375ms)
+✔ Claude Monitor: 1 independently scoped sessions continue while the first claim stays active (1666.556084ms)
+✔ Claude Monitor: 3 independently scoped sessions continue while the first claim stays active (2007.916542ms)
+✔ Claude Monitor: 5 independently scoped sessions continue while the first claim stays active (1912.688791ms)
+✔ Claude Monitor: 10 independently scoped sessions continue while the first claim stays active (3548.01175ms)
+✔ pasted association links an unselected original conversation without re-pairing the account (1098.664458ms)
+✔ persistent plugin uses official Monitor and ordinary MCP without launcher, model or permission flags (4.79025ms)
+✔ unlinked native conversations stay inert; notifications and tool claims never share state files (0.968584ms)
+✔ one-paste installer preserves existing login and account grant and requests only native plugin reload (1769.5105ms)
+✔ remote Claude pairing, two native sessions, routing, persistence, disconnect and bundled MCP Channel protocol (5819.924875ms)
+✔ Claude current-conversation code uses the registered native channel, survives restart and rejects stale replacement (1407.660416ms)
+✔ launcher adds per-launch plugin/MCP only and preserves official resume argument and metadata boundary (151.909167ms)
+✔ a durable receive is not a model start or a lease; receipts cannot cross members, sessions or recovery attempts (15.624084ms)
+✔ lost receipt ACK is replayable; binding changes clear stale status and reject late old-session receipts (9.555667ms)
+✔ fast chat projection excludes materials without losing messages, addressing, receipts or access checks (6.040625ms)
+✔ cached successful receipt cannot bypass a later message edit, retry generation or connection revocation (9.01675ms)
+✔ a late native receiver can ACK an unclaimed notification timeout without replaying ended execution (5.18225ms)
+✔ receiver takeover fences old and cached receipts before a duplicate model wake; the new receiver has its own receipt identity (6.634667ms)
+✔ native session reports the running receiver revision separately from the published package (12.426083ms)
+✔ legacy and restarted receivers cannot inherit proof that another process loaded the new code (11.82125ms)
+✔ mixed active native versions remain visible; offline old receivers do not make healthy sessions obsolete (4.716959ms)
+✔ invalid native revision is rejected without changing the previous heartbeat (6.091375ms)
+✔ new receiver takes over with a current-owner comparison; old heartbeat, retry and offline cannot overwrite it (11.488792ms)
+✔ monitor heartbeat uses its startup version instead of rereading a replaced installation (8.04325ms)
+✔ native monitor refuses a registration hash that differs from its startup bundle before opening a connection (285.713792ms)
+✔ installing a replacement does not stop the existing native monitor before its host reloads it (2612.916458ms)
+✔ remote account setup is reusable; native catalog, commands and routing survive restart without granting owner access (5435.702542ms)
+✔ Gemini CLI and Antigravity CLI use their own protocols and never authenticate with another runtime profile (0.572333ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17041.669834

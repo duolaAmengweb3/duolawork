@@ -1,0 +1,149 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {fixture} from './collaboration-helper.mjs';
+import {conversationCommand,conversationTool,claimConversation} from '../cloud/collaboration/conversation.mjs';
+import {withConversationContext} from '../cloud/collaboration/inbox.mjs';
+import {callTool} from '../cloud/collaboration/api.mjs';
+const owner={owner:true},leader={memberId:'write'},worker={memberId:'grok'};
+async function setup(t){const f=await fixture(t);let n=0;const send=(type,args,actor=owner)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:'intent-'+(++n),...args});const c=await send('channel.create',{name:'持续协作',memberIds:['grok','check','write'],coordinatorId:'write'});const post=(body,args={},actor=owner)=>send('channel.post',{channelId:c.id,body,...args},actor);const action=(args,actor=leader)=>send('channel.task',{channelId:c.id,...args},actor);const read=id=>conversationTool(f.repo,f.identity,owner,'read_todo',{channelId:c.id,taskId:id});const plan=async(goal='交付目标')=>{const m=await post(goal);return action({action:'plan',intent:{goal,scope:['只按本次授权执行']},messageIds:[m.id]});};return {...f,c,send,post,action,read,plan};}
+const passed={criterionResults:[{id:'outcome',result:'met',evidence:'核对实际结果'}],verdict:'accept',reason:'已核对'};
+async function done(f,t,actor=leader){return f.action({action:'submit',taskId:t.id,expectedVersion:t.version,workSpecVersion:t.workSpec.version,submission:{body:'实际交付',coverage:[{id:'outcome',location:'正文'}]},selfCheck:passed},actor);}
+
+test('plan records dynamic intent, original source and visible card; plain chat does not manufacture a task',async t=>{
+ const f=await setup(t);await f.post('你好吗');assert.equal((await f.repo.list('channel_task')).length,0);
+ const task=await f.plan();assert.equal(task.managedIntent,true);assert.equal(task.assigneeId,'write');assert.equal(task.intentVersion,1);
+ const card=await f.repo.get('channel_message',task.cardMessageId);assert.equal(card.type,'task_intent');assert.equal(card.taskCard.intent.goal,'交付目标');
+ const detail=await f.read(task.id);assert.equal(detail.sourceMessages.length,1);assert.equal(detail.sourceMessages[0].body,'交付目标');
+});
+test('explicit task supplement keeps target routing, remains in source context and never pauses active work',async t=>{
+ const f=await setup(t),task=await f.plan();await f.action({action:'accept',taskId:task.id,expectedVersion:task.version});
+ const msg=await f.post('补充材料，先继续',{refs:[{kind:'task',id:task.id}],mentions:['grok']});assert.deepEqual(msg.recipientIds,['grok']);assert.deepEqual(msg.taskIds,[task.id]);
+ const current=await f.read(task.id);assert.equal(current.status,'doing');assert.equal(current.workSpec.version,1);assert.equal(current.sourceMessages.length,2);
+ const notice=(await f.repo.list('channel_turn')).find(x=>x.messageId===msg.id),claim=await claimConversation(f.repo,f.identity,worker,{requestId:'claim-task',stepId:notice.id});const context=await withConversationContext(f.repo,f.identity,worker,claim);assert.equal(context.input.taskWork[0].intent.goal,task.intent.goal);assert.ok(context.input.taskWork[0].sourceMessages.some(m=>m.id===msg.id));
+});
+test('revision changes only affected node; completed independent work and another parallel task survive',async t=>{
+ const f=await setup(t),task=await f.plan(),other=await f.plan('独立任务');
+ const a=await done(f,await f.action({action:'create',title:'不受影响',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false}));
+ const b=await done(f,await f.action({action:'create',title:'受影响',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false}));
+ const fresh=await f.read(task.id),m=await f.post('改第二项要求');
+ await f.action({action:'revise',taskId:task.id,expectedVersion:fresh.version,intent:{goal:'改过的目标',format:{custom:true}},messageIds:[m.id],changes:[{taskId:b.id,expectedVersion:b.version,action:'configure',body:'新版要求'}]});
+ const unchanged=await f.read(a.id),changed=await f.read(b.id);assert.equal(unchanged.version,a.version);assert.equal(unchanged.delivery.valid,true);assert.equal(changed.status,'todo');assert.equal(changed.delivery.valid,false);assert.equal((await f.read(other.id)).version,other.version);assert.equal((await f.read(task.id)).intent.format.custom,true);
+});
+test('progress association preserves acceptance, actual intent correction reopens only aggregate',async t=>{
+ const f=await setup(t),task=await done(f,await f.plan()),m=await f.post('进度怎么样');
+ const linked=await f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[m.id]});assert.equal((await f.read(task.id)).delivery.valid,true);
+ const revised=await f.action({action:'revise',taskId:task.id,expectedVersion:linked.version,intent:{goal:'补上新的交付'}});assert.equal(revised.status,'doing');assert.equal((await f.read(task.id)).delivery.valid,false);assert.equal((await f.repo.get('channel_task_submission',task.currentSubmissionId)).body,'实际交付');
+});
+test('associated result without purpose or @ returns to leader, including child work',async t=>{
+ const f=await setup(t),task=await f.plan(),child=await f.action({action:'create',title:'具体节点',parentTaskId:task.id,assigneeId:'grok'});
+ const msg=await f.post('这是具体结果',{refs:[{kind:'task',id:child.id}],mentions:[],replyTo:(await f.read(task.id)).sourceMessageId},worker);
+ assert.ok(msg.recipientIds.includes('write'));assert.ok(msg.taskIds.includes(task.id));assert.equal((await f.repo.list('channel_turn')).filter(x=>x.messageId===msg.id&&x.memberId==='write').length,1);
+});
+test('merge preserves IDs, original results, child dependencies and handles old references and late submissions',async t=>{
+ const f=await setup(t),left=await f.plan('同目标旧任务'),right=await f.plan('同目标主任务');
+ const child=await f.action({action:'create',title:'已完成节点',parentTaskId:left.id,assigneeId:'grok',notifyAssignee:false});const completed=await done(f,child,worker);
+ const merged=await f.action({action:'merge',taskId:left.id,expectedVersion:(await f.read(left.id)).version,targetTaskId:right.id,targetVersion:right.version,reason:'同一交付目标'});
+ assert.equal(merged.id,right.id);assert.equal((await f.read(completed.id)).parentTaskId,right.id);assert.equal((await f.read(completed.id)).delivery.valid,true);assert.equal((await f.read(left.id)).mergedInto,right.id);
+ const msg=await f.post('沿用旧链接补充',{refs:[{kind:'task',id:left.id}]});assert.deepEqual(msg.taskIds,[right.id]);assert.ok((await f.read(completed.id)).sourceMessages.some(m=>m.id===msg.id),'merged child must see the canonical task latest supplement');
+ const late=await done(f,await f.read(left.id));assert.equal(late.id,left.id);assert.equal(late.parentTaskId,right.id);assert.equal((await f.repo.get('channel_task_submission',late.currentSubmissionId)).body,'实际交付');
+});
+test('stale, foreign, unauthorized and invalid nested revisions roll back the whole intent operation',async t=>{
+ const f=await setup(t),task=await f.plan();const before=(await f.repo.list('channel_message')).length;
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version-1,intent:{goal:'覆盖'}}),e=>e.code==='version_conflict');
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'越权'}},worker),e=>e.code==='forbidden');
+ const foreign=await f.send('channel.create',{name:'别群',memberIds:['write']});const m=await f.send('channel.post',{channelId:foreign.id,body:'私有'});
+ await assert.rejects(f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[m.id]}),e=>e.code==='forbidden');
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'新版'},changes:[{taskId:task.id,expectedVersion:task.version,action:'update',title:'不应保留'}, {taskId:'missing'}]}));assert.equal((await f.read(task.id)).title,task.title);assert.equal((await f.read(task.id)).version,task.version);assert.equal((await f.repo.list('channel_message',{scope:f.c.id})).length,before);
+});
+test('cached native tool catalog can plan through existing body string and shared envelope',async t=>{
+ const f=await setup(t),m=await f.post('旧目录需求');const result=await callTool(f.repo,f.identity,leader,'post_message',{requestId:'cached-plan',channelId:f.c.id,body:'HUB_SHARED_TOOL_V1\n'+JSON.stringify({name:'board_task',arguments:{channelId:f.c.id,action:'plan',body:JSON.stringify({intent:{goal:'兼容旧目录'},messageIds:[m.id]})}})},{});assert.equal(result.intent.goal,'兼容旧目录');
+});
+test('reply does not finish a runnable managed task; continuation is durable and does not spin on no progress',async t=>{
+ const f=await setup(t),task=await f.plan(),source=(await f.read(task.id)).sourceMessageId;
+ const msg=await f.post('已记录，继续处理',{replyTo:source,mentions:[]},leader);assert.equal((await f.read(task.id)).status,'todo');
+ const notices=(await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:'));assert.equal(notices.length,1);assert.ok(await f.repo.get('outbox','notice_'+(await f.repo.list('channel_turn')).find(x=>x.messageId===notices[0].messageId).id));
+ await f.post('无新状态',{replyTo:msg.id,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,1);
+});
+
+test('reassociation is explicit and retains a history trail rather than silently overwriting earlier interpretation',async t=>{
+ const f=await setup(t),left=await f.plan('目标甲'),right=await f.plan('目标乙'),m=await f.post('补充乙的要求',{refs:[{kind:'task',id:left.id}]});
+ await f.action({action:'associate',taskId:right.id,expectedVersion:right.version,fromTaskId:left.id,fromVersion:(await f.read(left.id)).version,messageIds:[m.id],reason:'纠正归属'});
+ assert.deepEqual((await f.repo.get('channel_message',m.id)).taskIds,[right.id]);assert.ok(!(await f.read(left.id)).intentSourceIds.includes(m.id));assert.ok((await f.read(right.id)).intentSourceIds.includes(m.id));assert.ok((await f.read(left.id)).versions.some(v=>v.intentSourceIds?.includes(m.id)));
+});
+test('waiting on peers or dependencies creates no continuation polling; work in another task still proceeds',async t=>{
+ const f=await setup(t),task=await f.plan('等待核查');await f.action({action:'create',title:'其他成员的工作',parentTaskId:task.id,assigneeId:'grok',notifyAssignee:false});
+ await f.post('等待成员回传',{replyTo:(await f.read(task.id)).sourceMessageId,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,0);
+ const other=await f.plan('独立可做');await f.post('推进独立事项',{replyTo:(await f.read(other.id)).sourceMessageId,mentions:[]},leader);assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,1);
+});
+test('concurrent supplements and intent revisions retain both original messages without restarting native work',async t=>{
+ const f=await setup(t),task=await f.plan();const outcomes=await Promise.allSettled([f.post('补充一',{refs:[{kind:'task',id:task.id}]}),f.post('补充二',{refs:[{kind:'task',id:task.id}]})]);
+ assert.ok(outcomes.every(o=>o.status==='fulfilled'));const current=await f.read(task.id);assert.ok(current.sourceMessages.some(m=>m.body==='补充一'));assert.ok(current.sourceMessages.some(m=>m.body==='补充二'));assert.equal(current.status,'todo');
+ const revisions=await Promise.allSettled([f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'版本A'}}),f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'版本B'}})]);assert.equal(revisions.filter(r=>r.status==='fulfilled').length,1);assert.equal(revisions.filter(r=>r.status==='rejected'&&r.reason.code==='version_conflict').length,1);
+});
+
+test('editing an original owner message does not invalidate every child; explicit revision refreshes aggregate basis',async t=>{
+ const f=await setup(t),task=await f.plan('方案要求'),child=await done(f,await f.action({action:'create',title:'已核对的独立证据',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false}));
+ const detail=await f.read(task.id),source=await f.repo.get('channel_message',detail.sourceMessageId);
+ await f.send('channel.message.edit',{channelId:f.c.id,messageId:source.id,expectedVersion:source.version||1,body:'方案要求，加一个交付维度'});
+ assert.equal((await f.read(child.id)).delivery.valid,true);assert.ok((await f.read(child.id)).sourceMessages.some(m=>m.body.includes('加一个交付维度')));
+ const current=await f.read(task.id);const revised=await f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'方案要求，加一个交付维度'}});
+ assert.equal(revised.requirementSources[0].version,2);assert.equal((await f.read(child.id)).delivery.valid,true);assert.ok(!(await f.read(task.id)).delivery.gaps.some(g=>g.includes('原始用户要求已有变化')));
+});
+
+test('audit P1 stale accepted root is runnable for reconciliation and its continuation can actually be claimed',async t=>{
+ const f=await setup(t),task=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'交付文档',body:'旧原件'});
+ const submitted=await f.action({action:'submit',taskId:task.id,expectedVersion:task.version,workSpecVersion:1,submission:{body:'有依据的结果',refs:[{kind:'document',id:doc.id}],coverage:[{id:'outcome',location:'文档'}]},selfCheck:passed});
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'新的原件',reason:'原件变更'});
+ assert.equal((await f.read(task.id)).delivery.stage,'stale');await f.post('重新核对结果',{replyTo:task.sourceMessageId,refs:[{kind:'task',id:task.id}],mentions:[]},leader);
+ const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':reconcile:'));assert.ok(follow);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===follow.messageId);const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'claim-stale',stepId:turn.id});assert.equal(claim.turnId,turn.id);assert.equal((await f.repo.get('channel_turn',turn.id)).status,'active');assert.equal((await f.repo.get('channel_task',submitted.id)).acceptedSubmissionId,submitted.acceptedSubmissionId);
+});
+test('audit P1 stale done child is not counted as closed and resumes before aggregate delivery',async t=>{
+ const f=await setup(t),root=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'子项来源',body:'版本一'}),child=await f.action({action:'create',title:'来源核查',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});
+ await f.action({action:'submit',taskId:child.id,expectedVersion:child.version,workSpecVersion:1,submission:{body:'实际子项',refs:[{kind:'document',id:doc.id}],coverage:[{id:'outcome',location:'文档'}]},selfCheck:passed});
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'版本二',reason:'更正'});await f.post('继续复核',{replyTo:root.sourceMessageId,refs:[{kind:'task',id:root.id}],mentions:[]},leader);
+ const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':reconcile:'));const msg=await f.repo.get('channel_message',follow.messageId);assert.ok(msg.taskIds.includes(child.id));assert.equal((await f.read(child.id)).delivery.stage,'stale');
+});
+test('audit P2 unrelated member cannot inject owner sources; own results and addressed requirements remain usable',async t=>{
+ const f=await setup(t),task=await f.plan(),unrelated=await f.post('负责人处理的其他事情');
+ await assert.rejects(f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[unrelated.id]},worker),e=>e.code==='forbidden');
+ const directed=await f.post('请你补充来源',{mentions:['grok']});let linked=await f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[directed.id]},worker);assert.ok(linked.intentSourceIds.includes(directed.id));
+ const result=await f.post('我的核查结果',{replyTo:directed.id,mentions:[]},worker);linked=await f.action({action:'associate',taskId:task.id,expectedVersion:linked.version,messageIds:[result.id]},worker);assert.ok(linked.intentSourceIds.includes(result.id));
+});
+
+test('audit open child with changed basis is reconciled, never dispatched as executable continuation',async t=>{
+ const f=await setup(t),root=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'依据',body:'v1'}),child=await f.action({action:'create',title:'尚未执行',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false,workSpec:{expectedOutcome:'当前来源支持的结果',criteria:[{id:'outcome',text:'依据有效',required:true}],basisRefs:[{kind:'document',id:doc.id}]}});
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'v2',reason:'来源变化'});await f.post('接着做',{replyTo:root.sourceMessageId,mentions:[]},leader);
+ assert.equal((await f.repo.list('channel_task_followup')).filter(x=>x.id.includes(':continue:')).length,0);const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':reconcile:'));assert.ok(follow);const notice=await f.repo.get('channel_message',follow.messageId);assert.ok(notice.body.includes('旧约定不可执行'));await assert.rejects(f.action({action:'accept',taskId:child.id,expectedVersion:child.version}),e=>e.code==='task_not_ready');
+});
+
+test('audit root basis takes priority over ready children and peer waits; reconciliation remains claimable',async t=>{
+ const f=await setup(t),root=await f.plan(),child=await f.action({action:'create',title:'独立可做节点',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});const source=await f.repo.get('channel_message',root.sourceMessageId);
+ await f.send('channel.message.edit',{channelId:f.c.id,messageId:source.id,expectedVersion:source.version||1,body:'原目标有新的边界'});assert.equal((await f.read(child.id)).delivery.stage,'pending');
+ await f.post('核对后继续',{replyTo:root.sourceMessageId,mentions:[]},leader);const notices=await f.repo.list('channel_task_followup');assert.equal(notices.filter(x=>x.id.includes(':continue:')).length,0);const notice=notices.find(x=>x.id.includes(':reconcile:'));assert.ok(notice);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===notice.messageId);const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'root-first-claim',stepId:turn.id});assert.equal(claim.turnId,turn.id);
+});
+
+test('audit claim rechecks every scheduled node and converts changed basis into a read-only reconciliation notice',async t=>{
+ const f=await setup(t),root=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'依据',body:'v1'}),child=await f.action({action:'create',title:'可做节点',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false,workSpec:{expectedOutcome:'当前依据',criteria:[{id:'outcome',text:'来源有效',required:true}],basisRefs:[{kind:'document',id:doc.id}]}});
+ await f.post('继续节点',{replyTo:root.sourceMessageId,mentions:[]},leader);const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':continue:'));assert.ok(follow);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===follow.messageId);
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'v2',reason:'排期后更新来源'});
+ const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'queued-changed-basis',stepId:turn.id});assert.equal(claim.turnId,turn.id);assert.ok((await f.repo.get('channel_turn',turn.id)).taskEvent.startsWith('reconcile:'));const notice=await f.repo.get('channel_message',turn.messageId);assert.ok(notice.body.includes('不能按旧约定执行'));await assert.rejects(f.action({action:'accept',taskId:child.id,expectedVersion:child.version}),e=>e.code==='task_not_ready');assert.equal((await f.repo.list('channel_turn')).filter(t=>t.messageId===turn.messageId).length,1);
+});
+
+test('adaptive changes require current versions even for metadata actions and goal size matches the existing work spec contract',async t=>{
+ const f=await setup(t),task=await f.plan(),child=await f.action({action:'create',title:'节点',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false});
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'变化'},changes:[{taskId:child.id,action:'update',body:'覆盖'}]}),e=>e.code==='version_conflict');assert.equal((await f.read(child.id)).body,child.body);
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'x'.repeat(4001)}}),e=>e.code==='invalid_input');assert.equal((await f.read(task.id)).intentVersion,1);
+});
+
+test('audit claim state matrix rechecks blocked root and child plus reassignment and cancellation',async t=>{
+ for(const scenario of ['blocked-root','blocked-child','reassigned-child','canceled-child','canceled-root']){
+  const f=await setup(t),root=await f.plan(scenario),child=await f.action({action:'create',title:'原排期节点',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});await f.post('继续执行',{replyTo:root.sourceMessageId,mentions:[]},leader);const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':continue:'));const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===follow.messageId);
+  if(scenario==='canceled-root')await f.action({action:'update',taskId:child.id,expectedVersion:child.version,status:'canceled'});
+  const target=scenario.endsWith('root')?root:child;await f.action({action:'update',taskId:target.id,expectedVersion:(await f.read(target.id)).version,...(scenario.startsWith('blocked')?{status:'blocked',blocker:'等待实际依赖恢复'}:scenario.startsWith('reassigned')?{assigneeId:'grok',notifyAssignee:false}:{status:'canceled'})});
+  const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'state-matrix-'+scenario,stepId:turn.id});const state=await f.repo.get('channel_turn',turn.id);assert.ok(state.status==='removed'||state.taskEvent.startsWith('reconcile:'),scenario);if(scenario==='canceled-root')assert.equal(claim.claimed,false);else assert.equal(claim.turnId,turn.id);
+ }
+});
+test('adopting a legacy task installs a real work spec and keeps its old result without fabricating acceptance',async t=>{
+ const f=await setup(t);await f.repo.transact('legacy-task',{},tx=>tx.put('channel_task',{id:'legacy-root',scopeId:f.c.id,parentId:f.c.id,title:'历史事项',body:'原说明',result:'历史结果',status:'done',version:1,assigneeId:'write',authorId:'write'}));
+ const adopted=await f.action({action:'revise',taskId:'legacy-root',expectedVersion:1,intent:{goal:'接续并核对历史成果'}});assert.equal(adopted.status,'doing');assert.equal(adopted.workSpec.version,1);assert.equal(adopted.result,'历史结果');assert.equal((await f.read(adopted.id)).delivery.valid,false);assert.equal((await f.repo.list('channel_task_check')).length,0);
+});

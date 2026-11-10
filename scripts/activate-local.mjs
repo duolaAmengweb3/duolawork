@@ -8,6 +8,7 @@ import { BrowserManager } from "../local/browser.mjs";
 import { BackgroundPage } from "../local/background-page.mjs";
 import { assertArtifactPath } from "../local/data-policy.mjs";
 import { cloudClient } from "../local/transport.mjs";
+import { requestJson } from "../local/transport.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
   expected = JSON.parse(
     await fs.readFile(path.join(root, "shared/build-info.json"), "utf8"),
@@ -38,6 +39,9 @@ const durable = (s) => ({
   settings: s.settings,
   artifacts: s.artifacts,
 });
+const activeWork=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
+const allowActiveWork=process.argv.includes('--allow-active-work');
+if(activeWork.active&&!allowActiveWork)throw new Error('原生 Agent 仍在回应，未重启本机软件。');
 const digest = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 async function localDigest() {
@@ -164,11 +168,14 @@ try {
           : 15000,
       ),
     });
-    if (r.status === 409 && p === "/api/local/prepare-update" && retry < 12) {
-      await sleep(500);
+    if (r.status === 409 && p === "/api/local/prepare-update" && retry < 120) {
+      // Build/session gates already passed. Wait for the running client's real
+      // idle handoff instead of rerunning the whole release or forcing a stop.
+      if (retry % 12 === 0) console.log("等待运行中的客户端安全交接，保留当前任务与登录资料");
+      await sleep(5000);
       return post(p, body, retry + 1);
     }
-    if (!r.ok) throw new Error("更新交接失败 HTTP " + r.status);
+    if (!r.ok) throw Object.assign(new Error("更新交接失败 HTTP " + r.status),{status:r.status});
     return r.json();
   }
   const localBefore = await persistentDigest(),
@@ -193,7 +200,11 @@ try {
       { encoding: "utf8" },
     ).trim();
     if (cmd !== exe) throw new Error("本机端口属于其他程序，未关闭任何进程。");
-    if (handoff.length) {
+    // Native agents can be busy even when no managed browser is open.
+    // Always ask the running client to check and drain its receivers first.
+    {
+      // --allow-active-work only overrides remote activity. A live local
+      // receiver still has to complete its normal controlled handoff.
       const result = await post("/api/local/prepare-update");
       if (
         !result.prepared ||
@@ -342,6 +353,7 @@ try {
     processId: status.processId,
     desktopBuildId: status.clientView.buildId,
     backendAndDesktopMatch: true,
+    ...(allowActiveWork?{ownerAuthorizedActiveUpdate:true}:{}),
     cloudOnline: status.online,
     protectedLocalDataUnchanged:
       handoff.length || observedProfiles.length ? null : true,

@@ -1,0 +1,152 @@
+{
+  "at": "2026-11-07T08:41:38.605Z",
+  "environment": "isolated in-memory SQLite and actual context code; no model/network inference in these durations",
+  "measurements": [
+    {
+      "iteration": 0,
+      "requestedMode": "full",
+      "historyMode": "full",
+      "totalClaimMs": 12,
+      "preparedAt": "2026-11-07T08:41:38.515Z",
+      "prepareMs": 5,
+      "bytes": 338024,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 37,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 1,
+      "requestedMode": "incremental",
+      "historyMode": "full",
+      "totalClaimMs": 6,
+      "preparedAt": "2026-11-07T08:41:38.522Z",
+      "prepareMs": 5,
+      "bytes": 339219,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 39,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 2,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 5,
+      "preparedAt": "2026-11-07T08:41:38.529Z",
+      "prepareMs": 3,
+      "bytes": 20184,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 41,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 3,
+      "requestedMode": "full",
+      "historyMode": "full",
+      "totalClaimMs": 5,
+      "preparedAt": "2026-11-07T08:41:38.534Z",
+      "prepareMs": 2,
+      "bytes": 341100,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 43,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 4,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 6,
+      "preparedAt": "2026-11-07T08:41:38.543Z",
+      "prepareMs": 5,
+      "bytes": 21995,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 45,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 5,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 18,
+      "preparedAt": "2026-11-07T08:41:38.563Z",
+      "prepareMs": 12,
+      "bytes": 22083,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 47,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 6,
+      "requestedMode": "full",
+      "historyMode": "full",
+      "totalClaimMs": 5,
+      "preparedAt": "2026-11-07T08:41:38.569Z",
+      "prepareMs": 3,
+      "bytes": 344742,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 49,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 7,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 5,
+      "preparedAt": "2026-11-07T08:41:38.576Z",
+      "prepareMs": 4,
+      "bytes": 23941,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 51,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 8,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 7,
+      "preparedAt": "2026-11-07T08:41:38.585Z",
+      "prepareMs": 6,
+      "bytes": 23831,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 53,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 9,
+      "requestedMode": "full",
+      "historyMode": "full",
+      "totalClaimMs": 5,
+      "preparedAt": "2026-11-07T08:41:38.590Z",
+      "prepareMs": 3,
+      "bytes": 311499,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 55,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 10,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 6,
+      "preparedAt": "2026-11-07T08:41:38.598Z",
+      "prepareMs": 4,
+      "bytes": 25246,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 57,
+      "ownerConstraintsRetained": true
+    },
+    {
+      "iteration": 11,
+      "requestedMode": "incremental",
+      "historyMode": "incremental",
+      "totalClaimMs": 4,
+      "preparedAt": "2026-11-07T08:41:38.604Z",
+      "prepareMs": 4,
+      "bytes": 25137,
+      "memoryRetrieval": "keyword",
+      "pendingMemoryEvents": 59,
+      "ownerConstraintsRetained": true
+    }
+  ],
+  "nativeQualityEvidence": "tests/native-context.test.mjs plus prior native projects / multi-session artifacts; no downgrade or provider changes",
+  "modelCost": null
+}

@@ -1,0 +1,172 @@
+{
+  "at": "2026-11-07T08:39:01.816Z",
+  "channelId": "channel_f0bf1704a50348789524283bea56e2fd",
+  "source": {
+    "id": "chat_0a2311407be3411c88dcdcf518b10154",
+    "number": 46,
+    "authorId": "member_ccdf940ba6d3426da01b9f65048909e2",
+    "recipientIds": [
+      "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "member_47be343430a54bff908ab5d471752701",
+      "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "member_bf4fdac30b4542c8988bb6725f47ec0b"
+    ]
+  },
+  "receipts": [
+    {
+      "id": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+      "scopeId": "channel_f0bf1704a50348789524283bea56e2fd",
+      "parentId": "member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "messageId": "chat_0a2311407be3411c88dcdcf518b10154",
+      "wakeSource": "agent",
+      "number": 46,
+      "rootId": "chat_de88581d6ae84de3ae4c752c8ec5811e",
+      "hops": 1,
+      "status": "done",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "kind": "channel_turn",
+      "revision": 4,
+      "updatedAt": "2026-11-06T06:16:05.473Z",
+      "claimedAt": "2026-11-06T06:10:39.900Z",
+      "expiresAt": "2026-11-06T06:40:39.900Z",
+      "mergedMessageIds": [
+        "chat_9f0996cb50c64e9cad6da29ffe4e9de7",
+        "chat_0a2311407be3411c88dcdcf518b10154",
+        "chat_555b2c3324cf49d29f6d584269e838fe",
+        "chat_5b7e93e07e174354888d9cf871d7d0f1",
+        "chat_95471e4dddf6436abcb553174b6ef499",
+        "chat_ce996ea0393a4106954a9c4b4ac4deb0"
+      ],
+      "completedAt": "2026-11-06T06:16:05.473Z"
+    },
+    {
+      "id": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "scopeId": "channel_f0bf1704a50348789524283bea56e2fd",
+      "parentId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "messageId": "chat_0a2311407be3411c88dcdcf518b10154",
+      "wakeSource": "agent",
+      "number": 46,
+      "rootId": "chat_de88581d6ae84de3ae4c752c8ec5811e",
+      "hops": 1,
+      "status": "done",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "kind": "channel_turn",
+      "revision": 12,
+      "updatedAt": "2026-11-06T05:33:13.668Z",
+      "claimedAt": "2026-11-06T05:23:51.215Z",
+      "expiresAt": "2026-11-06T06:02:11.840Z",
+      "mergedMessageIds": [
+        "chat_0a2311407be3411c88dcdcf518b10154",
+        "chat_0a64f05dde6c4f5085201f8ee3d2d8e4",
+        "chat_555b2c3324cf49d29f6d584269e838fe",
+        "chat_5b7e93e07e174354888d9cf871d7d0f1",
+        "chat_9ee838126f9140118a5148a37ae1599f",
+        "chat_ce996ea0393a4106954a9c4b4ac4deb0",
+        "chat_ee1bd39abb294d95b9526d6a0b1eda53"
+      ],
+      "nativeObservedAt": "2026-11-06T05:32:11.840Z",
+      "completedAt": "2026-11-06T05:33:13.668Z"
+    },
+    {
+      "id": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "scopeId": "channel_f0bf1704a50348789524283bea56e2fd",
+      "parentId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "messageId": "chat_0a2311407be3411c88dcdcf518b10154",
+      "wakeSource": "agent",
+      "number": 46,
+      "rootId": "chat_de88581d6ae84de3ae4c752c8ec5811e",
+      "hops": 1,
+      "status": "done",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "kind": "channel_turn",
+      "revision": 4,
+      "updatedAt": "2026-11-06T05:10:52.890Z",
+      "claimedAt": "2026-11-06T05:09:43.679Z",
+      "expiresAt": "2026-11-06T05:40:05.739Z",
+      "mergedMessageIds": [
+        "chat_0a2311407be3411c88dcdcf518b10154",
+        "chat_5b7e93e07e174354888d9cf871d7d0f1"
+      ],
+      "progress": "正在阅读两份白皮书框架原文，按用户确认的已有能力评估场景、伙伴投入与接入验收；本轮不做旧代码或能力存在性核验。",
+      "completedAt": "2026-11-06T05:10:52.890Z"
+    },
+    {
+      "id": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "scopeId": "channel_f0bf1704a50348789524283bea56e2fd",
+      "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "messageId": "chat_0a2311407be3411c88dcdcf518b10154",
+      "wakeSource": "agent",
+      "number": 46,
+      "rootId": "chat_de88581d6ae84de3ae4c752c8ec5811e",
+      "hops": 1,
+      "status": "done",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T05:09:41.340Z",
+      "claimedAt": "2026-11-06T05:07:30.730Z",
+      "expiresAt": "2026-11-06T05:37:30.730Z",
+      "mergedMessageIds": [
+        "chat_0a2311407be3411c88dcdcf518b10154"
+      ],
+      "completedAt": "2026-11-06T05:09:41.340Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+      "stepId": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "status": "claimed",
+      "reason": "尚未确认成员接收；消息已保留，可重试或查看原 Agent。",
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "completedAt": "2026-11-06T05:07:22.218Z",
+      "dueAt": "2026-11-06T05:08:22.218Z",
+      "sendingAt": "2026-11-06T05:07:22.218Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T05:07:22.714Z",
+      "dispatchElapsedMs": 473,
+      "attemptFinishedAt": "2026-11-06T05:07:22.714Z"
+    },
+    {
+      "id": "notice_turn_chat_0a2311407be3411c88dcdcf518b10154_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "stepId": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "claimed",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "dueAt": "2026-11-06T05:07:22.208Z",
+      "attempts": 0
+    },
+    {
+      "id": "notice_turn_chat_0a2311407be3411c88dcdcf518b10154_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "stepId": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": null,
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "completedAt": "2026-11-06T05:07:22.218Z",
+      "dueAt": "2026-11-06T05:08:22.218Z",
+      "sendingAt": "2026-11-06T05:07:22.218Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T05:07:22.891Z",
+      "dispatchElapsedMs": 663,
+      "attemptFinishedAt": "2026-11-06T05:07:22.896Z"
+    },
+    {
+      "id": "notice_turn_chat_0a2311407be3411c88dcdcf518b10154_member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "stepId": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "status": "claimed",
+      "createdAt": "2026-11-06T05:07:22.208Z",
+      "dueAt": "2026-11-06T05:07:22.208Z",
+      "attempts": 0
+    }
+  ],
+  "limits": "Recent activity is paginated; absent old receipts are unknown, not successful or failed"
+}

@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+import {chromium,_electron} from 'playwright-core';
+const directory=await fs.mkdtemp(path.join(os.tmpdir(),'duolawork-latency-ui-'));
+process.env.AGENT_HUB_DATA_DIR=directory;
+const {startNodeHarness}=await import('./node-server-harness.mjs');
+const {start}=await import('../local/server.mjs');
+const h=await startNodeHarness();let local,browser,app;const errors=[];
+try{
+ const member=await h.member('Protocol reviewer');const channel=await h.command('channel.create',{name:'UI latency',memberIds:[member.id],coordinatorId:member.id});
+ const other=await h.command('channel.create',{name:'Other project',memberIds:[member.id],coordinatorId:member.id});
+ let p;
+ if(process.env.HUB_TEST_EXECUTABLE){
+  const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
+  await fs.writeFile(path.join(directory,'config.json'),JSON.stringify({endpoint:h.base,adminKey:h.key,runnerId:'latency-installed-isolated',port}),{mode:0o600});
+  app=await _electron.launch({executablePath:process.env.HUB_TEST_EXECUTABLE,args:[],env:{...process.env,AGENT_HUB_DATA_DIR:directory,AGENT_HUB_TEST_MODE:'1'},timeout:20000});p=await app.firstWindow();
+ }else{
+  local=await start({port:0,maintenance:true,vaultKey:Buffer.alloc(32,19),config:{endpoint:h.base,adminKey:h.key,runnerId:'latency-ui-isolated'}});
+  browser=await chromium.launch({channel:'chrome',headless:true});p=await browser.newPage({viewport:{width:1440,height:960}});await p.goto(local.url);
+ }
+ p.on('pageerror',e=>errors.push(e.message));await p.getByRole('button',{name:/UI latency/}).first().click();
+ const input=p.getByRole('textbox',{name:'群消息',exact:true});await input.waitFor();
+ await p.evaluate(()=>{
+  window.latencySamples=[];window.pendingSample=null;
+  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&e.target.getAttribute('aria-label')==='群消息'&&e.target.value.startsWith('latency sample '))window.pendingSample={body:e.target.value,start:performance.now()};},true);
+  new MutationObserver(()=>{const s=window.pendingSample;if(s&&[...document.querySelectorAll('.chat-message')].some(el=>el.textContent.includes(s.body))){window.pendingSample=null;requestAnimationFrame(()=>window.latencySamples.push({...s,paintMs:performance.now()-s.start}));}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+ });
+ // Actual Enter handling and rendering, with deliberately slow command ACKs.
+ // Samples include warm-up and outliers; no model/provider is invoked.
+ await p.route('**/v2/commands',async route=>{if(route.request().postDataJSON()?.type==='channel.post')await new Promise(r=>setTimeout(r,120));await route.continue();});
+ for(let i=0;i<100;i++){
+  await input.fill('latency sample '+String(i).padStart(3,'0'));await input.press('Enter');
+  await p.waitForFunction(n=>window.latencySamples.length===n,i+1);
+ }
+ await p.waitForFunction(()=>JSON.parse(localStorage.getItem('duolawork-outbox-v1')||'[]').length===0,{},{timeout:60000});
+ const samples=await p.evaluate(()=>window.latencySamples);const sorted=samples.map(s=>s.paintMs).sort((a,b)=>a-b);
+ const saved=await h.repo.list('channel_message',{scope:channel.id,limit:501});assert.equal(saved.length,100);assert.equal(new Set(saved.map(m=>m.requestId)).size,100);
+ for(let i=0;i<20;i++){
+  await input.fill('Draft survives changing groups '+i);
+  await p.getByRole('button',{name:/Other project/}).first().click();await p.getByRole('button',{name:/UI latency/}).first().click();assert.equal(await input.inputValue(),'Draft survives changing groups '+i);
+  await p.getByLabel('聊天记录').getByText('latency sample 099',{exact:true}).waitFor();
+ }
+ const visible=p.locator('.chat-message');assert.equal(await visible.count(),50);
+ // Regression: a list preview / unread badge must not arrive ahead of the
+ // underlying inactive chat. Slow subsequent HTTP reads deliberately so a
+ // fast click cannot accidentally pass by fetching again after entering.
+ const otherButton=p.getByRole('button',{name:/Other project/}).first();
+ await otherButton.click();await input.fill('Other draft retained');await p.getByRole('button',{name:/UI latency/}).first().click();
+ await member.bind(other.id,'ui-inactive-native');
+ await p.route('**/v2/channel?*',async route=>{const u=new URL(route.request().url());if(u.searchParams.get('id')===other.id)await new Promise(r=>setTimeout(r,1200));await route.continue();});
+ await p.evaluate(()=>{
+  window.unreadClickSamples=[];
+  document.addEventListener('click',e=>{if(e.target.closest('.channel-list button')?.textContent.includes('Other project'))window.unreadClickStart=performance.now();},true);
+  new MutationObserver(()=>{if(!window.unreadClickStart||!window.expectedUnreadBody)return;const body=window.expectedUnreadBody;if([...document.querySelectorAll('.chat-message')].some(el=>el.textContent.includes(body))){const start=window.unreadClickStart;window.unreadClickStart=null;requestAnimationFrame(()=>window.unreadClickSamples.push({body,paintMs:performance.now()-start}));}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+ });
+ for(let i=0;i<10;i++){
+  await h.command('channel.post',{channelId:other.id,body:'Independent request '+i});
+  const work=(await member.client.inbox()).work.find(w=>w.channelId===other.id&&w.status==='ready');assert(work);
+  const claim=await member.client.tool('claim_work',{requestId:crypto.randomUUID(),stepId:work.stepId,channelId:other.id,expectedSessionId:'ui-inactive-native'});
+  const body='Unread body ready '+i;
+  await member.client.tool('post_message',{requestId:crypto.randomUUID(),channelId:other.id,turnId:claim.turnId,body});
+  await otherButton.getByText(body,{exact:true}).waitFor();await otherButton.getByLabel('未读消息').waitFor();
+  assert.equal(await otherButton.getByLabel('未读消息').textContent(),'1','prefetch must not mark a message read');
+  await p.evaluate(body=>{window.expectedUnreadBody=body;},body);await otherButton.click();
+  await p.waitForFunction(n=>window.unreadClickSamples.length===n,i+1);assert.equal(await input.inputValue(),'Other draft retained');
+  // Entering a chat restores the reader's position, not an unconditional jump
+  // to the newest message. Read the new body before expecting its badge to clear.
+  await p.getByLabel('聊天记录').getByText(body,{exact:true}).scrollIntoViewIfNeeded();
+  await otherButton.getByLabel('未读消息').waitFor({state:'hidden'});
+  await p.getByRole('button',{name:/UI latency/}).first().click();
+ }
+ const unreadClickSamples=await p.evaluate(()=>window.unreadClickSamples),unreadSorted=unreadClickSamples.map(x=>x.paintMs).sort((a,b)=>a-b);
+ assert(unreadSorted.at(-1)<=100,'badge-to-message cache transition exceeded 100ms: '+unreadSorted.at(-1));
+ // Keep this selector grounded in the rendered scrolling container.
+ const scrollSelector=await p.evaluate(()=>{const m=document.querySelector('.chat-message');let e=m.parentElement;while(e&&e.scrollHeight<=e.clientHeight)e=e.parentElement;if(!e)throw Error('scroll container missing');e.dataset.latencyScroll='true';return '[data-latency-scroll="true"]';});
+ await p.locator(scrollSelector).evaluate(el=>el.scrollTop=Math.max(10,el.scrollHeight/3));
+ const before=await p.locator(scrollSelector).evaluate(el=>el.scrollTop);
+ await h.command('channel.post',{channelId:channel.id,body:'Background update must not pull reader down'});
+ await p.getByLabel('聊天记录').getByText('Background update must not pull reader down',{exact:true}).waitFor();
+ const after=await p.locator(scrollSelector).evaluate(el=>el.scrollTop);assert(Math.abs(after-before)<120,'unexpected scroll jump '+before+' -> '+after);
+ const result={scope:process.env.HUB_TEST_EXECUTABLE?'installed Electron application with isolated test data and real Node HTTP server; 120ms delayed ACK; no provider/model':'built UI, actual Chromium Enter-to-animation-frame; isolated Node HTTP server; 120ms injected save-ACK delay; no model; not installed production desktop',count:samples.length,p50Ms:sorted[49],p95Ms:sorted[94],maxMs:sorted[99],errors,draftRetained:true,noDuplicateSaves:true,scrollRetained:true,samples};
+ result.switchAndDraftChecks=20;result.unreadClick={count:10,p95Ms:unreadSorted[9],maxMs:unreadSorted[9],injectedReadDelayMs:1200,unreadPreservedUntilVisible:true,samples:unreadClickSamples};await fs.writeFile(process.env.HUB_TEST_EXECUTABLE?'/tmp/duolawork-message-latency-installed.json':'/tmp/duolawork-message-latency-ui.json',JSON.stringify(result,null,2));console.log(JSON.stringify({...result,samples:undefined}));
+ assert.equal(errors.length,0);assert(result.p95Ms<=100);
+}finally{await app?.close();await browser?.close();await local?.close();await h.stop();await fs.rm(directory,{recursive:true,force:true});}

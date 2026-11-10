@@ -1,0 +1,8 @@
+{
+  "at": "2026-11-07T06:28:12.060Z",
+  "turnId": "turn_chat_d5db908c85484af2b11001599fb38da4_member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "statusBefore": "done",
+  "removedQueuedSubmissionId": "01a1b4a0-e112-73e2-b94a-49cd059a7096",
+  "remainingExact": 0,
+  "scope": "removed only already-replied Hub wake-up from native queue; current native work unchanged"
+}

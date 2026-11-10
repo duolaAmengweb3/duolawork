@@ -1,0 +1,38 @@
+{
+  "observedAt": "2026-11-09T09:53:03.631Z",
+  "source": "Original Work chat native response, observed through Chrome accessibility UI",
+  "sourceChat": "https://chatgpt.com/c/6ae47af8-39dc-83ee-b771-85be0f7b338e",
+  "provenance": "Native Agent reports actual Automations tool results; not a direct Hub read of provider scheduler logs.",
+  "runs": [
+    {
+      "taskId": "6ae47b517414819193a2a517839e7ae4",
+      "enabled": false,
+      "scheduled_for": "2026-11-09T09:15:10.788630Z",
+      "started_at": "2026-11-09T09:20:13.998663Z",
+      "completed_at": "2026-11-09T09:21:02.722670Z",
+      "scheduleToStartMs": 303210.033
+    },
+    {
+      "taskId": "6af1930c9fd481918ca8fd7f0d1b96fc",
+      "enabled": true,
+      "scheduled_for": "2026-11-09T09:37:56.814353Z",
+      "started_at": "2026-11-09T09:42:58.514093Z",
+      "completed_at": "2026-11-09T09:43:33.059233Z",
+      "scheduleToStartMs": 301699.74
+    }
+  ],
+  "settings": {
+    "genericTriggerFields": [
+      "connector_type",
+      "webhook_name",
+      "params"
+    ],
+    "agentHubTriggerFields": [
+      "event=work.ready",
+      "params.member_id"
+    ],
+    "optionalUpdateTriggerField": "id",
+    "eventBatchWindowOrImmediateFieldExposed": false
+  },
+  "conclusion": "Two background runs corroborate the Hub automatic roundtrips; observed pre-start wait is about five minutes. No exposed tuning field was found; fixed five-minute platform rule is not established. Initial missed-event root cause remains unknown."
+}

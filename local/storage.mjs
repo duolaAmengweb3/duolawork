@@ -3,7 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 export const dataDir=process.env.AGENT_HUB_DATA_DIR||path.join(os.homedir(),'.config','agent-hub');
-export async function privateJson(file,value){await fs.mkdir(path.dirname(file),{recursive:true,mode:0o700});const tmp=file+'.'+randomUUID()+'.tmp';await fs.writeFile(tmp,JSON.stringify(value,null,2),{mode:0o600});await fs.rename(tmp,file);await fs.chmod(file,0o600);}
+export async function privateJson(file,value,{durable=false}={}){
+ const directory=path.dirname(file);await fs.mkdir(directory,{recursive:true,mode:0o700});const tmp=file+'.'+randomUUID()+'.tmp';
+ try{
+  const handle=await fs.open(tmp,'wx',0o600);try{await handle.writeFile(JSON.stringify(value,null,2));if(durable)await handle.sync();}finally{await handle.close();}
+  await fs.rename(tmp,file);
+  if(durable){const folder=await fs.open(directory,'r');try{await folder.sync();}finally{await folder.close();}}
+ }catch(error){await fs.unlink(tmp).catch(()=>{});throw error;}
+}
 export async function readConfig(){try{return JSON.parse(await fs.readFile(path.join(dataDir,'config.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;return{port:8766,runnerId:'local-'+randomUUID()};}}
 export async function openVault(key,{resolveKey,defer=false}={}){
  await fs.mkdir(dataDir,{recursive:true,mode:0o700});

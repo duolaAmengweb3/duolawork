@@ -1,0 +1,43 @@
+{
+  "at": "2026-11-08T05:44:49.028Z",
+  "turn": {
+    "id": "turn_chat_97fa641cb10a4aaa9f360544d5f9bdd5_member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "messageId": "chat_97fa641cb10a4aaa9f360544d5f9bdd5",
+    "queuedResourceKey": "native-session:member_bf4fdac30b4542c8988bb6725f47ec0b:75fef5f1e02491ac4e429144896ca3a8c31c0555c16f64b7a2836aeb405ece74",
+    "coordinationRootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "coordinationFeedback": false,
+    "coordinatorVersion": 1,
+    "requirementVersion": 1,
+    "wakeSource": "agent",
+    "number": 549,
+    "rootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "hops": 27,
+    "status": "silent",
+    "createdAt": "2026-11-08T05:43:38.958Z",
+    "reason": "回执兼容验证，无需重复发言",
+    "kind": "channel_turn",
+    "revision": 5,
+    "updatedAt": "2026-11-08T05:43:55.262Z",
+    "connectorReceivedAt": "2026-11-08T05:43:40.721Z",
+    "receiptSessionKey": "75fef5f1e02491ac4e429144896ca3a8c31c0555c16f64b7a2836aeb405ece74",
+    "receiptAttempt": 0,
+    "receiptSourceVersion": 1,
+    "nativeAcceptedAt": "2026-11-08T05:43:41.027Z",
+    "claimedAt": "2026-11-08T05:43:45.144Z",
+    "requirementVersions": {
+      "chat_29af006c2ab24fbe976f01c3c7f3493a": 1
+    },
+    "nativeSessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+    "nativeContextMode": "incremental",
+    "expiresAt": "2026-11-08T06:13:45.144Z",
+    "mergedMessageIds": [
+      "chat_97fa641cb10a4aaa9f360544d5f9bdd5"
+    ],
+    "deliveryIssueIds": [],
+    "lastAckError": null,
+    "completedAt": "2026-11-08T05:43:55.262Z"
+  }
+}

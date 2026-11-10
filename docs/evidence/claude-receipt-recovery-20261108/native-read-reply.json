@@ -1,0 +1,77 @@
+{
+  "at": "2026-11-08T05:43:38.979Z",
+  "message": {
+    "id": "chat_7381bf4bce6d42509a998a03eff72c4e",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "number": 548,
+    "body": "#547 验收结果：**成功**。\n\n- 调用方式：原 Hub read_doc，参数写的是 `docId`（不是 `documentId`）。工具 schema 没拦，调用一次就成功了。\n- 返回内容：标题《2026-11-07｜全部 T01—T08 交付与独立验收记录》，当前 v2，状态 draft，正文完整返回。v2 的修改说明是\"统一最终547项计数\"，返回结果里也带着 v1。\n- 对比：今天 04:5x–05:0x UTC 之间，我用同样的 `docId` 写法读 ATEL 说明文档失败了 3 次。在 ATEL 群和单聊交 stay_silent 也都失败了。报错都是\"服务暂时无法完成请求\"，和你们诊断的缺参数导致 500 对得上。现在这次已经正常。\n- 范围：只读了这一份文档，没改资料，没补交旧的超时通知，也没另开临时监听。正式监听现在由插件 when=always 那条在跑。",
+    "authorId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "createdAt": "2026-11-08T05:42:12.897Z",
+    "type": "message",
+    "requestId": "claudevps-reply-chat_bb2891300f2942d5ad2d71fe4bd6bdec",
+    "purpose": null,
+    "requirementVersion": 1,
+    "mentions": [
+      "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    ],
+    "mentionAll": false,
+    "recipientIds": [
+      "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    ],
+    "refs": [],
+    "mentionsFromText": false,
+    "replyTo": "chat_bb2891300f2942d5ad2d71fe4bd6bdec",
+    "replySnapshot": {
+      "body": "ClaudeVPS：用户授权的连接器恢复与实际验收。服务器参数校验已修复，原会话的结束观察已热加载，正式监听来自插件 when=always，验证中临时30分钟监听已清理。请只领取本通知，用原Hub read_doc读取 shared_doc_6f5e9538de4248f1affa3da02e545e2d（验证已观察到的docId兼容写法；如工具schema限制则用documentId并说明），回本群给出文档标题/版本、实际是否成功；带turnId成功回执结束这条通知，不要补写旧超时通知、不要改资料或开展别的业务，也不需要再启动临时监听。",
+      "version": 1,
+      "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d"
+    },
+    "rootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "hops": 26,
+    "kind": "channel_message",
+    "revision": 1,
+    "updatedAt": "2026-11-08T05:42:12.897Z",
+    "coordinationRootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "obsoleteRequirement": false
+  },
+  "turn": {
+    "id": "turn_chat_bb2891300f2942d5ad2d71fe4bd6bdec_member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+    "messageId": "chat_bb2891300f2942d5ad2d71fe4bd6bdec",
+    "queuedResourceKey": "native-session:member_bf4fdac30b4542c8988bb6725f47ec0b:75fef5f1e02491ac4e429144896ca3a8c31c0555c16f64b7a2836aeb405ece74",
+    "coordinationRootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "coordinationFeedback": false,
+    "coordinatorVersion": 1,
+    "requirementVersion": 1,
+    "wakeSource": "agent",
+    "number": 547,
+    "rootId": "chat_29af006c2ab24fbe976f01c3c7f3493a",
+    "hops": 25,
+    "status": "done",
+    "createdAt": "2026-11-08T05:40:34.442Z",
+    "kind": "channel_turn",
+    "revision": 5,
+    "updatedAt": "2026-11-08T05:42:12.897Z",
+    "connectorReceivedAt": "2026-11-08T05:41:40.395Z",
+    "receiptSessionKey": "75fef5f1e02491ac4e429144896ca3a8c31c0555c16f64b7a2836aeb405ece74",
+    "receiptAttempt": 0,
+    "receiptSourceVersion": 1,
+    "nativeAcceptedAt": "2026-11-08T05:41:40.632Z",
+    "claimedAt": "2026-11-08T05:41:46.901Z",
+    "requirementVersions": {
+      "chat_29af006c2ab24fbe976f01c3c7f3493a": 1
+    },
+    "nativeSessionId": "d581eb2c-23e7-4894-a03d-a012a6fbefce",
+    "nativeContextMode": "incremental",
+    "expiresAt": "2026-11-08T06:11:46.901Z",
+    "mergedMessageIds": [
+      "chat_bb2891300f2942d5ad2d71fe4bd6bdec"
+    ],
+    "deliveryIssueIds": [],
+    "lastAckError": null,
+    "completedAt": "2026-11-08T05:42:12.897Z"
+  }
+}

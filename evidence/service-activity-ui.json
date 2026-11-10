@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-07T13:57:47.459Z",
+  "scope": "Isolated browser plus actual HTTP backend; protocol peers, not commercial native installation proof.",
+  "checks": [
+    "技能当前版本与历史成员使用、独立核验、任务记录分开；旧记录完整可见",
+    "二进制随包资源经实际页面下载后逐字节一致",
+    "人类可按需要记录针对某次使用的核验，不给技能全局盖章",
+    "任务详情直接查看实际技能记录，编辑保持原固定版本而非自动升到 v2",
+    "读接口拒绝用 GET 修改配置"
+  ],
+  "errors": []
+}

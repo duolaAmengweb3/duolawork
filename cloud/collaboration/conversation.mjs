@@ -1,0 +1,1358 @@
+import {bindMessageTasks,taskFeedbackTargets,continueTaskWork} from './task-intents.mjs';
+import {isMemoryMaintenance,foregroundWaiting,memoryBatch} from './background-memory.mjs';
+import {resolveReceptionBlock} from './receiver-wakes.mjs';
+import {taskDeliveryProperties,currentTaskBasis,taskDelivery,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
+import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
+import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
+import {manageChannel} from './channel-management.mjs';
+import {skillRefsSchema} from './skill-bindings.mjs';
+import {groupMemoryMaintenance} from './group-memory.mjs';
+import {acknowledgeNativeContext} from './native-context.mjs';
+import {acknowledgeProductContext} from './product-context.mjs';
+import {executionResource} from './execution-bindings.mjs';
+import {DELIVERY_TOOLS,automationHold,deliveryReviewCommand,deliveryReviewMaintenance,deliveryIssueDetail,reconcileDeliveryIssue,deliveryReviewSource} from './delivery-review.mjs';
+import {recordMemoryEvent,queueMemoryIndex,sourcesAvailable} from './memory-context.mjs';
+import {workspaceGrant,requireManager} from './delegation.mjs';
+import {MATERIAL_TOOLS,materialCommand} from './materials.mjs';
+import {editMessage} from './chat-experience.mjs';
+import {COORDINATION_TOOLS,trackCoordination,relatedCoordination,registerFeedback,objectFeedback,coordinationCommand,transferCoordination,ownerRequirementChanged} from './coordination.mjs';
+import {FOLDER_TOOLS,folderCommand,allFolders,allPlacements,placeMaterial} from './material-folders.mjs';
+import { SPACE_TOOLS, referenceSchema, spaceCommand, validateRefs, publicMemory, readSpaceObject } from './workspace-objects.mjs';
+import { fail, id, required, digest } from "./repository.mjs";
+import { messageRecipients, namedMentions, hasAllMention, hasOwnerMention } from '../../shared/chat-routing.mjs';
+import { MEETING_TOOLS, handleMeeting, meetingPost, meetingDetail, meetingTurnContext, meetingMaintenance, meetingTurnAllowed, publicMeeting } from './meetings.mjs';
+
+// Communication is independent of the legacy run/step orchestration. A turn is
+// only an acknowledged inbox delivery, never a task, document or prescribed role.
+const BASIC_CHANNEL_TOOLS = [
+  [
+    "read_channel",
+    "读取自己所在群的消息、成员、负责人和共享工具。before 为消息序号，向前分页。",
+    { channelId: "string", before: "number" },
+    ["channelId"],
+  ],
+  [
+    "post_message",
+    "以自己的真实身份在群中发言。mentions 使用群内成员 ID，@人类用 owner（仅提醒用户，不派发 Agent）；确需全员参与或全员知晓变更时设 mentionAll=true，不要求确认收到；普通发言不广播；回复负责人发起的协作请求时，结果会返回当前负责人。用户普通消息默认交给负责人，但所有群成员仍可交流。turnId 表示已处理的通知；普通回复不创建任务。purpose=question 用于成员间求助（不额外唤醒负责人），request 用于明确交办（负责人可从原工作环境带来请求），result 为实际回传；旧调用可省略。",
+    {
+      requestId: "string",
+      channelId: "string",
+      body: "string",
+      mentions: "array",
+      mentionAll: "boolean",
+      replyTo: "string",
+      purpose: {type:"string",enum:["message","question","request","result"]},
+      executionOutcome: {type:"string",enum:["not_started","awaiting_confirmation","outcome_unknown","result"]},
+      turnId: "string",
+      refs: referenceSchema,
+    },
+    ["requestId", "channelId", "body"],
+  ],
+  [
+    "stay_silent",
+    "已读本次通知但无实质补充，记录原因并结束通知；不往群里刷屏。",
+    { requestId: "string", turnId: "string", reason: "string" },
+    ["requestId", "turnId", "reason"],
+  ],
+  [
+    "create_doc",
+    "按需建立共享文档，不要求每次对话都创建。",
+    {
+      requestId: "string",
+      channelId: "string",
+      title: "string",
+      body: "string",
+      folderId: "string",
+    },
+    ["requestId","channelId","title","body"],
+  ],
+  ["read_doc", "读取共享文档全文、版本和修改者。", { documentId: "string" }],
+  [
+    "edit_doc",
+    "修改共享文档。必须先 read_doc 并携带 expectedVersion，冲突时重新读取；不覆盖别人的新修改。",
+    {
+      requestId: "string",
+      documentId: "string",
+      expectedVersion: "number",
+      body: "string",
+      reason: "string",
+    },
+  ],
+  [
+    "suggest_edit",
+    "向共享文档提出具体修改建议，用户采纳前不覆盖原稿。",
+    {
+      requestId: "string",
+      documentId: "string",
+      body: "string",
+      reason: "string",
+    },
+  ],
+  [
+    "ask_user",
+    "需要用户决定时提出问题和选项。用户回答作为群消息唤醒提问者，不阻止其他成员交流。",
+    {
+      requestId: "string",
+      channelId: "string",
+      question: "string",
+      options: "array",
+    },
+  ],
+  [
+    "deliver",
+    "主动把共享文档交付给用户；记录具体版本，不等于独立验证事实。",
+    { requestId: "string", documentId: "string", summary: "string" },
+  ],
+  [
+    "remember",
+    "记录本群的背景、要求、决定或经验。附来源 refs，成员自动维护无需用户审批；提案保留提案身份，不能当用户决定。",
+    {
+      requestId: "string",
+      channelId: "string",
+      title: "string",
+      body: "string",
+      category: "string",
+      authority:"string",conditions:"string",memoryScope:"string",sourceMessageId:"string",sourceQuote:"string",
+      refs: referenceSchema,
+    },
+    ["requestId", "channelId", "title", "body"],
+  ],
+  [
+    "meeting",
+    "可选会议工具：open 创建讨论记录，close 记录结论。不自动分配角色或限制发言。",
+    {
+      requestId: "string",
+      channelId: "string",
+      action: "string",
+      title: "string",
+      meetingId: "string",
+      summary: "string",
+    },
+    ["requestId", "channelId", "action"],
+  ],
+  [
+    "board_task",
+    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。plan/associate/revise/merge 维护持续任务：plan(intent={goal,...自定结构},messageIds)自动记录理解并生成卡片；associate(taskId,expectedVersion,messageIds)关联补充或结果，不改完成状态；纠正误关联可带 fromTaskId/fromVersion，保留历史；revise(taskId,expectedVersion,intent,messageIds,changes=[{taskId,expectedVersion,action:configure或update,...}])仅调整受影响节点；merge(taskId,expectedVersion,targetTaskId,targetVersion)合并目标，保留所有旧ID和成果。旧目录可把新增字段写在 body 的JSON对象里，action照常传。create/update/accept/configure/submit/check/bind_execution_decision。新任务有轻量交付约定 workSpec；先 read_todo 查看条件、原要求和版本。submit 带 expectedVersion、workSpecVersion、submission（body/sections/data/refs/coverage）；普通事项可附 selfCheck 一次完成，指定核对由真实核对人 check 当前 submissionId。核对给 criterionResults(id,result=met/not_met/unknown,evidence)、verdict=accept/changes_requested、reason。满足清单不代表满足原要求，核对实际产物。dependsOn 只连同任务下的前置 Todo。旧 done 只保存待核对成果，不伪造核对通过。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
+    {
+      requestId: "string",
+      channelId: "string",
+      action: "string",
+      title: "string",
+      taskId: "string",
+      parentTaskId: "string",
+      assigneeId: "string",
+      status: "string",
+      notifyAssignee: "boolean",
+      body: "string", progress: "string", blocker: "string", result: "string",
+      dueDate: "string", expectedVersion: "number", sourceMessageId: "string",
+      meetingIds: "array", refs: referenceSchema, skillRefs:skillRefsSchema, ...taskDeliveryProperties,
+    },
+    ["requestId", "channelId", "action"],
+  ],
+].map(([name, description, properties, keys]) => ({
+  name,
+  description,
+  inputSchema: {
+    type: "object",
+    properties: Object.fromEntries(
+      Object.entries(properties).map(([k, t]) => [
+        k,
+        typeof t === "object" ? t : t === "array"
+          ? { type: t, items: { type: "string" }, maxItems: 30 }
+          : t === "number"
+            ? { type: "integer", minimum: 0 }
+            : { type: t },
+      ]),
+    ),
+    required: keys || Object.keys(properties),
+    additionalProperties: false,
+  },
+}));
+
+export const CHANNEL_TOOLS = [...BASIC_CHANNEL_TOOLS.filter(t => t.name !== 'meeting'), ...MEETING_TOOLS, ...SPACE_TOOLS, ...FOLDER_TOOLS, ...COORDINATION_TOOLS, ...MATERIAL_TOOLS, ...DELIVERY_TOOLS];
+const activeMember = (identity, memberId) =>
+  identity.members.find(
+    (m) =>
+      m.id === memberId &&
+      m.status !== "disabled" &&
+      identity.accounts.some(
+        (a) => a.id === m.accountId && a.status !== "disabled",
+      ),
+  );
+const unique = (values) => [...new Set(values)];
+const owner = (actor,repo) => requireManager(repo,actor);
+const scoped = async (channel, actor,repo) => {
+  if (!actor.owner && !channel.memberIds.includes(actor.memberId) && !await workspaceGrant(repo,actor))
+    fail("forbidden", "你不在这个群内", 403);
+};
+const messageText = (value) => required(value, "消息", 24000);
+// Text-only native receivers can still address an existing group peer. This is
+// ordinary message addressing, with the same membership authorization. Never
+// resolve global names, ambiguous names, quoted examples or code as recipients.
+function textMentions(body, channel, identity) {
+  return [...namedMentions(body, channel.memberIds.map(mid => activeMember(identity, mid)).filter(Boolean)),...(hasOwnerMention(body)?['owner']:[])];
+}
+
+const listIds = (values, label = "成员") => {
+  if (
+    !Array.isArray(values) ||
+    values.length > 30 ||
+    values.some((v) => typeof v !== "string")
+  )
+    fail("invalid_input", `${label}列表无效`);
+  return unique(values);
+};
+
+export async function channelAccess(repo, channelId, actor) {
+  const channel = await repo.get("channel", channelId);
+  await scoped(channel, actor,repo);
+  return channel;
+}
+async function channelMessage(tx, channel, actor, body, extra = {}) {
+  channel.messageSequence = (channel.messageSequence || 0) + 1;
+  const message = tx.put("channel_message", {
+    id: id("chat"),
+    scopeId: channel.id,
+    parentId: channel.id,
+    number: channel.messageSequence,
+    body,
+    authorId: actor.owner ? "owner" : actor.memberId,
+    createdAt: tx.now,
+    type: "message",
+    ...extra,
+  });
+  if(!extra.hidden){channel.lastMessage = body.slice(0, 160);channel.lastMessageAt = tx.now;}
+  tx.put("channel", channel);
+  if(!extra.hidden&&actor.memberId!=='system')await recordMemoryEvent(tx,channel,message,'message');
+  return message;
+}
+async function enqueue(tx, identity, channel, message, memberId) {
+  if(channel.status==='deleted')return;
+  const m = activeMember(identity, memberId),
+    connection = await tx.get("connection", memberId, false);
+  if (!m) return;
+  const turnId = `turn_${message.id}_${memberId}`;
+  const deferred = !!message.holdReason && !message.deliveryReview;
+  const available = !m.paused && connection?.status === "verified";
+  // Native source setup and per-chat context selection are separate. Preserve
+  // the first message while that context proves its round trip; only a verified
+  // member can see/claim it, and no webhook is sent during verification.
+  const nativePending = !m.paused && connection?.status === 'configured' && connection.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(m.platformId);
+  const turn = tx.put("channel_turn", {
+    id: turnId,
+    scopeId: channel.id,
+    parentId: memberId,
+    memberId,
+    messageId: message.id,
+    queuedResourceKey: connection ? await executionResource(tx,connection,channel.id) : null,
+    ...(message.memoryMaintenance?{background:'memory'}:{}),
+    ...(message.deliveryReview?{deliveryReview:message.deliveryReview}:{}),
+    ...(message.taskId?{taskId:message.taskId,taskEvent:message.taskEvent}:{}),
+    ...(message.holdReason?{holdReason:message.holdReason,...(message.holdReason==='automatic_burst'?{resumeAfter:new Date(Date.parse(tx.now)+10000).toISOString()}: {})}:{}),
+    ...(message.coordinationRootId?{coordinationRootId:message.coordinationRootId,coordinationFeedback:!!message.coordinationFeedback,coordinatorVersion:channel.coordinatorVersion||1,requirementVersion:message.requirementVersion||1}:{}),
+    wakeSource: message.authorId === "owner" ? "user" : "agent",
+    number: message.number,
+    rootId: message.rootId || message.id,
+    hops: message.hops || 0,
+    status: deferred ? "limited" : available || nativePending ? "ready" : "unavailable",
+    createdAt: tx.now,
+    ...(message.meetingId && !message.meetingChat ? { meetingId: message.meetingId, meetingRound: message.meetingRound, meetingVersion: message.meetingVersion, meetingStage: message.meetingStage,meetingPurpose:message.meetingPurpose,ownerMessageId:message.ownerMessageId } : {}),
+    reason: deferred
+      ? message.holdReason==='automatic_burst'?"消息较密，稍后自动继续投递":"暂缓重复自动通知，交由负责人核对；原消息与其他工作保留"
+      : available
+        ? null
+        : "成员的自动接入尚未就绪，消息已保留",
+  });
+  if (available && !deferred) await outbox(tx, channel, turn, connection);
+}
+async function outbox(tx, channel, turn, c) {
+  const previous=await tx.get('outbox',`notice_${turn.id}`,false);
+  const cursor = await tx.get(
+    "channel_cursor",
+    `${channel.id}:${turn.memberId}`,
+    false,
+  );
+  const dueAt = new Date(
+    Math.max(
+      Date.parse(tx.now),
+      Date.parse(cursor?.lastWakeAt || tx.now) +
+        (!turn.meetingId && turn.wakeSource !== "user" && cursor?.lastWakeAt
+          ? channel.wakeIntervalSeconds * 1000
+          : 0),
+    ),
+  ).toISOString();
+  tx.put("outbox", {
+    id: `notice_${turn.id}`,
+    scopeId: channel.id,
+    parentId: channel.id,
+    stepId: turn.id,
+    memberId: turn.memberId,
+    generation: 1,
+    conversation: true,
+    ...(turn.deliveryReview ? { deliveryReview: turn.deliveryReview } : {}),
+    ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion,meetingPurpose:turn.meetingPurpose } : {}),
+    configVersion: c.configVersion,
+    transport: c.transport,
+    status: c.transport === "muse-poll" ? "awaiting_poll" : "pending",
+    attempts: 0,
+    wakeGeneration:previous?(previous.wakeGeneration||0)+1:0,
+    wakeCreatedAt:tx.now,
+    unclaimedRecoveries:0,
+    createdAt: tx.now,
+    dueAt,
+  });
+}
+async function rejectStaleResponse(tx, actor, turn) {
+  if (turn.status === 'active') return;
+  const current = await tx.list('channel_turn', {scope: turn.scopeId, parent: actor.memberId, status: 'active'});
+  if (current.length) fail('stale_turn', `这条通知已结束，未发布或确认本次回复。当前实际领取：${current.map(t=>t.id).join('、')}。请核对当前要求后使用正确的 turnId；不要重做已完成的工作。`, 409);
+}
+async function finishTurn(tx, actor, turnId, status, reason, responseRef) {
+  if (!turnId) return;
+  const turn = await tx.get("channel_turn", turnId);
+  if (turn.memberId !== actor.memberId)
+    fail("forbidden", "不能处理其他成员的通知", 403);
+  if (["done", "silent", "merged", "removed"].includes(turn.status)) { await rejectStaleResponse(tx, actor, turn); return; }
+  if (turn.status !== "active")
+    fail("not_claimed", "请先领取通知，再回应或静默", 409);
+  const finished=tx.put("channel_turn", { ...turn, status, reason,...(responseRef?{responseRef}:{}),lastAckError:null, completedAt: tx.now });
+  // A real member ACK resolves an older reception blocker. Configuration saves
+  // and platform HTTP receipts must never clear it on the member's behalf.
+  await resolveReceptionBlock(tx,finished);
+  await acknowledgeNativeContext(tx,turn);
+  await acknowledgeProductContext(tx,turn,status);
+  for(const issueId of unique([turn.deliveryIssueId,...(turn.deliveryIssueIds||[])].filter(Boolean)))await reconcileDeliveryIssue(tx,issueId);
+  if(await isMemoryMaintenance(tx,turn)&&await foregroundWaiting(tx,turn.memberId,turn.resourceKey,turn.id)){
+    const maintenance=await tx.get('memory_maintenance',turn.scopeId,false);
+    if(maintenance?.messageId===turn.messageId)tx.put('memory_maintenance',{...maintenance,status:'deferred'});
+  }
+  const r = await tx.get("resource", turn.resourceKey, false);
+  if (r?.turnId === turn.id)
+    tx.put("resource", { ...r, status: "idle", turnId: null });
+}
+
+// A notification timeout is not a consumed message. Late native receivers may
+// claim unstarted work; an expired execution always requires explicit recovery.
+export const receivableTurn = turn => turn.status === 'ready' ||
+  (turn.status === 'stalled' && !turn.claimedAt && !turn.lease && !turn.nativeReceptionFailed);
+
+// Runtime observations do not acknowledge delivery or fabricate an Agent reply.
+export async function conversationRuntime(repo,actor,args){
+  let turn=await repo.get('channel_turn',required(args.turnId,'通知'));
+  if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能核对自己的通知',403);
+  if(args.expectedSessionId&&turn.nativeSessionId!==args.expectedSessionId)fail('session_changed','运行观察不属于这段原生会话',403);
+  const publicState=t=>({turnId:t.id,status:t.status,completedAt:t.completedAt||null,reason:t.reason||null,lease:t.lease||null,nativeSessionId:t.nativeSessionId||null,claimedAt:t.claimedAt||null,lastAckError:t.lastAckError||null});
+  if(args.action==='read'){if(turn.taskId&&turn.taskEvent)turn=(await refreshTaskNotification(repo,turn.id)).turn;return publicState(turn);}
+  if(!['running','ended','unreachable'].includes(args.state))fail('invalid_state','运行观察状态无效');
+  return repo.transact(args.requestId,{...args,actor},async tx=>{
+    const current=await tx.get('channel_turn',turn.id);
+    if(args.lease&&args.lease!==current.lease)return {...publicState(current),observationApplied:false};
+    if(current.status==='ready'&&args.state==='ended')return publicState(tx.put('channel_turn',{...current,status:'stalled',nativeReceptionFailed:true,nativeObservedAt:tx.now,interruptedAt:tx.now,reason:'原 Agent 在接收消息前停止，尚未开始这条工作。消息已保留，恢复后可重试。'}));
+    if(current.status!=='active')return publicState(current);
+    if(args.state==='running')return publicState(tx.put('channel_turn',{...current,nativeObservedAt:tx.now,expiresAt:new Date(Date.parse(tx.now)+30*60000).toISOString()}));
+    const reason=args.state==='ended'?'原对话已结束，但这条消息尚未回传；请在原环境检查。':'暂时无法确认原运行端状态，消息和原工作保留；未自动重做。';
+    const next=tx.put('channel_turn',{...current,status:'stalled',reason,nativeObservedAt:tx.now,interruptedAt:tx.now,...(args.state==='ended'?{nativeEndedAt:tx.now,nativeEndEvent:args.nativeEvent||'observed_idle'}:{})});
+    const resource=await tx.get('resource',current.resourceKey,false);
+    if(resource?.turnId===current.id)tx.put('resource',{...resource,status:'idle',turnId:null});
+    return publicState(next);
+  });
+}
+async function pendingConversationTurns(tx, options) {
+  return (await Promise.all(['ready', 'stalled'].map(status =>
+    tx.list('channel_turn', { ...options, status })))).flat().filter(receivableTurn);
+}
+export async function conversationWork(repo, identity, memberId,{delivery=false}={}) {
+  const connection=await repo.get("connection", memberId, false);if(connection?.status!=="verified")return [];
+  const turns = (
+    await Promise.all(
+      ["ready", "active", "stalled"].map((status) =>
+        repo.list("channel_turn", { parent: memberId, status, limit: 500 }),
+      ),
+    )
+  ).flat();
+  if(!turns.length)return [];
+  const selecting=new Set([...await repo.list('native-command',{parent:memberId,status:'pending',limit:501}),...await repo.list('native-command',{parent:memberId,status:'prepared',limit:501})].map(c=>c.channelId));
+  const result = [];
+  for (let turn of turns) {
+    if(turn.status!=='active'&&selecting.has(turn.scopeId))continue;
+    if (turn.status !== 'active' && !receivableTurn(turn)) continue;
+    const channel = await repo.get("channel", turn.scopeId, false);
+    if (!channel?.memberIds.includes(memberId) || channel.status !== "active")
+      continue;
+    if(turn.taskId&&turn.taskEvent&&turn.status!=='active'){
+      const state=await refreshTaskNotification(repo,turn.id);
+      if(state.state!=='current'||!receivableTurn(state.turn))continue;
+      turn=state.turn;
+    }
+    result.push({
+      stepId: turn.id,
+      turnId: turn.id,
+      runId: channel.id,
+      channelId: channel.id,
+      projectId: channel.id,
+      title: channel.name,
+      status: receivableTurn(turn) ? "ready" : "claimed",
+      kind: "conversation",
+      messageId: turn.messageId,
+      deliveryAttempt: turn.recoveryCount||0,
+      createdAt:turn.createdAt,background:turn.background||((await isMemoryMaintenance(repo,turn))?'memory':null),
+      ...(delivery?{delivery:{turnId:turn.id,channelId:turn.scopeId,attempt:turn.recoveryCount||0,message:await repo.get('channel_message',turn.messageId,false)}}:{}),
+      instruction:
+        "这是群聊新消息，不是正式任务。领取后读取上下文，自主决定回复、@、用工具或静默。",
+    });
+  }
+  return result.sort((a,b)=>Number(!!a.background)-Number(!!b.background)||(a.createdAt||'').localeCompare(b.createdAt||'')||a.stepId.localeCompare(b.stepId));
+}
+
+// Transport receipts do not acquire a model lease. The receiving process saves
+// the actual message locally before acknowledging, with the selected-session and
+// recovery-attempt fence checked again here. Late observations cannot revive work.
+export async function receiveDelivery(repo,actor,args){
+  const existing=await repo.get('channel_turn',required(args.turnId,'消息通知'));
+  if(!actor.memberId||existing.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
+  const sessionKey=await digest(required(args.sessionId,'原工作会话',200));
+  const currentConnection=await repo.get('connection',actor.memberId);
+  await scoped(await repo.get('channel',existing.scopeId),actor,repo);
+  if(currentConnection.status!=='verified')fail('disconnected','接收连接已解除',403);
+  if(await executionResource(repo,currentConnection,existing.scopeId)!=='native-session:'+actor.memberId+':'+sessionKey)fail('session_changed','会话选择已变更，旧回执未应用',409);
+  const activeReceiver=(await repo.get('native-source',actor.memberId,false))?.sessions?.[args.sessionId];
+  if(activeReceiver?.receiverInstanceId&&activeReceiver.receiverInstanceId!==args.receiverInstanceId)return{applied:false,status:existing.status,reason:'receiver_replaced'};
+  if(args.attempt!==(existing.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
+  if(args.sourceVersion!==((await repo.get('channel_message',existing.messageId)).version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
+  if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
+  // A cached transport ACK is not an enduring permission to wake a model.
+  // Recheck eligibility before replaying its idempotent receipt.
+  if(existing.taskId&&existing.taskEvent&&existing.status!=='active'){
+    const state=await refreshTaskNotification(repo,existing.id);
+    if(state.state!=='current'||!(state.turn.status==='active'||receivableTurn(state.turn)))return {applied:false,status:state.turn.status,reason:state.reason||state.turn.reason};
+  }
+  return repo.transact(required(args.requestId,'回执编号',180),{...args,actor},async tx=>{
+    let turn=await tx.get('channel_turn',required(args.turnId,'消息通知'));
+    if(!actor.memberId||turn.memberId!==actor.memberId)fail('forbidden','只能回传本成员的接收状态',403);
+    const channel=await tx.get('channel',turn.scopeId),connection=await tx.get('connection',actor.memberId);
+    await scoped(channel,actor,tx);
+    if(connection.status!=='verified')fail('disconnected','接收连接已解除',403);
+    if(await executionResource(tx,connection,channel.id)!=='native-session:'+actor.memberId+':'+await digest(required(args.sessionId,'原工作会话',200)))fail('session_changed','会话选择已变更，旧回执未应用',409);
+    const native=await tx.get('native-source',actor.memberId,false),receiver=native?.sessions?.[args.sessionId];
+    if(receiver?.receiverInstanceId&&receiver.receiverInstanceId!==args.receiverInstanceId)return{applied:false,status:turn.status,reason:'receiver_replaced'};
+    if(args.attempt!==(turn.recoveryCount||0))fail('stale_delivery','这是旧一轮接收的回执',409);
+    const message=await tx.get('channel_message',turn.messageId);
+    if(args.sourceVersion!==(message.version||1))fail('message_changed','用户已修改消息，需接收最新版本',409);
+    if(!['received','accepted','started','public_output'].includes(args.phase))fail('invalid_phase','接收阶段无效');
+    const taskNotice=await reconcileTaskNotification(tx,turn);
+      turn=taskNotice.turn;
+    if(taskNotice.state!=='current')return {applied:false,status:taskNotice.turn.status,reason:taskNotice.reason};
+    if(!(turn.status==='active'||receivableTurn(turn)))return {applied:false,status:turn.status};
+    const field={received:'connectorReceivedAt',accepted:'nativeAcceptedAt',started:'nativeStartedAt',public_output:'firstPublicOutputAt'}[args.phase];
+    const sessionKey=await digest(args.sessionId);
+    if(turn.receiptAttempt!==args.attempt||turn.receiptSessionKey!==sessionKey||turn.receiptSourceVersion!==args.sourceVersion||(turn.receiptReceiverInstanceId||null)!==(args.receiverInstanceId||null)){
+      for(const key of ['connectorReceivedAt','nativeAcceptedAt','nativeStartedAt','firstPublicOutputAt'])delete turn[key];
+    }
+    if(args.phase!=='received'&&!turn.connectorReceivedAt)fail('receipt_required','需先保存并回传消息接收回执',409);
+    if(!turn[field])tx.put('channel_turn',{...turn,[field]:tx.now,receiptSessionKey:sessionKey,receiptAttempt:args.attempt,receiptSourceVersion:args.sourceVersion,receiptReceiverInstanceId:args.receiverInstanceId||null});
+    return {applied:true,phase:args.phase,at:turn[field]||tx.now};
+  });
+}
+export async function claimConversation(
+  repo,
+  identity,
+  actor,
+  args,
+  now = new Date().toISOString(),
+) {
+  return repo.transact(
+    args.requestId,
+    { ...args, actor },
+    async (tx) => {
+      let turn, channel;
+      if (args.receiveNext) {
+        const member = activeMember(identity, actor.memberId),
+          connection = await tx.get("connection", actor.memberId);
+        if (!member || member.paused || connection.status !== "verified")
+          fail("unavailable", "成员当前不可接收消息", 409);
+        if (args.channelId) {
+          const selected = await tx.get("channel", args.channelId);
+          await scoped(selected, actor,tx);
+          if (selected.status !== "active")
+            return { status: "empty", reason: "channel_inactive" };
+        }
+        const resource = await tx.get("resource", connection.resourceKey, false);
+        if (resource?.status === "busy") return { status: "busy" };
+        const pending = (await pendingConversationTurns(tx, {
+          parent: actor.memberId,
+          ...(args.channelId ? { scope: args.channelId } : {}),
+          limit: 500,
+        }));
+        for(const candidate of pending)if(await isMemoryMaintenance(tx,candidate))candidate.background='memory';
+        pending.sort((a, b) => Number(!!a.background)-Number(!!b.background)||Number(b.meetingPurpose==='user_update')-Number(a.meetingPurpose==='user_update')||a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+        const selecting=pending.length?new Set([...await tx.list('native-command',{parent:actor.memberId,status:'pending',limit:501}),...await tx.list('native-command',{parent:actor.memberId,status:'prepared',limit:501})].map(c=>c.channelId)):new Set();
+        for (const candidate of pending) {
+          if(selecting.has(candidate.scopeId))continue;
+          const group = await tx.get("channel", candidate.scopeId, false);
+          if (group?.status !== "active" || !group.memberIds.includes(actor.memberId)) continue;
+          const occupied=await tx.get('resource',await executionResource(tx,connection,group.id),false);if(occupied?.status==='busy')continue;
+          if ((await reconcileTaskNotification(tx,candidate)).state!=='current')continue;
+          if (!await meetingTurnAllowed(tx, candidate)) { tx.put('channel_turn', { ...candidate, status: 'removed', reason: '会议阶段已经变化或结束' }); continue; }
+          turn = candidate;
+          channel = group;
+          break;
+        }
+        if (!turn) return { status: "empty" };
+      } else {
+        turn = await tx.get("channel_turn", args.stepId || args.turnId);
+        if (args.channelId && turn.scopeId !== args.channelId)
+          fail('forbidden', '通知不属于当前聊天', 403);
+        channel = await tx.get("channel", turn.scopeId);
+      }
+      await scoped(channel, actor,tx);
+      if (turn.memberId !== actor.memberId)
+        fail("forbidden", "通知不属于此成员", 403);
+      if(args.expectedSessionId){const c=await tx.get('connection',actor.memberId);if(await executionResource(tx,c,channel.id)!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);}
+      const taskNotice=await reconcileTaskNotification(tx,turn);
+      turn=taskNotice.turn;
+      if(taskNotice.state!=='current'||turn.resolution==='obsolete_task')return {
+        status:taskNotice.state==='waiting'?'waiting':'obsolete',claimed:false,needsResponse:false,
+        stepId:turn.id,channelId:channel.id,reason:taskNotice.reason||turn.reason,
+        instruction:taskNotice.state==='waiting'?'前置尚未就绪，本通知未领取；系统会等待后续状态，无需重发或领取其他通知。':'旧提醒已自动收尾，没有领取或重做任务，不需要回群确认，也不要领取其他通知。',
+      };
+      if (!receivableTurn(turn))
+        fail("turn_unavailable", "通知已处理或尚不可领取", 409);
+      if (!await meetingTurnAllowed(tx, turn)) fail('meeting_changed', '会议阶段已变化或结束，原消息保留', 409);
+      const member = activeMember(identity, actor.memberId),
+        c = await tx.get("connection", actor.memberId);
+      if (
+        !member ||
+        member.paused ||
+        c.status !== "verified" ||
+        channel.status !== "active"
+      )
+        fail("unavailable", "成员或群当前不可执行", 409);
+      const selecting=[...await tx.list('native-command',{parent:actor.memberId,status:'pending',limit:501}),...await tx.list('native-command',{parent:actor.memberId,status:'prepared',limit:501})].some(command=>command.channelId===channel.id);
+      if(selecting)fail('binding_pending','正在为这个聊天准备工作对话，消息已保存，准备完成后自动继续',409);
+      const resourceKey=await executionResource(tx,c,channel.id);
+      if(args.expectedSessionId&&resourceKey!=='native-session:'+actor.memberId+':'+await digest(required(args.expectedSessionId,'原工作会话',200)))fail('session_changed','这个聊天已更换工作会话，消息保留给当前绑定的会话',409);
+      if(await isMemoryMaintenance(tx,turn)&&await foregroundWaiting(tx,actor.memberId,resourceKey,turn.id)){
+       tx.put('channel_turn',{...turn,status:'removed',resolution:'background_deferred',reason:'前台工作优先，未开始后台整理',completedAt:tx.now});
+       const notice=await tx.get('outbox','notice_'+turn.id,false);if(notice)tx.put('outbox',{...notice,status:'canceled',completedAt:tx.now});
+       const maintenance=await tx.get('memory_maintenance',channel.id,false);if(maintenance?.messageId===turn.messageId)tx.put('memory_maintenance',{...maintenance,status:'deferred'});
+       return {status:'obsolete',claimed:false,needsResponse:false,turnId:turn.id,channelId:channel.id,instruction:'后台整理已让位，原事件仍待整理。结束本轮，不要领取其他通知；前台工作由连接器正常投递。'};
+      }
+      const legacyResource=await tx.get("resource",c.resourceKey,false);
+      if(resourceKey!==c.resourceKey&&legacyResource?.status==='busy')fail('resource_busy','旧版接收的工作正在结束，消息已保留',409);
+      const resource = await tx.get("resource", resourceKey, false);
+      if (resource?.status === "busy")
+        fail("resource_busy", "原 Agent 正在处理另一条通知，稍后再读", 409);
+      tx.guardLegacyIdle(member.accountId);
+      const candidates = (await pendingConversationTurns(tx, {
+        scope: channel.id,
+        parent: actor.memberId,
+      })).filter(t => (t.deliveryReview || null) === (turn.deliveryReview || null) && (t.meetingId || null) === (turn.meetingId || null) && (!turn.meetingId || (t.meetingVersion === turn.meetingVersion && t.meetingRound === turn.meetingRound && t.meetingStage === turn.meetingStage&&t.meetingPurpose===turn.meetingPurpose)));
+      const background=await isMemoryMaintenance(tx,turn);
+      const pending=[];for(const candidate of candidates)if(await isMemoryMaintenance(tx,candidate)===background){const state=await reconcileTaskNotification(tx,candidate);if(state.state==='current')pending.push(state.turn);}
+      const requirementVersions={};
+      for(const root of new Set(pending.map(t=>t.coordinationRootId).filter(Boolean))){const r=await tx.get("channel_coordination",channel.id+":"+root,false);if(r)requirementVersions[root]=r.requirementVersion||1;}
+      const lease = id("lease");
+      for (const other of pending)
+        if (other.id !== turn.id)
+          tx.put("channel_turn", {
+            ...other,
+            status: "merged",
+            mergedInto: turn.id,
+          });
+      for (const t of pending) {
+        const n = await tx.get("outbox", `notice_${t.id}`, false);
+        if (n) tx.put("outbox", { ...n, status: "claimed" });
+      }
+      tx.put("channel_turn", {
+        ...turn,
+        status: "active",
+        lease,
+        resourceKey,
+        claimedAt: tx.now,
+        requirementVersions,
+        ...(turn.coordinationRootId?{requirementVersion:requirementVersions[turn.coordinationRootId]||turn.requirementVersion||1}:{}),
+        ...(args.expectedSessionId?{nativeSessionId:args.expectedSessionId,nativeContextMode:args.contextMode==='incremental'?'incremental':'full'}:{}),
+        reason: null,
+        ...(turn.meetingId?{claimedOwnerMessageId:(await tx.get('channel_meeting',turn.meetingId)).lastOwnerMessageId}:{}),
+        expiresAt: new Date(Date.parse(tx.now) + 30 * 60000).toISOString(),
+        mergedMessageIds: pending.map((t) => t.messageId),
+        deliveryIssueIds: unique(pending.flatMap(t=>[t.deliveryIssueId,...(t.deliveryIssueIds||[])]).filter(Boolean)),
+      });
+      tx.put("resource", {
+        ...resource,
+        id: resourceKey,
+        status: "busy",
+        turnId: turn.id,
+        memberId: actor.memberId,
+      });
+      const cursorId = `${channel.id}:${actor.memberId}`,
+        cursor = await tx.get("channel_cursor", cursorId, false);
+      tx.put("channel_cursor", {
+        ...cursor,
+        id: cursorId,
+        scopeId: channel.id,
+        parentId: actor.memberId,
+        lastWakeAt: tx.now,
+        readThrough: Math.max(...pending.map((t) => t.number)),
+      });
+      return {
+        ...(args.receiveNext ? { status: "claimed" } : {}),
+        attemptId: turn.id,
+        turnId: turn.id,
+        lease,
+        channelId: channel.id,
+        input: {
+          kind: "conversation",
+          ...(background?{backgroundWork:await memoryBatch(tx,actor,channel.id)}:{}),
+          ...(turn.deliveryReview?{deliveryReview:await deliveryIssueDetail(tx,channel,await tx.get('channel_delivery_issue',turn.deliveryReview))}:{}),
+          ...(turn.meetingId ? { meetingId: turn.meetingId, meetingRound: turn.meetingRound, meetingVersion: turn.meetingVersion } : {}),
+          channelId: channel.id,
+          coordinatorId: channel.coordinatorId,
+          collaboration: collaborationGuidance(),
+          ...(actor.memberId===channel.coordinatorId?{coordinatorInstruction:COORDINATOR_COLLABORATION_GUIDANCE,coordination:await tx.list('channel_coordination',{scope:channel.id,limit:100})}:{}),
+          members: channel.memberIds.map((memberId) => ({
+            id: memberId,
+            name: activeMember(identity, memberId)?.name || memberId,
+          })),
+          triggerMessageIds: pending.map((t) => t.messageId),
+          triggerMessages: await Promise.all(pending.map(t=>tx.get("channel_message",t.messageId))),
+          instruction:
+            "群里有新消息。先调用 read_channel(channelId) 查看真实上下文。@用户 使用 mentions 中填 owner 或正文 @用户；不触发任何代理执行。明确交给你的工作需要回应结果或具体阻碍，不能只记静默。你是独立成员，可直接回复、@群内其他成员、追问、提出异议、共同写文档，或 stay_silent；用户指定的负责人可协调但不是唯一发言人。无新信息不要互相点头刷屏。post_message/stay_silent 带 turnId 结束本次通知。不要把普通聊天写成正式成果。若平台暂时只提供旧工具，submit_work 的正文会原样发到群里，不创建任务或成果；旧回传通道也能用“@本群唯一备注名”明确通知对方，引用和代码不通知。创建或修改文档等新能力需要刷新工具列表后调用，不能虚报已使用。不要声称未实际读取的资料或其他成员已回复。",
+        },
+      };
+    },
+    now,
+  );
+}
+
+function participantActivity(turns,notifications){
+  const byId=new Map(turns.map(t=>[t.id,t]));
+  const noticesByStep=new Map(notifications.map(n=>[n.stepId,n])),noticesById=new Map(notifications.map(n=>[n.id,n]));
+  return {window:{limit:100,complete:turns.length<100},items:turns.map(t=>{
+    const primary=t.status==='merged'?byId.get(t.mergedInto):null;
+    const notice=noticesByStep.get(t.id),delivery=notice?.status==='coalesced'?noticesById.get(notice.coalescedInto)||notice:notice;
+    return {messageId:t.messageId,rootId:t.coordinationRootId||t.rootId||t.messageId,memberId:t.memberId,status:t.status,
+      ...(primary?{mergedStatus:primary.status}:{}),
+      ...(delivery?{notification:{status:delivery.status,...(delivery.platformRespondedAt?{platformRespondedAt:delivery.platformRespondedAt}:{}),...(Number.isFinite(delivery.dispatchElapsedMs)?{dispatchElapsedMs:delivery.dispatchElapsedMs}:{})}}:{}),
+      ...(t.connectorReceivedAt?{received:true}:{}),...(t.claimedAt?{claimed:true}:{}),
+      ...(t.responseRef||primary?.responseRef?{responseRef:t.responseRef||primary.responseRef}:{})};
+  })};
+}
+export async function readChannel(repo, identity, actor, args) {
+  const channel = await channelAccess(repo, args.channelId, actor),
+    before = args.before ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(before) || before < 0)
+    fail("invalid_cursor", "消息分页序号无效");
+  const messages = await repo.db
+    .prepare(
+      "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind='channel_message' AND scope_id=? AND COALESCE(json_extract(body,'$.hidden'),0)=0 AND CAST(json_extract(body,'$.number') AS INTEGER)<? ORDER BY CAST(json_extract(body,'$.number') AS INTEGER) DESC LIMIT 51",
+    )
+    .bind(repo.workspaceId, channel.id, before)
+    .all();
+  const rows = messages.results.map((r) => JSON.parse(r.body));
+  // Older replies may point at a hidden recovery notification. Show the actual
+  // source message, not internal instructions labeled as a meeting record.
+  await Promise.all(rows.filter(m=>m.replyTo&&m.replySnapshot?.authorId==='system').map(async m=>{
+    const parent=await repo.get('channel_message',m.replyTo,false),source=await deliveryReviewSource(repo,parent);
+    if(source&&source.id!==parent?.id){m.replyTo=source.id;m.replySnapshot={body:source.body.slice(0,400),version:source.version||1,authorId:source.authorId};}
+  }));
+  if(args.view==='chat'){
+    const [turns,notifications,coordination,deliveryIssues]=await Promise.all(['channel_turn','outbox','channel_coordination','channel_delivery_issue'].map(kind=>repo.list(kind,{scope:channel.id,order:'recent',limit:100})));
+    return {channel,members:channel.memberIds.map(memberId=>({id:memberId,name:activeMember(identity,memberId)?.name||'已停用成员',isCoordinator:channel.coordinatorId===memberId})),
+      messages:rows.slice(0,50).reverse(),before:rows.length>50?rows[49].number:null,
+      activity:turns.filter(t=>actor.owner||t.memberId===actor.memberId).map(({lease,resourceKey,...t})=>t),
+      participation:participantActivity(turns,notifications),
+      notifications:actor.owner?notifications.map(({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})=>({id,stepId,memberId,status,reason,httpStatus,createdAt,completedAt,dueAt,sendingAt,attempts,platformRespondedAt,dispatchElapsedMs,attemptFinishedAt,coalescedInto,unclaimedRetry})):[],coordination,deliveryIssues};
+  }
+  const [documents, decisions, knowledge, meetings, tasks, suggestions, turns] =
+    await Promise.all(
+      [
+        "channel_doc",
+        "channel_question",
+        "channel_memory",
+        "channel_meeting",
+        "channel_task",
+        "channel_suggestion",
+        "channel_turn",
+      ].map((kind) =>
+        repo.list(kind, { scope: channel.id, order: "recent", limit: kind==='channel_meeting'?101:100 }),
+      ),
+    );
+  const [files,handoffs,folders,placements,links,notifications,coordination,deliveryIssues]=await Promise.all([
+    repo.list('shared_file',{scope:channel.id,limit:100,order:'recent'}),repo.list('shared_handoff',{scope:channel.id,limit:100,order:'recent'}),
+    allFolders(repo,channel.id),allPlacements(repo,channel.id),repo.list('channel_link',{scope:channel.id,limit:100,order:'recent'}),
+    repo.list('outbox',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_coordination',{scope:channel.id,limit:100,order:'recent'}),repo.list('channel_delivery_issue',{scope:channel.id,limit:100,order:'recent'})]);
+  return {
+    channel,
+    participation:participantActivity(turns,notifications),
+    collaboration: collaborationGuidance(actor.memberId===channel.coordinatorId),
+    members: channel.memberIds.map((memberId) => ({
+      id: memberId,
+      name: activeMember(identity, memberId)?.name || "已停用成员",
+      isCoordinator: channel.coordinatorId === memberId,
+    })),
+    messages: rows.slice(0, 50).reverse(),
+    before: rows.length > 50 ? rows[49].number : null,
+    documents:documents.filter(d=>d.status!=="deleted"),
+    files:files.filter(f=>f.status!=="deleted").map(({objectKey,...f})=>f),
+    handoffs,
+    decisions,
+    folders,
+    placements,
+    links:links.filter(x=>x.status!=="deleted"),
+    knowledge: (await Promise.all(knowledge.filter(k=>k.status!=="deleted"&&(actor.owner||k.status==="approved")).map(async k=>actor.owner||await sourcesAvailable(repo,actor,k)?publicMemory(k):null))).filter(Boolean),
+    meetings: meetings.slice(0,100).map(m => publicMeeting(m, actor)).filter(Boolean),
+    meetingsCursor:actor.owner&&meetings.length>100?btoa(JSON.stringify({updatedAt:meetings[99].updatedAt,id:meetings[99].id})):null,
+    tasks,
+    suggestions,
+    notifications: actor.owner
+      ? notifications.map(
+          ({
+            id,
+            stepId,
+            memberId,
+            status,
+            reason,
+            httpStatus,
+            createdAt,
+            completedAt,
+            dueAt,
+            sendingAt,
+            attempts,
+            platformRespondedAt,
+            dispatchElapsedMs,
+            attemptFinishedAt,
+            coalescedInto,
+            unclaimedRetry,
+          }) => ({
+            id,
+            stepId,
+            memberId,
+            status,
+            reason,
+            httpStatus,
+            createdAt,
+            completedAt,
+            dueAt,
+            sendingAt,
+            attempts,
+            platformRespondedAt,
+            dispatchElapsedMs,
+            attemptFinishedAt,
+            coalescedInto,
+            unclaimedRetry,
+          }),
+        )
+      : [],
+    coordination,deliveryIssues,
+    activity: actor.owner
+      ? turns.map(({ lease, resourceKey, ...t }) => t)
+      : turns
+          .filter((t) => t.memberId === actor.memberId)
+          .map(({ lease, resourceKey, ...t }) => t),
+  };
+}
+
+export async function conversationCommand(
+  repo,
+  identity,
+  actor,
+  cmd,
+  now = new Date().toISOString(),
+) {
+  if(cmd.type==='channel.silent'){cmd=normalizeToolArguments('stay_silent',cmd);required(cmd.turnId,'turnId（消息通知编号）');}
+  const { type } = cmd;
+  if (type === "channel.claim")
+    return claimConversation(repo, identity, actor, cmd, now);
+  return repo.transact(
+    cmd.requestId,
+    { ...cmd, actor },
+    async (tx) => {
+      if (type === "channel.create" || type === "channel.import") {
+        await owner(actor,tx);
+        let prior;
+        if (type === "channel.import")
+          prior = await tx.get("project", cmd.projectId);
+        const memberIds = listIds(
+          cmd.memberIds || prior?.arrangement?.members || [],
+        );
+        if (memberIds.some((mid) => !activeMember(identity, mid)))
+          fail("invalid_member", "所选成员不可用");
+        if (cmd.direct && memberIds.length !== 1)
+          fail("invalid_direct", "私聊只能选择一位 Agent");
+        if (cmd.direct) {
+          const directChannels = (await tx.list("channel")).filter(c => c.direct && c.memberIds.length === 1 && c.memberIds[0] === memberIds[0]);
+          const priorDM = directChannels.find(c => c.status !== "archived") || directChannels[0];
+          if (priorDM) return priorDM;
+        }
+        const coordinatorId = cmd.coordinatorId ?? null;
+        if (coordinatorId && !memberIds.includes(coordinatorId))
+          fail("invalid_coordinator", "负责人必须在群里");
+        const channelId = prior ? `channel_${prior.id}` : id("channel");
+        const existing = await tx.get("channel", channelId, false);
+        if (existing) return existing;
+        const channel = {
+          id: channelId,
+          name: required(cmd.name || prior?.name, "群名称", 100),
+          description:String(cmd.description||'').slice(0,600),createdBy:actor.memberId||'owner',
+          memberIds,
+          coordinatorId,
+          status: "active",
+          maxHops: 8,
+          wakeIntervalSeconds: 60,
+          messageSequence: 0,
+          createdAt: tx.now,
+          legacyProjectId: prior?.id || null,
+          direct: !!cmd.direct,
+        };
+        tx.put("channel", channel);
+        return channel;
+      }
+      let channelId = cmd.channelId;
+      let doc;
+      if (cmd.documentId) {
+        doc = await tx.get("channel_doc", cmd.documentId);
+        channelId = doc.scopeId;
+      }
+      if (type === "channel.silent") {
+        const turn = await tx.get("channel_turn", cmd.turnId);
+        channelId = turn.scopeId;
+      }
+      const channel = await tx.get("channel", channelId);
+      await scoped(channel, actor,tx);
+      if(['channel.pin','channel.delete','channel.restore'].includes(type))return manageChannel(tx,actor,cmd,channel);
+      if(channel.status==='deleted')fail('channel_deleted','这个群聊已删除；请由用户恢复后再继续',410);
+      if (['channel.folder','channel.material.move'].includes(type)) return folderCommand(tx,actor,cmd,channel);
+      if (['channel.task','channel.remember','channel.memory.update','channel.memory.review','channel.link'].includes(type)) return spaceCommand(tx,identity,actor,cmd,channel,meetingHelpers);
+      if (type === 'channel.meeting') return handleMeeting(tx, identity, actor, cmd, channel, meetingHelpers);
+      if (type === "channel.coordination") return coordinationCommand(tx,channel,actor,cmd,identity,meetingHelpers);
+      if (type === "channel.update") {
+        await owner(actor,tx);
+        const oldCoordinator=channel.coordinatorId;
+        channel.lastEditorId=actor.memberId||'owner';
+        if(cmd.description!==undefined)channel.description=String(cmd.description).slice(0,600);
+        if (cmd.name !== undefined)
+          channel.name = required(cmd.name, "群名称", 100);
+        if (cmd.memberIds !== undefined) {
+          const ids = listIds(cmd.memberIds);
+          if (channel.direct && (ids.length !== 1 || ids[0] !== channel.memberIds[0])) fail("invalid_direct", "单聊不能添加或更换成员，请另外新建群聊");
+          if (ids.some((mid) => !activeMember(identity, mid)))
+            fail("invalid_member", "所选成员不可用");
+          const removed = channel.memberIds.filter((mid) => !ids.includes(mid));
+          for (const turn of (
+            await Promise.all(
+              ["active", "ready", "limited", "unavailable", "stalled"].map(
+                (status) =>
+                  tx.list("channel_turn", { scope: channel.id, status }),
+              ),
+            )
+          ).flat())
+            if (removed.includes(turn.memberId)) {
+              if (turn.status === "active")
+                fail("member_busy", "此成员正在回应，请等它完成后移出", 409);
+              tx.put("channel_turn", { ...turn, status: "removed" });
+              const notice=await tx.get('outbox','notice_'+turn.id,false);
+              if(notice)tx.put('outbox',{...notice,status:'canceled',reason:'成员已退出本群，本通知失效',completedAt:tx.now});
+            }
+          for(const memberId of removed){
+            const wait=await tx.get('channel_wait',channel.id+':'+memberId,false);
+            if(wait?.status==='waiting')tx.put('channel_wait',{...wait,status:'finished',expiresAt:tx.now});
+          }
+          channel.memberIds = ids;
+        }
+        if (cmd.coordinatorId !== undefined)
+          channel.coordinatorId = cmd.coordinatorId || null;
+        if (
+          channel.coordinatorId &&
+          !channel.memberIds.includes(channel.coordinatorId)
+        )
+          channel.coordinatorId = null;
+        for (const [k, min, max] of [
+          ["maxHops", 1, 100],
+          ["wakeIntervalSeconds", 0, 3600],
+        ])
+          if (cmd[k] !== undefined) {
+            if (!Number.isInteger(cmd[k]) || cmd[k] < min || cmd[k] > max)
+              fail("invalid_limit", "唤醒限额无效");
+            channel[k] = cmd[k];
+          }
+        if (cmd.status !== undefined) {
+          if (!["active", "paused", "archived"].includes(cmd.status))
+            fail("invalid_status", "群状态无效");
+          channel.status = cmd.status;
+        }
+        if(oldCoordinator!==channel.coordinatorId){channel.coordinatorVersion=(channel.coordinatorVersion||1)+1;await transferCoordination(tx,identity,channel,meetingHelpers);}
+        tx.put("channel", channel);
+        return channel;
+      }
+      if(type==='channel.material')return materialCommand(tx,actor,cmd,channel,{identity,helpers:meetingHelpers});
+      if(type==='channel.delivery.resolve')return deliveryReviewCommand(tx,identity,channel,actor,cmd,meetingHelpers);
+      if(doc?.status==='deleted')fail('resource_deleted','这份资料已移入回收站，可恢复后继续编辑',410);
+      if (type === 'channel.message.edit') return editMessage(tx,identity,actor,cmd,channel,meetingHelpers);
+      if (type === "channel.post") {
+        const body = messageText(cmd.body);
+        if(cmd.purpose!==undefined&&! ["message","question","request","result"].includes(cmd.purpose))fail("invalid_input","消息用途无效");
+        if(cmd.executionOutcome!==undefined&&!['not_started','awaiting_confirmation','outcome_unknown','result'].includes(cmd.executionOutcome))fail('invalid_input','执行结果状态无效');
+        const refs = await validateRefs(tx, channel.id, cmd.refs||[]);
+        // Legacy housekeeping states must never require the human to unlock chat.
+        // An Agent cannot reactivate a stopped channel on its own.
+        if (channel.status !== "active") {
+          if (!actor.owner)
+            fail("channel_paused", "此会话暂不接收 Agent 回复", 409);
+          channel.status = "active";
+          tx.put("channel", channel);
+        }
+        const mentions = listIds(
+          !actor.owner && cmd.mentions === undefined
+            ? textMentions(body, channel, identity)
+            : (cmd.mentions??[]),
+          "提及",
+        );
+        if (mentions.some((mid) => mid!=='owner' && !channel.memberIds.includes(mid)))
+          fail("invalid_mention", "只能 @ 本群成员");
+        if (cmd.mentionAll !== undefined && typeof cmd.mentionAll !== 'boolean')
+          fail('invalid_input', '@全员选项无效');
+        const mentionAll = cmd.mentionAll === true;
+        // Validate before meeting routing too: a cached old turn must not
+        // publish a reply while leaving the actual current claim busy.
+        if (cmd.turnId) {
+          const responseTurn = await tx.get('channel_turn', cmd.turnId);
+          if (responseTurn.memberId !== actor.memberId || responseTurn.scopeId !== channel.id)
+            fail('forbidden', '通知与当前成员或群不符', 403);
+          await rejectStaleResponse(tx, actor, responseTurn);
+        }
+        // Resolve addressing before meeting routing: a meeting must not swallow @ recipients.
+        const meeting = await meetingPost(tx, identity, actor, { ...cmd, body, refs, mentions, mentionAll }, channel, meetingHelpers);
+        if (meeting?.handled) return meeting.result;
+        const targets = messageRecipients(channel, { ...actor, mentions, mentionAll });
+        if (actor.owner && channel.memberIds.length > 0 && !targets.length)
+          fail('recipient_required', '请选择群负责人，或 @ 一位成员、@全员后发送');
+        let parent;
+        if (cmd.replyTo) {
+          parent = await tx.get("channel_message", cmd.replyTo);
+          if (parent.scopeId !== channel.id)
+            fail("forbidden", "不能引用其他群的消息", 403);
+        }
+        let turn;
+        if (cmd.turnId) {
+          turn = await tx.get("channel_turn", cmd.turnId);
+          if (turn.memberId !== actor.memberId || turn.scopeId !== channel.id)
+            fail("forbidden", "通知与当前成员或群不符", 403);
+          if (!parent) parent = await tx.get("channel_message", turn.messageId);
+        }
+        if (actor.memberId && !turn) {
+          const active = await tx.list("channel_turn", {
+            scope: channel.id,
+            parent: actor.memberId,
+            status: "active",
+          });
+          if (active[0]) {
+            turn = active[0];
+            if (!parent)
+              parent = await tx.get("channel_message", turn.messageId);
+          }
+        }
+        // A reply without explicit turnId still acknowledges this member's active
+        // delivery. Omitting both references cannot reset the causal wake budget.
+        parent = await deliveryReviewSource(tx,parent);
+        if (actor.memberId && !parent && !(actor.memberId===channel.coordinatorId&&cmd.purpose==="request") && !await workspaceGrant(tx,actor))
+          fail(
+            "context_required",
+            "Agent 发言必须关联群内消息或已领取通知",
+            409,
+          );
+        const message = await channelMessage(tx, channel, actor, body, {
+          ...(meeting?.meetingId ? { meetingId: meeting.meetingId, sourceVersion: meeting.sourceVersion, ...(meeting.chat ? { meetingChat: true } : {}) } : {}),
+          requestId:cmd.requestId,
+          purpose:cmd.purpose||null,
+          ...(cmd.executionOutcome?{executionOutcome:cmd.executionOutcome}:{}),
+          ...(turn?.requirementVersions?.[parent?.coordinationRootId]?{requirementVersion:turn.requirementVersions[parent.coordinationRootId]}:turn?.requirementVersion?{requirementVersion:turn.requirementVersion}:parent?.requirementVersion?{requirementVersion:parent.requirementVersion}:{}),
+          mentions,
+          mentionAll,
+          recipientIds: targets,
+          refs,
+          mentionsFromText: cmd.mentions === undefined && mentions.length > 0,
+          replyTo: parent?.id || null,
+          ...(parent?{replySnapshot:{body:parent.body.slice(0,400),version:parent.version||1,authorId:parent.authorId}}:{}),
+          rootId: actor.owner ? null : parent?.rootId || parent?.id,
+          hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
+        });
+        const linkedTasks=await bindMessageTasks(tx,channel,message,parent);
+        for(const mid of taskFeedbackTargets(linkedTasks,channel,message))if(!targets.includes(mid))targets.push(mid);
+        if(targets.length){const holdReason=await automationHold(tx,channel,message);if(holdReason){message.holdReason=holdReason;tx.put('channel_message',message);}}
+        if(!actor.owner&&!targets.length&&parent?.purpose==='question'&&channel.memberIds.includes(parent.authorId)&&parent.authorId!==actor.memberId&&!['message','question'].includes(cmd.purpose))targets.push(parent.authorId);
+        if(actor.owner)await ownerRequirementChanged(tx,identity,channel,message,parent,meetingHelpers);
+        await trackCoordination(tx,channel,message,parent,targets);
+        const coordinated=await relatedCoordination(tx,channel,message,parent,targets);
+        if(coordinated&&channel.coordinatorId&&await registerFeedback(tx,channel,coordinated,message)){
+          message.coordinationRootId=coordinated.sourceMessageId;message.coordinationFeedback=true;
+          if(!targets.includes(channel.coordinatorId))targets.push(channel.coordinatorId);
+          tx.put('channel_message',message);
+        }
+        message.recipientIds=[...new Set(targets)];tx.put("channel_message",message);
+        for (const mid of targets)
+          await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
+        await finishTurn(tx, actor, cmd.turnId || turn?.id, "done",undefined,{kind:'message',id:message.id});
+        await continueTaskWork(tx,identity,actor,channel,linkedTasks,meetingHelpers,currentTaskBasis,taskDelivery);
+        return message;
+      }
+      if (type === "channel.silent") {
+        await finishTurn(
+          tx,
+          actor,
+          cmd.turnId,
+          "silent",
+          required(cmd.reason, "静默原因", 1000),
+        );
+        return { silent: true };
+      }
+      if (type === "channel.continue") {
+        await owner(actor,tx);
+        for (const turn of (
+          await Promise.all(
+            ["limited", "unavailable", "stalled"].map((status) =>
+              tx.list("channel_turn", { scope: channel.id, status }),
+            ),
+          )
+        ).flat()) {
+          if (cmd.turnId && turn.id !== cmd.turnId) continue;
+          if(turn.claimedAt||turn.lease)continue;
+          if(!await meetingTurnAllowed(tx,turn))continue;
+          const c = await tx.get("connection", turn.memberId, false),
+            m = activeMember(identity, turn.memberId);
+          if (
+            !channel.memberIds.includes(turn.memberId) ||
+            m?.paused ||
+            c?.status !== "verified"
+          )
+            continue;
+          tx.put("channel_turn", {
+            ...turn,
+            status: "ready",
+            hops: 0,
+            reason: null,
+          });
+          await outbox(tx, channel, turn, c);
+        }
+        return { resumed: true };
+      }
+      if (type === "channel.doc.create") {
+        const documentId = id("shared_doc"),
+          versionId = id("shared_version"),
+          body = required(cmd.body, "文档正文", 100000);
+        doc = tx.put("channel_doc", {
+          id: documentId,
+          scopeId: channel.id,
+          parentId: channel.id,
+          title: required(cmd.title, "文档标题", 160),
+          body,
+          version: 1,
+          versionId,
+          authorId: actor.memberId || "owner",
+          lastEditorId: actor.memberId || "owner",
+          createdAt: tx.now,
+          status: "draft",
+        });
+        tx.put("channel_doc_version", {
+          id: versionId,
+          scopeId: channel.id,
+          parentId: documentId,
+          body,
+          version: 1,
+          authorId: actor.memberId || "owner",
+          createdAt: tx.now,
+          reason: "创建文档",
+        });
+        await channelMessage(tx, channel, actor, `创建文档：${doc.title}`, {
+          type: "document",
+          documentId: doc.id,
+        });
+        if(cmd.folderId)await placeMaterial(tx,channel.id,'document',doc.id,cmd.folderId,actor);
+        return doc;
+      }
+      if (type === "channel.doc.edit") {
+        if (doc.version !== cmd.expectedVersion)
+          fail("version_conflict", "文档已被其他成员修改，请重读后合并", 409);
+        const versionId = id("shared_version"),
+          body = required(cmd.body, "文档正文", 100000),
+          reason = required(cmd.reason, "修改原因", 1000);
+        doc = tx.put("channel_doc", {
+          ...doc,
+          body,
+          version: doc.version + 1,
+          versionId,
+          status: "draft",
+          lastEditorId: actor.memberId || "owner",
+        });
+        tx.put("channel_doc_version", {
+          id: versionId,
+          scopeId: channel.id,
+          parentId: doc.id,
+          version: doc.version,
+          body,
+          reason,
+          authorId: actor.memberId || "owner",
+          createdAt: tx.now,
+        });
+        const readers=[...await tx.list('shared_read',{parent:doc.id}),...await tx.list('shared_watch',{parent:doc.id})];
+        const targets=readers.map(r=>r.memberId).filter(mid=>mid!==actor.memberId&&channel.memberIds.includes(mid));
+        const update=await channelMessage(tx,channel,actor,`更新文档：${doc.title} · v${doc.version}`,{type:'document',documentId:doc.id,resourceVersion:doc.version,hops:0});
+        for(const mid of new Set(targets))await enqueue(tx,identity,channel,update,mid);
+        await objectFeedback(tx,identity,channel,actor,{kind:'document',id:doc.id,version:doc.version},update,meetingHelpers);
+        return doc;
+      }
+      if (type === "channel.doc.suggest")
+        return tx.put("channel_suggestion", {
+          id: id("suggestion"),
+          scopeId: channel.id,
+          parentId: doc.id,
+          documentId: doc.id,
+          baseVersion: doc.version,
+          body: required(cmd.body, "建议稿", 100000),
+          reason: required(cmd.reason, "建议原因", 1000),
+          authorId: actor.memberId || "owner",
+          status: "pending",
+          createdAt: tx.now,
+        });
+      if (type === "channel.doc.deliver") {
+        const delivery = tx.put("channel_delivery", {
+          id: id("delivery"),
+          scopeId: channel.id,
+          parentId: doc.id,
+          documentId: doc.id,
+          versionId: doc.versionId,
+          version: doc.version,
+          authorId: actor.memberId || "owner",
+          createdAt: tx.now,
+          status: "delivered",
+        });
+        tx.put("channel_doc", {
+          ...doc,
+          status: "delivered",
+          deliveredVersion: doc.version,
+        });
+        await channelMessage(
+          tx,
+          channel,
+          actor,
+          required(cmd.summary, "交付说明", 2000),
+          {
+            type: "delivery",
+            documentId: doc.id,
+            deliveryId: delivery.id,
+            version: doc.version,
+          },
+        );
+        if (actor.memberId)
+          for (const turn of await tx.list("channel_turn", {
+            scope: channel.id,
+            parent: actor.memberId,
+            status: "active",
+          }))
+            await finishTurn(tx, actor, turn.id, "done", "已交付共享文档",{kind:'document',id:doc.id,version:doc.version});
+        return delivery;
+      }
+      if (type === "channel.ask") {
+        const question = tx.put("channel_question", {
+          id: id("question"),
+          scopeId: channel.id,
+          parentId: channel.id,
+          question: required(cmd.question, "问题", 4000),
+          options: listIds(cmd.options, "选项").map((x) =>
+            required(x, "选项", 1000),
+          ),
+          authorId: actor.memberId || "owner",
+          status: "pending",
+          createdAt: tx.now,
+        });
+        await channelMessage(tx, channel, actor, question.question, {
+          type: "question",
+          questionId: question.id,
+        });
+        // Asking is already a response to the current notification. Yield the
+        // native account while waiting; the user's answer creates a fresh turn.
+        // Otherwise the original lease would block that answer for 30 minutes.
+        if (actor.memberId)
+          for (const turn of await tx.list("channel_turn", {
+            scope: channel.id,
+            parent: actor.memberId,
+            status: "active",
+          }))
+            await finishTurn(
+              tx,
+              actor,
+              turn.id,
+              "done",
+              "已提问，等待用户回复",
+            );
+        return question;
+      }
+      if (type === "channel.answer") {
+        await owner(actor,tx);
+        const q = await tx.get("channel_question", cmd.questionId);
+        if (q.scopeId !== channel.id || q.status !== "pending")
+          fail("question_closed", "这个问题已处理或不属于本群", 409);
+        const answer = required(cmd.answer, "回答", 4000);
+        tx.put("channel_question", {
+          ...q,
+          status: "answered",
+          answer,
+          answeredAt: tx.now,
+        });
+        const message = await channelMessage(tx, channel, actor, answer, {
+          type: "answer",
+          questionId: q.id,
+          mentions: q.authorId === "owner" ? [] : [q.authorId],
+          hops: 0,
+        });
+        if (channel.memberIds.includes(q.authorId))
+          await enqueue(tx, identity, channel, message, q.authorId);
+        return message;
+      }
+      if (type === "channel.suggestion.review") {
+        await owner(actor,tx);
+        const suggestion = await tx.get("channel_suggestion", cmd.suggestionId),
+          d = await tx.get("channel_doc", suggestion.documentId);
+        if (
+          suggestion.scopeId !== channel.id ||
+          suggestion.status !== "pending"
+        )
+          fail("invalid_suggestion", "建议已处理或不属于本群", 409);
+        if (cmd.accept) {
+          if (d.version !== suggestion.baseVersion)
+            fail("version_conflict", "原稿已变化，请人工合并建议", 409);
+          const versionId = id("shared_version");
+          tx.put("channel_doc", {
+            ...d,
+            body: suggestion.body,
+            version: d.version + 1,
+            versionId,
+            status: "draft",
+            lastEditorId: "owner",
+          });
+          tx.put("channel_doc_version", {
+            id: versionId,
+            scopeId: channel.id,
+            parentId: d.id,
+            version: d.version + 1,
+            body: suggestion.body,
+            reason: `采纳建议：${suggestion.reason}`,
+            authorId: "owner",
+            suggestedBy: suggestion.authorId,
+            createdAt: tx.now,
+          });
+        }
+        return tx.put("channel_suggestion", {
+          ...suggestion,
+          status: cmd.accept ? "accepted" : "rejected",
+        });
+      }
+      if (type === "channel.meeting") {
+        if (cmd.action === "open")
+          return tx.put("channel_meeting", {
+            id: id("meeting"),
+            scopeId: channel.id,
+            parentId: channel.id,
+            title: required(cmd.title, "会议主题", 200),
+            openedBy: actor.memberId || "owner",
+            status: "open",
+            startMessage: channel.messageSequence,
+            createdAt: tx.now,
+          });
+        if (cmd.action !== "close") fail("invalid_action", "会议操作无效");
+        const meeting = await tx.get("channel_meeting", cmd.meetingId);
+        if (meeting.scopeId !== channel.id)
+          fail("forbidden", "会议不属于本群", 403);
+        return tx.put("channel_meeting", {
+          ...meeting,
+          status: "closed",
+          summary: required(cmd.summary, "会议结论", 12000),
+          endMessage: channel.messageSequence,
+          closedBy: actor.memberId || "owner",
+          closedAt: tx.now,
+        });
+      }
+      fail("unknown_command", "未知沟通工具", 404);
+    },
+    now,
+  );
+}
+
+const toolCommands = {
+  resolve_delivery: "channel.delivery.resolve",
+  coordinate: "channel.coordination",
+  manage_material: "channel.material",
+  post_message: "channel.post",
+  stay_silent: "channel.silent",
+  create_doc: "channel.doc.create",
+  manage_folder: "channel.folder",
+  move_material: "channel.material.move",
+  edit_doc: "channel.doc.edit",
+  suggest_edit: "channel.doc.suggest",
+  ask_user: "channel.ask",
+  deliver: "channel.doc.deliver",
+  remember: "channel.remember",
+  revise_memory: "channel.memory.update",
+  meeting: "channel.meeting",
+  board_task: "channel.task",
+};
+export async function conversationTool(repo, identity, actor, name, args) {
+  args=normalizeToolArguments(name,args);
+  if (["search_memory","read_memory","read_todo","read_space_object"].includes(name)) return readSpaceObject(repo,actor,name==="read_todo"?{...args,kind:"task",grouped:true}:args);
+  if (name === "read_channel") return readChannel(repo, identity, actor, args);
+  if (name === 'meeting' && args.action === 'read') return meetingDetail(repo, identity, actor, args);
+  if (name === "read_doc") {
+    const doc = await repo.get("channel_doc", required(args.documentId,'documentId（文档编号）'));
+    await channelAccess(repo, doc.scopeId, actor);
+    if(doc.status==='deleted')fail('resource_deleted','这份资料已移入回收站',410);
+    if(actor.memberId) await repo.transact(id('doc-read'),{documentId:doc.id,actor},tx=>tx.put('shared_read',{id:doc.id+':'+actor.memberId,parentId:doc.id,scopeId:doc.scopeId,memberId:actor.memberId,version:doc.version,createdAt:tx.now}));
+    return {
+      ...doc,
+      versions: await repo.list("channel_doc_version", {
+        parent: doc.id,
+        order: "recent",
+        limit: 100,
+      }),
+    };
+  }
+  return conversationCommand(repo, identity, actor, {
+    ...args,
+    type: toolCommands[name],
+  });
+}
+
+export async function conversationMaintenance(
+  repo,
+  identity,
+  now = new Date().toISOString(),
+) {
+  await meetingMaintenance(repo, identity, meetingHelpers, now);
+  await taskNotificationMaintenance(repo,now);
+  for (const turn of await repo.list("channel_turn", {
+    status: "active",
+    limit: 100,
+  }))
+    if (turn.expiresAt <= now)
+      await repo.transact(
+        `turn-expire:${turn.id}:${turn.expiresAt}`,
+        {},
+        async (tx) => {
+          const t = await tx.get("channel_turn", turn.id);
+          if (t.status !== "active" || t.expiresAt > now) return {};
+          tx.put("channel_turn", {
+            ...t,
+            status: "stalled",
+            reason: "原 Agent 长时间没有回传；消息保留，需确认后继续",
+          });
+          const r = await tx.get("resource", t.resourceKey, false);
+          if (r?.turnId === t.id)
+            tx.put("resource", { ...r, status: "idle", turnId: null });
+          return {};
+        },
+        now,
+      );
+  await deliveryReviewMaintenance(repo,identity,meetingHelpers,now);
+  await groupMemoryMaintenance(repo,identity,meetingHelpers,now);
+}
+
+export const meetingHelpers = { channelMessage, enqueue, finishTurn, objectFeedback, outbox, meetingTurnAllowed };

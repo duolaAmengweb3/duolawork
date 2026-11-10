@@ -1,0 +1,91 @@
+{
+  "at": "2026-11-06T07:54:53.291Z",
+  "scope": "Production native coordinator review of pre-existing held notifications; no original tasks replayed",
+  "tests": 374,
+  "isolatedUIChecks": 5,
+  "desktopBuildId": "d43b4bdeaeb3746c",
+  "serverArtifactMatches": true,
+  "serverSHA256": "79c81ab1009baf35546588247813c5df08f237a348424c7d647dd8b54a1dc3e7",
+  "cases": [
+    {
+      "channelId": "channel_f0bf1704a50348789524283bea56e2fd",
+      "name": "ATEL",
+      "issueId": "delivery_channel_f0bf1704a50348789524283bea56e2fd_chat_2b5d71f44fc749a8b0530db65580a69a",
+      "status": "resolved",
+      "version": 3,
+      "reviewedBy": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "reviewTurnId": "turn_chat_8d47b65aebfa4f8ebc8ee406686b5932_member_ccdf940ba6d3426da01b9f65048909e2",
+      "reviewStatus": "done",
+      "completedAt": "2026-11-06T07:49:54.624Z",
+      "evidenceMessageIds": [
+        "chat_a502c6e8da1c46fb953e47ff376ffd09",
+        "chat_bd718d5676844d2b8edb0d938ef513da",
+        "chat_934d90c3fc7443a496a704dac503f3bf",
+        "chat_0be14cdc68b9424bae0443aceaa2e0eb",
+        "chat_8e3c26a0948b4c4599450ea1c8640640"
+      ],
+      "receipts": [
+        {
+          "id": "turn_chat_2b5d71f44fc749a8b0530db65580a69a_member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+          "status": "removed",
+          "resolution": "covered",
+          "claimedAt": null
+        },
+        {
+          "id": "turn_chat_2b5d71f44fc749a8b0530db65580a69a_member_47be343430a54bff908ab5d471752701",
+          "memberId": "member_47be343430a54bff908ab5d471752701",
+          "status": "removed",
+          "resolution": "covered",
+          "claimedAt": null
+        },
+        {
+          "id": "turn_chat_2b5d71f44fc749a8b0530db65580a69a_member_26ac2c60371e4158bd6df1b0fa0db37d",
+          "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+          "status": "removed",
+          "resolution": "covered",
+          "claimedAt": null
+        },
+        {
+          "id": "turn_chat_2b5d71f44fc749a8b0530db65580a69a_member_0ff5c20718654c9db5ab3b1d0334133e",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "removed",
+          "resolution": "covered",
+          "claimedAt": null
+        }
+      ],
+      "resultMessageId": "chat_55f52f7416bf48618a02b2b804d22a3e",
+      "originalSourceQuoted": true
+    },
+    {
+      "channelId": "channel_6d302b18e24841f6a449b88f86b24aae",
+      "name": "X内容",
+      "issueId": "delivery_channel_6d302b18e24841f6a449b88f86b24aae_chat_0d55ebd7b41b453f90b6d7aa2451d12d",
+      "status": "resolved",
+      "version": 3,
+      "reviewedBy": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "reviewTurnId": "turn_chat_d8e1244b5cd543408dd7fd32613acea5_member_ccdf940ba6d3426da01b9f65048909e2",
+      "reviewStatus": "done",
+      "completedAt": "2026-11-06T07:53:29.570Z",
+      "evidenceMessageIds": [],
+      "receipts": [
+        {
+          "id": "turn_chat_0d55ebd7b41b453f90b6d7aa2451d12d_member_785ba0d4e7964814bf65102b90867efd",
+          "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+          "status": "removed",
+          "resolution": "dismiss",
+          "claimedAt": null
+        },
+        {
+          "id": "turn_chat_0d55ebd7b41b453f90b6d7aa2451d12d_member_0ff5c20718654c9db5ab3b1d0334133e",
+          "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+          "status": "removed",
+          "resolution": "dismiss",
+          "claimedAt": null
+        }
+      ],
+      "resultMessageId": "chat_42b4d86e183e4a7abb40b1851dec4d47",
+      "originalSourceQuoted": true
+    }
+  ]
+}

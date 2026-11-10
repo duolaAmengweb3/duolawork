@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T03:58:57.549Z",
+  "checks": [
+    "windowless headed Chrome keeps the Chrome user agent and does not patch webdriver",
+    "hidden page has no native window",
+    "two independent persistent login sessions coexist at execution limit 1",
+    "real keyboard input and Enter deliver into the rendered page",
+    "update retains the same Chrome PID without a visible page",
+    "session cookie and localStorage survive windowless update and app restart",
+    "explicit logout remains logged out"
+  ],
+  "realCommercialAgentTested": false
+}

@@ -1,4 +1,5 @@
 import { HubError } from "../../shared/domain.mjs";
+import {changeDescriptor,publishChanges} from './change-feed.mjs';
 
 /** @returns {never} */
 export const fail = (code, message, status = 400) => {
@@ -27,6 +28,7 @@ export class Repository {
     this.workspaceId = workspaceId;
   }
   async get(kind, key, necessary = true) {
+    required(kind,'记录类型',100);required(key,'记录编号',1000);
     const row = await this.db
       .prepare(
         "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind=? AND id=?",
@@ -47,6 +49,8 @@ export class Repository {
       order = "id",
       cursor,
       excludeHidden = false,
+      replyTo,
+      questionIds,
     } = {},
   ) {
     let sql = "SELECT body FROM hub_v2_records WHERE workspace_id=? AND kind=?";
@@ -62,6 +66,17 @@ export class Repository {
       }
     if (excludeHidden)
       sql += " AND COALESCE(json_extract(body,'$.hidden'),0)=0";
+    if (replyTo?.length) {
+      const roots = replyTo.slice(0,100);
+      const placeholders = roots.map(()=>'?').join(',');
+      sql += ` AND (json_extract(body,'$.replyTo') IN (${placeholders}) OR json_extract(body,'$.rootId') IN (${placeholders}))`;
+      params.push(...roots,...roots);
+    }
+    if (questionIds?.length) {
+      const ids=questionIds.slice(0,500);
+      sql += ` AND json_extract(body,'$.questionId') IN (${ids.map(()=>'?').join(',')}) AND json_extract(body,'$.type')='question'`;
+      params.push(...ids);
+    }
     if (order === "recent") {
       if (cursor) {
         sql += " AND (updated_at<? OR (updated_at=? AND id<?))";
@@ -172,6 +187,13 @@ export class Repository {
           ]),
         ),
       ];
+      const changes=[...tx.writes.values()].map(changeDescriptor).filter(Boolean);
+      if(changes.length){
+        statements.push(this.db.prepare(`INSERT INTO hub_v2_records(workspace_id,kind,id,scope_id,parent_id,status,revision,sequence,updated_at,body) SELECT ?,'change_event',?,'','','',1,(SELECT revision FROM hub_v2_clock WHERE workspace_id=?),?,? WHERE ${guard}`)
+          .bind(this.workspaceId,mutation,this.workspaceId,now,JSON.stringify({changes}),this.workspaceId,mutation));
+        statements.push(this.db.prepare(`DELETE FROM hub_v2_records WHERE workspace_id=? AND kind='change_event' AND sequence<(SELECT revision-10000 FROM hub_v2_clock WHERE workspace_id=?) AND ${guard}`)
+          .bind(this.workspaceId,this.workspaceId,this.workspaceId,mutation));
+      }
       if (rangeKeys.length)
         statements.push(
           this.db
@@ -201,7 +223,7 @@ export class Repository {
           ),
       );
       const committed = await this.db.batch(statements);
-      if (committed[0].meta.changes === 1) return result;
+      if (committed[0].meta.changes === 1) {if(changes.length)publishChanges(this.db,this.workspaceId);return result;}
       if (
         idleParams.length &&
         !(
@@ -272,18 +294,27 @@ class Transaction {
         .first();
       this.ranges.set(key, { key, revision: clock?.revision ?? -1 });
     }
-    const rows = await this.repo.list(kind, { ...options, limit: 501 });
-    if (rows.length >= 501)
+    // A recent window is intentionally bounded (e.g. the last 200 messages
+    // for loop detection). It must not become an all-history mutation scan.
+    // Keep the range clock guard so concurrent arrivals still retry this read.
+    const recent = options.order === 'recent';
+    const pageLimit = options.page || recent ? Math.max(1, Math.min(500, options.limit || 100)) : 501;
+    const rows = await this.repo.list(kind, { ...options, limit: pageLimit });
+    if (!options.page && !recent && rows.length >= 501)
       fail("query_limit", "本操作涉及记录过多，请缩小范围", 413);
     const combined = new Map(rows.map((x) => [x.id, x]));
     for (const row of this.writes.values())
       if (row.kind === kind) combined.set(row.id, structuredClone(row));
-    return [...combined.values()].filter(
+    const result = [...combined.values()].filter(
       (row) =>
         (options.scope === undefined || row.scopeId === options.scope) &&
         (options.parent === undefined || row.parentId === options.parent) &&
-        (options.status === undefined || row.status === options.status),
+        (options.status === undefined || row.status === options.status) &&
+        (!options.page || recent || row.id > (options.after || "")) &&
+        (!recent || !options.cursor || row.updatedAt < options.cursor.updatedAt || row.updatedAt === options.cursor.updatedAt && row.id < options.cursor.id),
     );
+    if(recent)return result.sort((a,b)=>a.updatedAt===b.updatedAt?(a.id===b.id?0:a.id>b.id?-1:1):a.updatedAt>b.updatedAt?-1:1).slice(0,pageLimit);
+    return options.page ? result.sort((a,b)=>a.id.localeCompare(b.id)).slice(0,pageLimit) : result;
   }
   put(kind, record) {
     const next = {

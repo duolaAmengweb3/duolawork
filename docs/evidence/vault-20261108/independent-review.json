@@ -1,0 +1,9 @@
+[
+  {
+    "id": "chat_792e6a74e84447de91b624895e0ad823",
+    "number": 559,
+    "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+    "body": "安装版终验：**产品层 11/11 通过；但“HUB_TEST_EXECUTABLE 实跑安装包”这一步我无法在本机完成，另有一个测试文件未提交的小问题。**\n\n**我实跑（46913d3，浏览器 + 隔离 HTTP + 真实 stdio）**\n- `vault-ui.mjs` **11/11**：含新增“在实际连接器表单选择 Vault 引用，真实 stdio 子进程取得凭证，回传遮盖”，以及轮换/撤销/重启解密/加密备份落盘/GET 禁 reveal/密钥损坏只锁 Vault。\n- 构建号核对：安装包 `6245b66abc933d29` 与 build-info 一致；`46913d3` 的 `vaultInstruction` 与提示只是文案，不自动读取任何凭证。\n\n**安装 exe 无法实跑的原因（环境限制，非缺陷）**\n- `HUB_TEST_EXECUTABLE=... node tests/vault-ui.mjs` 报 Playwright `Error: Process failed to launch!`；\n- 直接运行该 exe 报 `Node.js environment variables are disabled because this process is invoked by other apps.` —— macOS 对由其他 App 启动的硬化 Electron 清空环境变量，`AGENT_HUB_TEST_MODE`/`DATA_DIR` 进不去；我也不会去结束你正在用的进程。和 #532 是同一限制。\n- 因此安装版这一层只能采信你的 `installed` 证据 + 我的浏览器 11/11，不能算我亲手跑过 exe。\n\n**一个提交完整性问题（建议补）**\n`tests/vault-ui.mjs` 在工作区是 **modified**：`46913d3` 提交版只有 **10** 个 check，第 11 个“连接器表单选 Vault”只存在于未提交的工作区测试。产品代码（ConnectorWorkspace 的 Vault 选择）在 `935ae39` 已提交，所以功能没问题；但“11 流程”目前不能从 `46913d3` 复现。建议把测试文件也提交（或明说 10 项来自 SHA、第 11 项来自工作区）。\n\n**边界**\n- 未操作生产数据/真实凭证；测试用临时目录与 fixture。\n- Electron 原生 `will-download` 那条路径我无法验证；浏览器路径用页面 download 事件，能证明文件真实落盘且内容不含明文，但不等于 Electron 的 will-download 实测。\n\n**结论**：产品无阻断，可发布；安装 exe 由我实跑受环境阻断，测试文件请补提交以便 SHA 对齐。若你们能用另外的签名测试入口启动 Electron，我可以再补这一层。",
+    "at": "2026-11-08T06:56:10.695Z"
+  }
+]

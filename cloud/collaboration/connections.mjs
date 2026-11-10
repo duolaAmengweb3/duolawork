@@ -35,10 +35,15 @@ export const PLATFORMS = [
 ];
 export async function configureConnection(repo, identity, input, secret) {
   required(input.requestId, "请求编号", 120);
-  const platform = PLATFORMS.find((x) => x.id === input.platform);
+  // Existing Dot members retain their account/profile IDs from the early UI.
+  let platform = PLATFORMS.find((x) => x.id === (input.platform === "chatgpt-agent" ? "dots" : input.platform));
   const member = identity.members.find(
     (x) => x.id === input.memberId && x.status !== "disabled",
   );
+  // Pull is a member-authenticated protocol, not a Muse-only capability.
+  // It cannot cause a server-side request to an arbitrary callback endpoint.
+  if (member && input.transport === "muse-poll")
+    platform = { id: member.platformId, transport: "muse-poll" };
   if (
     !platform ||
     !member ||
@@ -56,7 +61,7 @@ export async function configureConnection(repo, identity, input, secret) {
   )
     fail("resource_busy", "旧版任务仍在运行，请先结束后启用原生协作", 409);
   const config = {};
-  if (platform.id === "grok-bot") {
+  if (platform.transport === "grok-webhook") {
     config.url = platformURL(input.url, "grok");
     config.token = required(input.token, "Routine 密钥", 4000);
     if (new URL(config.url).pathname.startsWith("/webhook/automation/") || config.token.startsWith("whsec_")) {
@@ -77,7 +82,12 @@ export async function configureConnection(repo, identity, input, secret) {
     async (tx) => {
       tx.guardLegacyIdle(member.accountId);
       const old = await tx.get("connection", member.id, false);
-      const resource = await tx.get("resource", member.accountId, false);
+      if (old?.status === "disconnected") fail("member_disconnected", "该成员已解除连接，请重新添加成员后接入", 403);
+      const nativeMember = platform.transport === 'muse-poll' && ['codex','antigravity','gemini-cli','deepseek-harness','claude-code'].includes(member.platformId);
+      const resourceKey = nativeMember ? 'native-member:' + member.id : member.accountId;
+      const oldResource = old?.resourceKey && old.resourceKey !== resourceKey ? await tx.get('resource', old.resourceKey, false) : null;
+      if(oldResource?.status === 'busy') fail('resource_busy', '当前工作还未结束，原接收方式保留', 409);
+      const resource = await tx.get("resource", resourceKey, false);
       if (resource?.status === "busy")
         fail("resource_busy", "此账号有未结束的原生执行，不能切换通道", 409);
       const changed = !old || old.configHash !== configHash;
@@ -86,7 +96,7 @@ export async function configureConnection(repo, identity, input, secret) {
         id: member.id,
         platform: platform.id,
         transport: platform.transport,
-        resourceKey: member.accountId,
+        resourceKey,
         capabilities: [
           ...new Set(
             (input.capabilities || ["research", "writing"]).filter((x) =>
@@ -102,11 +112,13 @@ export async function configureConnection(repo, identity, input, secret) {
         status: changed ? "configured" : old.status,
         verifiedAt: changed ? null : old.verifiedAt,
         deliveryEvidence: changed ? null : old.deliveryEvidence,
+        receptionIssues: changed ? {} : old.receptionIssues,
+        setup: changed ? { stage: "configuring", message: "接收方式已配置，等待原 Agent 真实回应验证。", at: tx.now } : old.setup,
         needsAuthorization:
           platform.id === "perplexity-computer" && (!old || changed),
         pollSeconds:
-          platform.id === "muse"
-            ? Math.max(60, Number(input.pollSeconds) || 300)
+          platform.transport === "muse-poll"
+            ? Math.max(15, Number(input.pollSeconds) || 60)
             : null,
       });
       return publicConnection(c);
@@ -114,11 +126,11 @@ export async function configureConnection(repo, identity, input, secret) {
   );
 }
 export function setupInstructions(connection, memberId, origin) {
-  const common = `你仍使用自己的原模型、工具和授权。Hub 只提供共享任务与资料。用专用成员凭证访问 ${origin}/v2/mcp 或 ${origin}/v2/tools/{工具名}，凭证通过平台安全输入保管，不写入聊天、稿件或日志。先 list_work，再 claim_work；领取结果含本轮 lease、材料与交付标准。读取前序成果后执行，长任务 report_progress，最后 submit_work 提交完整正文及原始来源，每次写入使用稳定 requestId。重复通知先查看现有任务，不重复执行。不发布、不付款，遇到授权需求交回用户。`;
+  const common = `你仍使用自己的原模型、工具和授权。Hub 提供群聊和共享工具，不替你编排协作。用专用成员凭证访问 ${origin}/v2/mcp 或 ${origin}/v2/tools/{工具名}，凭证通过平台安全输入保管，不写入聊天、稿件或日志。群消息优先调用 receive_messages 一次接收并取得上下文；工具尚未显示时调用既有 claim_work，stepId=inbox，同样一次接收。领取结果已有 messages 时不重复 read_channel，需要更早消息才分页。kind=conversation 直接 post_message 回复，需对方行动时用 mentions @ 群内成员，无新内容 stay_silent。负责人由用户指定且随时可更换，不是唯一发言入口。需要时才 create_doc/edit_doc/ask_user/deliver/remember，不把普通聊天变成任务或文档。旧项目工作仍按领取上下文完成，长任务 report_progress。回应后可按 input.continuation 在同一次运行等待后续消息一次，最多45秒；empty/busy 后停止，不反复空跑。每次写入使用稳定 requestId。重复通知先查看现有任务，不重复执行。不发布、不付款，遇到授权需求交回用户。`;
   if (connection.transport === "muse-poll")
     return `${common}\n连接 OpenAPI：${origin}/v2/openapi.json。定时或轻量 hook 先 GET ${origin}/v2/signal，只在 hasWork=true 时执行；不把轮询结果当成已领取。建议间隔 ${connection.pollSeconds} 秒，实际取决于原平台支持，不承诺即时。`;
   if (connection.transport === "grok-webhook")
-    return `${common}\n为该原 Bot 建一个专用 Routine，收到 webhook 时只处理本成员工作。把官方 POST URL 和 key 填入 Hub 接入设置。通知只是门铃，完整任务从 Hub 工具读取。`;
+    return `${common}\n本接收器固定成员 ${memberId}。同平台多个 Bot 可能共享 MCP 登录；Routine 必须写明本成员的私有凭证路径，使用该凭证调用 REST，不沿用共享 MCP。每次先 GET ${origin}/v2/self/status 核对 connection.id=${memberId}；不一致时停止并报告，不重配共享登录。通知 member_id 必须匹配本成员；kind=conversation 时按本次 receive.tool/receive.arguments 完整调用 REST /v2/tools/{工具名}，保留 expectedMemberId，不复用历史群或 afterTurnId；kind=work 时按本次 claim 或 step_id 领取并真实回传。为该原 Bot 复用一个专用 Routine；官方 POST URL/key 属于此 Routine。通知只是门铃，不代替实际领取。`;
   if (connection.transport === "dots-events")
     return `${common}\n在原 Dot 连接插件并订阅 work.ready，arguments.member_id=${memberId}。有事件时读取自己待办，按领取和交付协议执行。`;
   return "使用官方 Perplexity OAuth 入口完成授权；Hub 调用原 Computer MCP，保留其线程、工具与额度。任务发送与状态读取分开，超时不自动另发一条任务。";

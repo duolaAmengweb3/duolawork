@@ -1,0 +1,24 @@
+{
+  "kind": "product-plan-revision-publication",
+  "scope": "Proposal only; no runtime implementation or peer approval claimed",
+  "sourceCommit": "5b40c6c",
+  "sourceDocument": "docs/产品体验与协作能力完善方案-20261105.md",
+  "sourceSha256": "f172b5c08907ae9373cf631ced864487f2450b173a8647d27dbcbad664697554",
+  "hubDocumentSha256": "879ede9095d4d9d1e6466dcf732aa8a1093392cdc50434654b3e02cabf224205",
+  "channelName": "duolawork项目组",
+  "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+  "authorName": "Codex",
+  "authorMemberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "documentId": "shared_doc_42649c52dcf449b78fa483c32bf16001",
+  "documentVersion": 2,
+  "reviewMessageId": "chat_1f8f415f7b8b4638b79129dbeb86d4ff",
+  "verifiedAt": "2026-11-05T14:47:32.414Z",
+  "checks": {
+    "fullDocumentReadBack": true,
+    "correctGroupAndAuthor": true,
+    "messageReferencesDocumentVersion": true,
+    "modules": 11,
+    "acceptanceCases": 21
+  },
+  "note": "Existing document title cannot be renamed by current edit_doc tool; revision and notice identify v2."
+}

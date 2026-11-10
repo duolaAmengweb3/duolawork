@@ -1,0 +1,54 @@
+{
+  "at": "2026-11-06T01:26:17.100Z",
+  "origin": "https://agent-hub-local.duola-ai-project-radar.workers.dev",
+  "checks": [
+    "VPS actual Mem0/Qdrant/embedding semantic retrieval",
+    "Correction never returns the old version while index catches up",
+    "Forget immediately excludes authoritative result",
+    "Native grok3 → Dot feedback, document update and delivery completed",
+    "Grok2 production webhook → native claim → reply after receiver fix"
+  ],
+  "native": true,
+  "channelId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+  "memoryId": "memory_d59cc67bc6694cc8bcc539334abcc08c",
+  "documentId": "shared_doc_58eb5f842e7d415aaa8036bd0d22a02c",
+  "sourceMessageId": "chat_1e8d18f26c64485fb4566cde5d90c44d",
+  "reviewerChange": {
+    "at": "2026-11-06T01:41:05.149Z",
+    "from": "grok2",
+    "to": "grok3",
+    "messageId": "chat_624375a196f442dab7fc9ab611704b04",
+    "reason": "grok2 has active user work in another group; only this acceptance membership changed"
+  },
+  "nativeResult": {
+    "status": "passed",
+    "reviewer": "grok3",
+    "coordinator": "Dot",
+    "reviewMessageId": "chat_b1ae48a0997e4cfbaec112aa90508630",
+    "reviewMentions": [],
+    "deliveryMessageId": "chat_d4898570a5e44fc6add858f6dea96d49",
+    "documentVersion": 2,
+    "documentSha256": "6bd73853b39c3ffe303c64a9576e800f9e686628ab4700487eab333da0c8f106",
+    "completedAt": "2026-11-06T01:44:45.149Z",
+    "checks": [
+      "Native independent response without mentioning coordinator resumes coordinator",
+      "Coordinator edits the original document, preserving all 12 original scenarios",
+      "F1 arithmetic corrected and correct F2 preserved",
+      "Unsupported full launch, speed percentage and paid package corrected",
+      "E2 stays three titles, D2 one audience question, D4 framework only",
+      "Coordinator corrects two issues in reviewer output instead of agreeing mechanically",
+      "Both original and replacement coordination records closed by native coordinator",
+      "Final reply mentions the human owner"
+    ],
+    "boundary": "Single representative end-to-end run, not anonymous comparative quality evaluation; initial grok2 attempt did not pass"
+  },
+  "grok2AfterFix": {
+    "requestedAt": "2026-11-06T01:52:49.232Z",
+    "sourceMessageId": "chat_52fb773c5e0e41efaa094fd77cbc7dc7",
+    "status": "passed",
+    "scope": "New bounded production round trip after backend fix; does not itself recreate a 15-minute late wake",
+    "replyId": "chat_0e83c1edfbc549319c83412ad62da725",
+    "completedAt": "2026-11-06T01:53:14.114Z",
+    "elapsedMs": 24975
+  }
+}

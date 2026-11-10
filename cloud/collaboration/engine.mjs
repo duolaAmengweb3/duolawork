@@ -2,6 +2,7 @@ import { fail, id, required, digest } from "./repository.mjs";
 import { recipeById, nextDaily } from "../../shared/recipes.mjs";
 import { ruleScope, memberSetKey } from "../../shared/policies.mjs";
 import { applicableKnowledge, indexKnowledge } from "./knowledge.mjs";
+import {receptionIssues,receptionIssue} from '../../shared/receiver-reception.mjs';
 import {
   flowCommand,
   prepareSubmission,
@@ -824,8 +825,12 @@ export async function command(
           await finishFlowStep(tx, step, run, clean, issues, { identity, repairable: structuralIssueCount > 0 || flowResult.issues.length > 0 });
           if (run.probe && !issues.length) {
             const c = await tx.get("connection", step.memberId);
+            // A connection check is not an ACK of retained group messages.
+            // Migrate setup-only legacy failures before replacing the summary.
+            c.receptionIssues = receptionIssues(c);
             c.status = "verified";
             c.verifiedAt = tx.now;
+            c.setup = receptionIssue(c) || { stage: "verified", message: "原 Agent 已完成真实往返验证。", at: tx.now };
             c.deliveryEvidence = {
               runId: run.id,
               attemptId: attempt.id,

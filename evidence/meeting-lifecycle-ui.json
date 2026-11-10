@@ -1,0 +1,9 @@
+{
+  "at": "2026-11-07T06:53:55.634Z",
+  "scope": "two independent Chromium contexts and isolated real Hub; protocol actors",
+  "checks": [
+    "会议结束清理两个客户端的会议发送范围",
+    "两边草稿与显式提及保留",
+    "总结缺失可重试且只补总结不重开"
+  ]
+}

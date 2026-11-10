@@ -6,6 +6,7 @@ import { artifactBody, hash, load, mutate, sameSecret } from './store';
 import { v2Fetch } from './collaboration/api.mjs';
 import { Repository } from './collaboration/repository.mjs';
 import { maintenance } from './collaboration/dispatcher.mjs';
+import { relayRequest } from './relay.mjs';
 
 const response = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' } });
 const message = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
@@ -76,8 +77,10 @@ function mcp(request: Request, env: Env, pathToken?: string) {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
+      const relayed = await relayRequest(request, env);
+      if (relayed) return relayed;
       const url = new URL(request.url);
-      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, env, ctx, (await load(env)).state);
+      if (url.pathname.startsWith('/v2/') || url.pathname.startsWith('/.well-known/oauth-')) return await v2Fetch(request, {...env,PUBLIC_ORIGIN:url.origin,loadIdentity:async()=>(await load(env)).state,manageIdentity:async(action:Record<string,unknown>)=>(await mutate(env,action)).result}, ctx, (await load(env)).state);
       if (url.pathname === '/health') return response({ ok: true, service: 'agent-hub-local', version: '0.1.0', time: new Date().toISOString() });
       if (url.pathname === '/openapi.json' && request.method === 'GET') return response(openApi(url.origin));
       if (url.pathname.startsWith('/mcp')) {
@@ -118,6 +121,8 @@ export default {
     }
   },
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext) {
+    const routing = env as unknown as { HUB_RELAY_ORIGIN?: string; HUB_MAINTENANCE?: string };
+    if (routing.HUB_RELAY_ORIGIN || routing.HUB_MAINTENANCE === '1') return;
     const { state } = await load(env), now = new Date();
     await maintenance(new Repository(env.DB, env.WORKSPACE_ID), state, env);
     for (const routine of state.routines.filter((r: { enabled: boolean; nextAt: string }) => r.enabled && Date.parse(r.nextAt) <= now.getTime())) {

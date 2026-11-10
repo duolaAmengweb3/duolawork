@@ -1,4 +1,75 @@
-# 支持的 Agent（调研结果）
+> **2026-11-06 当前状态：** 桌面构建 `d08ee31dabdd444b` 已启用。Codex、Antigravity 官方桌面、DeepSeek Harness 官方桌面本轮通过真实原对话上下文与回群测试；隔离 Hub 证据不等于全部生产场景。Grok/Dot 保留原接入，Grok 受理未领取问题有专门修复与跟踪。Claude 原环境未操作；未实测的平台仍是适配目标。以下日期较早的安装说明作为历史记录；以 [本轮报告](本轮实施与验收报告-20261106.md) 和 [当前接入状态](../Agent接入/03-实现状态与验收记录.md) 为准。
+
+> **11月5日下午更新：** 补齐「从 Agent 配对当前对话」，复用账号连接，原会话自身确认后才保存。Codex、Antigravity CLI、DeepSeek 原 Host 分别有原生模型证据；Claude 按要求只做隔离协议验收。旧 Gemini CLI 不显示未适配的当前对话码。具体安装构建、桌面形态结果及覆盖范围见 [当前接入状态](../Agent接入/03-实现状态与验收记录.md)。
+
+> **11月4日本轮更新：** 账号连接与聊天内的项目/工作会话分开。Claude 默认复制一段说明给原 Agent，在原电脑或服务器完成准备；官方首次确认与真实订阅往返仍待用户操作。Codex、Antigravity、DSH 当前为本机适配，不能把新增账号入口说成已完成另一台电脑/VPS接入。现有 Grok/Dot 不重建。最新实现和缺口以 [验收记录](../Agent接入/03-实现状态与验收记录.md) 顶部为准。
+
+> **2026-11-04 当前产品入口更新：** 账号/运行端接入与聊天工作会话分离。同一 Codex 登录可添加多位独立工作成员、同群并发；单聊/群聊分别选择已有会话或新建。Antigravity 官方桌面仅选已有会话，DSH 可选或新建；Grok/Dot 沿用固定原身份。完整能力与证据范围以 [Agent接入/README.md](../Agent接入/README.md) 和 [验收记录](../Agent接入/03-实现状态与验收记录.md) 顶部为准，下面旧发布记录按日期理解。
+
+> **2026-11-04 Claude 远端连接器更新：** 官方 MCP Channels + SessionStart Hook 已实现，Hub 支持选择已登记的 VPS 原生会话。242 项测试与分发包协议测试通过；原 Claude/VPS 均未操作，真实订阅往返待用户完成安装。统一操作与边界见 [Claude 远端操作步骤](../Agent接入/Claude-远端连接器与操作步骤.md)。下面历史记录不覆盖此更新。
+
+# Agent 接入清单与验收状态
+
+> **11月3日维护入口已统一：** 后续接入研发从 [Agent接入/README.md](../Agent接入/README.md) 开始，工程路线、开源依据、Grok 已有实现和真实验收均在同一文件夹维护，不再重开相互冲突的方案。Codex 官方 App Server 与 Gemini 官方 Antigravity ACP 1.4.5 已在安装版通过真实回群、原生文件读写和完整重开续接，默认完整授权、可选权限管理；原 IDE 会话与全局设置独立。具体场景及速度见[验收记录](../Agent接入/03-实现状态与验收记录.md)。下文其他品牌仍是逐家适配目标，不因本次结果一并变成已支持。
+
+> **11月4日原工作会话更新：** Codex VSCode 官方扩展、Antigravity 桌面 App 的原 GUI 会话已有可行性证据，新绑定入口尚未发布。**DeepSeek Harness 已有正式成员页入口并安装**，支持选择原工作会话或新建独立助手；B.ai 配置自动复用，实际自检、单聊、本地读写与相互 @ 通过，Host 重启保留准确原会话。DSH 最初测试会话由 Host API 创建，不混称最初由 GUI 创建；也不覆盖任意未安装插件的自建 Host。Claude 仍不动。证据见 [04](../Agent接入/04-已有工作会话加入协作-可行性验证.md)。
+
+## 2026-11-02 当前范围：Personal Agent 与 Coding Agent 混编
+
+所有者本轮明确：不再限定 Personal Agent；Coding Agent 是正式场景，国内外都覆盖。默认接入体验是用户复制一段带短时配对码的 Skill，由原 Agent 自己完成接入、配置和验证。此决定取代 10 月 28—30 日“先只做个人 Agent”的范围限制；不恢复已废弃的固定步骤编排。
+
+**下面是明确的产品适配目标，不是全部已可用的宣传清单。** 对外“已支持”必须依据当前产品的真实往返记录；支持 CLI 不等于已接管用户某个 IDE 窗口，也不等于更换成该品牌的模型 API。
+
+| 类别 | 明确进入适配与验收的产品 | 主接法 | 当前工程状态 |
+|---|---|---|---|
+| 海外 Coding Agent | Codex、Claude Code、Gemini CLI、Cursor CLI、OpenCode、GitHub Copilot CLI | 官方 CLI / SDK / 会话服务；保留各自登录、模型、工具和会话 | 已有历史接口研究及有限旧测试；当前自由群聊版的持续会话与自动协作尚未整组验收 |
+| 国内 Coding Agent | Kimi Code CLI、Qwen Code、CodeBuddy Code、Qoder CLI | 官方 CLI / SDK；支持时采用原生会话协议，避免操作 IDE 页面 | Kimi 已有前轮研究；本轮补核 Qwen/Qoder 的官方非交互与 MCP 文档、CodeBuddy 官方资料。未冒充真实账号测试通过 |
+| 海外 Personal Agent | Grok Bot、ChatGPT Dot、Muse、Perplexity Computer、OpenClaw、Hermes | 各平台原生事件、Webhook、SDK 或服务接口 | Dot 与 Grok 账号 Automation 已做真实协作；指定原生 Bot「Duola2号」也已通过唤醒自检、普通群聊、连续追问及向 Dot 发起 @ 并收到回复。其余逐家验收，不混称全部已接通 |
+| 国内 Personal Agent | WorkBuddy、千问办公 QwenWork | 官方连接器与后台任务；依能力选择事件或检查机制 | 有官方路线研究，尚未完成当前产品的真实账号验收 |
+
+补充候选：Devin、Jules、Manus 等云端执行产品继续保留在接口台账中；需分别核实账户/API用量与产品权益，不能假定网页订阅包含外部调用。TRAE IDE、Antigravity、Cursor IDE 等现有界面会话单列核验，不用“能加 MCP”或“同品牌 CLI 能跑”直接推成可在后台接收消息。
+
+### 当前实测与未通过项
+
+- **11月3日真实新成员验收通过：** 独立新 Bot「Hub 首次接入验收」仅发送一次 Skill，自行配对和创建接收器；默认页填一次平台信息后自动验证，群聊、追问及软件重开后继续回群均通过。没有用开发者管理接口代配，原 Grok2/Dot 未重建。首次自检约68秒、群聊首句68.468秒、追问17.033秒、重开后82.436秒；不承诺秒回，也不代表其他17个目标均已验收。
+
+- **11月3日默认接入更新：** 新增成员后直接显示接入页。用户复制一段 Skill 发给原 Agent；Grok 创建自己的接收例程后，主动把准确名称和“需要本人确认”状态回报到 Hub。默认页直接提供桌面版入口、步骤和 URL/密钥安全输入框，保存后自动启动真实往返验证，不必进入高级配置或另找测试按钮。失败可在同页修正重试；只有原成员正确回传才显示已接入。其他平台继续按各自原生接法报告进度，不套用 Grok 表单。
+
+- 18家是明确适配目标，不是18家全量支持。国内外 Coding 都进入产品目录；当前通用协议的 Codex/Qwen fixture 不能替代原 CLI 的真实验收。
+- Duola2号已通过原生 Routine 唤醒及真实成员回传。此前“没有接收地址/密钥”的判断是检查了不提供这些字段的网页入口；官方 Grok Bot 桌面版 0.78.1 的例程面板实际提供 URL 与发送密钥。Hub 同时修复了漏放行 `api2.cursor.sh/automations/webhook/<id>` 的问题。没有使用 grok1 的账号 Automation 顶替，也未改成定时模型空跑。
+- 本轮新 Bot 的普通消息到回群为26.506秒，连续追问14.625秒；它结构化 @Dot 后，Dot 在252.917秒后回到同一群。没有人工转述。少量样本不是稳定性能或P95承诺，原生首次唤醒时延 Issue #23 仍开放。新 Bot 的长任务、自身全部工具、重启后的原生会话继承仍须单独验收。
+- 只能用户在平台面板取得的配置，当前仍可能需要一次平台操作；不能宣传所有目标都已达到一段话全自动接入。产品会在同一入口呈现具体卡点，不让用户猜是否就绪。
+
+### Grok 原生接入的源码核对结果
+
+逐文件核对了 [botline 的原生 Grok Bot 配方](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/docs/recipes/grokbot.md)、[Webhook 适配器](https://github.com/sabotage-dev/botline/blob/c27a93b5177cf3c057ae84463b12df586eb710ab/src/adapters/grokbot_webhook.ts)，以及 [Paperclip 的 Grok 桌面版接入界面](https://github.com/paperclipai/paperclip/blob/8ea240218dc1d3a94afea1294b377021045dd9c9/ui/src/components/new-agent/GrokBotSetupContent.tsx) 和对应服务端发送实现。两家都使用指定 Bot 的原生 Routine，而非模型 API；首次从官方桌面面板取得 URL/key，并不靠 Bot 的 create-routine 工具返回密钥。HTTP200仅表示受理，仍须原成员自行领取、回应。
+
+Hub 借鉴其原生唤醒方法，保留自己的成员配对、群聊与共享工具。默认一段 Skill 完成能由 Agent 执行的配置；Grok 首次把本人可见的 URL 与发送密钥填到默认页，属于一次性操作，不能宣传成完全无需本人操作。多个同类 Bot 的私有凭证按 Hub 地址与成员 ID 分开，不能共用一个全局令牌文件。后续复用既有配置，不按群或每次聊天重新建立例程。
+
+### 通用性落实在哪里
+
+- **一个用户入口：** 选具体 Agent，复制接入 Skill；命令、地址、接收参数和自检由 Agent 与 Hub 处理。默认不再摊出四步技术表单，保留高级入口处理平台明确要求的授权。
+- **一套协作能力：** 持续群聊、定向 @、共享文档、事项、会议及资料访问，对 Personal 与 Coding Agent 一致。谁负责、如何分工由用户与 Agent 决定，不按产品类别写死岗位。
+- **可替换适配器：** 平台差异放在启动/唤醒、会话续接、进度与结果、取消/恢复中；每位成员只有一条生效执行通道，不因超时偷偷换模型或重发到另一个入口。
+- **Coding Agent 的完整能力：** 沿用用户原订阅或已配置服务、原技能/MCP、仓库和明确绑定的会话。多人改代码默认各自工作区，交换改动和验证结果，不让互相覆盖成为协作机制。不能把新增 CLI 会话宣称为继承了旧 IDE 的全部聊天。
+- **同类多个成员：** 同品牌多个 Agent、多个账号和不同品牌混编都进入设计；凭证、会话、工作区和运行状态各自绑定。共享账号的额度及资源限制按实际平台计算，不虚构独立额度。
+
+### 同一份验收口径
+
+每家分别记录：① 身份配对与一次真实工具调用；② 从 Hub 发消息到正确原 Agent 被唤醒并回群；③ 同会话追问和双向 @；④ 使用自身工具完成真实任务并交回完整产物；⑤ 重启后保留登录和会话，断线/重复消息不重复执行。Coding 另验仓库修改、测试结果与工作区隔离。五项通过前，不把“已配对”或“命令可运行”展示成完整支持。
+
+### 本轮核对依据
+
+- 既有研究：[Codex 原生范围核验](../collab/codex/2026-10-28-原生接入范围核验.md)、[Claude 通用接入方案](../collab/claude/通用接入方案.md)、[竞品源码拆解](../collab/claude/2026-10-28-竞品实现拆解与复用清单.md)。这些是研究或历史测试，不能替代当前实现验收。
+- [Qwen Code 非交互与会话续接](https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/)、[Qwen MCP](https://qwenlm.github.io/qwen-code-docs/en/users/features/mcp/)。
+- [Kimi Code 命令](https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-command.html)、[会话](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/sessions.html)。
+- [CodeBuddy Code 官方实践](https://www.codebuddy.ai/docs/cli/best-practices)；本轮搜索索引可读，页面直读返回502，具体参数仍需继续核对。
+- [Qoder CLI 参数与会话](https://docs.qoder.com/cli/cli-reference)、[Qoder MCP](https://docs.qoder.com/cli/mcp-servers)。
+- [Cursor CLI](https://cursor.com/docs/cli/overview)；逐版本核对，不混用旧版 cursor-agent 与新版 agent 命令。
+
+---
+
+## 历史调研档案（下面旧的范围与优先级不覆盖本轮决定）
 
 > **2026-10-28 更新：本文保留历史调研，不能当作“已支持”白名单。** 最新逐家能力、原生接入限制和实际测试见 [Codex 原生接入范围核验](../collab/codex/2026-10-28-原生接入范围核验.md)。旧文关于 Dots 只能 Slack、WorkBuddy/千问缺少官方组合依据、Kimi 只有 Code 支持 MCP 等结论需要按新证据更正；本项目尚未完成商业云端 Agent 原生自动接力验收。
 
@@ -11,6 +82,8 @@
 **标准 MCP 能复用工具接口，但不能自动解决主动开工、后台权限和结果回传。** 每个平台需要验证：原生工具及认证、当前账号的官方触发入口；没有合适入口时实现本地浏览器适配器并验证发送和完整结果采集。支持自定义 MCP 不等于已经支持自动接力。
 
 ## 2026-10-27 补充：Muse 接入 Hermes 的开源实现
+
+**2026-11-10 更新：** 新的 museAPI-video 仓库已有完整网页浏览器驱动引擎；下表只描述2026-10-27的固定版本，不可据此说 Muse 现在无法接入。我们已有旧网页适配，但新版群收件链尚需统一。源码对照、可复用路径与真实账号验证边界见 [Muse接入对照调查](Muse接入对照调查-20261110.md)。
 
 结论：有参考价值，尤其是官方 Gadget SDK 的消息通道。Muse 应优先验证原生消息发送、事件订阅这条路径；浏览器保留为备选。以下是源码和文档核查，不是本产品的真实账号联测结果。用户提到的评论没有提供链接，不能声称已确认评论具体指哪一个仓库。
 
@@ -127,3 +200,13 @@ Hermes 支持自定义 OpenAI 兼容端点，配置本地网关的 `base_url`、
 - [Apidog：Hermes 与 OpenClaw](https://apidog.com/blog/hermes-agent-vs-openclaw/)
 - [IT 之家：AutoGLM 2.0](https://www.ithome.com/0/876/731.htm)
 - [Eesel：Perplexity Comet 价格](https://www.eesel.ai/blog/perplexity-comet-pricing)
+
+
+### 2026-11-04 官方 DSH 桌面版补齐
+
+新增成员默认连接已安装并登录的官方 DeepSeek Harness 桌面 App（macOS `0.2.1-rc.5`）：选择原会话，沿用原模型、登录、项目与工具；无需 API Key 或另起 Web 版。官方 GUI 原会话、本地实际工具、Hub 单聊、双成员 @、两个应用重开恢复已联测；历史 B.ai / Web 成员不迁移。安装状态及证据见 [接入验收记录](../Agent接入/03-实现状态与验收记录.md#官方桌面版接入补齐)。
+
+
+### 2026-11-04 Antigravity 官方桌面原会话交付
+
+macOS 官方 App 2.28.0 新增默认“选择正在工作的原会话”：沿用原模型、项目、规则、工具和上下文，不是另开 ACP 会话。已有 Gemini 成员通过“查看接入 → 连接桌面原会话”选择；旧独立后台接法保留。原会话忙碌时先排队，当前一轮结束再处理。正式安装包的真实本地任务、记忆回传、Hub/Sidecar 重开及解除连接通过；不混称 VSCode 扩展已支持或整台原 App 已重启验收。详见 [正式验收](../Agent接入/03-实现状态与验收记录.md)。

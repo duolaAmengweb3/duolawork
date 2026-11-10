@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-08T02:48:15.755Z",
+  "scope": "Actual browser UI and isolated real HTTP backend; no native model calls.",
+  "results": [
+    {
+      "name": "回复草稿按聊天保留，刷新后仍带原回复对象",
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n\n0 !== 1\n"
+    },
+    {
+      "name": "失败消息原位修改重发，保留收件人、引用、回复和正在写的新草稿",
+      "passed": false,
+      "error": "locator.fill: Timeout 7000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.chat-message').filter({ hasText: '失败消息原稿' }).getByRole('textbox', { name: '修改消息', exact: true })\u001b[22m\n"
+    },
+    {
+      "name": "慢加载历史后切群，不把 A 的历史插入 B",
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n\n1 !== 0\n"
+    },
+    {
+      "name": "点击较早消息的回复可定位原文，并返回原阅读位置",
+      "passed": false,
+      "error": "locator.waitFor: Timeout 7000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#chat_1a3cde3c3b754c1a816cbd52758262ea') to be visible\u001b[22m\n"
+    },
+    {
+      "name": "定位原消息途中切群，迟到响应不污染另一个聊天",
+      "passed": false,
+      "error": "The expression evaluated to a falsy value:\n\n  assert(started)\n"
+    }
+  ],
+  "errors": []
+}

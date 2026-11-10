@@ -1,0 +1,181 @@
+{
+  "observedAt": "2026-11-09T08:48:17.526Z",
+  "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+  "release": {
+    "schemaVersion": 1,
+    "revision": "f3924d7b046ac57fccc4ab773554a4c4b044f112f434130db4ad4578b430cee3",
+    "guidanceRevision": "c90ba3b3d295ad5a414bc478adfc1b6e0c5b43fb0f3d5a6314c89624296113ad",
+    "toolCatalogRevision": "84f6934b6652d6158c5541a54ca931d4a45d2f330e1e4ed0edac7d39379f1323",
+    "toolCount": 56
+  },
+  "deliveries": [
+    {
+      "id": "turn_chat_e2fe486f43074bcbbf951d7b6311aa00_member_ccdf940ba6d3426da01b9f65048909e2",
+      "parentId": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "scopeKind": "native-session",
+      "releaseRevision": "f3924d7b046ac57fccc4ab773554a4c4b044f112f434130db4ad4578b430cee3",
+      "guidanceRevision": "c90ba3b3d295ad5a414bc478adfc1b6e0c5b43fb0f3d5a6314c89624296113ad",
+      "toolCatalogRevision": "84f6934b6652d6158c5541a54ca931d4a45d2f330e1e4ed0edac7d39379f1323",
+      "stateRevision": "989d0d13407c649a59b746579958af8870bc7854277534499528bfa84e0228a8",
+      "stateRefs": {
+        "requirements": [
+          {
+            "id": "chat_142478fa27cf4ba2b00a270ae51df546",
+            "version": 1
+          },
+          {
+            "id": "chat_1827643e5797406d8fe559af8b60d740",
+            "version": 1
+          },
+          {
+            "id": "chat_7c1114f8dd25477090f90a56c9879c12",
+            "version": 1
+          },
+          {
+            "id": "chat_fa1643c06f3346399482c20fc2d7f5af",
+            "version": 1
+          },
+          {
+            "id": "chat_87d6da8aa0944515a0fa49ff34b73017",
+            "version": 1
+          },
+          {
+            "id": "chat_351e0c6eb8cf47fbb946e982211fa45f",
+            "version": 1
+          },
+          {
+            "id": "chat_ca903d37234e41d595e9f2d611faf435",
+            "version": 1
+          },
+          {
+            "id": "chat_027c3614d17846f7ad2f649bed1f8aca",
+            "version": 1
+          },
+          {
+            "id": "chat_a2f89211ffc947f1b4c4b87fd4c2aefb",
+            "version": 1
+          }
+        ],
+        "tasks": [],
+        "memory": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4
+          }
+        ],
+        "topics": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4,
+            "needsReconcile": false
+          }
+        ]
+      },
+      "status": "prepared",
+      "preparedAt": "2026-11-09T08:47:52.725Z",
+      "kind": "agent_context_delivery",
+      "revision": 1,
+      "updatedAt": "2026-11-09T08:47:52.725Z"
+    },
+    {
+      "id": "turn_chat_ca903d37234e41d595e9f2d611faf435_member_ccdf940ba6d3426da01b9f65048909e2",
+      "parentId": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "scopeKind": "native-session",
+      "releaseRevision": "875b1cd72adb9db322d2592c1b20ffb774f44acb90c225af4d13c60839b3ea26",
+      "guidanceRevision": "152fa5b488af873b450ef46dd7544b85292d979af4dadbbbcdfce3d2692c855a",
+      "toolCatalogRevision": "84f6934b6652d6158c5541a54ca931d4a45d2f330e1e4ed0edac7d39379f1323",
+      "stateRevision": "f354b53da236d51a90da39cc96ec6c5076b9f5d55bcb6d81476d49860d8aba13",
+      "stateRefs": {
+        "requirements": [
+          {
+            "id": "chat_2ae35ae53c7a45f194bbbcfe73a0359f",
+            "version": 1
+          },
+          {
+            "id": "chat_8b6060483046454e947f6b94448ecf2a",
+            "version": 1
+          },
+          {
+            "id": "chat_5aa60bfab166471292ceb5da7436b071",
+            "version": 1
+          },
+          {
+            "id": "chat_7bedb1f95f824bf9826e6c4b8c0d2302",
+            "version": 1
+          },
+          {
+            "id": "chat_9be1d1a89ed149a7b50131446cd2ef5d",
+            "version": 1
+          },
+          {
+            "id": "chat_142478fa27cf4ba2b00a270ae51df546",
+            "version": 1
+          },
+          {
+            "id": "chat_1827643e5797406d8fe559af8b60d740",
+            "version": 1
+          },
+          {
+            "id": "chat_7c1114f8dd25477090f90a56c9879c12",
+            "version": 1
+          },
+          {
+            "id": "chat_fa1643c06f3346399482c20fc2d7f5af",
+            "version": 1
+          },
+          {
+            "id": "chat_87d6da8aa0944515a0fa49ff34b73017",
+            "version": 1
+          },
+          {
+            "id": "chat_351e0c6eb8cf47fbb946e982211fa45f",
+            "version": 1
+          },
+          {
+            "id": "chat_ca903d37234e41d595e9f2d611faf435",
+            "version": 1
+          },
+          {
+            "id": "chat_027c3614d17846f7ad2f649bed1f8aca",
+            "version": 1
+          },
+          {
+            "id": "chat_a2f89211ffc947f1b4c4b87fd4c2aefb",
+            "version": 1
+          }
+        ],
+        "tasks": [
+          {
+            "id": "board_5084c440a90b4ac284b6c8386909ce75",
+            "version": 2,
+            "workSpecVersion": 1,
+            "submissionId": null,
+            "checkId": null
+          }
+        ],
+        "memory": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4
+          }
+        ],
+        "topics": [
+          {
+            "id": "topic_81bfcd711456493b8996dc2087d93f15",
+            "version": 4,
+            "needsReconcile": false
+          }
+        ]
+      },
+      "status": "response_recorded",
+      "preparedAt": "2026-11-09T08:22:51.099Z",
+      "kind": "agent_context_delivery",
+      "revision": 2,
+      "updatedAt": "2026-11-09T08:30:01.585Z",
+      "responseStatus": "done",
+      "responseRecordedAt": "2026-11-09T08:30:01.585Z"
+    }
+  ]
+}

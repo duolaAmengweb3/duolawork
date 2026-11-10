@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "duolawork-memory-embedding",
+  "main": "memory-embedding.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {"enabled": false},
+  "ai": {"binding": "AI"},
+  "ratelimits": [{"name":"EMBEDDING_LIMIT","namespace_id":"3202611061","simple":{"limit":120,"period":60}}]
+}

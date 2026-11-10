@@ -1,0 +1,130 @@
+{
+  "at": "2026-11-04T09:04:28.198Z",
+  "packaged": true,
+  "realCommercialClaudeTested": false,
+  "isolatedHub": true,
+  "desktopRestarts": 0,
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "30bce1a79173af7b"
+  },
+  "build": {
+    "id": "30bce1a79173af7b",
+    "version": "0.1.0",
+    "builtAt": "2026-11-04T09:01:37.159Z"
+  },
+  "members": [
+    {
+      "id": "member_2c8e46cf61c04bffb059ea6d4bfc9a13",
+      "ownerId": "owner",
+      "accountId": "account_c2c5f7ef3c34443db598f034d529249f",
+      "platformId": "claude-code",
+      "name": "Claude 远端测试",
+      "roleId": "research",
+      "mode": "connector",
+      "kind": "role-context",
+      "nativeAgentId": "",
+      "instructions": "",
+      "status": "unverified",
+      "createdAt": "2026-11-04T09:03:10.781Z",
+      "lastSeenAt": null,
+      "evidence": null,
+      "paused": false
+    }
+  ],
+  "connections": [
+    {
+      "id": "member_2c8e46cf61c04bffb059ea6d4bfc9a13",
+      "transport": "muse-poll",
+      "status": "verified",
+      "capabilities": [
+        "research",
+        "writing",
+        "files"
+      ],
+      "resourceKey": "account_c2c5f7ef3c34443db598f034d529249f",
+      "revision": 3,
+      "toolSeenAt": "2026-11-04T09:03:10.810Z",
+      "verifiedAt": "2026-11-04T09:03:10.818Z",
+      "deliveryEvidence": {
+        "runId": "run_b1219f3691eb4c70b2439cd62721178d",
+        "attemptId": "attempt_d33e76fc9dc3470bac30910dd3bedc49",
+        "documentIds": [
+          "document_3b23b85da523483faae4ce9d1c31e341"
+        ]
+      },
+      "pollSeconds": null,
+      "needsAuthorization": false,
+      "setup": {
+        "stage": "verified",
+        "message": "原 Agent 已完成真实往返验证。",
+        "at": "2026-11-04T09:03:10.818Z"
+      },
+      "authSeenAt": "2026-11-04T09:03:10.810Z",
+      "authorizedAt": null,
+      "subscriptionActive": false,
+      "lastDeliveryAt": null,
+      "probe": {
+        "id": "run_b1219f3691eb4c70b2439cd62721178d",
+        "status": "completed",
+        "message": null
+      }
+    }
+  ],
+  "coding": {
+    "members": [
+      {
+        "memberId": "member_2c8e46cf61c04bffb059ea6d4bfc9a13",
+        "enabled": true,
+        "sourceReady": true,
+        "manualAssignments": true,
+        "status": "idle",
+        "message": "VPS 上的 Claude 会话已在线",
+        "assignments": []
+      }
+    ],
+    "approvals": [],
+    "running": true
+  },
+  "channels": [
+    {
+      "channel": {
+        "id": "channel_e3d3b80087eb4b01b7ede2af29f29661",
+        "name": "远端协作测试",
+        "memberIds": [
+          "member_2c8e46cf61c04bffb059ea6d4bfc9a13"
+        ],
+        "coordinatorId": null,
+        "status": "active",
+        "maxHops": 8,
+        "wakeIntervalSeconds": 60,
+        "messageSequence": 0,
+        "createdAt": "2026-11-04T09:03:10.826Z",
+        "legacyProjectId": null,
+        "direct": false,
+        "kind": "channel",
+        "revision": 1,
+        "updatedAt": "2026-11-04T09:03:10.826Z"
+      },
+      "members": [
+        {
+          "id": "member_2c8e46cf61c04bffb059ea6d4bfc9a13",
+          "name": "Claude 远端测试",
+          "isCoordinator": false
+        }
+      ],
+      "messages": [],
+      "before": null,
+      "documents": [],
+      "decisions": [],
+      "knowledge": [],
+      "meetings": [],
+      "meetingsCursor": null,
+      "tasks": [],
+      "suggestions": [],
+      "notifications": [],
+      "activity": []
+    }
+  ]
+}

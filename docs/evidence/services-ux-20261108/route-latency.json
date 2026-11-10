@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-08T07:38:37.359Z",
+  "samples": [
+    {
+      "name": "legacy",
+      "ms": 3435
+    },
+    {
+      "name": "canonical",
+      "ms": 2383
+    },
+    {
+      "name": "legacy",
+      "ms": 351
+    },
+    {
+      "name": "canonical",
+      "ms": 356
+    },
+    {
+      "name": "legacy",
+      "ms": 352
+    },
+    {
+      "name": "canonical",
+      "ms": 355
+    }
+  ]
+}

@@ -1,0 +1,563 @@
+{
+  "scope": "installed Electron application with isolated test data and real Node HTTP server; 120ms delayed ACK; no provider/model",
+  "count": 100,
+  "p50Ms": 5.100000001490116,
+  "p95Ms": 8.5,
+  "maxMs": 9.099999994039536,
+  "errors": [],
+  "draftRetained": true,
+  "noDuplicateSaves": true,
+  "scrollRetained": true,
+  "samples": [
+    {
+      "body": "latency sample 000",
+      "start": 167.60000000149012,
+      "paintMs": 8.299999997019768
+    },
+    {
+      "body": "latency sample 001",
+      "start": 194.20000000298023,
+      "paintMs": 6.899999998509884
+    },
+    {
+      "body": "latency sample 002",
+      "start": 205.89999999850988,
+      "paintMs": 2.600000001490116
+    },
+    {
+      "body": "latency sample 003",
+      "start": 213.89999999850988,
+      "paintMs": 3
+    },
+    {
+      "body": "latency sample 004",
+      "start": 222.20000000298023,
+      "paintMs": 3.899999998509884
+    },
+    {
+      "body": "latency sample 005",
+      "start": 230.80000000447035,
+      "paintMs": 2.6999999955296516
+    },
+    {
+      "body": "latency sample 006",
+      "start": 238.70000000298023,
+      "paintMs": 3.6999999955296516
+    },
+    {
+      "body": "latency sample 007",
+      "start": 247,
+      "paintMs": 3.399999998509884
+    },
+    {
+      "body": "latency sample 008",
+      "start": 255.30000000447035,
+      "paintMs": 3.399999998509884
+    },
+    {
+      "body": "latency sample 009",
+      "start": 264.20000000298023,
+      "paintMs": 3.100000001490116
+    },
+    {
+      "body": "latency sample 010",
+      "start": 272.3999999985099,
+      "paintMs": 2.9000000059604645
+    },
+    {
+      "body": "latency sample 011",
+      "start": 280.30000000447035,
+      "paintMs": 4.0999999940395355
+    },
+    {
+      "body": "latency sample 012",
+      "start": 289.1000000014901,
+      "paintMs": 2.7000000029802322
+    },
+    {
+      "body": "latency sample 013",
+      "start": 299.1000000014901,
+      "paintMs": 2.399999998509884
+    },
+    {
+      "body": "latency sample 014",
+      "start": 308.1000000014901,
+      "paintMs": 2.100000001490116
+    },
+    {
+      "body": "latency sample 015",
+      "start": 316.70000000298023,
+      "paintMs": 2.2999999970197678
+    },
+    {
+      "body": "latency sample 016",
+      "start": 325.30000000447035,
+      "paintMs": 9.099999994039536
+    },
+    {
+      "body": "latency sample 017",
+      "start": 353.6000000014901,
+      "paintMs": 5.799999997019768
+    },
+    {
+      "body": "latency sample 018",
+      "start": 365.20000000298023,
+      "paintMs": 2.5
+    },
+    {
+      "body": "latency sample 019",
+      "start": 378.8999999985099,
+      "paintMs": 5.700000002980232
+    },
+    {
+      "body": "latency sample 020",
+      "start": 402.3999999985099,
+      "paintMs": 7.100000001490116
+    },
+    {
+      "body": "latency sample 021",
+      "start": 417.5,
+      "paintMs": 8.600000001490116
+    },
+    {
+      "body": "latency sample 022",
+      "start": 432.30000000447035,
+      "paintMs": 2.899999998509884
+    },
+    {
+      "body": "latency sample 023",
+      "start": 442.30000000447035,
+      "paintMs": 8.799999997019768
+    },
+    {
+      "body": "latency sample 024",
+      "start": 456.30000000447035,
+      "paintMs": 3
+    },
+    {
+      "body": "latency sample 025",
+      "start": 545.2000000029802,
+      "paintMs": 5.899999998509884
+    },
+    {
+      "body": "latency sample 026",
+      "start": 556.8999999985099,
+      "paintMs": 2.8000000044703484
+    },
+    {
+      "body": "latency sample 027",
+      "start": 568.8999999985099,
+      "paintMs": 7.200000002980232
+    },
+    {
+      "body": "latency sample 028",
+      "start": 582.6000000014901,
+      "paintMs": 2.7000000029802322
+    },
+    {
+      "body": "latency sample 029",
+      "start": 592.8999999985099,
+      "paintMs": 8.200000002980232
+    },
+    {
+      "body": "latency sample 030",
+      "start": 607.5,
+      "paintMs": 3
+    },
+    {
+      "body": "latency sample 031",
+      "start": 619.2000000029802,
+      "paintMs": 6.899999998509884
+    },
+    {
+      "body": "latency sample 032",
+      "start": 632.6000000014901,
+      "paintMs": 3.2999999970197678
+    },
+    {
+      "body": "latency sample 033",
+      "start": 645.1000000014901,
+      "paintMs": 5
+    },
+    {
+      "body": "latency sample 034",
+      "start": 665.7000000029802,
+      "paintMs": 4.100000001490116
+    },
+    {
+      "body": "latency sample 035",
+      "start": 681.3000000044703,
+      "paintMs": 3.2999999970197678
+    },
+    {
+      "body": "latency sample 036",
+      "start": 692.7000000029802,
+      "paintMs": 8.399999998509884
+    },
+    {
+      "body": "latency sample 037",
+      "start": 708,
+      "paintMs": 3.399999998509884
+    },
+    {
+      "body": "latency sample 038",
+      "start": 720.7000000029802,
+      "paintMs": 4.5
+    },
+    {
+      "body": "latency sample 039",
+      "start": 731.8999999985099,
+      "paintMs": 3.4000000059604645
+    },
+    {
+      "body": "latency sample 040",
+      "start": 744.1000000014901,
+      "paintMs": 7
+    },
+    {
+      "body": "latency sample 041",
+      "start": 756.5,
+      "paintMs": 3.100000001490116
+    },
+    {
+      "body": "latency sample 042",
+      "start": 767.6000000014901,
+      "paintMs": 8.600000001490116
+    },
+    {
+      "body": "latency sample 043",
+      "start": 782.8000000044703,
+      "paintMs": 3.7999999970197678
+    },
+    {
+      "body": "latency sample 044",
+      "start": 806.5,
+      "paintMs": 3.7000000029802322
+    },
+    {
+      "body": "latency sample 045",
+      "start": 821.5,
+      "paintMs": 4.399999998509884
+    },
+    {
+      "body": "latency sample 046",
+      "start": 833,
+      "paintMs": 3.899999998509884
+    },
+    {
+      "body": "latency sample 047",
+      "start": 844.6000000014901,
+      "paintMs": 6.5
+    },
+    {
+      "body": "latency sample 048",
+      "start": 864.8999999985099,
+      "paintMs": 3.9000000059604645
+    },
+    {
+      "body": "latency sample 049",
+      "start": 881.3999999985099,
+      "paintMs": 5
+    },
+    {
+      "body": "latency sample 050",
+      "start": 896.8999999985099,
+      "paintMs": 4.300000004470348
+    },
+    {
+      "body": "latency sample 051",
+      "start": 909.3000000044703,
+      "paintMs": 8.5
+    },
+    {
+      "body": "latency sample 052",
+      "start": 937,
+      "paintMs": 4.800000004470348
+    },
+    {
+      "body": "latency sample 053",
+      "start": 953.2000000029802,
+      "paintMs": 5.299999997019768
+    },
+    {
+      "body": "latency sample 054",
+      "start": 964.7000000029802,
+      "paintMs": 4.199999995529652
+    },
+    {
+      "body": "latency sample 055",
+      "start": 978.5,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 056",
+      "start": 994.2000000029802,
+      "paintMs": 6.799999997019768
+    },
+    {
+      "body": "latency sample 057",
+      "start": 1006.6000000014901,
+      "paintMs": 4.299999997019768
+    },
+    {
+      "body": "latency sample 058",
+      "start": 1019.3000000044703,
+      "paintMs": 6.899999998509884
+    },
+    {
+      "body": "latency sample 059",
+      "start": 1031.8999999985099,
+      "paintMs": 4.200000002980232
+    },
+    {
+      "body": "latency sample 060",
+      "start": 1045.2000000029802,
+      "paintMs": 5.399999998509884
+    },
+    {
+      "body": "latency sample 061",
+      "start": 1075.8000000044703,
+      "paintMs": 8.599999994039536
+    },
+    {
+      "body": "latency sample 062",
+      "start": 1090.3000000044703,
+      "paintMs": 4.899999998509884
+    },
+    {
+      "body": "latency sample 063",
+      "start": 1104.1000000014901,
+      "paintMs": 4.399999998509884
+    },
+    {
+      "body": "latency sample 064",
+      "start": 1115.8999999985099,
+      "paintMs": 4.9000000059604645
+    },
+    {
+      "body": "latency sample 065",
+      "start": 1128.5,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 066",
+      "start": 1140.2000000029802,
+      "paintMs": 4.799999997019768
+    },
+    {
+      "body": "latency sample 067",
+      "start": 1153.3000000044703,
+      "paintMs": 5.5
+    },
+    {
+      "body": "latency sample 068",
+      "start": 1166.2000000029802,
+      "paintMs": 4.899999998509884
+    },
+    {
+      "body": "latency sample 069",
+      "start": 1178.7000000029802,
+      "paintMs": 5.399999998509884
+    },
+    {
+      "body": "latency sample 070",
+      "start": 1213.7000000029802,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 071",
+      "start": 1228.6000000014901,
+      "paintMs": 4.899999998509884
+    },
+    {
+      "body": "latency sample 072",
+      "start": 1240.6000000014901,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 073",
+      "start": 1253.5,
+      "paintMs": 5.899999998509884
+    },
+    {
+      "body": "latency sample 074",
+      "start": 1266.3000000044703,
+      "paintMs": 5.0999999940395355
+    },
+    {
+      "body": "latency sample 075",
+      "start": 1280.3999999985099,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 076",
+      "start": 1293.5,
+      "paintMs": 7.600000001490116
+    },
+    {
+      "body": "latency sample 077",
+      "start": 1307.2000000029802,
+      "paintMs": 4.899999998509884
+    },
+    {
+      "body": "latency sample 078",
+      "start": 1320.8999999985099,
+      "paintMs": 5.4000000059604645
+    },
+    {
+      "body": "latency sample 079",
+      "start": 1334.5,
+      "paintMs": 7.399999998509884
+    },
+    {
+      "body": "latency sample 080",
+      "start": 1371.2000000029802,
+      "paintMs": 5.100000001490116
+    },
+    {
+      "body": "latency sample 081",
+      "start": 1386.1000000014901,
+      "paintMs": 6
+    },
+    {
+      "body": "latency sample 082",
+      "start": 1399.3000000044703,
+      "paintMs": 5.0999999940395355
+    },
+    {
+      "body": "latency sample 083",
+      "start": 1411.5,
+      "paintMs": 5.700000002980232
+    },
+    {
+      "body": "latency sample 084",
+      "start": 1424.7000000029802,
+      "paintMs": 5.699999995529652
+    },
+    {
+      "body": "latency sample 085",
+      "start": 1439.7000000029802,
+      "paintMs": 5.299999997019768
+    },
+    {
+      "body": "latency sample 086",
+      "start": 1453.6000000014901,
+      "paintMs": 5.600000001490116
+    },
+    {
+      "body": "latency sample 087",
+      "start": 1466.6000000014901,
+      "paintMs": 5.200000002980232
+    },
+    {
+      "body": "latency sample 088",
+      "start": 1492.8999999985099,
+      "paintMs": 6.600000001490116
+    },
+    {
+      "body": "latency sample 089",
+      "start": 1541,
+      "paintMs": 6.300000004470348
+    },
+    {
+      "body": "latency sample 090",
+      "start": 1556.3000000044703,
+      "paintMs": 5.899999998509884
+    },
+    {
+      "body": "latency sample 091",
+      "start": 1571.1000000014901,
+      "paintMs": 5.799999997019768
+    },
+    {
+      "body": "latency sample 092",
+      "start": 1584.8999999985099,
+      "paintMs": 7.100000001490116
+    },
+    {
+      "body": "latency sample 093",
+      "start": 1598.8000000044703,
+      "paintMs": 6.199999995529652
+    },
+    {
+      "body": "latency sample 094",
+      "start": 1612.8999999985099,
+      "paintMs": 6.300000004470348
+    },
+    {
+      "body": "latency sample 095",
+      "start": 1646.8000000044703,
+      "paintMs": 6.0999999940395355
+    },
+    {
+      "body": "latency sample 096",
+      "start": 1670.7000000029802,
+      "paintMs": 6
+    },
+    {
+      "body": "latency sample 097",
+      "start": 1684.6000000014901,
+      "paintMs": 7.399999998509884
+    },
+    {
+      "body": "latency sample 098",
+      "start": 1698.8999999985099,
+      "paintMs": 6
+    },
+    {
+      "body": "latency sample 099",
+      "start": 1712.3000000044703,
+      "paintMs": 5.899999998509884
+    }
+  ],
+  "switchAndDraftChecks": 20,
+  "unreadClick": {
+    "count": 10,
+    "p95Ms": 15,
+    "maxMs": 15,
+    "injectedReadDelayMs": 1200,
+    "unreadPreservedUntilVisible": true,
+    "samples": [
+      {
+        "body": "Unread body ready 0",
+        "paintMs": 11.899999998509884
+      },
+      {
+        "body": "Unread body ready 1",
+        "paintMs": 11.800000004470348
+      },
+      {
+        "body": "Unread body ready 2",
+        "paintMs": 10.399999998509884
+      },
+      {
+        "body": "Unread body ready 3",
+        "paintMs": 11.899999998509884
+      },
+      {
+        "body": "Unread body ready 4",
+        "paintMs": 10.599999994039536
+      },
+      {
+        "body": "Unread body ready 5",
+        "paintMs": 14.800000004470348
+      },
+      {
+        "body": "Unread body ready 6",
+        "paintMs": 15
+      },
+      {
+        "body": "Unread body ready 7",
+        "paintMs": 13.5
+      },
+      {
+        "body": "Unread body ready 8",
+        "paintMs": 11.700000002980232
+      },
+      {
+        "body": "Unread body ready 9",
+        "paintMs": 12.300000004470348
+      }
+    ]
+  }
+}

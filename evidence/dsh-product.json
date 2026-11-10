@@ -1,0 +1,46 @@
+{
+  "at": "2026-11-04T01:38:37.277Z",
+  "realNativeHost": true,
+  "realModel": true,
+  "model": "deepseek-v4.1-flash",
+  "initialUiBuild": "333aa61236b7e381",
+  "firstPackagedBuild": "5f3410cacfeddb3d",
+  "productionHubChanged": false,
+  "claudeTouched": false,
+  "checks": [
+    "Member UI automatically reused private B.ai settings",
+    "Selected the exact original native work session by title and project and completed actual verification",
+    "Original Agent actually ran npm test and replied with its prior conversation-only marker",
+    "Created another independent native Agent through the normal UI; actual write/read of its own file passed",
+    "Original Agent @mentioned the independent Agent; its own identity replied in the same group",
+    "Full native Host restart retained both exact original session IDs after readiness fix"
+  ],
+  "bindings": [
+    {
+      "memberId": "member_52cd438e10de4769b45be122c17d7947",
+      "sessionId": "session-59156580-e81e-4ed7-b648-dac82cba3cfc",
+      "cwd": "/Users/duola/.local/share/agent-hub/deepseek-proof/project",
+      "mode": "existing",
+      "verified": true,
+      "status": "offline"
+    },
+    {
+      "memberId": "member_e710066744dc4c0f97102d52356d04dc",
+      "sessionId": "session-aacf7aa1-97a3-446e-b96c-ea9f0729d11f",
+      "cwd": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-G0NFqA/local/dsh-members/member_e710066744dc4c0f97102d52356d04dc/workspace",
+      "mode": "new",
+      "verified": true,
+      "status": "offline"
+    }
+  ],
+  "newAgentFileMatches": true,
+  "uiReadback": "dsh-product-ui.txt",
+  "nativeBindingsRemoved": true,
+  "priorFailure": {
+    "issue": "Host health was visible before original binding restoration completed",
+    "fix": "Health remains not ready during restore; serialized same-session binding; regression tests and full Host restart passed"
+  },
+  "testInfrastructure": {
+    "interruptedInitialCleanup": "workerd SIGINT handler exited before snapshot; saved UI readback and private test record metadata recovered; dedicated SIGHUP cleanup added"
+  }
+}

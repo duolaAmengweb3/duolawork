@@ -1,0 +1,93 @@
+{
+  "at": "2026-11-08T07:35:36.607Z",
+  "scope": "Installed client HTTP surface and production metadata, read-only navigation; cold new data still requires network",
+  "build": "c496a1c972e18b56",
+  "desktopBuild": "c496a1c972e18b56",
+  "samples": [
+    {
+      "page": "Vault",
+      "readyMs": 835
+    },
+    {
+      "page": "连接器",
+      "readyMs": 50
+    },
+    {
+      "page": "Vault",
+      "readyMs": 41
+    },
+    {
+      "page": "连接器",
+      "readyMs": 33
+    },
+    {
+      "page": "技能",
+      "readyMs": 5347
+    },
+    {
+      "page": "连接器",
+      "readyMs": 37
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/v2/connectors",
+      "ms": 707
+    },
+    {
+      "path": "/api/v2/vault?query=",
+      "ms": 332
+    },
+    {
+      "path": "/api/v2/skills",
+      "ms": 4923
+    }
+  ],
+  "logos": [
+    {
+      "name": "GitHub",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Cloudflare",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Vercel",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "飞书",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Notion",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Google Drive",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Gmail",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Google Calendar",
+      "decoded": true,
+      "local": true
+    },
+    {
+      "name": "Figma",
+      "decoded": true,
+      "local": true
+    }
+  ]
+}

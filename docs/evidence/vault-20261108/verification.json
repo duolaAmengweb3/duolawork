@@ -1,0 +1,41 @@
+{
+  "at": "2026-11-08T06:56:38.219Z",
+  "implementationCommit": "935ae39",
+  "compatibilityCommit": "46913d3",
+  "buildId": "6245b66abc933d29",
+  "fullRegression": {
+    "passed": 619,
+    "failed": 0
+  },
+  "vaultTests": {
+    "passed": 13,
+    "failed": 0
+  },
+  "typecheck": true,
+  "sessionProtectionGate": true,
+  "installedUI": {
+    "passed": 11,
+    "failed": 0
+  },
+  "productionChecks": 6,
+  "productionRemainingCredentials": 0,
+  "deployment": "server and installed client",
+  "independentReviewMessages": [
+    554,
+    556,
+    559
+  ],
+  "boundaries": [
+    "Random test credentials only; no native login import",
+    "No claim of all commercial provider authorizations",
+    "Native shell scripts are authorized executors, not a secret sandbox"
+  ],
+  "independentBrowserUI": {
+    "passed": 11,
+    "failed": 0
+  },
+  "independentInstalledExecutable": {
+    "executed": false,
+    "reason": "Reviewer app environment rejects the hardened Electron executable; actual installed executable was verified by the implementing session, not represented as independent proof"
+  }
+}

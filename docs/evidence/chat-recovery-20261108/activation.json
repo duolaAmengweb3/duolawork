@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-08T02:56:01.076Z",
+  "url": "http://127.0.0.1:8766",
+  "buildId": "aa83e10422d80200",
+  "processId": 12736,
+  "desktopBuildId": "aa83e10422d80200",
+  "backendAndDesktopMatch": true,
+  "cloudOnline": true,
+  "protectedLocalDataUnchanged": true,
+  "protectedLocalMetadataUnchanged": true,
+  "ownedBrowsersPreserved": 0,
+  "observedProfileProcessesPreserved": 0,
+  "profileVerification": "关闭浏览器时核对完整资料字节",
+  "workspaceDataUnchanged": true,
+  "realCommercialAgentTested": false
+}

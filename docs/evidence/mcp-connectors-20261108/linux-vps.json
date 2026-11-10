@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-08T04:57:37.014Z",
+  "scope": "Real Linux VPS, isolated candidate HTTP server/database, downloaded standalone host and actual stdio subprocess. Two protocol clients; no commercial model, account login, production data or OS service changed.",
+  "node": "24.22.2",
+  "platform": "linux",
+  "programSHA256": "60f50d529fb835c36800cd6b64353fca7ae81590a23cceb6472b149c4c9111db",
+  "checks": [
+    "候选 Linux HTTP 后端启动",
+    "下载工具程序字节校验",
+    "独立后台运行端真实心跳",
+    "真实 stdio 工具发现",
+    "两位成员共享工具实际往返"
+  ]
+}

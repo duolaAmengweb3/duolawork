@@ -1,0 +1,218 @@
+{
+  "at": "2026-11-06T05:55:12.529Z",
+  "source": "production authenticated member post_message; no manual claim",
+  "messages": [
+    {
+      "id": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "number": 11,
+      "body": "接收身份修复后的单次真实验收。请 grok2 只回复“grok2 独立身份接收正常 G26”；请 grok3 只回复“grok3 独立身份接收正常 G36”。请各自用自己的成员凭证回到本群，不 @ 其他成员，不搜索、不建文档/任务、不处理其他群，回复后结束。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T05:48:50.947Z",
+      "type": "message",
+      "requestId": "ecf6b838-4c98-422d-9958-5b72a90647e5",
+      "mentions": [
+        "member_785ba0d4e7964814bf65102b90867efd",
+        "member_47be343430a54bff908ab5d471752701"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_785ba0d4e7964814bf65102b90867efd",
+        "member_47be343430a54bff908ab5d471752701"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T05:48:50.947Z"
+    },
+    {
+      "id": "chat_51543f602b2e4766bf0f479ca9cec590",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "number": 12,
+      "body": "grok3 独立身份接收正常 G36",
+      "authorId": "member_47be343430a54bff908ab5d471752701",
+      "createdAt": "2026-11-06T05:49:28.052Z",
+      "type": "message",
+      "requestId": "grok3_identity_accept_G36_4743cb8c89c6",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "replySnapshot": {
+        "body": "接收身份修复后的单次真实验收。请 grok2 只回复“grok2 独立身份接收正常 G26”；请 grok3 只回复“grok3 独立身份接收正常 G36”。请各自用自己的成员凭证回到本群，不 @ 其他成员，不搜索、不建文档/任务、不处理其他群，回复后结束。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T05:49:28.052Z"
+    },
+    {
+      "id": "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "number": 13,
+      "body": "本次是接收器修复后的全新自动通知。只在本群回复“grok2 自动接收正常 G27”。之前的 G26 同为测试，若一起领取可合并结束。不要搜索、建任务/文档、@其他成员或处理其他群。由本次 webhook 自动接收并回传后结束。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T05:52:19.850Z",
+      "type": "message",
+      "requestId": "12d30a83-a158-4bca-a72f-255f6b5fbb9c",
+      "mentions": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T05:52:19.850Z"
+    },
+    {
+      "id": "chat_14b11725eb534b34a90a952fc0b808b6",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "number": 14,
+      "body": "grok2 独立身份接收正常 G26",
+      "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+      "createdAt": "2026-11-06T05:53:24.644Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_785ba0d4e7964814bf65102b90867efd:post:G26",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "replySnapshot": {
+        "body": "接收身份修复后的单次真实验收。请 grok2 只回复“grok2 独立身份接收正常 G26”；请 grok3 只回复“grok3 独立身份接收正常 G36”。请各自用自己的成员凭证回到本群，不 @ 其他成员，不搜索、不建文档/任务、不处理其他群，回复后结束。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T05:53:24.644Z"
+    },
+    {
+      "id": "chat_3b4044be008c4afd933acfb4d7022c66",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "number": 15,
+      "body": "grok2 自动接收正常 G27",
+      "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+      "createdAt": "2026-11-06T05:53:24.799Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_785ba0d4e7964814bf65102b90867efd:post:G27",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+      "replySnapshot": {
+        "body": "本次是接收器修复后的全新自动通知。只在本群回复“grok2 自动接收正常 G27”。之前的 G26 同为测试，若一起领取可合并结束。不要搜索、建任务/文档、@其他成员或处理其他群。由本次 webhook 自动接收并回传后结束。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T05:53:24.799Z"
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_785ba0d4e7964814bf65102b90867efd",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "messageId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "wakeSource": "user",
+      "number": 11,
+      "rootId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T05:48:50.947Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T05:53:24.644Z",
+      "claimedAt": "2026-11-06T05:53:08.971Z",
+      "expiresAt": "2026-11-06T06:23:08.971Z",
+      "mergedMessageIds": [
+        "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+        "chat_76b48fd9c7504cb8b4b55277c0b58746"
+      ],
+      "completedAt": "2026-11-06T05:53:24.644Z"
+    },
+    {
+      "id": "turn_chat_0d7cd002f7b84fe6b899c280d9ac9b64_member_785ba0d4e7964814bf65102b90867efd",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "messageId": "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+      "wakeSource": "user",
+      "number": 13,
+      "rootId": "chat_0d7cd002f7b84fe6b899c280d9ac9b64",
+      "hops": 0,
+      "status": "merged",
+      "createdAt": "2026-11-06T05:52:19.850Z",
+      "reason": null,
+      "kind": "channel_turn",
+      "revision": 2,
+      "updatedAt": "2026-11-06T05:53:08.971Z",
+      "mergedInto": "turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_785ba0d4e7964814bf65102b90867efd"
+    },
+    {
+      "id": "turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_47be343430a54bff908ab5d471752701",
+      "scopeId": "channel_367f3e71df5a4530b02af43cf4068ff0",
+      "parentId": "member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "messageId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "wakeSource": "user",
+      "number": 11,
+      "rootId": "chat_76b48fd9c7504cb8b4b55277c0b58746",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T05:48:50.947Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T05:49:28.052Z",
+      "claimedAt": "2026-11-06T05:49:18.982Z",
+      "expiresAt": "2026-11-06T06:19:18.982Z",
+      "mergedMessageIds": [
+        "chat_76b48fd9c7504cb8b4b55277c0b58746"
+      ],
+      "completedAt": "2026-11-06T05:49:28.052Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_0d7cd002f7b84fe6b899c280d9ac9b64_member_785ba0d4e7964814bf65102b90867efd",
+      "stepId": "turn_chat_0d7cd002f7b84fe6b899c280d9ac9b64_member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "status": "claimed",
+      "createdAt": "2026-11-06T05:52:19.850Z",
+      "dueAt": "2026-11-06T05:52:19.850Z",
+      "attempts": 0,
+      "coalescedInto": "notice_turn_chat_76b48fd9c7504cb8b4b55277c0b58746_member_785ba0d4e7964814bf65102b90867efd"
+    }
+  ]
+}

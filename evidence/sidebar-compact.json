@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-07T12:57:41.470Z",
+  "layout": [
+    {
+      "width": 1440,
+      "avatarWidth": 26,
+      "gap": 10
+    },
+    {
+      "width": 920,
+      "avatarWidth": 26,
+      "gap": 10
+    },
+    {
+      "width": 580,
+      "avatarWidth": 26,
+      "textHidden": true
+    }
+  ],
+  "errors": []
+}

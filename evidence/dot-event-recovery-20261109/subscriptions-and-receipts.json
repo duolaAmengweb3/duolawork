@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-09T09:39:53.671Z",
+  "subscriptions": [
+    {
+      "id": "sub_d33c6a5b60b8bd2d69b62982e54916e6d3c456393141891fb769f9168ba5ac10",
+      "status": "revoked",
+      "createdAt": null,
+      "updatedAt": "2026-11-09T09:11:00.239Z",
+      "expiresAt": "2026-11-10T03:40:57.721Z"
+    },
+    {
+      "id": "sub_7eef3c6bb7c434b255bbee8c89b99fefd77aaaab890f276279a91b7b57b04098",
+      "status": "revoked",
+      "createdAt": null,
+      "updatedAt": "2026-11-09T09:31:44.585Z",
+      "expiresAt": "2026-11-10T09:11:18.554Z"
+    },
+    {
+      "id": "sub_0eaaedf17357e7f05127e518a792825564cbc05e65f57476bb83f98518976dce",
+      "status": "active",
+      "createdAt": null,
+      "updatedAt": "2026-11-09T09:31:58.252Z",
+      "expiresAt": "2026-11-10T09:31:58.252Z"
+    }
+  ],
+  "eventReceipts": [
+    {
+      "id": "notice_turn_chat_c125a65bb0304f4b8fc3ffcd7f69f4f1_member_0ff5c20718654c9db5ab3b1d0334133e:sub_0eaaedf17357e7f05127e518a792825564cbc05e65f57476bb83f98518976dce",
+      "status": "accepted",
+      "httpStatus": 200,
+      "platformRespondedAt": "2026-11-09T09:37:54.648Z",
+      "updatedAt": "2026-11-09T09:37:54.019Z"
+    }
+  ]
+}

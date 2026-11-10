@@ -8,19 +8,23 @@
   "scripts": {
     "dev": "node local/server.mjs",
     "desktop": "electron .",
-    "build": "node scripts/build-stamp.mjs && vite build",
+    "build": "npm run build:claude && npm run build:runtime && node scripts/build-stamp.mjs && vite build",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "npm run hub:types && tsc --noEmit",
     "hub:dev": "wrangler dev --config cloud/wrangler.jsonc",
     "hub:types": "wrangler types --config cloud/wrangler.jsonc cloud/env.d.ts",
     "hub:deploy": "python3 scripts/cloud.py deploy",
     "package:mac": "npm run verify:session && node scripts/package-mac.mjs",
-    "verify:session": "npm test && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
+    "verify:session": "npm test && node tests/browser-lifecycle.mjs && node tests/browser.mjs && node tests/background.mjs && node tests/manual-login.mjs",
     "deliver:local": "npm run build && npm run package:mac && node scripts/activate-local.mjs",
     "verify:collaboration": "node --test tests/collaboration*.test.mjs && node tests/collaboration-http.mjs",
-    "verify:v1": "node --test tests/collaboration*.test.mjs && node tests/collaboration-v1-http.mjs && node tests/v1-oauth-browser.mjs && node tests/v1-ui.mjs && node tests/v1-desktop.mjs"
+    "verify:v1": "node --test tests/collaboration*.test.mjs && node tests/collaboration-v1-http.mjs && node tests/v1-oauth-browser.mjs && node tests/v1-ui.mjs && node tests/v1-desktop.mjs",
+    "verify:conversation": "node --test tests/conversation.test.mjs && node tests/conversation-ui.mjs && node tests/conversation-desktop.mjs",
+    "build:claude": "node scripts/package-claude.mjs",
+    "build:runtime": "node scripts/package-runtime.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
     "@tailwindcss/vite": "^4.3.3",
@@ -43,6 +47,7 @@
     "tailwindcss": "^4.3.3",
     "undici": "^8.12.3",
     "ws": "^8.18.0",
+    "yaml": "2.9.1",
     "zod": "^4.3.0"
   },
   "devDependencies": {

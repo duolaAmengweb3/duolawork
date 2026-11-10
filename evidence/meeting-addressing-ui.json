@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-06T09:48:54.145Z",
+  "scope": "Isolated HTTP Hub and actual Chrome UI; protocol members, not production model latency.",
+  "checks": [
+    "群内已有筹备会议不自动把普通输入归入会议",
+    "会议里选择@后提示、发送气泡和HTTP实际收件人一致，成员可领取并回复",
+    "后台结束会议即撤掉输入标签，草稿与@全员不丢；重开后发送普通消息不带旧会议",
+    "负责人通过真实工具直接开会与交付结束，界面随动作更新，全程无用户确认门槛"
+  ],
+  "errors": []
+}

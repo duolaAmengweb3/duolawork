@@ -19,6 +19,55 @@ import { command, workForMember } from "../cloud/collaboration/engine.mjs";
 import { createHmac } from "node:crypto";
 
 const SECRET = "test-only-not-a-real-credential";
+test("原生Grok Bot接受Cursor官方Webhook路径，拒绝其他Cursor路径和伪造域名", () => {
+  const native = "https://api2.cursor.sh/automations/webhook/native-bot-fixture";
+  assert.equal(platformURL(native, "grok"), native);
+  for (const url of [
+    "https://api2.cursor.sh/other/native-bot-fixture",
+    "https://api2.cursor.sh/automations/webhook/native-bot-fixture?key=secret",
+    "https://api2.cursor.sh/automations/webhook/native-bot-fixture#fragment",
+    "https://api2.cursor.sh.evil.test/automations/webhook/native-bot-fixture",
+    "https://evil.api2.cursor.sh/automations/webhook/native-bot-fixture",
+    "http://api2.cursor.sh/automations/webhook/native-bot-fixture",
+    "https://user:pass@api2.cursor.sh/automations/webhook/native-bot-fixture",
+    "https://api2.cursor.sh:444/automations/webhook/native-bot-fixture",
+  ]) assert.throws(() => platformURL(url, "grok"), { code: "untrusted_endpoint" });
+});
+test("Cursor原生Bot接收完整Bearer，严格200受理不等于成员已经回应", async t => {
+  for (const status of [200, 204]) await t.test(String(status), async t => {
+    const f = await fixture(t), url = "https://api2.cursor.sh/automations/webhook/native-bot-fixture";
+    await configureConnection(f.repo, f.identity, { requestId: "native-config", platform: "grok-bot", memberId: "grok", url, token: "crsr_fixture_only" }, SECRET);
+    const probe = await f.send("connection.probe", { memberId: "grok" });
+    const row = (await f.repo.list("outbox", { parent: probe.runId }))[0];
+    let calls = 0;
+    await dispatchOne(f.repo, f.identity, row.id, { ADMIN_KEY: SECRET }, async (target, init) => {
+      calls++; assert.equal(target, url); assert.equal(init.redirect, "manual");
+      assert.equal(init.headers.Authorization, "Bearer crsr_fixture_only");
+      assert.equal(JSON.parse(init.body).member_id, "grok");
+      return new Response(null, { status });
+    });
+    assert.equal(calls, 1);
+    assert.equal((await f.repo.get("outbox", row.id)).status, status === 200 ? "accepted" : "rejected");
+    assert.equal((await f.repo.get("connection", "grok")).status, "configured");
+    assert.equal((await f.repo.list("attempt")).length, 0);
+  });
+});
+test("原生接入测试被拒时明确结束等待，可重新自检且不影响业务工作", async t => {
+  const f = await fixture(t);
+  const p = await f.send("project.create", { recipeId: "daily-x-content", name: "其他业务", topic: "不应被验证失败影响", slots: { discover: "check", verify: "write", write: "grok" } });
+  const business = await f.send("run.start", { projectId: p.id });
+  const before = await f.repo.get("run", business.id);
+  await configureConnection(f.repo, f.identity, { requestId: "native-probe-config", platform: "grok-bot", memberId: "grok", url: "https://api2.cursor.sh/automations/webhook/native-fixture", token: "crsr_fixture_only" }, SECRET);
+  const probe = await f.send("connection.probe", { memberId: "grok" });
+  const row = (await f.repo.list("outbox", { parent: probe.runId }))[0];
+  await dispatchOne(f.repo, f.identity, row.id, { ADMIN_KEY: SECRET }, async () => new Response(null, { status: 401 }));
+  assert.equal((await f.repo.get("run", probe.runId)).status, "needs_review");
+  assert.equal((await f.repo.get("step", row.stepId)).status, "needs_review");
+  assert.deepEqual(await f.repo.get("run", business.id), before);
+  const retry = await f.send("connection.probe", { memberId: "grok" });
+  assert.notEqual(retry.runId, probe.runId);
+  assert.equal((await f.repo.get("run", probe.runId)).cancelReason, "superseded_probe");
+});
 test("Grok automation rejects clipboard text and truncated previews before storage", async (t) => {
   const f = await fixture(t);
   for (const token of ["unrelated clipboard", "中文剪贴板", "whsec_...preview=", "whsec_AA=="])

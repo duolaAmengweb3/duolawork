@@ -11,6 +11,14 @@ const random = (prefix) =>
   prefix +
   crypto.randomUUID().replaceAll("-", "") +
   crypto.randomUUID().replaceAll("-", "");
+// Grok Bot uses Cursor's connector backend, separate from grok.com's web
+// connector. Its registration includes a fixed loopback callback alongside the
+// cloud callback. Keep exact URLs; do not open arbitrary Cursor/localhost URLs.
+const nativeBotCallbacks = new Set([
+  "https://www.cursor.com/agents/mcp/oauth/callback",
+  "https://www.cursor.com/bot/mcp/oauth/callback",
+  "http://localhost:8787/callback",
+]);
 const allowedRedirect = (raw) => {
   let u;
   try {
@@ -19,17 +27,18 @@ const allowedRedirect = (raw) => {
     fail("invalid_redirect", "回调地址无效");
   }
   if (
-    u.protocol !== "https:" ||
     u.username ||
     u.password ||
-    !["openai.com", "chatgpt.com", "grok.com", "x.ai"].some(
-      (d) => u.hostname === d || u.hostname.endsWith("." + d),
-    )
+    (!nativeBotCallbacks.has(u.href) &&
+      (u.protocol !== "https:" ||
+        !["openai.com", "chatgpt.com", "grok.com", "x.ai"].some(
+          (d) => u.hostname === d || u.hostname.endsWith("." + d),
+        )))
   )
     fail("invalid_redirect", "只接受原平台官方授权回调");
   return u.href;
 };
-async function grant(tx, memberId, clientId, now) {
+export async function grant(tx, memberId, clientId, now) {
   const access = random("ahv1_"),
     refresh = random("ahr_");
   tx.put("member_auth", {
@@ -54,11 +63,12 @@ async function grant(tx, memberId, clientId, now) {
     scope: "hub:member",
   };
 }
-export async function startPairing(repo, identity, memberId, origin) {
+export async function startPairing(repo, identity, memberId, origin, purpose = "oauth", options = {}) {
   const member = identity.members.find(
     (m) => m.id === memberId && m.status !== "disabled",
   );
   if (!member) fail("member_missing", "成员不存在", 404);
+  await options.authorize?.(repo);
   const old = await repo.get("connection", memberId, false);
   if (!old)
     await repo.transact(id("connection-draft"), { memberId }, (tx) =>
@@ -80,20 +90,22 @@ export async function startPairing(repo, identity, memberId, origin) {
     .join("")
     .toUpperCase();
   const key = await digest(code);
-  const result = await repo.transact(id("pair"), { memberId }, (tx) =>
-    tx.put("pairing", {
+  const result = await repo.transact(options.requestId||id("pair"), { memberId,purpose }, async (tx) => {
+    await options.authorize?.(tx);
+    const pairing=tx.put("pairing", {
       id: key,
       memberId,
+      purpose,
       status: "pending",
       expiresAt: new Date(Date.parse(tx.now) + 15 * 60000).toISOString(),
-    }),
-  );
+    });return {...pairing,code};
+  });
   return {
-    code,
+    code:result.code,
     expiresAt: result.expiresAt,
     mcpUrl: origin + "/v2/mcp",
     instructions:
-      "请添加我的私有 Agent Hub MCP 连接：" +
+      "请添加我的私有 DuolaWork MCP 连接：" +
       origin +
       "/v2/mcp，并在打开的官方授权流程中让我本人完成配对。配对码不发到聊天。" +
       (member.platformId === "grok-bot"
@@ -149,7 +161,24 @@ export async function oauthFetch(request, repo, identity, origin, env = {}) {
     });
   if (path === "/v2/oauth/register" && request.method === "POST") {
     const data = await readJSON(request);
-    const redirects = (data.redirect_uris || []).map(allowedRedirect);
+    let redirects;
+    try {
+      redirects = (data.redirect_uris || []).map(allowedRedirect);
+    } catch (error) {
+      // Platform clients often collapse DCR errors into "unreachable". Keep
+      // only the error category and host names, never callback query strings,
+      // client secrets, pairing codes or authorization credentials.
+      console.warn(JSON.stringify({
+        event: "hub_oauth_registration_rejected",
+        reason: error.code || "invalid_client_metadata",
+        redirectHosts: Array.isArray(data.redirect_uris)
+          ? data.redirect_uris.slice(0, 5).map(raw => {
+              try { return new URL(raw).host; } catch { return "invalid_url"; }
+            })
+          : [],
+      }));
+      throw error;
+    }
     if (!redirects.length || redirects.length > 5)
       fail("invalid_client", "需要官方回调地址");
     const authMethod = data.token_endpoint_auth_method || "client_secret_basic";
@@ -213,7 +242,7 @@ export async function oauthFetch(request, repo, identity, origin, env = {}) {
         "code_challenge_method",
       ];
       return new Response(
-        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>连接 Agent Hub</title><style>body{font:16px system-ui;background:#f5f6f8;color:#18243a;margin:0;display:grid;min-height:100vh;place-items:center}main{background:white;padding:40px;border:1px solid #e3e6ec;border-radius:16px;max-width:420px}input,button{font:inherit;padding:12px;box-sizing:border-box;width:100%;margin-top:16px}button{background:#245bdb;color:white;border:0;border-radius:8px}small{color:#65738a;line-height:1.7}</style><main><h2>连接你的 ${esc(client.name)}</h2><p>输入 Agent Hub 成员页显示的一次性配对码。</p><small>仅允许这个成员领取自己的任务、读取获授权的项目材料并交付成果。不授予工作区管理、支付或发布权限。</small><form method="post">${fields.map((k) => `<input type="hidden" name="${k}" value="${esc(p.get(k))}">`).join("")}<input name="pair_code" required autocomplete="off" placeholder="12 位配对码" maxlength="12"><button>授权这个成员</button></form></main></html>`,
+        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>连接 DuolaWork</title><style>body{font:16px system-ui;background:#f5f6f8;color:#18243a;margin:0;display:grid;min-height:100vh;place-items:center}main{background:white;padding:40px;border:1px solid #e3e6ec;border-radius:16px;max-width:420px}input,button{font:inherit;padding:12px;box-sizing:border-box;width:100%;margin-top:16px}button{background:#245bdb;color:white;border:0;border-radius:8px}small{color:#65738a;line-height:1.7}</style><main><h2>连接你的 ${esc(client.name)}</h2><p>输入 DuolaWork 成员页显示的一次性配对码。</p><small>仅允许这个成员领取自己的任务、读取获授权的项目材料并交付成果。不授予工作区管理、支付或发布权限。</small><form method="post">${fields.map((k) => `<input type="hidden" name="${k}" value="${esc(p.get(k))}">`).join("")}<input name="pair_code" required autocomplete="off" placeholder="12 位配对码" maxlength="12"><button>授权这个成员</button></form></main></html>`,
         {
           headers: {
             "Content-Type": "text/html;charset=utf-8",

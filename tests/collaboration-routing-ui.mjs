@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {startHarness} from './v1-harness.mjs';
+const h=await startHarness();let local,browser;
+try{
+ const a=await h.member('grok-bot','负责人'),b=await h.member('grok-bot','核验员');
+ const c=await h.command('channel.create',{name:'收件人界面验收',memberIds:[a.id,b.id],coordinatorId:a.id});
+ const root=await h.command('channel.post',{channelId:c.id,body:'核对这个方案'});
+ const post=(m,args)=>m.call('post_message',{requestId:crypto.randomUUID(),channelId:c.id,...args});
+ const request=await post(a,{replyTo:root.id,body:'请核验员检查 v1',mentions:[b.id]});
+ const claim=await b.call('claim_work',{requestId:crypto.randomUUID(),stepId:`turn_${request.id}_${b.id}`});
+ await h.command('channel.message.edit',{channelId:c.id,messageId:root.id,expectedVersion:1,body:'改为核对 v2'});
+ const late=await post(b,{turnId:claim.turnId,body:'v1 的核验结果',purpose:'result'});
+ const attribution=await post(a,{replyTo:root.id,body:'感谢核验员提供的记录',purpose:'message',mentions:[]});
+ process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');process.env.AGENT_HUB_TEST_MODE='1';
+ const {start}=await import('../local/server.mjs');
+ local=await start({port:0,vaultKey:Buffer.alloc(32,21),config:{endpoint:h.base,adminKey:h.key,runnerId:'routing-ui'}});
+ browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:960}});
+ await page.addInitScript(id=>localStorage.setItem('hub-communication',JSON.stringify({channelId:id,chatKind:'group'})),c.id);
+ await page.goto(local.url);await page.getByRole('heading',{name:c.name,exact:true}).waitFor();
+ await page.locator('#'+late.id).getByText('通知对象：负责人',{exact:true}).waitFor();
+ assert.equal(await page.locator('#'+attribution.id+' .message-notification-receipt').count(),0);
+ await page.locator('#'+late.id+' .message-obsolete-requirement').waitFor();
+ await page.getByRole('textbox',{name:'群消息'}).fill('草稿保留');
+ await page.screenshot({path:'evidence/collaboration-routing-ui.png'});
+ assert.equal(await page.getByRole('textbox',{name:'群消息'}).inputValue(),'草稿保留');
+ await fs.writeFile('evidence/collaboration-routing-ui.json',JSON.stringify({at:new Date().toISOString(),scope:'isolated Hub and Chromium, protocol actors',checks:['真实收件人显示','普通致谢不产生通知标记','旧要求的迟到回传标明版本边界','草稿保留']},null,2));
+ console.log('PASS routing UI');
+}finally{await browser?.close();await local?.close();await h.stop();}

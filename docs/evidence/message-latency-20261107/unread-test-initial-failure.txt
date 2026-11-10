@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.waitFor: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for getByRole('button', { name: /Other project/ }).first().getByLabel('未读消息') to be hidden[22m
+[2m    64 × locator resolved to visible <b aria-label="未读消息" class="chat-unread">1</b>[22m
+
+    at /Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/tests/message-latency-ui.mjs:69:40 {
+  log: [
+    "  - waiting for getByRole('button', { name: /Other project/ }).first().getByLabel('未读消息') to be hidden",
+    '    64 × locator resolved to visible <b aria-label="未读消息" class="chat-unread">1</b>'
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.19.0

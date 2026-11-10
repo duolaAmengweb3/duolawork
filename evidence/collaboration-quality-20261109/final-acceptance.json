@@ -1,0 +1,314 @@
+{
+  "observedAt": "2026-11-09T11:42:17.168Z",
+  "root": {
+    "id": "board_7e418da77285446ebd0a8120bfd95c3c",
+    "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "parentId": "channel_4ef452e331904b758d7d3c375215cb48",
+    "title": "协作质量实测与运行端更新、响应验证",
+    "body": "按用户刚确认的2、3项执行；保留自由沟通、原身份/模型/会话。以真实成果和逐段时点判断，不用单测数量冒充业务质量。",
+    "status": "done",
+    "assigneeId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "createdAt": "2026-11-09T10:15:35.921Z",
+    "progress": "已完成并上线：真实简报修订/独立核对；Claude正式常驻monitor/MCP原会话重载，Gemini实载对齐且绑定不变；后台记忆快照/前台让位、父子引用版本环已修。727/727全量、51/51相关；DeepSeek正式check接受。已记录模型语义错误及耗时边界，不承诺秒回。",
+    "blocker": "",
+    "result": "# 协作质量与运行端更新实测（2026-11-09）\n\n## 范围与结论\n\n用户选择本轮先做第 2、3 项：真实协作质量验证，以及原运行端更新和分段响应核对。右侧协作空间重设计不在本轮范围；Dot 的约五分钟原平台启动等待按用户决定暂不继续改造。\n\n已经确认并修复三个产品问题：原生 Claude 没有可靠区分运行版本与磁盘安装版本；未知版本被显示为可更新；写入新插件配置后旧监听提前退出，正式新监听未必已经接管。独立审计又提出更新期间旧回执/离线通知可能覆盖新进程状态，已补接收进程归属比较和缓存回执隔离。\n\n真实协作测试证明了连续补充、退回修订、独立核对和负责人接续能够完成；同时暴露了初稿和首次审计的事实遗漏。不能据此宣称自然协作质量已经长期可靠，也不能把模型误读改称通信故障。Claude 已通过官方 respawn 恢复原会话，正式监听/MCP 加载最终版本并完成原生计算回传；Gemini 实际运行版本也已对齐，全部原绑定未变。根任务仍待 DeepSeek 对本报告和原件最终 check。\n\n## 实际业务衍生测试\n\n项目群 `channel_4ef452e331904b758d7d3c375215cb48`，根任务 `board_7e418da77285446ebd0a8120bfd95c3c`。\n\n1. 模拟用户请求 #685：根据真实实施、验收和运行端资料，给使用者一份协作层现状简报。没有预写答案；不开发其他功能或操作外部业务。\n2. 处理中补充 #686：同一份简报，正文不超过 600 字，分已证实可用、使用限制、仍待证实，区分上线、送达、理解和长期效果，负责人直接交付。\n3. Gemini 自行建立同一根任务下的 Todo `board_341fa843f17f4a25ada326ae6ec69dad` 并组织核对。初稿对 Dot 根因、运行版本、环境覆盖存在过度推断。DeepSeek 实际 changes_requested，模型随后修改实际正文并重新提交。\n4. 首次 accept 后，人工复核仍抓到两处：`prepared` 被误写成送达；“秒级”缺少阶段和样本边界。DeepSeek 实际退回，Gemini 再次修订。\n5. 当前原件 v9，`submission_e4abce4b4fc147ed979bca70705be0ab`，`check_f580c602c09c4bd79a7be51499311bea` 接受；正文按 Unicode code point 实数为 599，保留三段。验收的是实际提交物，不是聊天里一句“已改”。\n\n这个样本说明纠正和接续可以运行，但首次成稿和首次审核均未保证正确。没有新增固定职责、固定轮次、全员唤醒或“同意就算交付”规则；保留实际错误及修订证据。不能将单个简报样本外推为所有业务已可靠。\n\n## 分段响应\n\n所有时点均为服务端同一时钟记录，含回程网络时间。缺少的原生开始、首次公开输出、首次有用结果、token 和费用保持 null，不写成零。\n\n| 样本 | 保存→接收回执 | 保存→原生入口受理 | 保存→领取 | 领取→回传 | 保存→回传 | 上下文组装 |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n| Gemini 原始简报 #685 | 305 ms | 1,265 ms | 9,829 ms | 153,858 ms | 163,687 ms | 579 ms / 134,686 bytes |\n| 处理中补充 #686 | 26,438 ms | 45,137 ms | 53,624 ms | 147,236 ms | 200,860 ms | 423 ms / 150,048 bytes |\n| Claude 正式重载后计算 #717 | 1,435 ms | 1,766 ms | 21,159 ms | 35,138 ms | 56,297 ms | 518 ms / 113,195 bytes |\n\n原请求和补充的上下文均为 incremental。补充在原生会话工作期间排队，不是消息丢失。不能把领取后时间全部归因于纯推理或网络；它也包含原生工具、资料核对与模型工作。原始首稿未通过核对，其回传时间不能冒充首次正确结果时间。最终简报在 10:37:01.237Z 通过，原请求到该次 accept 为 869,174 ms；这包括多轮核对与人工纠错，不能当单路模型响应指标。\n\n上述数据没有建立普遍秒回 SLA，也没有无对照地宣称提速。此次可复现的接收更新空档和旧进程状态覆盖已修复；模型执行阶段仍占主要耗时，现有数据不足以指定一个通用推理优化而保证不降级。\n\n另外保留慢样本：Gemini 最终更新通知 10:54:11.976Z 保存，10:56:36.696Z 才有接收回执，保存→接收为 144,720 ms，10:57:06.306Z 领取。调查 #721 指向同一原生会话的后台记忆整理。服务端另行核对：维护通知 `turn_chat_aa2b6a877faf4ae7933a9a07d8530096_member_ccdf940ba6d3426da01b9f65048909e2` 于 10:53:42.431Z 领取、10:56:35.388Z 才结束，覆盖这段排队时间；结束后 1,308 ms 才得到更新通知接收回执。本地日志没有断连是原 Agent 自报，不能把未观测时间全部宣称为纯模型/纯网络。不能只报较快样本。\n\n这次找到了额外的通用产品问题：后台整理与前台争用同一会话，而且后台 `list` 继续暴露新到事件，维护可能不断延长。已用 `ed7f712`、`8a7cb0b` 修复：保存本批来源快照；前后台不合并；未领取的后台让位但不伪造事件覆盖；已运行后台在下一次相关记忆工具调用时返回让位信息，由原 Agent 正常 stay_silent 收尾，保留实际租约直到其回应，不强杀模型；同一原生资源跨群也判定，独立会话不互相阻塞；已失效任务提醒不当成可执行前台工作。\n\n它不是硬中断，也不能保证用户发消息后立即完成让位。原生模型正在思考或执行一个长工具时，仍须等其到达记忆工具边界并响应。后台自动维护保留；未整理事件继续 pending，正常前台的记忆能力不受该批次限制。\n\n上线后实际验证：后台批次 `turn_chat_88856d7fc1364ddf925525d59c58e66a_member_ccdf940ba6d3426da01b9f65048909e2` 已经在运行时，11:31:26.545Z 模拟普通用户发出 #725。后台于 11:32:13.451Z 实际 stay_silent，理由明确为 `yieldToForeground=true`，前台于 11:32:45.756Z 领取。后台未伪造事件已整理，也没有把用户问题合并成整理指令。发消息至让位为 46.906 秒，仍受模型到达工具边界的时间影响。本回合与服务发布重启重叠（11:31:57Z 恢复健康），只作真实让位与后续交付证明，不能当干净的前后提速对照。\n\n该前台请求最终 #726 于 11:33:31.251Z 回传，保存→接收 52,222 ms、保存→领取 79,211 ms、保存→回传 124,706 ms。其结论中实际运行版本及本群会话保留与原件相符，但又出现环境误称、把本群绑定泛化到所有频道、把可恢复夸大成所有历史字节无损、混淆 Claude CAS 与 Gemini 能力范围的问题。经 #727 复核，原 Agent 于 #728 明确更正四项。此处计为模型业务答复质量问题，不能据“成功回群”判为全部正确，也不再为每个措辞错误新增通用产品限制。\n\n收尾时另有真实产品缺陷：子简报用 `submission.refs` 引用父任务 v1；父任务仅更新进度到 v2，已验收子成果就被错误判为 stale，根提交被拒绝。持续刷新父版本会在父任务 submit/check 后再次失效，形成版本环。`7508c38` 将提交物里本事项的结构父任务引用按上下文处理，仍检查可访问性；显式 basisRefs、文档/其他任务产物、上游依赖、原要求及独立验收校验不变。新增回归先在旧代码失败，再验证父进度/提交/接受不误伤子成果，真实来源文档修改仍使父子成果失效。没有为绕过本次验收而改写历史提交、核对人或原证据。\n\n## 产品修复与兼容边界\n\n- `1a55155`：启动时计算实际加载连接器 SHA-256；服务端记录原生进程的运行版本，安装目录的新文件不能冒充正在运行的新版本。\n- `10678b6`：版本 unknown/current/outdated/mixed/offline 分开。未知不是已过时；同一账号其他在线会话不能让本群离线绑定变绿。\n- `7e17bc4`：磁盘替换不再令旧监听自行退出。由原生宿主正式重载或停止旧监听，避免安装成功但接收中断。\n- `9384ee1`：每个监听进程独立 `receiverInstanceId`；新监听带 previous 接收进程编号做原子比较接管。旧 heartbeat、旧 offline、旧缓存回执不能覆盖新状态。新进程拥有自己的幂等回执身份，阶段时点不混用；既有会话/领取租约保护保留。\n- `e2fd46d`：发布最终连接器及共享运行端程序包。只包含公共程序文件，不含账号登录、grant 或工作区数据。\n\n边界：旧进程在接管之前已经发送给模型的通知无法撤回，不能声称原平台通知 exactly-once；服务端原子 claim 保护实际领取。版本上报是运行进程的启动元数据，不是对远端主机的密码学远程证明。古老客户端是否遵守拒绝回执取决于其代码，正式原生重载仍需要真实核对。\n\n## 发布与独立验证\n\n- 本地交付完整运行 `deliver:local`，721/721 通过；登录资料、浏览器生命周期、手动登录和实际打包 Electron 重开门槛通过。\n- 客户端与后台当前构建 `04b359e0ff6c7ac2` 一致，云端在线；激活记录确认受保护本地资料和工作区数据未变。\n- DeepSeek 对 `9384ee1` 在隔离导出中独立运行 29/29，#713 明确通过并保留 exactly-once 边界；日志已归档。\n- 后台整理修复后的最终全量为 726/726，相关 47/47；新增用例在旧提交 `8fbd01e` 上确实失败。#723 DeepSeek 隔离复跑 46/46 并核对四条新增回归，其提出的失效任务提醒 P2 已由 `8a7cb0b` 补修并增加回归；最终补修由根任务核对，不把此前独立日志说成已覆盖后加用例。\n- 加入父子引用版本环修复后最终全量为 727/727，Todo/通知/群记忆连带 51/51；保留修复前真实失败日志。父子环与后台 P2 补修另交 DeepSeek 独立复核。\n- VPS 已部署，实际 worker SHA-256 与本次发布文件完全相同，见 `deployment.json`。健康检查、认证读取只证明部署层，原 Agent 的接单回传另记。\n- Claude 最终包 `b98a128a8e3ee5d0ea19bd2542cc9da6425f2ecf949d8169fd8142318bd3ff65`；共享运行端目标 `261b0bb096b50338fa8502430afc49bf112c3e272ef59678ca4844bcd4c2852d`。\n- Gemini 最终 loaded revision 与发布目标一致，原 runtimeId、每群 sessionId/cwd 绑定逐项比较未变，见 `runtimes.json`；本地 Codex/DeepSeek 接收代码随上述客户端构建安全更新。\n- Claude #716 保留安装前后区别；#718 实际回传：一次官方 `respawn d581eb2c` 在空闲后退出码 0，同一 sessionId/cwd，正式 MCP PID 120964、监听 PID 121035，均于 10:56Z 启动并携带最终版本参数，旧 PID 不存在。原生会话 PID 变更为 3514062，宿主复用预启动备用进程，不能把其出生时点当恢复时点。服务端独立收到同一目标版本及新 receiverInstanceId。恢复后的原会话用原生 Python 计算了上表和 869.174 秒，结果数值与本报告一致。\n- #719 DeepSeek 用自己的 Python 独立复算时间差，数值和边界通过。其不能从 Mac 直接读取 Claude VPS 进程，因此进程细节按原 Agent 自报记录，不能冒充审计人亲自在 VPS 检查；服务端 heartbeat 和原会话真实回传为另外两层证据。\n- 根任务 DeepSeek 最终 check：待补实际结果。\n\n## 原件\n\n`evidence/collaboration-quality-20261109/` 保存当前简报及版本/核对记录、限定范围的群消息、逐段指标、相关测试及独立日志、部署文件校验和激活记录。没有以单测数量替代协作效果验收。\n\nClaude 正式恢复依据官方入口 `claude respawn <id>`，保留已保存会话，单独针对原 job，空闲后执行，不用 `--all`，不换模型/身份/项目：<https://code.claude.com/docs/en/agent-view>。临时 30 分钟 Monitor、磁盘文件更新和永久宿主插件重载分开核对。",
+    "dueDate": "",
+    "refs": [],
+    "meetingIds": [],
+    "sourceMessageId": "chat_5913c90c1f3a48d9878c48eaabe3df02",
+    "sourceMessageIds": [
+      "chat_5913c90c1f3a48d9878c48eaabe3df02"
+    ],
+    "workSpec": {
+      "expectedOutcome": "完成授权范围的真实协作实测与原运行端更新，通用缺陷修复上线，给出实际质量和耗时结论及未覆盖边界。",
+      "criteria": [
+        {
+          "id": "quality",
+          "text": "真实业务衍生场景覆盖连续补充、成员互助/核对、成果退回修订和负责人接续；读实际原件核对遗漏/虚假一致，不预写答案。",
+          "required": true
+        },
+        {
+          "id": "runtime",
+          "text": "核对Claude与Gemini及本地接收器的运行版本，能升级的完成原地更新和原会话真实往返，缺失版本可观测性补通用实现。",
+          "required": true
+        },
+        {
+          "id": "speed",
+          "text": "记录保存、投递、领取和首次有用结果/最终回传，区分排队和执行；有可复现通用瓶颈则修复并对照验证，Dot等待单列。",
+          "required": true
+        },
+        {
+          "id": "delivery",
+          "text": "相关回归、部署/启用、实际版本与资料保护证据齐全，明确未覆盖范围，由DeepSeek真实核对。",
+          "required": true
+        }
+      ],
+      "commonQuestions": [],
+      "outputGuide": "",
+      "checkMode": "designated",
+      "reviewerId": "member_acbea6620d534e6682d8009db6403f1e",
+      "independentReview": true,
+      "basisRefs": [],
+      "version": 1
+    },
+    "dependsOn": [],
+    "requirementSources": [
+      {
+        "id": "chat_5913c90c1f3a48d9878c48eaabe3df02",
+        "version": 1
+      }
+    ],
+    "acceptedAt": "2026-11-09T10:40:59.061Z",
+    "acceptedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "parentTaskId": null,
+    "skillRefs": [],
+    "completedAt": "2026-11-09T11:40:51.903Z",
+    "completedBy": "member_acbea6620d534e6682d8009db6403f1e",
+    "version": 5,
+    "lastEditorId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+    "updatedAt": "2026-11-09T11:42:12.899Z",
+    "kind": "channel_task",
+    "revision": 14,
+    "currentSubmissionId": "submission_a7d6202a491a4f628568739497541d94",
+    "currentCheckId": "check_72dbdd5753a145539077b0b3d83bc040",
+    "acceptedSubmissionId": "submission_a7d6202a491a4f628568739497541d94",
+    "executionDecision": null,
+    "delivery": {
+      "stage": "accepted",
+      "label": "已通过",
+      "valid": true,
+      "gaps": [],
+      "submission": {
+        "taskId": "board_7e418da77285446ebd0a8120bfd95c3c",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "sourceVersions": [
+          {
+            "id": "chat_5913c90c1f3a48d9878c48eaabe3df02",
+            "version": 1
+          }
+        ],
+        "inputs": [
+          {
+            "taskId": "board_341fa843f17f4a25ada326ae6ec69dad",
+            "submissionId": "submission_e4abce4b4fc147ed979bca70705be0ab",
+            "workSpecVersion": 1
+          }
+        ],
+        "body": "# 协作质量与运行端更新实测（2026-11-09）\n\n## 范围与结论\n\n用户选择本轮先做第 2、3 项：真实协作质量验证，以及原运行端更新和分段响应核对。右侧协作空间重设计不在本轮范围；Dot 的约五分钟原平台启动等待按用户决定暂不继续改造。\n\n已经确认并修复三个产品问题：原生 Claude 没有可靠区分运行版本与磁盘安装版本；未知版本被显示为可更新；写入新插件配置后旧监听提前退出，正式新监听未必已经接管。独立审计又提出更新期间旧回执/离线通知可能覆盖新进程状态，已补接收进程归属比较和缓存回执隔离。\n\n真实协作测试证明了连续补充、退回修订、独立核对和负责人接续能够完成；同时暴露了初稿和首次审计的事实遗漏。不能据此宣称自然协作质量已经长期可靠，也不能把模型误读改称通信故障。Claude 已通过官方 respawn 恢复原会话，正式监听/MCP 加载最终版本并完成原生计算回传；Gemini 实际运行版本也已对齐，全部原绑定未变。根任务仍待 DeepSeek 对本报告和原件最终 check。\n\n## 实际业务衍生测试\n\n项目群 `channel_4ef452e331904b758d7d3c375215cb48`，根任务 `board_7e418da77285446ebd0a8120bfd95c3c`。\n\n1. 模拟用户请求 #685：根据真实实施、验收和运行端资料，给使用者一份协作层现状简报。没有预写答案；不开发其他功能或操作外部业务。\n2. 处理中补充 #686：同一份简报，正文不超过 600 字，分已证实可用、使用限制、仍待证实，区分上线、送达、理解和长期效果，负责人直接交付。\n3. Gemini 自行建立同一根任务下的 Todo `board_341fa843f17f4a25ada326ae6ec69dad` 并组织核对。初稿对 Dot 根因、运行版本、环境覆盖存在过度推断。DeepSeek 实际 changes_requested，模型随后修改实际正文并重新提交。\n4. 首次 accept 后，人工复核仍抓到两处：`prepared` 被误写成送达；“秒级”缺少阶段和样本边界。DeepSeek 实际退回，Gemini 再次修订。\n5. 当前原件 v9，`submission_e4abce4b4fc147ed979bca70705be0ab`，`check_f580c602c09c4bd79a7be51499311bea` 接受；正文按 Unicode code point 实数为 599，保留三段。验收的是实际提交物，不是聊天里一句“已改”。\n\n这个样本说明纠正和接续可以运行，但首次成稿和首次审核均未保证正确。没有新增固定职责、固定轮次、全员唤醒或“同意就算交付”规则；保留实际错误及修订证据。不能将单个简报样本外推为所有业务已可靠。\n\n## 分段响应\n\n所有时点均为服务端同一时钟记录，含回程网络时间。缺少的原生开始、首次公开输出、首次有用结果、token 和费用保持 null，不写成零。\n\n| 样本 | 保存→接收回执 | 保存→原生入口受理 | 保存→领取 | 领取→回传 | 保存→回传 | 上下文组装 |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n| Gemini 原始简报 #685 | 305 ms | 1,265 ms | 9,829 ms | 153,858 ms | 163,687 ms | 579 ms / 134,686 bytes |\n| 处理中补充 #686 | 26,438 ms | 45,137 ms | 53,624 ms | 147,236 ms | 200,860 ms | 423 ms / 150,048 bytes |\n| Claude 正式重载后计算 #717 | 1,435 ms | 1,766 ms | 21,159 ms | 35,138 ms | 56,297 ms | 518 ms / 113,195 bytes |\n\n原请求和补充的上下文均为 incremental。补充在原生会话工作期间排队，不是消息丢失。不能把领取后时间全部归因于纯推理或网络；它也包含原生工具、资料核对与模型工作。原始首稿未通过核对，其回传时间不能冒充首次正确结果时间。最终简报在 10:37:01.237Z 通过，原请求到该次 accept 为 869,174 ms；这包括多轮核对与人工纠错，不能当单路模型响应指标。\n\n上述数据没有建立普遍秒回 SLA，也没有无对照地宣称提速。此次可复现的接收更新空档和旧进程状态覆盖已修复；模型执行阶段仍占主要耗时，现有数据不足以指定一个通用推理优化而保证不降级。\n\n另外保留慢样本：Gemini 最终更新通知 10:54:11.976Z 保存，10:56:36.696Z 才有接收回执，保存→接收为 144,720 ms，10:57:06.306Z 领取。调查 #721 指向同一原生会话的后台记忆整理。服务端另行核对：维护通知 `turn_chat_aa2b6a877faf4ae7933a9a07d8530096_member_ccdf940ba6d3426da01b9f65048909e2` 于 10:53:42.431Z 领取、10:56:35.388Z 才结束，覆盖这段排队时间；结束后 1,308 ms 才得到更新通知接收回执。本地日志没有断连是原 Agent 自报，不能把未观测时间全部宣称为纯模型/纯网络。不能只报较快样本。\n\n这次找到了额外的通用产品问题：后台整理与前台争用同一会话，而且后台 `list` 继续暴露新到事件，维护可能不断延长。已用 `ed7f712`、`8a7cb0b` 修复：保存本批来源快照；前后台不合并；未领取的后台让位但不伪造事件覆盖；已运行后台在下一次相关记忆工具调用时返回让位信息，由原 Agent 正常 stay_silent 收尾，保留实际租约直到其回应，不强杀模型；同一原生资源跨群也判定，独立会话不互相阻塞；已失效任务提醒不当成可执行前台工作。\n\n它不是硬中断，也不能保证用户发消息后立即完成让位。原生模型正在思考或执行一个长工具时，仍须等其到达记忆工具边界并响应。后台自动维护保留；未整理事件继续 pending，正常前台的记忆能力不受该批次限制。\n\n上线后实际验证：后台批次 `turn_chat_88856d7fc1364ddf925525d59c58e66a_member_ccdf940ba6d3426da01b9f65048909e2` 已经在运行时，11:31:26.545Z 模拟普通用户发出 #725。后台于 11:32:13.451Z 实际 stay_silent，理由明确为 `yieldToForeground=true`，前台于 11:32:45.756Z 领取。后台未伪造事件已整理，也没有把用户问题合并成整理指令。发消息至让位为 46.906 秒，仍受模型到达工具边界的时间影响。本回合与服务发布重启重叠（11:31:57Z 恢复健康），只作真实让位与后续交付证明，不能当干净的前后提速对照。\n\n该前台请求最终 #726 于 11:33:31.251Z 回传，保存→接收 52,222 ms、保存→领取 79,211 ms、保存→回传 124,706 ms。其结论中实际运行版本及本群会话保留与原件相符，但又出现环境误称、把本群绑定泛化到所有频道、把可恢复夸大成所有历史字节无损、混淆 Claude CAS 与 Gemini 能力范围的问题。经 #727 复核，原 Agent 于 #728 明确更正四项。此处计为模型业务答复质量问题，不能据“成功回群”判为全部正确，也不再为每个措辞错误新增通用产品限制。\n\n收尾时另有真实产品缺陷：子简报用 `submission.refs` 引用父任务 v1；父任务仅更新进度到 v2，已验收子成果就被错误判为 stale，根提交被拒绝。持续刷新父版本会在父任务 submit/check 后再次失效，形成版本环。`7508c38` 将提交物里本事项的结构父任务引用按上下文处理，仍检查可访问性；显式 basisRefs、文档/其他任务产物、上游依赖、原要求及独立验收校验不变。新增回归先在旧代码失败，再验证父进度/提交/接受不误伤子成果，真实来源文档修改仍使父子成果失效。没有为绕过本次验收而改写历史提交、核对人或原证据。\n\n## 产品修复与兼容边界\n\n- `1a55155`：启动时计算实际加载连接器 SHA-256；服务端记录原生进程的运行版本，安装目录的新文件不能冒充正在运行的新版本。\n- `10678b6`：版本 unknown/current/outdated/mixed/offline 分开。未知不是已过时；同一账号其他在线会话不能让本群离线绑定变绿。\n- `7e17bc4`：磁盘替换不再令旧监听自行退出。由原生宿主正式重载或停止旧监听，避免安装成功但接收中断。\n- `9384ee1`：每个监听进程独立 `receiverInstanceId`；新监听带 previous 接收进程编号做原子比较接管。旧 heartbeat、旧 offline、旧缓存回执不能覆盖新状态。新进程拥有自己的幂等回执身份，阶段时点不混用；既有会话/领取租约保护保留。\n- `e2fd46d`：发布最终连接器及共享运行端程序包。只包含公共程序文件，不含账号登录、grant 或工作区数据。\n\n边界：旧进程在接管之前已经发送给模型的通知无法撤回，不能声称原平台通知 exactly-once；服务端原子 claim 保护实际领取。版本上报是运行进程的启动元数据，不是对远端主机的密码学远程证明。古老客户端是否遵守拒绝回执取决于其代码，正式原生重载仍需要真实核对。\n\n## 发布与独立验证\n\n- 本地交付完整运行 `deliver:local`，721/721 通过；登录资料、浏览器生命周期、手动登录和实际打包 Electron 重开门槛通过。\n- 客户端与后台当前构建 `04b359e0ff6c7ac2` 一致，云端在线；激活记录确认受保护本地资料和工作区数据未变。\n- DeepSeek 对 `9384ee1` 在隔离导出中独立运行 29/29，#713 明确通过并保留 exactly-once 边界；日志已归档。\n- 后台整理修复后的最终全量为 726/726，相关 47/47；新增用例在旧提交 `8fbd01e` 上确实失败。#723 DeepSeek 隔离复跑 46/46 并核对四条新增回归，其提出的失效任务提醒 P2 已由 `8a7cb0b` 补修并增加回归；最终补修由根任务核对，不把此前独立日志说成已覆盖后加用例。\n- 加入父子引用版本环修复后最终全量为 727/727，Todo/通知/群记忆连带 51/51；保留修复前真实失败日志。父子环与后台 P2 补修另交 DeepSeek 独立复核。\n- VPS 已部署，实际 worker SHA-256 与本次发布文件完全相同，见 `deployment.json`。健康检查、认证读取只证明部署层，原 Agent 的接单回传另记。\n- Claude 最终包 `b98a128a8e3ee5d0ea19bd2542cc9da6425f2ecf949d8169fd8142318bd3ff65`；共享运行端目标 `261b0bb096b50338fa8502430afc49bf112c3e272ef59678ca4844bcd4c2852d`。\n- Gemini 最终 loaded revision 与发布目标一致，原 runtimeId、每群 sessionId/cwd 绑定逐项比较未变，见 `runtimes.json`；本地 Codex/DeepSeek 接收代码随上述客户端构建安全更新。\n- Claude #716 保留安装前后区别；#718 实际回传：一次官方 `respawn d581eb2c` 在空闲后退出码 0，同一 sessionId/cwd，正式 MCP PID 120964、监听 PID 121035，均于 10:56Z 启动并携带最终版本参数，旧 PID 不存在。原生会话 PID 变更为 3514062，宿主复用预启动备用进程，不能把其出生时点当恢复时点。服务端独立收到同一目标版本及新 receiverInstanceId。恢复后的原会话用原生 Python 计算了上表和 869.174 秒，结果数值与本报告一致。\n- #719 DeepSeek 用自己的 Python 独立复算时间差，数值和边界通过。其不能从 Mac 直接读取 Claude VPS 进程，因此进程细节按原 Agent 自报记录，不能冒充审计人亲自在 VPS 检查；服务端 heartbeat 和原会话真实回传为另外两层证据。\n- 根任务 DeepSeek 最终 check：待补实际结果。\n\n## 原件\n\n`evidence/collaboration-quality-20261109/` 保存当前简报及版本/核对记录、限定范围的群消息、逐段指标、相关测试及独立日志、部署文件校验和激活记录。没有以单测数量替代协作效果验收。\n\nClaude 正式恢复依据官方入口 `claude respawn <id>`，保留已保存会话，单独针对原 job，空闲后执行，不用 `--all`，不换模型/身份/项目：<https://code.claude.com/docs/en/agent-view>。临时 30 分钟 Monitor、磁盘文件更新和永久宿主插件重载分开核对。",
+        "sections": [],
+        "data": null,
+        "refs": [],
+        "codeRef": {
+          "repository": "https://github.com/duolaAmengweb3/agent-hub",
+          "commit": "c0f5b5a5c5998f3ce97c3c659e7a580a286f5976",
+          "path": "docs/协作质量与运行端更新实测-20261109.md"
+        },
+        "coverage": [
+          {
+            "id": "quality",
+            "location": "报告“实际业务衍生测试”；quality-case.json 原599字v9与修订核对，quality-case-after-parent-fix.json child delivery.valid=true；#725→726→727→728真实前台让位、语义问题与原Agent更正。",
+            "gap": ""
+          },
+          {
+            "id": "runtime",
+            "location": "runtimes.json 原版本→最终loaded、Gemini bindingsUnchanged=true；Claude#718正式respawn与monitor/MCP原生自报、服务端独立heartbeat及原会话Python计算回传。local activation04b359e0ff6c7ac2。",
+            "gap": ""
+          },
+          {
+            "id": "speed",
+            "location": "response-metrics.json；background-contention-before.json 原后台占用与145秒样本；background-yield-live.json 实际yield理由、前台保存→接收52.222s→回传124.706s，明确发布重启干扰与非秒回；模型推理/首次有用阶段未知不填0。",
+            "gap": ""
+          },
+          {
+            "id": "delivery",
+            "location": "deployment.json 最新7508c38线上worker SHA相同；activation.json 资料不变；test-summary.json最终727/727、相关51/51；旧代码新测试失败；DeepSeek #713/#719/#723/#730独立复核。请核对实际产物与原要求后独立check，不用本报告代替你实际判断。",
+            "gap": ""
+          }
+        ],
+        "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+        "id": "submission_a7d6202a491a4f628568739497541d94",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_7e418da77285446ebd0a8120bfd95c3c",
+        "fingerprint": "e94b41b8360541e5ea6024439e1c49efbc561521a112964b71772871f25915ba",
+        "supersedes": null,
+        "createdAt": "2026-11-09T11:39:35.571Z",
+        "kind": "channel_task_submission",
+        "revision": 1,
+        "updatedAt": "2026-11-09T11:39:35.571Z"
+      },
+      "check": {
+        "taskId": "board_7e418da77285446ebd0a8120bfd95c3c",
+        "submissionId": "submission_a7d6202a491a4f628568739497541d94",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "verdict": "accept",
+        "reason": "四项必要标准均有实际产物与证据：真实衍生任务含补充/退回/修订/接续；Claude/Gemini 运行版本与绑定逐项核对、客户端/部署/资料保护齐全；分段与慢样本、后台让位修复和未知项边界清楚；727/51 与独立复核记录可追溯。接受，根任务完成。",
+        "criterionResults": [
+          {
+            "id": "quality",
+            "result": "met",
+            "evidence": "报告按 #685/#686 真实衍生任务记录连续补充、子 Todo board_341fa843、DeepSeek 两次 changes_requested（#690/#703）、Gemini 修订至 v9 599 字并由 check_f580c602 接受；#725→#726→#727→#728 记录真实前台让位与四处更正；quality-case-after-parent-fix.json 显示 child v9 accepted，未预写答案。"
+          },
+          {
+            "id": "runtime",
+            "result": "met",
+            "evidence": "runtimes.json：Claude after record receiverRevision=target=b98a…、revisionState=current；Gemini after receiverRevision=target=261b…、revisionState=current、bindingsUnchanged=true；activation build 04b359e0ff6c7ac2 且 backend/desktop 一致、资料未变；deployment sourceCommit 7508c38、worker SHA 与本地一致。Claude 进程细节按原 Agent 自报 + 服务端 heartbeat，我未从 Mac 直接读取其 VPS 进程。"
+          },
+          {
+            "id": "speed",
+            "result": "met",
+            "evidence": "response-metrics.json 与报告表一致；#685/#686 A/B、Claude #717 分段；慢样本 144,720ms 单列并归因后台整理，ed7f712/8a7cb0b 修复后 background-yield-live 显示实际 stay_silent(yieldToForeground) 46.906s；明确首次有用结果/纯推理/token 未知不填 0，不建立秒回 SLA。"
+          },
+          {
+            "id": "delivery",
+            "result": "met",
+            "evidence": "test-summary finalFull 727/727、finalRelated 47/47、finalTaskAndMemory 51/51；deployment worker 与 7508c38 一致；activation 资料/工作区未变；报告保留旧代码失败日志与 #713/#719/#723/#730 独立复核，未用单测数量替代协作效果。"
+          }
+        ],
+        "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+        "id": "check_72dbdd5753a145539077b0b3d83bc040",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_7e418da77285446ebd0a8120bfd95c3c",
+        "fingerprint": "415c945a16eea907ecce629a4d63d7d7edb89ca8e591bcacda68867e8e045961",
+        "createdAt": "2026-11-09T11:40:51.903Z",
+        "kind": "channel_task_check",
+        "revision": 1,
+        "updatedAt": "2026-11-09T11:40:51.903Z"
+      },
+      "nextAction": "接续相关工作；任务最终交付仍需单独核对"
+    },
+    "sourceMessages": [
+      {
+        "id": "chat_5913c90c1f3a48d9878c48eaabe3df02",
+        "authorId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+        "body": "用户在原工作会话已授权继续两项：2）真实业务协作质量验证，发现可复现通用产品缺陷则修复，不把个别模型偏差写成硬限制；3）核实并完成原运行端更新、分段测量响应耗时、落实可行提速。右侧协作空间重做不在本轮；Dot后台约五分钟等待已接受暂留，不换账号或模型。Codex负责实现与证据，沿用DeepSeek独立结束验收。",
+        "version": 1
+      }
+    ],
+    "subtasks": {
+      "total": 1,
+      "done": 1,
+      "canceled": 0,
+      "blocked": 0,
+      "active": 0
+    },
+    "parentTask": null,
+    "currentVersion": 5,
+    "versions": []
+  },
+  "child": {
+    "id": "board_341fa843f17f4a25ada326ae6ec69dad",
+    "version": 9,
+    "status": "done",
+    "delivery": {
+      "stage": "accepted",
+      "label": "已通过",
+      "valid": true,
+      "gaps": [],
+      "submission": {
+        "taskId": "board_341fa843f17f4a25ada326ae6ec69dad",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "sourceVersions": [
+          {
+            "id": "chat_5913c90c1f3a48d9878c48eaabe3df02",
+            "version": 1
+          }
+        ],
+        "inputs": [],
+        "body": "【已证实可用】多端原生往返打通：Linux VPS、Claude、DeepSeek 真实收发闭环（#648、#688），无增量 stay_silent 防刷屏已证实（#657）。状态感知与进程版本追踪落地：participation 真实区分受理/领取/回传并剥离租约（tests/product-context.test.mjs）；运行端支持进程级版本上报（commit 1a55155，本端 PID 104876 实载 f9929c51/2fb50f68）。任务与独立核查闭环：Todo 挂载 workSpec，独立审查拦截伪交付夹具（board_341fa843 check_34fe4c5e，docs/Todo协作增强实施与验收-20261109.md）。\n\n【使用限制】明确“功能已上线 ≠ 自然协作效果已长期验证”：协议跑通不等于协作质量经长周期检验，仍须按产物对账。prepared 仅代表服务端已组装上下文，不证明送达，更不等于理解或业务正确，无法防止倒推猜测，需核验人把关。右侧栏 UI 四刀简化未上线，当前基于群聊与标准 Todo。各端私有环境互不可见，互审仅凭公开提交物与日志。\n\n【仍待证实】Dot 自动触发存在观察到的约 5 分钟等待（#668、#674），根因未知。保存→接收器/入口受理的个别样本为秒级；端到端模型回复未达秒级/未验证，异构平台全链路提速上限仍待证实。",
+        "sections": [],
+        "data": {},
+        "refs": [
+          {
+            "kind": "task",
+            "id": "board_7e418da77285446ebd0a8120bfd95c3c",
+            "version": 1,
+            "title": "协作质量实测与运行端更新、响应验证",
+            "channelId": "channel_4ef452e331904b758d7d3c375215cb48"
+          },
+          {
+            "kind": "message",
+            "id": "chat_0c13cc80964d4cf5baf0a856aa09537e",
+            "version": 1,
+            "title": "协作实测（用户已授权，由Codex模拟普通用户输入；只产生本轮验收简报，不执行外部业务）：我想要一份给使用者看的“协作层现在到底能用到什么程",
+            "channelId": "channel_4ef452e331904b758d7d3c375215cb48"
+          },
+          {
+            "kind": "message",
+            "id": "chat_2b57409853d94f50b2b86ce64dc28c8d",
+            "version": 1,
+            "title": "协作实测补充（同一份简报，不是新任务）：最终正文控制在600字以内，按“已证实可用／使用限制／仍待证实”组织；每项关键结论附实际成果或核对来",
+            "channelId": "channel_4ef452e331904b758d7d3c375215cb48"
+          }
+        ],
+        "codeRef": null,
+        "coverage": [
+          {
+            "id": "accuracy",
+            "location": "【已证实可用】与【仍待证实】",
+            "gap": ""
+          },
+          {
+            "id": "boundaries",
+            "location": "【使用限制】",
+            "gap": ""
+          },
+          {
+            "id": "scope",
+            "location": "全篇严格遵守受控简报边界，不改代码、不改模型、不执行外部业务",
+            "gap": ""
+          }
+        ],
+        "authorId": "member_ccdf940ba6d3426da01b9f65048909e2",
+        "id": "submission_e4abce4b4fc147ed979bca70705be0ab",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_341fa843f17f4a25ada326ae6ec69dad",
+        "fingerprint": "739615097591829e0323bd5313e7c9b95c055e59d0d098975c479b13ad0ce164",
+        "supersedes": "submission_81b8c9d180e1464d9a89a945f7158e4b",
+        "createdAt": "2026-11-09T10:36:49.464Z",
+        "kind": "channel_task_submission",
+        "revision": 1,
+        "updatedAt": "2026-11-09T10:36:49.464Z"
+      },
+      "check": {
+        "taskId": "board_341fa843f17f4a25ada326ae6ec69dad",
+        "submissionId": "submission_e4abce4b4fc147ed979bca70705be0ab",
+        "workSpecVersion": 1,
+        "requirementVersion": null,
+        "verdict": "accept",
+        "reason": "修订稿已把两处事实错误改成与 productContext.instruction/实施文档一致：prepared=服务端组装、不证明送达；秒级仅限保存→接收器/入口受理样本，端到端未达。正文仍约 589 字、三段结构、来源与边界齐全，接受。",
+        "criterionResults": [
+          {
+            "id": "accuracy",
+            "result": "met",
+            "evidence": "两处已按原件修正：prepared 改为“仅代表服务端已组装上下文，不证明送达，更不等于理解或业务正确”；秒级改为“保存→接收器/入口受理的个别样本为秒级；端到端模型回复未达秒级/未验证”。其余 Dot 观察/根因未知、进程 PID 实载哈希、来源引用保留。"
+          },
+          {
+            "id": "boundaries",
+            "result": "met",
+            "evidence": "prepared 不再写成送达，秒级不再作为端到端承诺；功能上线≠长期验证、UI 未上线、跨机不可见仍在【使用限制】。"
+          },
+          {
+            "id": "scope",
+            "result": "met",
+            "evidence": "未开发、未改环境/模型/权限、未执行外部业务。"
+          }
+        ],
+        "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+        "id": "check_f580c602c09c4bd79a7be51499311bea",
+        "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+        "parentId": "board_341fa843f17f4a25ada326ae6ec69dad",
+        "fingerprint": "fed591a23e69b81fae42b46603991a4479f121c2d33c29541cff206269c03760",
+        "createdAt": "2026-11-09T10:37:01.237Z",
+        "kind": "channel_task_check",
+        "revision": 1,
+        "updatedAt": "2026-11-09T10:37:01.237Z"
+      },
+      "nextAction": "接续相关工作；任务最终交付仍需单独核对"
+    }
+  },
+  "parentMetadataUpdatePreservesBoth": true
+}

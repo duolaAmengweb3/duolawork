@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-09T15:16:53.489195+00:00",
+  "workerSha": "f717d3ea993ac18d67a9498ba695c457f5c54a3aa60fa3f30fa01d51b67c940f",
+  "service": "MainPID=102668\nNRestarts=0\nExecMainStartTimestamp=Mon 2026-11-09 15:15:56 UTC\n",
+  "receipts": [
+    {
+      "id": "notice_turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "accepted",
+      "wakeGeneration": 0,
+      "wakeCreatedAt": "2026-11-09T15:13:31.735Z",
+      "unclaimedRecoveries": 0,
+      "receiverKind": "platform-automation",
+      "createdAt": "2026-11-09T15:13:31.735Z",
+      "completedAt": "2026-11-09T15:13:31.764Z",
+      "attempts": 1
+    },
+    {
+      "id": "notice_turn_chat_f1b9f956b1344d3883afdca7c7c4903d_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "accepted",
+      "wakeGeneration": 0,
+      "wakeCreatedAt": "2026-11-09T15:13:31.735Z",
+      "unclaimedRecoveries": 0,
+      "receiverKind": null,
+      "createdAt": "2026-11-09T15:13:31.735Z",
+      "completedAt": "2026-11-09T15:13:31.764Z",
+      "attempts": 1
+    }
+  ],
+  "sourceCommit": "e2493c9",
+  "localWorkerSha": "f717d3ea993ac18d67a9498ba695c457f5c54a3aa60fa3f30fa01d51b67c940f",
+  "artifactMatches": true,
+  "receivedAfterRestart": false
+}

@@ -2,6 +2,9 @@
 """Isolated deployment. Credentials never appear in argv or stdout."""
 import json, os, pathlib, secrets, subprocess, sys, urllib.request
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+if json.loads((ROOT/'cloud/wrangler.jsonc').read_text()).get('vars',{}).get('HUB_RELAY_ORIGIN'):
+    subprocess.run(['node', str(ROOT/'scripts/deploy-server.mjs')], cwd=ROOT, check=True)
+    sys.exit(0)
 PRIVATE=pathlib.Path.home()/'.config'/'agent-hub'
 PRIVATE.mkdir(parents=True,exist_ok=True,mode=0o700)
 CFG=PRIVATE/'config.json'

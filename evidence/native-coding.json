@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-03T06:51:29.207Z",
+  "members": [
+    {
+      "engine": "codex",
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "idle",
+      "message": "已接入，正在后台接收消息",
+      "verified": true,
+      "verifiedAt": "2026-11-03T06:52:05.704Z",
+      "sessions": {
+        "probe_member_26ac2c60371e4158bd6df1b0fa0db37d": "01a1a02d-7f96-75b1-8731-6efe9021ac34"
+      },
+      "lastReceiptAt": "2026-11-03T06:52:06.365Z"
+    },
+    {
+      "engine": "antigravity",
+      "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+      "status": "needs_review",
+      "message": "原生 Agent 已结束本轮，但 Hub 尚未收到该工作回执；保留会话，请检查权限或原生执行记录后继续",
+      "verified": false,
+      "verifiedAt": null,
+      "sessions": {
+        "probe_member_57804695524e4e8cad1d8dd3bb272736": "c0fe340e-b617-4c9c-b015-6f0d447ed66e"
+      },
+      "lastReceiptAt": null
+    }
+  ],
+  "providerConfigurationChanged": false,
+  "existingIdeSessionClaim": false,
+  "subscriptionClaudeCodeInvoked": false
+}

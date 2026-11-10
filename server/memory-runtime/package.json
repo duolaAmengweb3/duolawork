@@ -1,0 +1,1 @@
+{"name":"duolawork-memory-runtime","private":true,"type":"module","dependencies":{"@qdrant/js-client-rest":"1.18.0","mem0ai":"3.3.1"}}

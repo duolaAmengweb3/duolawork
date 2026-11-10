@@ -1,0 +1,114 @@
+{
+  "at": "2026-11-08T10:34:02.928Z",
+  "buildId": "bbf792a8929a90a4",
+  "scope": "Real authorized Cloudflare, Vercel and Notion reads plus GitHub personal-account create/read/update/read verification through the existing Coding-member connector. Vercel and GitHub refresh verified; the synthetic GitHub test gist was deleted and confirmed absent. No external organization access requests or original repository edits.",
+  "results": [
+    {
+      "provider": "cloudflare",
+      "connectionId": "mcp_1d22a4f4132216cfae15590c9087aab8",
+      "tool": "whoami",
+      "status": "succeeded",
+      "isError": false,
+      "expectedAccountMatched": true,
+      "bytes": 220,
+      "sha256": "91f4fcc4ef71cfc9e9c8ea4d216f4e1c4d067a13520032231016c877243bbb36",
+      "receiptMatches": true
+    },
+    {
+      "provider": "notion",
+      "connectionId": "mcp_f085c33e4dc2e6e35a06bc4f23b62582",
+      "tool": "notion-get-self",
+      "status": "succeeded",
+      "isError": false,
+      "expectedAccountMatched": true,
+      "bytes": 281,
+      "sha256": "322bc52f0d72943462990db274a0af738e28bee650e4b7aed3a110e87de6cd7a",
+      "receiptMatches": true
+    },
+    {
+      "provider": "vercel",
+      "connectionId": "mcp_39e9ec66cc19cf2ff6459638fc8fb9fe",
+      "tool": "list_teams",
+      "status": "succeeded",
+      "isError": false,
+      "bytes": 404,
+      "sha256": "3b25b01b2633eb8a2498f0e50c02c6fcbea2eb2ca024dd33810fdc5169076254",
+      "receiptMatches": true,
+      "afterRealRefresh": true
+    },
+    {
+      "provider": "github",
+      "connectionId": "mcp_6615e15efce8050706d43d08233deb48",
+      "toolCount": 113,
+      "status": "succeeded",
+      "readWriteVerified": true,
+      "receiptMatches": true,
+      "afterRealRefresh": true,
+      "testDataCleaned": true
+    }
+  ],
+  "vercel": {
+    "priorProof": "evidence/vercel-connector-20261108.json",
+    "postExpiry": "recovered and actual refresh verified",
+    "rootCause": "Resource default scope was openid only, so no refresh token was issued.",
+    "fix": "Request offline_access only when advertised by the authorization server, preserve existing resource scopes, retain non-rotating refresh tokens.",
+    "liveReauthorization": "succeeded",
+    "liveRefresh": {
+      "at": "2026-11-08T10:33:06.774Z",
+      "scope": "Real Vercel SDK refresh using the existing encrypted DuolaWork grant; no forced expiry or credential export.",
+      "result": "AUTHORIZED",
+      "refreshTokenPresentBefore": true,
+      "refreshTokenPresentAfter": true,
+      "accessTokenRotated": true,
+      "hasOfflineScope": true
+    }
+  },
+  "regressions": [
+    "Anonymous tool discovery cannot prove an OAuth account is connected",
+    "Confidential DCR token endpoint authentication",
+    "Numeric provider HTTP errors preserve an actionable outcome",
+    "OAuth error Response normalization for the official SDK",
+    "Per-workspace registered app reuse, independent account grants and origin isolation",
+    "Google offline refresh request parameters",
+    "Immutable chunked large tool results; exact replays execute only once; revoked callers cannot read them",
+    "Provider-advertised offline access and omitted replacement refresh token retention"
+  ],
+  "tests": {
+    "unitPassed": 640,
+    "unitFailed": 0,
+    "connectorOAuthUI": true,
+    "sharedStdioUI": true,
+    "navigationUI": true,
+    "experienceUI": true,
+    "sessionRetention": true
+  },
+  "deployment": {
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "workspaceDataUnchanged": true
+  },
+  "externalLimits": {
+    "github": {
+      "status": "connected",
+      "detail": "Real owner-account OAuth, 113 tools, create/read/update/read verification, cleanup and actual refresh passed.",
+      "evidence": "evidence/github-connector-20261108.json"
+    },
+    "figma": {
+      "status": "vendor_admission",
+      "detail": "Official dynamic client registration returned 403; the official docs require a client listed in the Figma MCP catalog.",
+      "source": "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/"
+    },
+    "google": {
+      "status": "not_connected",
+      "detail": "Developer Preview and registered AI-agent OAuth app required. Preview membership for this account has not been established. Public tool discovery is not a successful account connection.",
+      "source": "https://developers.google.com/workspace/guides/configure-mcp-servers"
+    },
+    "feishu": {
+      "status": "vendor_access_or_app_setup",
+      "detail": "Official MCP configuration platform explicitly displayed no access. Native official CLI availability was inspected separately and is not proof of a shared DuolaWork connector.",
+      "source": "https://open.feishu.cn/document/mcp_open_tools/end-user-call-remote-mcp-server"
+    }
+  },
+  "updatedAt": "2026-11-08T13:18:28.753Z"
+}

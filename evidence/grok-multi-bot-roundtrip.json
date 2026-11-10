@@ -1,0 +1,708 @@
+{
+  "at": "2026-11-06T06:11:55.587Z",
+  "scope": "Three real Grok Bots in the official desktop client, own native credentials, autonomous webhook receive and authenticated response; no owner-authored Agent reply",
+  "newMember": {
+    "id": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+    "status": "verified",
+    "toolSeenAt": "2026-11-06T06:02:42.137Z",
+    "verifiedAt": "2026-11-06T06:02:54.807Z",
+    "probe": {
+      "id": "run_cd1dacc8e8b94737ab3bd12c776bb235",
+      "status": "completed",
+      "message": null
+    },
+    "deliveryEvidence": {
+      "runId": "run_cd1dacc8e8b94737ab3bd12c776bb235",
+      "attemptId": "attempt_e00c734e9580492b8d71d8dc8c585050",
+      "documentIds": [
+        "document_82ce395220744227a2afe48b9051a50f"
+      ]
+    }
+  },
+  "channel": {
+    "id": "channel_ab8298d70ba24b869545d67cefa1c89f",
+    "name": "验收 · Grok 多身份协作 1106",
+    "description": "",
+    "createdBy": "owner",
+    "memberIds": [
+      "member_785ba0d4e7964814bf65102b90867efd",
+      "member_47be343430a54bff908ab5d471752701",
+      "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+    ],
+    "coordinatorId": null,
+    "status": "active",
+    "maxHops": 8,
+    "wakeIntervalSeconds": 60,
+    "messageSequence": 11,
+    "createdAt": "2026-11-06T06:02:48.781Z",
+    "legacyProjectId": null,
+    "direct": false,
+    "kind": "channel",
+    "revision": 12,
+    "updatedAt": "2026-11-06T06:09:37.374Z",
+    "lastMessage": "你完成刚才 M3 的汇总后，再单独回复一句“grok4 后续消息 M4 也收到了”。无需再点名其他成员。",
+    "lastMessageAt": "2026-11-06T06:09:37.374Z"
+  },
+  "messages": [
+    {
+      "id": "chat_3399b5ba72214ceb971ef108314a0567",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 1,
+      "body": "三位各自介绍一下自己，只需回复“我是 grok2 / grok3 / grok4，收到本群消息 M1”（填你自己的名字）。这轮只在本群分别回复，不互相点名。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "type": "message",
+      "requestId": "81813f80-a9ec-4c7f-a499-ca2cf1f5adbe",
+      "mentions": [],
+      "mentionAll": true,
+      "recipientIds": [
+        "member_785ba0d4e7964814bf65102b90867efd",
+        "member_47be343430a54bff908ab5d471752701",
+        "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:03:23.217Z"
+    },
+    {
+      "id": "chat_801a7ac6394c42fbb575183d0754c59f",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 2,
+      "body": "我是 grok2，收到本群消息 M1",
+      "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+      "createdAt": "2026-11-06T06:04:32.974Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_3399b5ba72214ceb971ef108314a0567_member_785ba0d4e7964814bf65102b90867efd:post",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_3399b5ba72214ceb971ef108314a0567",
+      "replySnapshot": {
+        "body": "三位各自介绍一下自己，只需回复“我是 grok2 / grok3 / grok4，收到本群消息 M1”（填你自己的名字）。这轮只在本群分别回复，不互相点名。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:04:32.974Z"
+    },
+    {
+      "id": "chat_90c9d71d79be4c41973167608330ad43",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 3,
+      "body": "我是 grok4，收到本群消息 M1",
+      "authorId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "createdAt": "2026-11-06T06:04:36.510Z",
+      "type": "message",
+      "requestId": "grok4_intro_m1_3399b5ba72214ceb971ef108314a0567",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_3399b5ba72214ceb971ef108314a0567",
+      "replySnapshot": {
+        "body": "三位各自介绍一下自己，只需回复“我是 grok2 / grok3 / grok4，收到本群消息 M1”（填你自己的名字）。这轮只在本群分别回复，不互相点名。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:04:36.510Z"
+    },
+    {
+      "id": "chat_37cf9a8b6abf45609affd2bceb8a5025",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 4,
+      "body": "再补一句：请另回复“grok2 也收到补充 M2”。前一条 M1 也需要回应。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T06:04:37.227Z",
+      "type": "message",
+      "requestId": "17f38d2f-cccd-4305-bd1b-d4a0e9ea9229",
+      "mentions": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:04:37.227Z"
+    },
+    {
+      "id": "chat_d0ec3ca90016451ab2cb43b7f70fc424",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 5,
+      "body": "grok2 也收到补充 M2",
+      "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+      "createdAt": "2026-11-06T06:05:18.275Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_37cf9a8b6abf45609affd2bceb8a5025_member_785ba0d4e7964814bf65102b90867efd:post",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_37cf9a8b6abf45609affd2bceb8a5025",
+      "replySnapshot": {
+        "body": "再补一句：请另回复“grok2 也收到补充 M2”。前一条 M1 也需要回应。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_37cf9a8b6abf45609affd2bceb8a5025",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:05:18.275Z"
+    },
+    {
+      "id": "chat_d5c581b87d274d3f933edfd1fd7395cd",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 6,
+      "body": "我是 grok3，收到本群消息 M1",
+      "authorId": "member_47be343430a54bff908ab5d471752701",
+      "createdAt": "2026-11-06T06:05:39.222Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_3399b5ba72214ceb971ef108314a0567_member_47be343430a54bff908ab5d471752701:post_m1",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_3399b5ba72214ceb971ef108314a0567",
+      "replySnapshot": {
+        "body": "三位各自介绍一下自己，只需回复“我是 grok2 / grok3 / grok4，收到本群消息 M1”（填你自己的名字）。这轮只在本群分别回复，不互相点名。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:05:39.222Z"
+    },
+    {
+      "id": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 7,
+      "body": "做一次简短的三人交接：你先算 17+25，在本群点名 grok3 请它独立复核；grok3 复核后点名 grok4；grok4 最后告诉我计算结果和复核是否一致，就结束。每人一条短消息，不建文档或任务。标记 M3。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T06:06:54.589Z",
+      "type": "message",
+      "requestId": "e57f9fbc-da52-4b8c-93a0-a5b2300f9306",
+      "mentions": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_785ba0d4e7964814bf65102b90867efd"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:06:54.589Z"
+    },
+    {
+      "id": "chat_12efc504f3704018a4cc4d7cec814a53",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 8,
+      "body": "17+25=42。请独立复核。M3",
+      "authorId": "member_785ba0d4e7964814bf65102b90867efd",
+      "createdAt": "2026-11-06T06:07:59.179Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_8ab3a30d3aaa408cad092dc80572db40_member_785ba0d4e7964814bf65102b90867efd:post",
+      "mentions": [
+        "member_47be343430a54bff908ab5d471752701"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_47be343430a54bff908ab5d471752701"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "replySnapshot": {
+        "body": "做一次简短的三人交接：你先算 17+25，在本群点名 grok3 请它独立复核；grok3 复核后点名 grok4；grok4 最后告诉我计算结果和复核是否一致，就结束。每人一条短消息，不建文档或任务。标记 M3。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:07:59.179Z"
+    },
+    {
+      "id": "chat_f9b5bd64ff1a41f486bf40eed8fca634",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 9,
+      "body": "独立复核：17+25=42，与 grok2 一致。请汇总。M3",
+      "authorId": "member_47be343430a54bff908ab5d471752701",
+      "createdAt": "2026-11-06T06:08:47.087Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_12efc504f3704018a4cc4d7cec814a53_member_47be343430a54bff908ab5d471752701:post_m3",
+      "mentions": [
+        "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_12efc504f3704018a4cc4d7cec814a53",
+      "replySnapshot": {
+        "body": "17+25=42。请独立复核。M3",
+        "version": 1,
+        "authorId": "member_785ba0d4e7964814bf65102b90867efd"
+      },
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 2,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:08:47.087Z"
+    },
+    {
+      "id": "chat_d2ee711f918e4836870669d2f9d1e1e2",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 10,
+      "body": "汇总：17+25=42；grok2 计算与 grok3 独立复核一致。M3",
+      "authorId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "createdAt": "2026-11-06T06:09:29.101Z",
+      "type": "message",
+      "requestId": "grok4_m3_summary_f9b5bd64ff1a41f486bf40eed8fca634",
+      "mentions": [
+        "owner"
+      ],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_f9b5bd64ff1a41f486bf40eed8fca634",
+      "replySnapshot": {
+        "body": "独立复核：17+25=42，与 grok2 一致。请汇总。M3",
+        "version": 1,
+        "authorId": "member_47be343430a54bff908ab5d471752701"
+      },
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 3,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:09:29.101Z"
+    },
+    {
+      "id": "chat_0d474c2f607a46f786cdf277556cb537",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 11,
+      "body": "你完成刚才 M3 的汇总后，再单独回复一句“grok4 后续消息 M4 也收到了”。无需再点名其他成员。",
+      "authorId": "owner",
+      "createdAt": "2026-11-06T06:09:37.374Z",
+      "type": "message",
+      "requestId": "326b815b-58b0-4a0d-a900-5ee53ceef89e",
+      "mentions": [
+        "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+      ],
+      "mentionAll": false,
+      "recipientIds": [
+        "member_f91c9330e8ea4ffd9ea2048db7b79d1e"
+      ],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": null,
+      "rootId": null,
+      "hops": 0,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:09:37.374Z"
+    },
+    {
+      "id": "chat_104ccd9d56a14d529f283252944a6cdd",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "number": 12,
+      "body": "grok4 后续消息 M4 也收到了",
+      "authorId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "createdAt": "2026-11-06T06:10:35.356Z",
+      "type": "message",
+      "requestId": "notice_turn_chat_0d474c2f607a46f786cdf277556cb537_member_f91c9330e8ea4ffd9ea2048db7b79d1e:post_m4",
+      "mentions": [],
+      "mentionAll": false,
+      "recipientIds": [],
+      "refs": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_0d474c2f607a46f786cdf277556cb537",
+      "replySnapshot": {
+        "body": "你完成刚才 M3 的汇总后，再单独回复一句“grok4 后续消息 M4 也收到了”。无需再点名其他成员。",
+        "version": 1,
+        "authorId": "owner"
+      },
+      "rootId": "chat_0d474c2f607a46f786cdf277556cb537",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-06T06:10:35.356Z"
+    }
+  ],
+  "activity": [
+    {
+      "id": "turn_chat_0d474c2f607a46f786cdf277556cb537_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "messageId": "chat_0d474c2f607a46f786cdf277556cb537",
+      "wakeSource": "user",
+      "number": 11,
+      "rootId": "chat_0d474c2f607a46f786cdf277556cb537",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:09:37.374Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:10:35.356Z",
+      "claimedAt": "2026-11-06T06:10:11.528Z",
+      "expiresAt": "2026-11-06T06:40:11.528Z",
+      "mergedMessageIds": [
+        "chat_0d474c2f607a46f786cdf277556cb537"
+      ],
+      "completedAt": "2026-11-06T06:10:35.356Z"
+    },
+    {
+      "id": "turn_chat_f9b5bd64ff1a41f486bf40eed8fca634_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "messageId": "chat_f9b5bd64ff1a41f486bf40eed8fca634",
+      "wakeSource": "agent",
+      "number": 9,
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 2,
+      "status": "done",
+      "createdAt": "2026-11-06T06:08:47.087Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:09:29.101Z",
+      "claimedAt": "2026-11-06T06:09:14.434Z",
+      "expiresAt": "2026-11-06T06:39:14.434Z",
+      "mergedMessageIds": [
+        "chat_f9b5bd64ff1a41f486bf40eed8fca634"
+      ],
+      "completedAt": "2026-11-06T06:09:29.101Z"
+    },
+    {
+      "id": "turn_chat_12efc504f3704018a4cc4d7cec814a53_member_47be343430a54bff908ab5d471752701",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "messageId": "chat_12efc504f3704018a4cc4d7cec814a53",
+      "wakeSource": "agent",
+      "number": 8,
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 1,
+      "status": "done",
+      "createdAt": "2026-11-06T06:07:59.179Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:08:47.087Z",
+      "claimedAt": "2026-11-06T06:08:29.048Z",
+      "expiresAt": "2026-11-06T06:38:29.048Z",
+      "mergedMessageIds": [
+        "chat_12efc504f3704018a4cc4d7cec814a53"
+      ],
+      "completedAt": "2026-11-06T06:08:47.087Z"
+    },
+    {
+      "id": "turn_chat_8ab3a30d3aaa408cad092dc80572db40_member_785ba0d4e7964814bf65102b90867efd",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "messageId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "wakeSource": "user",
+      "number": 7,
+      "rootId": "chat_8ab3a30d3aaa408cad092dc80572db40",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:06:54.589Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:07:59.179Z",
+      "claimedAt": "2026-11-06T06:07:30.060Z",
+      "expiresAt": "2026-11-06T06:37:30.060Z",
+      "mergedMessageIds": [
+        "chat_8ab3a30d3aaa408cad092dc80572db40"
+      ],
+      "completedAt": "2026-11-06T06:07:59.179Z"
+    },
+    {
+      "id": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_47be343430a54bff908ab5d471752701",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "messageId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "wakeSource": "user",
+      "number": 1,
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:05:39.222Z",
+      "claimedAt": "2026-11-06T06:04:52.205Z",
+      "expiresAt": "2026-11-06T06:34:52.205Z",
+      "mergedMessageIds": [
+        "chat_3399b5ba72214ceb971ef108314a0567"
+      ],
+      "completedAt": "2026-11-06T06:05:39.222Z"
+    },
+    {
+      "id": "turn_chat_37cf9a8b6abf45609affd2bceb8a5025_member_785ba0d4e7964814bf65102b90867efd",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "messageId": "chat_37cf9a8b6abf45609affd2bceb8a5025",
+      "wakeSource": "user",
+      "number": 4,
+      "rootId": "chat_37cf9a8b6abf45609affd2bceb8a5025",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:04:37.227Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:05:18.275Z",
+      "claimedAt": "2026-11-06T06:04:58.423Z",
+      "expiresAt": "2026-11-06T06:34:58.423Z",
+      "mergedMessageIds": [
+        "chat_37cf9a8b6abf45609affd2bceb8a5025"
+      ],
+      "completedAt": "2026-11-06T06:05:18.275Z"
+    },
+    {
+      "id": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "messageId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "wakeSource": "user",
+      "number": 1,
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:04:36.510Z",
+      "claimedAt": "2026-11-06T06:04:10.176Z",
+      "expiresAt": "2026-11-06T06:34:10.176Z",
+      "mergedMessageIds": [
+        "chat_3399b5ba72214ceb971ef108314a0567"
+      ],
+      "completedAt": "2026-11-06T06:04:36.510Z"
+    },
+    {
+      "id": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_785ba0d4e7964814bf65102b90867efd",
+      "scopeId": "channel_ab8298d70ba24b869545d67cefa1c89f",
+      "parentId": "member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "messageId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "wakeSource": "user",
+      "number": 1,
+      "rootId": "chat_3399b5ba72214ceb971ef108314a0567",
+      "hops": 0,
+      "status": "done",
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "kind": "channel_turn",
+      "revision": 3,
+      "updatedAt": "2026-11-06T06:04:32.974Z",
+      "claimedAt": "2026-11-06T06:04:13.471Z",
+      "expiresAt": "2026-11-06T06:34:13.471Z",
+      "mergedMessageIds": [
+        "chat_3399b5ba72214ceb971ef108314a0567"
+      ],
+      "completedAt": "2026-11-06T06:04:32.974Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_0d474c2f607a46f786cdf277556cb537_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "stepId": "turn_chat_0d474c2f607a46f786cdf277556cb537_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:09:37.374Z",
+      "completedAt": "2026-11-06T06:09:37.390Z",
+      "dueAt": "2026-11-06T06:10:37.390Z",
+      "sendingAt": "2026-11-06T06:09:37.390Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:09:38.000Z",
+      "dispatchElapsedMs": 588,
+      "attemptFinishedAt": "2026-11-06T06:09:38.000Z"
+    },
+    {
+      "id": "notice_turn_chat_f9b5bd64ff1a41f486bf40eed8fca634_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "stepId": "turn_chat_f9b5bd64ff1a41f486bf40eed8fca634_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:08:47.087Z",
+      "completedAt": "2026-11-06T06:08:47.093Z",
+      "dueAt": "2026-11-06T06:09:47.093Z",
+      "sendingAt": "2026-11-06T06:08:47.093Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:08:47.558Z",
+      "dispatchElapsedMs": 442,
+      "attemptFinishedAt": "2026-11-06T06:08:47.558Z"
+    },
+    {
+      "id": "notice_turn_chat_12efc504f3704018a4cc4d7cec814a53_member_47be343430a54bff908ab5d471752701",
+      "stepId": "turn_chat_12efc504f3704018a4cc4d7cec814a53_member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:07:59.179Z",
+      "completedAt": "2026-11-06T06:07:59.184Z",
+      "dueAt": "2026-11-06T06:08:59.184Z",
+      "sendingAt": "2026-11-06T06:07:59.184Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:07:59.680Z",
+      "dispatchElapsedMs": 470,
+      "attemptFinishedAt": "2026-11-06T06:07:59.680Z"
+    },
+    {
+      "id": "notice_turn_chat_8ab3a30d3aaa408cad092dc80572db40_member_785ba0d4e7964814bf65102b90867efd",
+      "stepId": "turn_chat_8ab3a30d3aaa408cad092dc80572db40_member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:06:54.589Z",
+      "completedAt": "2026-11-06T06:06:54.594Z",
+      "dueAt": "2026-11-06T06:07:54.594Z",
+      "sendingAt": "2026-11-06T06:06:54.594Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:06:55.226Z",
+      "dispatchElapsedMs": 611,
+      "attemptFinishedAt": "2026-11-06T06:06:55.226Z"
+    },
+    {
+      "id": "notice_turn_chat_37cf9a8b6abf45609affd2bceb8a5025_member_785ba0d4e7964814bf65102b90867efd",
+      "stepId": "turn_chat_37cf9a8b6abf45609affd2bceb8a5025_member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:04:37.227Z",
+      "completedAt": "2026-11-06T06:04:37.232Z",
+      "dueAt": "2026-11-06T06:05:37.232Z",
+      "sendingAt": "2026-11-06T06:04:37.232Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:04:37.694Z",
+      "dispatchElapsedMs": 436,
+      "attemptFinishedAt": "2026-11-06T06:04:37.694Z"
+    },
+    {
+      "id": "notice_turn_chat_3399b5ba72214ceb971ef108314a0567_member_47be343430a54bff908ab5d471752701",
+      "stepId": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_47be343430a54bff908ab5d471752701",
+      "memberId": "member_47be343430a54bff908ab5d471752701",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "completedAt": "2026-11-06T06:03:23.239Z",
+      "dueAt": "2026-11-06T06:04:23.239Z",
+      "sendingAt": "2026-11-06T06:03:23.239Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:03:23.929Z",
+      "dispatchElapsedMs": 668,
+      "attemptFinishedAt": "2026-11-06T06:03:23.929Z"
+    },
+    {
+      "id": "notice_turn_chat_3399b5ba72214ceb971ef108314a0567_member_785ba0d4e7964814bf65102b90867efd",
+      "stepId": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_785ba0d4e7964814bf65102b90867efd",
+      "memberId": "member_785ba0d4e7964814bf65102b90867efd",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "completedAt": "2026-11-06T06:03:23.239Z",
+      "dueAt": "2026-11-06T06:04:23.239Z",
+      "sendingAt": "2026-11-06T06:03:23.239Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:03:23.696Z",
+      "dispatchElapsedMs": 424,
+      "attemptFinishedAt": "2026-11-06T06:03:23.696Z"
+    },
+    {
+      "id": "notice_turn_chat_3399b5ba72214ceb971ef108314a0567_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "stepId": "turn_chat_3399b5ba72214ceb971ef108314a0567_member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "memberId": "member_f91c9330e8ea4ffd9ea2048db7b79d1e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-06T06:03:23.217Z",
+      "completedAt": "2026-11-06T06:03:23.239Z",
+      "dueAt": "2026-11-06T06:04:23.239Z",
+      "sendingAt": "2026-11-06T06:03:23.239Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-06T06:03:23.902Z",
+      "dispatchElapsedMs": 619,
+      "attemptFinishedAt": "2026-11-06T06:03:23.902Z"
+    }
+  ],
+  "checks": {
+    "eachBotOwnIdentity": true,
+    "explicitAllReceived": true,
+    "targetedFollowup": true,
+    "threeBotMentionRelay": true,
+    "mentionHuman": true,
+    "noDuplicateAgentReplies": true,
+    "allTestTurnsDone": true
+  },
+  "businessRecovery": {
+    "channelId": "channel_f0bf1704a50348789524283bea56e2fd",
+    "retriedLatestNoticeOnly": true,
+    "claimedOriginalPendingBatch": [
+      {
+        "id": "turn_chat_0a2311407be3411c88dcdcf518b10154_member_47be343430a54bff908ab5d471752701",
+        "status": "active",
+        "claimedAt": "2026-11-06T06:10:39.900Z",
+        "completedAt": null
+      }
+    ],
+    "businessDeliverableAccepted": false
+  }
+}

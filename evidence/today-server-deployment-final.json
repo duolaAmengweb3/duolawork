@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-07T09:44:26.447Z",
+  "sourceCommit": "af6e07da004a1d3c3db0b139ebcf315b9a0b6f50",
+  "implementationCommit": "ae30864",
+  "checks": [
+    {
+      "sha256": "18efbbe3e34207a1b62d34dd73f00e0c2e3df80d7a51c46d4edae6f2d48b7a87",
+      "file": "worker.mjs",
+      "localSha256": "18efbbe3e34207a1b62d34dd73f00e0c2e3df80d7a51c46d4edae6f2d48b7a87",
+      "match": true
+    },
+    {
+      "sha256": "f02cb62c7575f8250f95549eabcc4e6aed81f7c8470ec4d067c22917ecb067bf",
+      "file": "memory-ledger.mjs",
+      "localSha256": "f02cb62c7575f8250f95549eabcc4e6aed81f7c8470ec4d067c22917ecb067bf",
+      "match": true
+    }
+  ],
+  "previousAttempt": {
+    "fixedTwoSecondProbeFailed": true,
+    "previousReleaseRestored": true,
+    "databaseRetained": true
+  },
+  "boundedReadinessRetrySucceeded": true
+}

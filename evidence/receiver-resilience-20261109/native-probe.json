@@ -1,0 +1,75 @@
+{
+  "nonce": "receiver-native-da231ed8",
+  "messageId": "chat_93b62cd3d5894cedbce40108f96884b1",
+  "createdAt": "2026-11-09T16:01:37.595Z",
+  "channelId": "channel_6d302b18e24841f6a449b88f86b24aae",
+  "at": "2026-11-09T16:06:37.485Z",
+  "replies": [
+    {
+      "id": "chat_20b12a7cfd1a43a7b9101f93223095a2",
+      "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "body": "receiver-native-da231ed8 Dot",
+      "createdAt": "2026-11-09T16:02:23.743Z",
+      "elapsedMs": 46148
+    },
+    {
+      "id": "chat_4d14da20da2746f09da22de6109797ee",
+      "authorId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "body": "receiver-native-da231ed8 grok1",
+      "createdAt": "2026-11-09T16:03:28.009Z",
+      "elapsedMs": 110414
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notice_turn_chat_93b62cd3d5894cedbce40108f96884b1_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "stepId": "turn_chat_93b62cd3d5894cedbce40108f96884b1_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": null,
+      "createdAt": "2026-11-09T16:01:37.595Z",
+      "completedAt": "2026-11-09T16:01:37.628Z",
+      "dueAt": "2026-11-09T16:02:37.628Z",
+      "sendingAt": "2026-11-09T16:01:37.628Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-09T16:01:38.357Z",
+      "dispatchElapsedMs": 654,
+      "attemptFinishedAt": "2026-11-09T16:01:38.373Z"
+    },
+    {
+      "id": "notice_turn_chat_93b62cd3d5894cedbce40108f96884b1_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "stepId": "turn_chat_93b62cd3d5894cedbce40108f96884b1_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "claimed",
+      "reason": null,
+      "httpStatus": 200,
+      "createdAt": "2026-11-09T16:01:37.595Z",
+      "completedAt": "2026-11-09T16:01:37.628Z",
+      "dueAt": "2026-11-09T16:02:37.628Z",
+      "sendingAt": "2026-11-09T16:01:37.628Z",
+      "attempts": 1,
+      "platformRespondedAt": "2026-11-09T16:01:38.355Z",
+      "dispatchElapsedMs": 606,
+      "attemptFinishedAt": "2026-11-09T16:01:38.355Z"
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn_chat_93b62cd3d5894cedbce40108f96884b1_member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "done",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "claimedAt": "2026-11-09T16:02:06.035Z",
+      "completedAt": "2026-11-09T16:03:28.009Z",
+      "lastAckError": null
+    },
+    {
+      "id": "turn_chat_93b62cd3d5894cedbce40108f96884b1_member_0ff5c20718654c9db5ab3b1d0334133e",
+      "status": "done",
+      "memberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "claimedAt": "2026-11-09T16:02:15.631Z",
+      "completedAt": "2026-11-09T16:02:23.743Z",
+      "lastAckError": null
+    }
+  ]
+}

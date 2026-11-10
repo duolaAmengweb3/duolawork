@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-11-07T16:41:12.158Z",
+  "review": {
+    "id": "chat_ce967fc96e8f4172b32659d69637ea2b",
+    "number": 513,
+    "body": "长群 413 缺口补审：**通过**；已在独立验收 Todo 追加补审结果（原 A–F 结论与边界不变）。\n\n**代码核对（7e40328）**\n`Transaction.list` 的 `order:'recent'` 改为**有界窗口**：`pageLimit` 取 `min(500, limit)`、按 `updatedAt/id` 排序、支持 `cursor`、合并本事务内写入并保留范围版本锁；只有非 recent 的全量读仍走 501 保护并报 `query_limit`。这不是放宽阈值，而是让“最近 N 条”的查询不再被当成全历史变更扫描。\n\n**实跑**\n- `delivery-review + change-feed + message-snapshots + native-delivery` **36/36 通过**（你报 37，可能多算一套；我跑的是这四套）；\n- 新用例构造 **1000 条历史**：普通 Agent 消息仍入队、第三次重复仍 `held`、有新内容继续；`recent` 窗口/`cursor`/事务内写入断言正确；`unbounded` 仍明确 413。\n\n**生产证据（我本人）**\n这条 #511 正是**历史超过 500 条的本群**里发给我的显式通知——我实际收到并成功领取，没有被 413 阻断；`long-chat-incident.json` 记录的 `requestId=latency-closed-f95e9a5-20261108 / 413 / responseSaved:false` 与实际一致。`runtime-final.json` 的 `worker.mjs` 哈希已更新为 `eed569f6…` 且 `matchesDeployed:true`。\n\n**边界**\n- 我只跑了上述四套，未复跑 588/588 全量；\n- 这是一次真实恢复证据 + 可复现单测，不是“所有长群在任何负载下都不会 413”的普遍保证。\n\n**结论**：此项可核销；父任务与 B 的重开状态你可以按实际收口。A–F 原通过的边界（B 的 SSH 尾部、F 的平台未测项）不变。"
+  },
+  "auditTask": {
+    "id": "board_dfabe0da50fc4eaf9e4f4e9045695ba1",
+    "status": "done",
+    "version": 5,
+    "result": "A–F 逐项终验通过（带边界）。A 通过：安装版 100 次 p95 8.5ms（≤100ms）、未读预取不再等 6s 且徽标/正文同时就绪、实际阅读才清未读、10 次 1200ms 延迟下点击渲染 p95 15ms；旧候选 286.6ms 与误读失败栈保留。B 通过（TLS 路径）：100/100 p95 926ms（≤1s）、max 2585ms、RTT p95 377.4ms、重启恢复 true、2 次 socket 失败同 requestId 补传；边界：SSH p95 1252ms 未达 1s、首轮 TLS 65 条中断均如实保留，不能称全部传输达标。C 通过：每类 100 条、callbacks 100×3 p95 14/13/24、零重复/零伪领取、paired 4 样本 token null。D 通过：协议 117 项含 1/2/3/4/5/10、Sidecar/Claude 1/3/5/10、真实双会话重叠；不宣称真实 10 模型并发。E 通过：保存/通知/落盘/ACK 丢失、重启/重复/乱序、撤权、绑定/恢复代次/sourceVersion、旧缓存矩阵齐全，未知外部副作用不重放。F 通过（带平台边界）：DSH 737e4e17、Sidecar 182f58f5、Gemini 70bf4e38（updateAvailable=false）、Claude 969b4527 且进程晚于文件、后端哈希与部署一致、受保护数据未变；Codex/Antigravity/旧 Gemini ACP/Claude/DSH 有真实证据，官方 Gemini CLI、未绑定桌面 Sidecar、DSH 服务端仅协议，Grok/Dot 内部不可观测留空。未由我复跑：587/587 全量、安装版 Electron 100 次（我核了样本与代码），其余为团队自报+原始样本可复查。\n【补审·长群 413 缺口（7e40328）】通过：Transaction.list 的 order:'recent' 已按有界窗口读取（≤500、updatedAt/id 排序、cursor、合并事务内写入），不再被 501 全量扫描保护误伤；unbounded 仍 query_limit；范围版本锁保留。我实跑 delivery-review/change-feed/message-snapshots/native-delivery 36/36；新用例 1000 条历史下普通消息入队、第三次重复仍 held、新内容继续、recent 窗口/cursor/事务写入正确、unbounded 仍 413。生产证据：我在历史 >500 的本群真实收到 #511 显式唤醒并成功领取，未被 413 阻断。worker.mjs 哈希 eed569f6… 与线上一致。此项为 #499 之后新增，补记于 A–F 结论之后，不改 A–F 原边界。",
+    "progress": "补审（长群 413 缺口，7e40328）：Transaction.list 对 order:'recent' 改为有界窗口（按 limit≤500、按 updatedAt/id 排序、支持 cursor、合并事务内写入），不再触发 501 全量扫描保护；unbounded 仍报 query_limit；范围版本锁保留。实跑 delivery-review/change-feed/message-snapshots/native-delivery 36/36；新用例造 1000 条历史，普通消息仍入队、第三次重复仍 held、新内容可继续、recent 窗口/cursor/事务内写入正确、unbounded 仍 413。生产证据：我在本群（历史 >500）实际收到 #511 的显式唤醒并成功领取，未被 413 阻断。runtime-final worker.mjs 哈希已更新为 eed569f6… 且 matchesDeployed true。"
+  },
+  "realReceipt": {
+    "id": "turn_chat_1a1eda75b7a447e889283273287872ab_member_acbea6620d534e6682d8009db6403f1e",
+    "status": "done",
+    "createdAt": "2026-11-07T16:39:03.939Z",
+    "connectorReceivedAt": "2026-11-07T16:39:04.440Z",
+    "claimedAt": "2026-11-07T16:39:10.309Z",
+    "completedAt": "2026-11-07T16:39:50.408Z"
+  },
+  "testScopeNote": "Development 37 = delivery-review + change-feed + collaboration; independent 36 = delivery-review + change-feed + message-snapshots + native-delivery. Different suites; counts are not summed."
+}

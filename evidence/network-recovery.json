@@ -1,0 +1,90 @@
+{
+  "at": "2026-11-03T02:44:49Z",
+  "buildId": "f33e65a8625d5f91",
+  "desktopBuildId": "f33e65a8625d5f91",
+  "runtimeMatches": true,
+  "online": true,
+  "lastError": "",
+  "grok3Status": "verified",
+  "reads": [
+    {
+      "path": "/api/v2/workspace",
+      "ok": true,
+      "ms": 297
+    },
+    {
+      "path": "/api/v2/channels",
+      "ok": true,
+      "ms": 162
+    },
+    {
+      "path": "/api/v2/channel",
+      "ok": true,
+      "ms": 222
+    },
+    {
+      "path": "/api/v2/workspace",
+      "ok": true,
+      "ms": 293
+    },
+    {
+      "path": "/api/v2/channels",
+      "ok": true,
+      "ms": 262
+    },
+    {
+      "path": "/api/v2/channel",
+      "ok": true,
+      "ms": 223
+    },
+    {
+      "path": "/api/v2/workspace",
+      "ok": true,
+      "ms": 278
+    },
+    {
+      "path": "/api/v2/channels",
+      "ok": true,
+      "ms": 154
+    },
+    {
+      "path": "/api/v2/channel",
+      "ok": true,
+      "ms": 230
+    }
+  ],
+  "diagnostics": {
+    "successes": 42,
+    "recoveries": 0,
+    "failures": 0,
+    "lastSuccessAt": "2026-11-03T02:44:49.706Z",
+    "lastFailureAt": null,
+    "events": [],
+    "mode": "环境代理或直连"
+  },
+  "originalIncidentRootCause": "not proven; no historical request trace",
+  "reproducedDefect": "isolated client cancellation or stream timeout could emit an unhandled Readable error",
+  "nativeAgentMessagesSent": false,
+  "productionConnectionChanged": false,
+  "vpnChanged": false,
+  "activation": {
+    "at": "2026-11-03T02:44:12.494Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "f33e65a8625d5f91",
+    "processId": 89356,
+    "desktopBuildId": "f33e65a8625d5f91",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "engineeringChecks": 165,
+  "isolatedNetworkScenarios": 6,
+  "browserScenarioChecks": 11,
+  "scope": "local HTTP fault injection and isolated Chromium + Worker/D1; production verification was read-only, not a new commercial Agent execution"
+}

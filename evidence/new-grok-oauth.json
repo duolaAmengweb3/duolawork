@@ -1,0 +1,190 @@
+{
+  "at": "2026-11-02T09:31:24.725988+00:00",
+  "scope": "New Grok Bot OAuth registration failure; existing Grok web Automation and Dot connections retained",
+  "workerVersionId": "f3e0852d-9c7b-49be-992d-5e6461eb7b53",
+  "buildId": "11c167f954f1b846",
+  "cause": {
+    "before": {
+      "observedNativeRegistrationStatus": 400,
+      "reason": "invalid_redirect",
+      "rejectedRedirectHosts": [
+        "www.cursor.com",
+        "localhost"
+      ]
+    },
+    "actualSuccessfulNewBotClient": {
+      "client_name": "Cursor",
+      "redirects": "[\"https://www.cursor.com/agents/mcp/oauth/callback\",\"http://localhost:8787/callback\"]",
+      "auth_method": "none",
+      "updated_at": "2026-11-02T09:18:44.567Z"
+    },
+    "explanation": "Grok web connector and Grok Bot use different OAuth clients. Bot registers Cursor cloud and fixed loopback callbacks together; the prior allowlist rejected registration before consent could open."
+  },
+  "change": {
+    "exactAdditionalCallbacks": [
+      "https://www.cursor.com/agents/mcp/oauth/callback",
+      "https://www.cursor.com/bot/mcp/oauth/callback",
+      "http://localhost:8787/callback"
+    ],
+    "arbitraryCursorAndLocalhostUrlsAllowed": false,
+    "pkcePairingAndMemberBindingRetained": true,
+    "diagnosticLogs": "Reason and host/port only; no queries, pairing codes, client secrets or tokens"
+  },
+  "nativeBeforeTrace": [
+    {
+      "at": 1793609787956,
+      "path": "/v2/mcp",
+      "method": "POST",
+      "status": 401,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793609788595,
+      "path": "/.well-known/oauth-authorization-server",
+      "method": "GET",
+      "status": 200,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793609788326,
+      "path": "/.well-known/oauth-protected-resource/v2/mcp",
+      "method": "GET",
+      "status": 200,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793609788857,
+      "path": "/v2/oauth/register",
+      "method": "POST",
+      "status": 400,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793609795304,
+      "path": "/v2/mcp",
+      "method": "POST",
+      "status": 401,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793609796479,
+      "path": "/v2/oauth/register",
+      "method": "POST",
+      "status": 400,
+      "outcome": "ok"
+    }
+  ],
+  "nativeRejectionTrace": [
+    {
+      "at": 1793610836562,
+      "path": "/.well-known/oauth-protected-resource/v2/mcp",
+      "method": "GET",
+      "status": 200,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793610836191,
+      "path": "/v2/mcp",
+      "method": "POST",
+      "status": 401,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793610836809,
+      "path": "/.well-known/oauth-authorization-server",
+      "method": "GET",
+      "status": 200,
+      "outcome": "ok"
+    },
+    {
+      "event": "hub_oauth_registration_rejected",
+      "reason": "invalid_redirect",
+      "redirectHosts": [
+        "www.cursor.com",
+        "localhost"
+      ]
+    },
+    {
+      "at": 1793610837053,
+      "path": "/v2/oauth/register",
+      "method": "POST",
+      "status": 400,
+      "outcome": "ok"
+    }
+  ],
+  "nativeAfterTrace": [
+    {
+      "at": 1793611123962,
+      "path": "/v2/mcp",
+      "method": "POST",
+      "status": 401,
+      "outcome": "ok"
+    },
+    {
+      "at": 1793611124350,
+      "path": "/v2/oauth/register",
+      "method": "POST",
+      "status": 201,
+      "outcome": "ok"
+    }
+  ],
+  "publicHttpSmoke": {
+    "registrationStatus": 201,
+    "authorizationPageStatus": 200,
+    "pairingInputVisible": true,
+    "registeredRedirects": [
+      "https://www.cursor.com/agents/mcp/oauth/callback",
+      "https://www.cursor.com/bot/mcp/oauth/callback"
+    ],
+    "authorizedOrIssuedTokens": false
+  },
+  "regression": {
+    "newCases": 2,
+    "beforeFix": "Positive native-callback test failed with invalid_redirect HTTP400",
+    "afterFix": "6 OAuth cases and 138 full checks passed; typecheck passed",
+    "checks": [
+      "Documented cloud and loopback registration",
+      "Consent page and PKCE exchange",
+      "Chosen redirect is exactly bound to the code",
+      "Existing other-member connection remains unchanged",
+      "Lookalike hosts, arbitrary paths/queries/fragments and other loopback ports/hosts rejected"
+    ]
+  },
+  "activation": {
+    "at": "2026-11-02T09:20:01.377Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "11c167f954f1b846",
+    "processId": 85876,
+    "desktopBuildId": "11c167f954f1b846",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "nativeConsent": {
+    "botName": "Duola2",
+    "hubMemberName": "grok2",
+    "officialAuthorizeCardObserved": true,
+    "actualAuthorizationPageObservedInBrowserInventory": true,
+    "actualCallback": "https://www.cursor.com/agents/mcp/oauth/callback",
+    "authorizationSubmitted": false,
+    "status": "owner_consented_then_requested_single_skill; OAuth form not submitted; Skill redemption later succeeded",
+    "completeAutomaticCollaborationVerified": false,
+    "ownerAccessConsentGiven": true,
+    "followUpEvidence": "evidence/agent-skill-onboarding.json"
+  },
+  "limitations": [
+    "Opening native Bot OAuth flow is fixed; consent, real tool use and native Routine wake remain separate acceptance steps.",
+    "Cold native wake latency in Issue #23 is not solved."
+  ],
+  "sources": [
+    "https://docs.x.ai/grok-bot/computer-and-apps",
+    "https://cursor.com/docs/mcp",
+    "https://forum.cursor.com/t/aws-mcp-callback-url-issue/170390"
+  ]
+}

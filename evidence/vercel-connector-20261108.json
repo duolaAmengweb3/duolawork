@@ -1,0 +1,47 @@
+{
+  "at": "2026-11-08T09:06:54.954Z",
+  "provider": "Vercel",
+  "connectionId": "mcp_39e9ec66cc19cf2ff6459638fc8fb9fe",
+  "buildId": "108416a9caf01508",
+  "catalog": {
+    "tools": 246,
+    "bytes": 491614,
+    "parts": 25,
+    "ownerReadStatus": 200,
+    "sha256": "7c13324638f8d5958c94374f179ad42bda091a1c6748dd9aa482461f8cb71fce"
+  },
+  "teams": {
+    "status": "succeeded",
+    "isError": false,
+    "count": 1
+  },
+  "projects": {
+    "status": "succeeded",
+    "isError": false,
+    "keys": [
+      "result"
+    ],
+    "bytes": 701,
+    "sha256": "879dc36f84a0d0d8c4e83af33dcacb0380756eef742e9b83a4789d1ea2f73c56",
+    "count": 2
+  },
+  "scope": "Real authorized Vercel through the existing Coding member connector tool; read only. No deployment or project modifications.",
+  "accountVerified": "rikhuan93 Google account, verified in native browser",
+  "tests": {
+    "unit": {
+      "passed": 630,
+      "failed": 0
+    },
+    "browserOAuth": 4,
+    "connectorUI": 7
+  },
+  "issue": "OAuth button required a second click; successful OAuth then failed on record_limit when saving the 491614-byte tool catalog.",
+  "fix": "Open OAuth from the original user action with progress and a fallback link; persist complete tool catalogs in immutable content-addressed chunks, load full definitions on demand.",
+  "deployment": {
+    "buildId": "108416a9caf01508",
+    "desktopAndLocalMatch": true,
+    "backend": "VPS",
+    "cloudOnline": true,
+    "existingCredentialsPreserved": true
+  }
+}

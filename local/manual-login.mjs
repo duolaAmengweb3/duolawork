@@ -3,7 +3,7 @@ import {readFileSync,readlinkSync} from 'node:fs';
 import path from 'node:path';
 import {spawn,execFileSync} from 'node:child_process';
 import {privateJson} from './storage.mjs';
-import {prepareBrowserProfile,browserVersionRecord} from './data-policy.mjs';
+import {prepareBrowserProfile,browserVersionRecord,installedBrowserVersion} from './data-policy.mjs';
 import {assertHttpUrl} from '../shared/platforms.mjs';
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -51,11 +51,11 @@ export class ManualLoginSessions{
   this.transitions.add(account.id);
   try{
    const dir=path.join(this.manager.root,account.id),current=this.manager.active.get(account.id);
-   if(current){await this.manager.close(account.id);if(this.manager.ownedPid(current.child.pid,dir))throw new Error('原账号浏览器尚未退出，未同时打开同一资料目录');}
+   if(current){await this.manager.close(account.id,{waitForStartup:false});if(this.manager.ownedPid(current.child.pid,dir))throw new Error('原账号浏览器尚未退出，未同时打开同一资料目录');}
    await fs.mkdir(this.manager.root,{recursive:true,mode:0o700});await this.manager.checkProfile(account.id,dir);await fs.mkdir(dir,{recursive:true,mode:0o700});
    try{await fs.access(path.join(dir,'SingletonLock'));throw new Error('原账号目录仍被浏览器占用，已停止；不会打开第二实例或换空白目录');}catch(e){if(e.code!=='ENOENT')throw e;}
    const profile=await prepareBrowserProfile(dir,account.id,()=>this.manager.findChrome(),{requestedBrowser:this.manager.executable||process.env.AGENT_HUB_CHROME});profile.accountId=account.id;
-   const version=execFileSync(profile.executable,['--version'],{encoding:'utf8',timeout:5000}).trim();await privateJson(profile.info,browserVersionRecord(profile,version));
+   const version=installedBrowserVersion(profile.executable);await privateJson(profile.info,browserVersionRecord(profile,version));
    const child=spawn(profile.executable,[`--user-data-dir=${dir}`,'--no-first-run','--no-default-browser-check','--restore-last-session',...proxyArgs,...(this.manager.testMode?['--start-minimized']:[]),target],{stdio:'ignore'});
    let spawnError;child.on('error',error=>{spawnError=error;});
    for(let i=0;i<40;i++){if(spawnError)throw spawnError;if(child.exitCode!==null)throw new Error('普通 Chrome 未能打开，原登录资料已保留');if(this.owned(child.pid,dir))break;await wait(100);}
@@ -75,5 +75,5 @@ export class ManualLoginSessions{
   if(finish){await fs.rm(path.join(entry.dir,'hub-owner.json'),{force:true});this.entries.delete(id);}
   return{closed:true,manualLogin:!finish};
  }
- async closeAll(){for(const id of this.entries.keys())await this.close(id);}
+ async closeAll(){const results=await Promise.allSettled([...this.entries.keys()].map(id=>this.close(id)));const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'部分手动登录窗口尚未保存退出，已保留登录现场');}
 }

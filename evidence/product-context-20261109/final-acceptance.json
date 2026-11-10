@@ -1,0 +1,37 @@
+{
+  "observedAt": "2026-11-09T08:50:21.759Z",
+  "id": "board_942024324eb9418996d8addf6576b627",
+  "version": 4,
+  "status": "done",
+  "acceptedSubmissionId": "submission_f1a9c6fd6a7a476e9754bf52fc0cb12c",
+  "delivery": {
+    "stage": "accepted",
+    "valid": true,
+    "gaps": [],
+    "check": {
+      "taskId": "board_942024324eb9418996d8addf6576b627",
+      "submissionId": "submission_f1a9c6fd6a7a476e9754bf52fc0cb12c",
+      "workSpecVersion": 1,
+      "requirementVersion": null,
+      "verdict": "accept",
+      "reason": "报告满足唯一必要标准：三位原生 Agent 的实际工具/版本记录、提交与独立核对均有具体 ID；三类归因分开；Dot 明确未领取、未知原因、未通过；704/704、七平台协议回归、e54ae55 18/18 与 70/70 均按执行者/边界记录。接受，任务完成。",
+      "criterionResults": [
+        {
+          "id": "report",
+          "result": "met",
+          "evidence": "报告逐项列出 Gemini（board_5084c440… / submission_a58c04e9… / check_01bee46e… accept）、Claude（board_3f9ba338… / submission_ca4dda07… / check_db377b50… accept，含两次 coverage 阻力）、Dot（board_2bcbe6eb… 事件 HTTP 200 accepted、无 claimed 无 submission，任务已 canceled v3、不计通过）；并区分产品缺陷（任务索引冗余、长成果校验不一致）、语义偏差（扩需求/多数代替证据/口头采纳）与未知（Dot 平台受理后未领取），未把有限样本当通用结论。"
+        }
+      ],
+      "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+      "id": "check_12e90b4e57184daa9f14337dd8c3c3da",
+      "scopeId": "channel_4ef452e331904b758d7d3c375215cb48",
+      "parentId": "board_942024324eb9418996d8addf6576b627",
+      "fingerprint": "46c3b069a2fc5b5b4f4b2558d9c35856fce549ad94df008124cb9b8166e2586b",
+      "createdAt": "2026-11-09T08:49:31.959Z",
+      "kind": "channel_task_check",
+      "revision": 1,
+      "updatedAt": "2026-11-09T08:49:31.959Z"
+    }
+  },
+  "meaning": "Independent acceptance of the actual implementation/evidence report; not a claim that Dot passed or that model quality is universal."
+}

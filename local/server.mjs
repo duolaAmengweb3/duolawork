@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readConfig, openVault, dataDir, privateJson } from './storage.mjs';
-import { cloudClient, networkStatus } from './transport.mjs';
+import { cloudClient, networkStatus, networkDiagnostics, requestJson } from './transport.mjs';
 import { BrowserManager, normalizeBrowserProxy, checkBrowserNetwork } from './browser.mjs';
 import { Runner } from './runner.mjs';
 import { LoginMonitor } from './login-status.mjs';
@@ -14,24 +14,84 @@ import BUILD from '../shared/build-info.json' with {type:'json'};
 import {DocumentStore,attachDocument} from './documents.mjs';
 import {grokState} from './grok.mjs';
 import {proxyCollaboration} from './collaboration-proxy.mjs';
+import {openProviderApp} from './provider-app.mjs';
+import {CodingManager} from './coding-manager.mjs';
+import {DshManager} from './dsh-manager.mjs';
+import {AntigravityDesktopHost} from './antigravity-host.mjs';
+import {ChatSessions} from './chat-sessions.mjs';
+import {McpHostManager} from './mcp-host-manager.mjs';
+import {FeishuConnector} from './feishu-connector.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
 async function body(req){const chunks=[];let size=0;for await(const part of req){size+=part.length;if(size>200000)throw new Error('请求内容过大');chunks.push(part);}try{return JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{throw new Error('无效 JSON');}}
-export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=false,config:givenConfig}={}){
+export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=false,config:givenConfig,nativeRuntime,nativeAgentFactory,dshHost,antigravityHost}={}){
  const config=givenConfig||await readConfig(),vault=await openVault(vaultKey,{resolveKey:resolveVaultKey,defer:!!resolveVaultKey}),cloud=cloudClient(config);
  const browsers=new BrowserManager({limit:()=>runner.snapshot?.settings.maxBrowserConcurrency||1,proxy:()=>config.browserProxyUrl||''});
  const logins=new LoginMonitor({file:path.join(dataDir,'login-status.json')});
  const connections=new AgentConnections({cloud,browsers,logins,file:path.join(dataDir,'agent-connections.json')});
  const documents=new DocumentStore(path.join(dataDir,'documents'));
+ const toolHost=new McpHostManager(config,dataDir);if(!maintenance)await toolHost.load();
+ const feishuConnector=new FeishuConnector(config,dataDir,toolHost);
+ const coding=new CodingManager({config,dataDir,maintenance,runtime:nativeRuntime,agentFactory:nativeAgentFactory});await coding.load();
+ const dsh=new DshManager({config,dataDir,maintenance,host:dshHost});await dsh.load();
+ const ag=new DshManager({config,dataDir,maintenance,host:antigravityHost||new AntigravityDesktopHost(dataDir),platformId:"antigravity",engine:"antigravity",fileName:"antigravity-desktop-members.json",requireFreshReceipt:true});await ag.load();
+ for(const r of Object.values(ag.records).filter(r=>r.enabled)){const prior=coding.records[r.memberId];if(prior?.enabled){prior.enabled=false;prior.status="paused";prior.message="当前由桌面原会话接收，原后台会话保留";await coding.save();}}
+ await dsh.migrateExisting().catch(()=>{});await ag.migrateExisting().catch(()=>{});
+ const chatSessions=new ChatSessions({coding,dsh,ag});
+ if(!maintenance)chatSessions.start();
+ let remoteMembers=[],remoteStatusAt=0,remoteRefresh;
+ const refreshRemote=()=>{if(!remoteRefresh&&Date.now()-remoteStatusAt>10000){remoteStatusAt=Date.now();remoteRefresh=requestJson(config.endpoint+'/v2/native-sessions',{token:config.adminKey,timeout:4000}).then(r=>{remoteMembers=r.members;}).catch(()=>{}).finally(()=>{remoteRefresh=null;});}return remoteMembers;};
+
  const availability=state=>{const ready=automaticAvailability(state,{supports:(a,m)=>connections.supports(a,m),credentials:vault.data.members,locked:vault.locked});for(const m of state.members)if(browsers.isManual(m.accountId))ready[m.id]={canDispatch:false,reason:'正在纯手动登录，任务派发已暂停'};return ready;};
  const runner=new Runner({cloud,vault,browsers,connections,config,notify,maintenance});let origin,browserNetworkCheck=null,networkChecking=false,keepBrowsersOnShutdown=false,clientView={kind:'browser',ready:false,buildId:null};
  const server=http.createServer(async(req,res)=>{try{const host=req.headers.host||'';if(origin?host!==new URL(origin).host:!host.startsWith('127.0.0.1:'))return json(res,{message:'仅限本机访问'},403);const url=new URL(req.url,origin||'http://127.0.0.1');
  if(url.pathname.startsWith('/api/')){
  if((req.headers.origin&&req.headers.origin!==origin)||['cross-site','same-site'].includes(req.headers['sec-fetch-site']))return json(res,{message:'跨站请求已拒绝'},403);
  if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json')&&!(url.pathname==='/api/v2/files'&&req.headers['content-type']==='application/octet-stream'))return json(res,{message:'需要 JSON 请求'},415);
+ if(url.pathname==='/api/v2/catalog'&&req.method==='GET'){
+  const c=await requestJson(config.endpoint+'/v2/catalog',{token:config.adminKey});
+  for(const p of c.platforms)if(['antigravity','codex','claude-code'].includes(p.id))p.status='local_available';
+  if(!c.platforms.some(p=>p.id==='deepseek-harness'))c.platforms.push({id:'deepseek-harness',name:'DeepSeek Harness',kind:'coding',status:'local_available',registered:false});
+  return json(res,c);
+ }
+ if(url.pathname==='/api/local/sources/status'&&req.method==='GET'){const value=await chatSessions.status(url.searchParams.get('memberId'));if(value.capabilities?.remote===true){remoteMembers=[...remoteMembers.filter(r=>r.memberId!==value.record.memberId),value.record];}return json(res,value);}
+ if(url.pathname==='/api/local/sources/connect'&&req.method==='POST')return json(res,await chatSessions.connect(await body(req)));
+ if(url.pathname==='/api/local/chat-sessions'&&req.method==='GET')return json(res,await chatSessions.options(Object.fromEntries(url.searchParams)));
+ if(url.pathname==='/api/local/session-links'&&req.method==='POST')return json(res,await chatSessions.createLink(await body(req)));
+ if(url.pathname==='/api/local/chat-sessions'&&req.method==='POST'){const input=await body(req),result=await chatSessions.assign(input);remoteMembers=remoteMembers.map(r=>r.memberId===input.memberId?{...r,assignments:[...r.assignments.filter(b=>b.channelId!==input.channelId),{channelId:input.channelId,...result.binding}]}:r);return json(res,result);}
  if(url.pathname.startsWith('/api/v2/'))return await proxyCollaboration(req,res,config);
+ if(url.pathname==='/api/local/coding/status'&&req.method==='GET'){const s=coding.status(),remote=refreshRemote();return json(res,{...s,members:[...remote,...s.members.filter(m=>!ag.records[m.memberId]?.enabled),...dsh.status(),...ag.status().filter(m=>m.enabled)]});}
+ if(url.pathname==='/api/local/dsh/status'&&req.method==='GET')return json(res,{...(await dsh.hostFor(url.searchParams.get('memberId')).status()),preparing:!!dsh.preparing,prepareError:dsh.prepareError,members:dsh.status()});
+ if(url.pathname==='/api/local/dsh/configure'&&req.method==='POST'){const input=await body(req);return json(res,await dsh.hostFor(input.memberId).configure(input));}
+ if(url.pathname==='/api/local/dsh/prepare'&&req.method==='POST')return json(res,await dsh.prepare(await body(req)));
+ if(url.pathname==='/api/local/dsh/sessions'&&req.method==='GET')return json(res,await dsh.hostFor(url.searchParams.get('memberId')).sessions());
+ if(url.pathname==='/api/local/dsh/connect'&&req.method==='POST')return json(res,await dsh.connect(await body(req)));
+ if(url.pathname==='/api/local/dsh/resume'&&req.method==='POST')return json(res,await dsh.resume(await body(req)));
+ if(url.pathname==='/api/local/dsh/open'&&req.method==='POST')return json(res,await dsh.hostFor((await body(req)).memberId).open());
+ if(url.pathname==='/api/local/antigravity/status'&&req.method==='GET')return json(res,{...(await ag.host.status()),preparing:!!ag.preparing,prepareError:ag.prepareError,members:ag.status(),managedMembers:coding.status().members.filter(m=>m.engine==='antigravity')});
+ if(url.pathname==='/api/local/antigravity/prepare'&&req.method==='POST')return json(res,await ag.prepare(await body(req)));
+ if(url.pathname==='/api/local/antigravity/sessions'&&req.method==='GET')return json(res,await ag.host.sessions());
+ if(url.pathname==='/api/local/antigravity/open'&&req.method==='POST')return json(res,await ag.host.open());
+ if(url.pathname==='/api/local/antigravity/connect'&&req.method==='POST'){
+  const input=await body(req),prior=coding.records[input.memberId];if(prior){if(prior.engine!=='antigravity')throw Error('成员平台不一致');if(prior.enabled)await coding.pause({memberId:input.memberId});}
+  return json(res,await ag.connect({...input,mode:'existing'}));
+ }
+ if(url.pathname==='/api/local/antigravity/resume'&&req.method==='POST'){const input=await body(req);if(coding.records[input.memberId]?.enabled)await coding.pause(input);return json(res,await ag.resume(input));}
+ if(url.pathname==='/api/local/antigravity/use-managed'&&req.method==='POST'){
+  const {memberId}=await body(req);if(ag.records[memberId]?.status==='working')throw Error('原会话还在处理，请等本轮结束再切换');await ag.disconnect(memberId);return json(res,coding.records[memberId]?await coding.resume({memberId}):await coding.connect({memberId,engine:'antigravity'}));
+ }
+ if(url.pathname==='/api/local/coding/discover'&&req.method==='GET')return json(res,await coding.runtime.discover());
+ if(url.pathname==='/api/local/coding/connect'&&req.method==='POST'){const input=await body(req);if(ag.records[input.memberId]?.enabled)throw Error('此成员已接入桌面原会话，请在连接页切换运行方式');return json(res,await coding.connect(input));}
+ if(url.pathname==='/api/local/coding/pause'&&req.method==='POST')return json(res,await coding.pause(await body(req)));
+ if(url.pathname==='/api/local/coding/resume'&&req.method==='POST'){const input=await body(req);if(ag.records[input.memberId]?.enabled)throw Error('此成员正在使用桌面原会话，未启动第二个执行端');return json(res,await coding.resume(input));}
+ if(url.pathname==='/api/local/coding/approve'&&req.method==='POST')return json(res,coding.decide(await body(req)));
+ if(url.pathname==='/api/local/coding/permissions'&&req.method==='POST')return json(res,await coding.permissions(await body(req)));
+ if(url.pathname==='/api/local/open-provider'&&req.method==='POST')return json(res,await openProviderApp((await body(req)).platformId));
  if(url.pathname==='/api/state'&&req.method==='GET'){const state=await cloud.state();runner.snapshot=state;return json(res,{...state,platforms:maintainedPlatforms(state.platforms),local:{...runner.status,maintenance:runner.maintenance,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),manualLogins:browsers.manual.status(),agentConnections:connections.snapshot(),memberAvailability:availability(state),loginStatuses:await logins.snapshot(state.accounts,browsers),endpoint:config.endpoint||'',networkMode:networkStatus(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,toolCredentialsLocked:vault.locked,platformCredentials:Object.keys(vault.data.members).map(id=>({memberId:id,hasTrigger:!!vault.data.members[id].triggerUrl,hasConnector:!!vault.data.members[id].token}))}});}
- if(url.pathname==='/api/local/status')return json(res,{...runner.status,build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
+ if(url.pathname==='/api/local/connector-host'&&req.method==='POST')return json(res,await toolHost.connect());
+ if(url.pathname==='/api/local/feishu-connector'&&req.method==='GET')return json(res,await feishuConnector.status());
+ if(url.pathname==='/api/local/feishu-connector'&&req.method==='POST')return json(res,await feishuConnector.connect((await body(req)).profile));
+ if(url.pathname==='/api/local/status')return json(res,{...runner.status,network:networkDiagnostics(),build:BUILD,clientView,processId:process.pid,browsers:browsers.list(),browserProxyUrl:config.browserProxyUrl||'',desktopNotifications:config.desktopNotifications===true,browserNetworkCheck,dataDir,endpoint:config.endpoint||''});
  if(url.pathname.startsWith('/api/workspace/')&&req.method==='POST'){
   const input=await body(req),state=await cloud.state(),ready=availability(state);let command;
   if(url.pathname==='/api/workspace/start')command=workspaceStart(state,input,ready);
@@ -76,7 +136,7 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   if(connections.jobs.has(accountId)||state.tasks.some(t=>t.steps.some(s=>s.accountId===accountId&&s.status==='running')))return json(res,{message:'这个账号正在执行或验证任务，未切换或关闭原浏览器'},409);
   const target=account.entryUrl||maintainedPlatforms(state.platforms).find(p=>p.id===account.platformId)?.entryUrl;
   if(!target)throw new Error('没有可用的官方登录入口');
-  if(url.pathname==='/api/account/manual-login')return json(res,await browsers.openManual(account,{url:target}));
+  if(url.pathname==='/api/account/manual-login'){await connections.enable(account);return json(res,await browsers.openManual(account,{url:target}));}
   if(!browsers.isManual(accountId))throw new Error('此账号不在纯手动登录状态');
   await browsers.manual.close(accountId,{finish:true});
   await browsers.ensureBackground(account,{url:target});await connections.enable(account);
@@ -98,13 +158,15 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  }
  if(url.pathname==='/api/local/prepare-update'&&req.method==='POST'){
   const state=await cloud.state();
-  if(runner.jobs.size||connections.jobs.size||browsers.starting.size||state.tasks.some(t=>t.steps.some(s=>s.status==='running')))return json(res,{message:'任务、接入验证或登录窗口正在启动，暂不接管更新'},409);
+  const active=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
+  if(active.active)return json(res,{message:'Agent 仍在回应，等待本轮结束后再更新；群消息与登录资料保留'},409);
+  if(coding.busy||dsh.busy||ag.busy||runner.jobs.size||connections.jobs.size||browsers.starting.size||state.tasks.some(t=>t.steps.some(s=>s.status==='running')))return json(res,{message:'任务、接入验证或登录窗口正在启动，暂不接管更新'},409);
   await logins.snapshot(state.accounts,browsers);
-  await runner.stop({keepBrowsers:true});keepBrowsersOnShutdown=true;
+  await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:true});keepBrowsersOnShutdown=true;
   return json(res,{prepared:true,browsers:browsers.list()});
  }
  if(url.pathname==='/api/local/cancel-update'&&req.method==='POST'){
-  keepBrowsersOnShutdown=false;if(runner.stopped){runner.stopped=false;runner.start();}return json(res,{resumed:true});
+  keepBrowsersOnShutdown=false;if(runner.stopped){runner.stopped=false;runner.start();}await coding.start();await dsh.start();await ag.start();return json(res,{resumed:true});
  }
  if(url.pathname==='/api/local/restore-sessions'&&req.method==='POST'){
   if(!runner.maintenance)return json(res,{message:'仅在更新验收期间恢复已确认会话'},409);
@@ -117,23 +179,28 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
   return json(res,{loginStatuses:results});
  }
  if(url.pathname==='/api/local/finish-update'&&req.method==='POST'){
-  runner.maintenance=false;await runner.tick();return json(res,{resumed:true});
+  runner.maintenance=false;await toolHost.load();await coding.start();await dsh.start();await ag.start();await runner.tick();return json(res,{resumed:true});
  }
  if(url.pathname==='/api/browser-network/check'&&req.method==='POST'){
   const p=await body(req);if(networkChecking)return json(res,{message:'出口检查正在进行，请稍候'},409);
   const proxyUrl=normalizeBrowserProxy(p.proxyUrl??config.browserProxyUrl??'');networkChecking=true;
   try{const result=await checkBrowserNetwork(proxyUrl);if(proxyUrl===config.browserProxyUrl)browserNetworkCheck=result;return json(res,result);}finally{networkChecking=false;}
  }
- if(url.pathname==='/api/action'&&req.method==='POST'){const a=await body(req);const allowed=['platform.create','account.create','account.update','account.remove','member.create','member.update','profile.update','task.create','task.control','step.retry','step.approve','routine.create','routine.toggle','settings.update','note.write'];if(!allowed.includes(a.type))return json(res,{message:'此操作不可由界面调用'},403);if(a.type==='member.update'&&(a.payload?.tokenHash||a.payload?.status))return json(res,{message:'不能手动伪造验证状态'},403);if(a.type==='account.update'&&a.payload?.status==='connected')return json(res,{message:'账号连接需要真实验证'},403);
+ if(url.pathname==='/api/action'&&req.method==='POST'){const a=await body(req);const allowed=['platform.create','account.create','account.update','account.remove','member.create','member.update','member.disconnect','profile.update','task.create','task.control','step.retry','step.approve','routine.create','routine.toggle','settings.update','note.write'];if(!allowed.includes(a.type))return json(res,{message:'此操作不可由界面调用'},403);if(a.type==='member.update'&&(a.payload?.tokenHash||a.payload?.status))return json(res,{message:'不能手动伪造验证状态'},403);if(a.type==='account.update'&&a.payload?.status==='connected')return json(res,{message:'账号连接需要真实验证'},403);
  if(['task.create','routine.create'].includes(a.type)){const state=await cloud.state(),ready=availability(state);for(const step of(a.type==='task.create'?a.payload?.steps:a.payload?.template?.steps)||[])availableMember(state,step.memberId,ready);}
- const data=await cloud.action(a);return json(res,data);}
+ const data=await cloud.action(a);if(a.type==='member.disconnect'){await coding.disconnect(a.memberId);await dsh.disconnect(a.memberId);await ag.disconnect(a.memberId);}return json(res,data);}
  if(url.pathname.startsWith('/api/artifacts/')&&req.method==='GET')return json(res,await cloud.artifact(url.pathname.split('/').at(-1)));
  if(url.pathname.startsWith('/api/documents/')&&['GET','POST'].includes(req.method)){
   const state=await cloud.state(),id=url.pathname.split('/').at(-1),artifact=state.artifacts.find(a=>a.id===id);if(!artifact)throw new Error('成果不存在');const original=(await cloud.artifact(id)).body;
   const result=req.method==='GET'?await documents.read(artifact,original):await documents.save(artifact,original,await body(req));return json(res,result);
  }
  if(url.pathname==='/api/account/open'&&req.method==='POST'){const {accountId}=await body(req),state=await cloud.state(),account=state.accounts.find(a=>a.id===accountId&&a.status!=='disabled');if(!account)throw new Error('账号不存在');const platform=maintainedPlatforms(state.platforms).find(p=>p.id===account.platformId),url=account.entryUrl||platform?.entryUrl;if(!url)throw new Error('此平台尚未提供登录入口，请查看平台接入说明');await connections.enable(account);return json(res,await browsers.open(account,{url,visible:true,navigate:false}));}
- if(url.pathname==='/api/account/close'&&req.method==='POST')return json(res,await browsers.close((await body(req)).accountId));
+ if(url.pathname==='/api/account/close'&&req.method==='POST'){
+  const {accountId}=await body(req),state=await cloud.state(),account=state.accounts.find(a=>a.id===accountId&&a.status!=='disabled');
+  if(!account)throw new Error('账号不存在');
+  if(connections.jobs.has(accountId)||state.tasks.some(t=>t.steps.some(s=>s.accountId===accountId&&s.status==='running')))return json(res,{message:'此账号正在执行或验证任务，待结束后再关闭专用浏览器'},409);
+  await connections.pauseBrowser(account);return json(res,await browsers.close(accountId));
+ }
  if(url.pathname==='/api/account/disconnect'&&req.method==='POST'){await vault.unlock();const {accountId}=await body(req);await browsers.close(accountId);const data=await cloud.action({type:'account.remove',accountId});delete vault.data.accounts[accountId];for(const id of data.result.affectedMembers)delete vault.data.members[id];await vault.save();return json(res,data);}
  if(url.pathname==='/api/member/setup'&&req.method==='POST'){await vault.unlock();const {memberId,rotate=false}=await body(req),state=await cloud.state(),member=state.members.find(m=>m.id===memberId);if(!member)throw new Error('成员不存在');if(member.status==='disabled')throw new Error('成员已断开，请先重新连接账号');let credentials=vault.data.members[memberId]||{};if(!credentials.token||rotate){const c=await cloud.credential(memberId);credentials={...credentials,...c};vault.data.members[memberId]=credentials;await vault.save();}
  const challenge=(await cloud.action({type:'member.challenge',memberId})).result;
@@ -148,10 +215,10 @@ export async function start({port,notify,vaultKey,resolveVaultKey,maintenance=fa
  if(url.pathname==='/api/sync'&&req.method==='POST'){await runner.tick();return json(res,runner.status);}
  return json(res,{message:'接口不存在'},404);}
  const requested=decodeURIComponent(url.pathname);let target=path.resolve(root,'dist','.'+requested);if(!target.startsWith(path.join(root,'dist')+path.sep)&&target!==path.join(root,'dist'))return json(res,{message:'路径无效'},400);let data;try{data=await fs.readFile(target);}catch{target=path.join(root,'dist/index.html');data=await fs.readFile(target);}
- const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'}[path.extname(target)]||'application/octet-stream';
+ const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.ico':'image/x-icon','.svg':'image/svg+xml','.png':'image/png'}[path.extname(target)]||'application/octet-stream';
  res.writeHead(200,{'Content-Type':mime,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; frame-ancestors 'none'",'Cache-Control':'no-cache'});res.end(data);
- }catch(e){json(res,{message:e.message||'操作失败'},e.status||400);}});
- await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();
- return{url:origin,server,runner,browsers,setClientView(value){clientView={...clientView,...value};},async close(){await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
+ }catch(e){if(res.headersSent||res.destroyed||req.aborted){res.destroy();return;}json(res,{message:e.message||'操作失败',...(e.code?{error:e.code}:{}),...(e.uncertain?{uncertain:true}:{})},e.status||400);}});
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port??config.port??8766,'127.0.0.1',resolve);});origin=`http://127.0.0.1:${server.address().port}`;runner.start();if(!maintenance){await coding.start();await dsh.start();await ag.start();}
+ return{url:origin,server,runner,browsers,coding,dsh,ag,setClientView(value){clientView={...clientView,...value};},async close(){await toolHost.stop();await chatSessions.stop();await coding.stop();await dsh.stop();await ag.stop();await runner.stop({keepBrowsers:keepBrowsersOnShutdown});await new Promise(r=>{server.close(r);server.closeAllConnections();});}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){const instance=await start();console.log('Agent Hub 本地工作台：'+instance.url);for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>instance.close().finally(()=>process.exit(0)));}

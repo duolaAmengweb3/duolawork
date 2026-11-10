@@ -1,0 +1,34 @@
+{
+  "implementation": "6b040a8",
+  "fences": "69ad80c",
+  "warmup": "43723c6",
+  "buildId": "794bd6cc67cb1aa7",
+  "fullRegression": {
+    "passed": 626,
+    "failed": 0
+  },
+  "typecheck": true,
+  "installedServiceChecks": 7,
+  "installedVaultChecks": 11,
+  "activation": {
+    "at": "2026-11-08T07:43:37.571Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "794bd6cc67cb1aa7",
+    "processId": 92153,
+    "desktopBuildId": "794bd6cc67cb1aa7",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "independentReviewMessages": [
+    563,
+    565
+  ],
+  "coldNetworkBoundary": "First unseen data still requires an authoritative network read; measured samples are not a global SLA."
+}

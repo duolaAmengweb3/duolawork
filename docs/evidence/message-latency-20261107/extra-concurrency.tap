@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: native metadata supplies the original workspace and treats unknown execution state as busy
+ok 1 - native metadata supplies the original workspace and treats unknown execution state as busy
+  ---
+  duration_ms: 0.378333
+  type: 'test'
+  ...
+# Subtest: official Sidecar config preserves all unrelated native settings and explicit disabling
+ok 2 - official Sidecar config preserves all unrelated native settings and explicit disabling
+  ---
+  duration_ms: 0.392875
+  type: 'test'
+  ...
+# Subtest: no Hub work does not start a model or read native conversation content
+ok 3 - no Hub work does not start a model or read native conversation content
+  ---
+  duration_ms: 25.095667
+  type: 'test'
+  ...
+# Subtest: an executing original conversation finishes first; the queued Hub message is sent once to the exact same conversation
+ok 4 - an executing original conversation finishes first; the queued Hub message is sent once to the exact same conversation
+  ---
+  duration_ms: 37.319833
+  type: 'test'
+  ...
+# Subtest: an ambiguous native send is never silently replayed, including after a Sidecar restart
+ok 5 - an ambiguous native send is never silently replayed, including after a Sidecar restart
+  ---
+  duration_ms: 43.003959
+  type: 'test'
+  ...
+# Subtest: disconnect removes only Hub access and never stops the original native Agent
+ok 6 - disconnect removes only Hub access and never stops the original native Agent
+  ---
+  duration_ms: 36.2755
+  type: 'test'
+  ...
+# Subtest: concurrent native binds cannot give one original conversation two Hub identities
+ok 7 - concurrent native binds cannot give one original conversation two Hub identities
+  ---
+  duration_ms: 18.9165
+  type: 'test'
+  ...
+# Subtest: the combined native claim command still performs the real member list and claim and cannot claim another message
+ok 8 - the combined native claim command still performs the real member list and claim and cannot claim another message
+  ---
+  duration_ms: 20.008667
+  type: 'test'
+  ...
+# Subtest: native agentapi uses the inherited official binary and keeps native secrets out of arguments
+ok 9 - native agentapi uses the inherited official binary and keeps native secrets out of arguments
+  ---
+  duration_ms: 0.169291
+  type: 'test'
+  ...
+# Subtest: one desktop source routes two chat contexts without claiming another context or losing bindings on restart
+ok 10 - one desktop source routes two chat contexts without claiming another context or losing bindings on restart
+  ---
+  duration_ms: 75.481084
+  type: 'test'
+  ...
+# Subtest: Sidecar: 1 independent sessions, shared aliases, overlapping polls and restart
+ok 11 - Sidecar: 1 independent sessions, shared aliases, overlapping polls and restart
+  ---
+  duration_ms: 68.957708
+  type: 'test'
+  ...
+# Subtest: Sidecar: 3 independent sessions, shared aliases, overlapping polls and restart
+ok 12 - Sidecar: 3 independent sessions, shared aliases, overlapping polls and restart
+  ---
+  duration_ms: 159.446584
+  type: 'test'
+  ...
+# Subtest: Sidecar: 5 independent sessions, shared aliases, overlapping polls and restart
+ok 13 - Sidecar: 5 independent sessions, shared aliases, overlapping polls and restart
+  ---
+  duration_ms: 225.634084
+  type: 'test'
+  ...
+# Subtest: Sidecar: 10 independent sessions, shared aliases, overlapping polls and restart
+ok 14 - Sidecar: 10 independent sessions, shared aliases, overlapping polls and restart
+  ---
+  duration_ms: 462.711084
+  type: 'test'
+  ...
+# Subtest: monitor identifies only its actual native ancestor; never latest or unrelated session
+ok 15 - monitor identifies only its actual native ancestor; never latest or unrelated session
+  ---
+  duration_ms: 0.775417
+  type: 'test'
+  ...
+# Subtest: monitor and MCP processes share exact routing but preserve independent receipt state across restart
+ok 16 - monitor and MCP processes share exact routing but preserve independent receipt state across restart
+  ---
+  duration_ms: 4758.611083
+  type: 'test'
+  ...
+# Subtest: Claude Monitor: 1 independently scoped sessions continue while the first claim stays active
+ok 17 - Claude Monitor: 1 independently scoped sessions continue while the first claim stays active
+  ---
+  duration_ms: 5216.606708
+  type: 'test'
+  ...
+# Subtest: Claude Monitor: 3 independently scoped sessions continue while the first claim stays active
+ok 18 - Claude Monitor: 3 independently scoped sessions continue while the first claim stays active
+  ---
+  duration_ms: 4861.149958
+  type: 'test'
+  ...
+# Subtest: Claude Monitor: 5 independently scoped sessions continue while the first claim stays active
+ok 19 - Claude Monitor: 5 independently scoped sessions continue while the first claim stays active
+  ---
+  duration_ms: 5205.881875
+  type: 'test'
+  ...
+# Subtest: Claude Monitor: 10 independently scoped sessions continue while the first claim stays active
+ok 20 - Claude Monitor: 10 independently scoped sessions continue while the first claim stays active
+  ---
+  duration_ms: 5853.82175
+  type: 'test'
+  ...
+# Subtest: pasted association links an unselected original conversation without re-pairing the account
+ok 21 - pasted association links an unselected original conversation without re-pairing the account
+  ---
+  duration_ms: 4343.506709
+  type: 'test'
+  ...
+# Subtest: persistent plugin uses official Monitor and ordinary MCP without launcher, model or permission flags
+ok 22 - persistent plugin uses official Monitor and ordinary MCP without launcher, model or permission flags
+  ---
+  duration_ms: 5.332083
+  type: 'test'
+  ...
+# Subtest: unlinked native conversations stay inert; notifications and tool claims never share state files
+ok 23 - unlinked native conversations stay inert; notifications and tool claims never share state files
+  ---
+  duration_ms: 0.883542
+  type: 'test'
+  ...
+# Subtest: one-paste installer preserves existing login and account grant and requests only native plugin reload
+ok 24 - one-paste installer preserves existing login and account grant and requests only native plugin reload
+  ---
+  duration_ms: 5017.074334
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35594.986625

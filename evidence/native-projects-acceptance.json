@@ -1,0 +1,67 @@
+{
+  "at": "2026-11-05T03:45:45.314Z",
+  "productionHubChanged": false,
+  "providerLoginChanged": false,
+  "checks": [
+    {
+      "platform": "codex",
+      "sessionId": "01a1a15e-d9b0-7a61-85cd-064ef3b97374",
+      "workspace": "/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-codex-gui-proof-k29opnpy/project",
+      "listed": true,
+      "selected": true,
+      "inventoryCount": 43,
+      "projectCount": 29,
+      "firstReply": {
+        "body": "识别词：native_95d4b65b。已在原项目写入。同目录 .duolawork-acceptance-output.txt 已写入输入文件的原始内容，cmp 比对通过，回读一致。本次只操作指定的两个文件。",
+        "elapsedMs": 40289
+      },
+      "nativeFileVerified": true,
+      "afterRestart": {
+        "body": "native_95d4b65b",
+        "elapsedMs": 21253
+      },
+      "contextRetained": true
+    },
+    {
+      "platform": "antigravity",
+      "sessionId": "2d1dd8fc-1350-4261-8690-9c9a179ebf4f",
+      "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+      "listed": true,
+      "selected": true,
+      "inventoryCount": 2,
+      "projectCount": 2,
+      "firstReply": {
+        "body": "native_2534879a 已在原项目写入",
+        "elapsedMs": 23685
+      },
+      "nativeFileVerified": true,
+      "afterRestart": {
+        "body": "native_2534879a",
+        "elapsedMs": 14160
+      },
+      "contextRetained": true
+    },
+    {
+      "platform": "deepseek-harness",
+      "sessionId": "session-da221f6a-e8a1-4e3b-9cf0-8027819bb0ac",
+      "workspace": "/Users/duola/Documents/deepseek-harness/default-workspace",
+      "listed": true,
+      "selected": true,
+      "inventoryCount": 7,
+      "projectCount": 7,
+      "firstReply": {
+        "body": "native_fd05a249\n\n已在原项目写入：已在当前项目目录 default-workspace 用原生文件工具读取 .duolawork-acceptance-input.txt，并把同样内容写入同目录 .duolawork-acceptance-output.txt（cmp 逐字节一致，均 16 字节）。仅操作了这两个文件，未搜索其他会话、未修改其他文件、未创建文档或事项。",
+        "elapsedMs": 18700
+      },
+      "nativeFileVerified": true,
+      "afterRestart": {
+        "body": "native_fd05a249",
+        "elapsedMs": 9127
+      },
+      "contextRetained": true
+    }
+  ],
+  "passed": true,
+  "temporaryBindingsAndFilesRemoved": true,
+  "finishedAt": "2026-11-05T03:46:48.699Z"
+}

@@ -1,0 +1,66 @@
+{
+  "at": "2026-11-09T01:19:02.283Z",
+  "scope": "installed original authenticated coding member → production Vault → real local native child; synthetic credential only",
+  "realUserCredentialValuesRead": false,
+  "checks": [
+    "production tool catalog advertises default-open agent management",
+    "authenticated Agent directly stores and reads a provided credential without owner UI or secretary setup",
+    "Agent rotates the value while preserving other fields and the original credential ID",
+    "real native subprocess receives the latest value by reference; only its hash is returned",
+    "Agent disables, enables, soft-deletes and restores its own synthetic credential"
+  ],
+  "credentialId": "credential_5ed02b30f74336bae92c004ab4ce33cc",
+  "syntheticCredentialCleaned": true,
+  "buildId": "a999d39ee1ead36b",
+  "desktopBuildId": "a999d39ee1ead36b",
+  "online": true,
+  "release": {
+    "protectedMetadataUnchanged": true,
+    "vpsArtifactMatches": true,
+    "installedUiAssetsMatch": true,
+    "activation": {
+      "at": "2026-11-09T01:17:58.336Z",
+      "url": "http://127.0.0.1:8766",
+      "buildId": "a999d39ee1ead36b",
+      "processId": 78995,
+      "desktopBuildId": "a999d39ee1ead36b",
+      "backendAndDesktopMatch": true,
+      "ownerAuthorizedActiveUpdate": true,
+      "cloudOnline": true,
+      "protectedLocalDataUnchanged": true,
+      "protectedLocalMetadataUnchanged": true,
+      "ownedBrowsersPreserved": 0,
+      "observedProfileProcessesPreserved": 0,
+      "profileVerification": "关闭浏览器时核对完整资料字节",
+      "workspaceDataUnchanged": true,
+      "realCommercialAgentTested": false
+    }
+  },
+  "validation": {
+    "unitTests": 648,
+    "failed": 0,
+    "vaultUnitTests": 16,
+    "isolatedUiChecks": [
+      "页面添加真实凭证，列表与输入默认遮盖，默认全工作区共享",
+      "用户主动查看和复制可用，窗口失焦清除展示，引用不包含真实值",
+      "轮换保留引用，两位独立成员经真实 HTTP 领取并启动子进程，得到最新值",
+      "页面关闭某个成员后立即拒绝真实调用，其他成员继续使用",
+      "实际服务重启后沿用独立主密钥，凭证完整解密",
+      "在实际连接器表单选择 Vault 引用，真实 stdio 子进程取得凭证，回传遮盖",
+      "页面导出密码加密文件；错密码零写入，正确导入不覆盖并保留同工作区关闭名单",
+      "删除、回收站恢复与明确彻底删除完整可操作",
+      "审计展示使用人和结果；浏览器持久草稿、数据库及事务回执无凭证明文",
+      "390px 添加弹窗无横向溢出",
+      "GET 禁止查看值/导出；主密钥损坏只锁定 Vault，工作区继续运行，显式恢复后可解密"
+    ],
+    "isolatedNativeFlow": [
+      "ordinary non-secretary Agent writes without owner UI",
+      "old catalog write bridge preserves secret privacy",
+      "full and incremental claims receive the updated policy",
+      "two independent member runtimes use references in real subprocesses",
+      "second Agent rotates; server restart preserves values",
+      "later owner exclusions block reads and writes"
+    ],
+    "productionModelReasoningNotClaimed": true
+  }
+}

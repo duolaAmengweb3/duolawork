@@ -1,0 +1,24 @@
+✔ T01 T04 T22 short work submits with self-check in one call; actor and no extra reviewer notification (11.722583ms)
+✔ T02 T03 dynamic sections and shared questions keep gaps; a complete form never auto-accepts content (4.707042ms)
+✔ T04 T05 T12 designated reviewer cannot edit executor result or self-audit (4.029584ms)
+✔ T06 T07 metadata preserves acceptance; actual specification revision reopens parent and keeps immutable history (9.600333ms)
+✔ T08 T15 legacy update(done) and cached tool catalog cannot bypass adopted protocol (3.622125ms)
+✔ T09 T10 T11 dependencies start only after current accepted input; durable outbox dedupes and cycles/moves fail (6.566375ms)
+✔ T05 T09 exact version and concurrent revise/check prevent stale result from advancing work (3.531083ms)
+✔ T13 T14 T20 linked coordination stays open until delivery; requirement change reopens only linked work (5.426042ms)
+✔ T14 execution decision binds concrete checked proposal and real owner source; does not grant account permissions (3.802958ms)
+✔ T17 malformed payload, impossible checks, huge content and untrusted content do not cause partial writes or execution (2.728917ms)
+✔ T18 T21 original source reaches native task notice and wrong criteria can be rejected without changing actor/model (9.964792ms)
+✔ T07 T23 T24 actual artifact version and check conclusion matter, not claims of adoption or forced agreement (4.948125ms)
+✔ reaccepting a previously rejected upstream result notifies the dependent once for the new check, not the stale notice (7.538125ms)
+✔ old stored tasks preserve history and do not acquire fabricated checks when grouped; original requirements cannot be replaced by a paraphrase (4.83125ms)
+✔ T12 standalone task leader receives designated review result without waking an unrelated group coordinator (3.160542ms)
+✔ T09 equivalent structured JSON with reordered object keys is the same deliverable, not a new downstream execution (2.666833ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 294.196

@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-03T08:24:32.148Z",
+  "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "status": "idle",
+  "message": "已检查原回执，继续接收消息",
+  "inFlight": null,
+  "sessions": {
+    "probe_member_26ac2c60371e4158bd6df1b0fa0db37d": "01a1a02d-7f96-75b1-8731-6efe9021ac34",
+    "channel_e584ae2bbea74a80a6b462e571b6d933": "01a1a041-85e8-7080-832a-80c002efa7b1"
+  }
+}

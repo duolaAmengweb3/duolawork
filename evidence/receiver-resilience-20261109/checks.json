@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-09T16:14:33.913Z",
+  "sourceCommit": "4cb03c5",
+  "deployedCommit": "4cb03c5",
+  "deployedWorkerSha": "32121656e2860dbb5458fadd827b0a4a3da0af26141a2cb6cea87a160f8c71e4",
+  "finalDeployPending": false,
+  "checks": {
+    "regressionAgainstPreviousHead": "6/6 fail before repair",
+    "focused": "46/46 reception + 9 onboarding = 55/55",
+    "full": "752/752 pass",
+    "delivery": "Complete package/session checks passed; activation succeeded after normal native handoff; actual UI/local build 639ffc76197d6a97; protected local and workspace data unchanged",
+    "independent": "DeepSeek isolated 4cb03c5: 46/46 reception and onboarding UI; P1/P2 closed, no new source/UI blockers; native proof separate"
+  },
+  "nativeRepair": {
+    "platform": "grok.com",
+    "automationId": "c3e4ba1b-ed28-482d-8f94-3ed84e5c9e5f",
+    "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+    "oldAutomationPreserved": true,
+    "model": "Auto unchanged",
+    "promptSavedAndReopened": true,
+    "otherAutomationsChanged": false,
+    "receiverReenabled": {
+      "at": "2026-11-09T15:33:36.584Z",
+      "sameAutomation": true,
+      "sameWebhook": true,
+      "sameModel": true,
+      "pausedThenEnabled": true,
+      "secretRotated": false
+    },
+    "platformSelfAudit": {
+      "readOnly": true,
+      "active": true,
+      "webhookEnabled": true,
+      "latestResultAt": "2026-11-09T15:07:44Z",
+      "newInvocationsForSecondProbe": "not exposed in platform results",
+      "internalQueueReason": "not exposed by automation_list / automation_get_results",
+      "manualHubClaims": false
+    },
+    "finalReceiver": "official Grok Bot webhook-only Routine",
+    "nativeBotName": "grok1",
+    "sameHubMember": true,
+    "oldAutomationPausedAndPreserved": true,
+    "ownCredentialIdentityChecked": true,
+    "privatePlatformMemoryTransferred": false,
+    "exactUnderlyingModel": "not exposed by native platform; not verified identical",
+    "nativeCapabilities": "read-only native self-report: X read tools and create_posts visible; actual external write not performed",
+    "finalOrdinaryRounds": 2
+  },
+  "limits": [
+    "Callback acceptance is not a successful native claim or reply.",
+    "Original member live probes are separate from controlled regression."
+  ],
+  "ordinaryMessageProofs": [
+    "live-probe.json",
+    "restart-probe.json",
+    "native-probe.json",
+    "final-native-probe.json"
+  ],
+  "nativeMigrationProof": "grok1-migration.json",
+  "finalRestartRoundTripPending": false,
+  "finalRestartRoundTrip": {
+    "sourceCommit": "4cb03c5",
+    "messageId": "chat_1bffb77704a143c1a4c3de85fd021efb",
+    "nonce": "receiver-final-bef52843",
+    "replies": [
+      {
+        "id": "chat_7559db72e5bf44dcb72483db2bd0467d",
+        "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+        "body": "receiver-final-bef52843 Dot",
+        "createdAt": "2026-11-09T16:12:17.871Z",
+        "elapsedMs": 38695
+      },
+      {
+        "id": "chat_58eb94b0b6654a9994f8d9a1ca0890ed",
+        "authorId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+        "body": "receiver-final-bef52843 grok1",
+        "createdAt": "2026-11-09T16:12:52.023Z",
+        "elapsedMs": 72847
+      }
+    ],
+    "allDone": true,
+    "oneDispatchEach": true
+  }
+}

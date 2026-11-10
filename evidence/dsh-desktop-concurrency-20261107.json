@@ -1,0 +1,102 @@
+{
+  "at": "2026-11-06T17:29:41.367Z",
+  "officialDesktop": true,
+  "originalModelAndLogin": true,
+  "isolatedHub": true,
+  "cases": [
+    {
+      "label": "A",
+      "channelId": "channel_0910278b5d06461c83af757f0296633a",
+      "binding": {
+        "sessionId": "session-e03a077c-5c73-4dc0-bafa-40e894eee2f4",
+        "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-CEFUUF/project-A",
+        "title": "原桌面独立并行 A",
+        "mode": "new",
+        "nativeState": "running",
+        "observedAt": "2026-11-06T17:30:23.990Z"
+      },
+      "marker": "A_8b8952a5",
+      "reply": "已完成本次验收：先执行 sleep 8，再读取当前目录（project-A）的 scope.txt。\n\n文件原文：A_8b8952a5\n\n识别词：A_8b8952a5。未修改文件，未读其他项目或会话，未创建文档或任务，未@他人。",
+      "activity": [
+        {
+          "id": "turn_chat_b76d3522911e4bcc91667f8b7c43ceab_member_ec07274c74004ca9a730ceb1a930fc33",
+          "scopeId": "channel_0910278b5d06461c83af757f0296633a",
+          "parentId": "member_ec07274c74004ca9a730ceb1a930fc33",
+          "memberId": "member_ec07274c74004ca9a730ceb1a930fc33",
+          "messageId": "chat_b76d3522911e4bcc91667f8b7c43ceab",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_b76d3522911e4bcc91667f8b7c43ceab",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-06T17:29:41.940Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-06T17:30:01.091Z",
+          "claimedAt": "2026-11-06T17:29:47.253Z",
+          "nativeSessionId": "session-e03a077c-5c73-4dc0-bafa-40e894eee2f4",
+          "nativeContextMode": "incremental",
+          "expiresAt": "2026-11-06T17:59:47.253Z",
+          "mergedMessageIds": [
+            "chat_b76d3522911e4bcc91667f8b7c43ceab"
+          ],
+          "deliveryIssueIds": [],
+          "completedAt": "2026-11-06T17:30:01.091Z"
+        }
+      ]
+    },
+    {
+      "label": "B",
+      "channelId": "channel_a3656dcd7e3c4945bad17c392535c880",
+      "binding": {
+        "sessionId": "session-903512db-136e-4d12-9f67-2708edcae994",
+        "workspace": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-CEFUUF/project-B",
+        "title": "原桌面独立并行 B",
+        "mode": "new",
+        "nativeState": "idle",
+        "observedAt": "2026-11-06T17:30:23.990Z"
+      },
+      "marker": "B_5ca918da",
+      "reply": "已完成：先用本会话自己的终端执行 sleep 8，再读取当前目录 scope.txt。\n\n当前工作目录：/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-v1-integration-CEFUUF/project-B\nscope.txt 原文：\n\nB_5ca918da\n\n识别词：B_5ca918da（已记住，仅用于本次验收）。未修改文件、未读其他项目或会话、未 @他人、未建文档或任务。",
+      "activity": [
+        {
+          "id": "turn_chat_e26df7abfae54758b240a9f81344630d_member_ec07274c74004ca9a730ceb1a930fc33",
+          "scopeId": "channel_a3656dcd7e3c4945bad17c392535c880",
+          "parentId": "member_ec07274c74004ca9a730ceb1a930fc33",
+          "memberId": "member_ec07274c74004ca9a730ceb1a930fc33",
+          "messageId": "chat_e26df7abfae54758b240a9f81344630d",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_e26df7abfae54758b240a9f81344630d",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-06T17:29:41.949Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-06T17:30:03.449Z",
+          "claimedAt": "2026-11-06T17:29:48.378Z",
+          "nativeSessionId": "session-903512db-136e-4d12-9f67-2708edcae994",
+          "nativeContextMode": "incremental",
+          "expiresAt": "2026-11-06T17:59:48.378Z",
+          "mergedMessageIds": [
+            "chat_e26df7abfae54758b240a9f81344630d"
+          ],
+          "deliveryIssueIds": [],
+          "completedAt": "2026-11-06T17:30:03.449Z"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    "Two original desktop sessions overlap in execution",
+    "Own project tools return exact separate file contents",
+    "No API substitute, provider override or original binding change"
+  ],
+  "originalBindingIds": [
+    "session-858da21e-98de-431d-88a0-ce73b83a07d2",
+    "session-3a57d973-3571-4c92-acc0-ed80cc0aece9"
+  ],
+  "peakActive": 2,
+  "passed": true,
+  "finishedAt": "2026-11-06T17:30:24.584Z"
+}

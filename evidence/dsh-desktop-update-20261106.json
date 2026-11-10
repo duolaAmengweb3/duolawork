@@ -1,0 +1,27 @@
+{
+  "at": "2026-11-06T11:25:16.425Z",
+  "running": true,
+  "ready": true,
+  "receiverRevision": "fbc407a6f8069c90e81f",
+  "sessions": 12,
+  "runningSessions": 0,
+  "bindings": [
+    {
+      "sessionId": "session-858da21e-98de-431d-88a0-ce73b83a07d2",
+      "memberId": "member_acbea6620d534e6682d8009db6403f1e",
+      "channelIds": [
+        "channel_6de5af59d9624e70b0003af45a6d5efb"
+      ]
+    },
+    {
+      "sessionId": "session-3a57d973-3571-4c92-acc0-ed80cc0aece9",
+      "memberId": "member_acbea6620d534e6682d8009db6403f1e",
+      "channelIds": [
+        "channel_2d341c238cd74ba18c6f00bd93f3227a",
+        "channel_4ef452e331904b758d7d3c375215cb48"
+      ]
+    }
+  ],
+  "installedAndLoadedMatch": true,
+  "originalWindowRetained": true
+}

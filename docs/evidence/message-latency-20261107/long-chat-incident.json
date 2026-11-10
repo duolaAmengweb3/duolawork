@@ -1,0 +1,17 @@
+{
+  "trigger": "ordinary Codex result message to project coordinator after original acceptance; nothing was force-replayed",
+  "requestId": "latency-closed-f95e9a5-20261108",
+  "error": {
+    "status": 413,
+    "code": "query_limit",
+    "message": "Transaction.list ignored recent limit=200 and performed an all-history scan with a 501-record guard"
+  },
+  "responseSaved": false,
+  "fix": "Respect bounded recent windows and merge/sort transactional writes; preserve range clock checks and unbounded scan guard",
+  "regression": "1000 existing channel messages; ordinary message still enqueues, duplicate request still holds, distinct new message still works; recent cursor and pending writes preserved; unbounded scan still rejects",
+  "relatedTaskReopened": [
+    "board_25d66ae1bd524ce2a6affd29ad713ff7",
+    "board_0a6032b9032e463aa9440fbadbaffdcb"
+  ],
+  "recordedAt": "2026-11-07T16:36:35.238Z"
+}

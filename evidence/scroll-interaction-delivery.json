@@ -1,0 +1,24 @@
+{
+  "at": "2026-11-06T03:24:29.121Z",
+  "candidateBuild": {
+    "id": "888b3fcb7cdc079b",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T03:20:23.590Z"
+  },
+  "baseline": "scroll-interaction-before.json",
+  "desktop": "scroll-interaction-after.json",
+  "browser": "scroll-interaction-browser-after.json",
+  "unitTestsPassed": 342,
+  "existingChatRegression": {
+    "record": "experience-ui.json",
+    "scope": "Individual run passed after an earlier concurrent Electron/browser run reported send p95 600.4ms. Concurrency failure not attributed; this is not an all-load latency guarantee."
+  },
+  "production": {
+    "installedBuild": "d08ee31dabdd444b",
+    "desktopBuild": "d08ee31dabdd444b",
+    "backendHealthy": true,
+    "activationBlockedByActiveWork": true,
+    "activated": false,
+    "deployed": false
+  }
+}

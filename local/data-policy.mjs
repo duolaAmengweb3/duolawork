@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import {execFileSync} from 'node:child_process';
 import { dataDir } from './storage.mjs';
 
 export const protectedDataDirectories = () => [dataDir, path.join(os.homedir(), 'Library', 'Application Support', 'agent-hub-local')];
@@ -21,6 +22,22 @@ export async function prepareBrowserProfile(directory,accountId,findBrowser,{req
  if(previous&&requestedBrowser&&path.resolve(requestedBrowser)!==path.resolve(executable))throw new Error('账号已绑定原浏览器，禁止自动切换浏览器导致登录失效。');
  try{await fs.access(executable);}catch{throw new Error('原绑定的浏览器不可用，请恢复原浏览器；不会换浏览器或清空登录资料。');}
  return {info,previous,executable};
+}
+
+// macOS Chrome's launcher can stall on --version while its GUI is busy.
+// Read the installed bundle metadata without launching a default-profile
+// browser merely to inspect its version. Product/downgrade guards stay intact.
+export function installedBrowserVersion(executable,{platform=process.platform,exec=execFileSync}={}){
+ const options={encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']};
+ if(platform==='darwin'&&/\.app\/Contents\/MacOS\/[^/]+$/.test(executable)){
+  const plist=path.join(path.dirname(path.dirname(executable)),'Info.plist');
+  const field=name=>exec('/usr/bin/plutil',['-extract',name,'raw','-o','-',plist],options).trim();
+  let product;try{product=field('CFBundleDisplayName');}catch{product=field('CFBundleName');}
+  const version=field('CFBundleShortVersionString');
+  if(!product||!/^\d+\.\d+(?:\.\d+)*$/.test(version))throw new Error('无法核对浏览器版本，保留原资料并停止打开。');
+  return `${product} ${version}`;
+ }
+ return exec(executable,['--version'],options).trim();
 }
 
 export function browserVersionRecord(profile,version){

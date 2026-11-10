@@ -1,0 +1,138 @@
+{
+  "at": "2026-11-06T11:30:52.490Z",
+  "buildId": "dc02533a08db9846",
+  "checks": {
+    "installedSourceMatches": [
+      "local/coding-manager.mjs",
+      "local/native-completion.mjs",
+      "local/dsh-connector.mjs",
+      "local/dsh-desktop.mjs",
+      "shared/chat-activity.mjs",
+      "shared/delivery-view.mjs",
+      "dist/index.html"
+    ],
+    "serverWorkerHash": "08746f3fae490981ec465a30c79f60a70293e57a3a6902afc07b735f5c9561ef",
+    "desktopAndServiceMatch": true,
+    "protectedLocalDataUnchanged": true,
+    "workspaceDataUnchanged": true,
+    "unitTests": 479,
+    "unitFailed": 0
+  },
+  "runtime": {
+    "publishedSHA256": "0b34e32cc0bb4e139214761efd620c246d0f298df6043674ea989a966d8bee8c",
+    "expectedRevision": "bed70093a178fd05c95ee0a0822060fbde60d8d6cf699939dc74b24acaa5ae2a",
+    "observedGeminiRevision": "bed70093a178fd05c95ee0a0822060fbde60d8d6cf699939dc74b24acaa5ae2a",
+    "geminiUpdateRequired": false,
+    "nativeConcurrencyVerified": true,
+    "originalBindingsPreserved": true,
+    "continuationAfterUpdate": true,
+    "claudeModified": false,
+    "deepseekDesktopPluginRevision": "fbc407a6f8069c90e81f",
+    "deepseekDesktopPluginLoaded": true
+  },
+  "coverage": {
+    "sessionCounts": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      17
+    ],
+    "codingSchedulerForms": [
+      "codex",
+      "gemini-cli",
+      "antigravity-cli",
+      "antigravity"
+    ],
+    "cloudBindingPlatforms": [
+      "codex",
+      "gemini-cli",
+      "antigravity",
+      "claude-code",
+      "deepseek-harness"
+    ],
+    "nativeEvidence": {
+      "geminiVPS": "gemini-parallel-live-20261106.json",
+      "codex": "codex-native-concurrency.json",
+      "deepseekIsolatedOriginal": "remote-dsh-native.json",
+      "deepseekDesktopUpdate": "dsh-desktop-update-20261106.json"
+    },
+    "notNativeTestedThisTurn": [
+      "Claude VPS",
+      "Gemini CLI",
+      "Antigravity IDE"
+    ]
+  },
+  "browserEvidence": [
+    "message-refresh-ui.json",
+    "secretary-desk-ui.json",
+    "experience-ui.json",
+    "delivery-review-ui.json",
+    "meeting-addressing-ui.json",
+    "remote-native-ui.json"
+  ],
+  "previousRelease": {
+    "at": "2026-11-06T10:46:34.846Z",
+    "buildId": "5f8e675c92b89648",
+    "checks": {
+      "installedSourceMatches": [
+        "local/coding-manager.mjs",
+        "local/antigravity-cli-bridge.mjs",
+        "shared/chat-activity.mjs",
+        "shared/delivery-view.mjs",
+        "dist/index.html"
+      ],
+      "serverWorkerHash": "2af24826917345ec5ab07bb3f1c025dbae89e87d14d3c3cd0cb55df8f361c5a6",
+      "desktopAndServiceMatch": true,
+      "protectedLocalDataUnchanged": true,
+      "workspaceDataUnchanged": true,
+      "unitTests": 398,
+      "unitFailed": 0
+    },
+    "runtime": {
+      "publishedSHA256": "13c30e961d1fdce99d9c78646e0352d01f8285e27a3a68ff3110b987f0384581",
+      "expectedRevision": "97dd666925d0c24b1a1ec712712f95482e39a07d280949638e90094728af1f51",
+      "observedGeminiRevision": null,
+      "geminiUpdateRequired": true,
+      "nativeConcurrencyVerified": false,
+      "claudeModified": false
+    },
+    "browserEvidence": [
+      "message-refresh-ui.json",
+      "secretary-desk-ui.json",
+      "experience-ui.json",
+      "delivery-review-ui.json",
+      "meeting-addressing-ui.json",
+      "remote-native-ui.json"
+    ],
+    "previousRelease": {
+      "at": "2026-11-06T09:49:53.393Z",
+      "buildId": "01a4be49dd7017c9",
+      "runtime": {
+        "publishedSHA256": "f3f6391596b6fa99c0d9d63e2c5201a538535b41f96a31c48b5c56123f953744",
+        "expectedRevision": "65fe72fdedf466629b8a8fa6d6d642c9cd41064ceaad24bcb84739929550f682",
+        "observedGeminiRevision": null,
+        "geminiUpdateRequired": true,
+        "nativeConcurrencyVerified": false,
+        "claudeModified": false
+      },
+      "checks": {
+        "installedSourceMatches": [
+          "local/coding-manager.mjs",
+          "local/dsh-manager.mjs",
+          "shared/chat-activity.mjs",
+          "shared/member-availability.mjs",
+          "dist/index.html"
+        ],
+        "serverWorkerHash": "d6d7acaae189443d1676a40f667753a049c486ea1344ff4d8c9af2d4491f6f0d",
+        "desktopAndServiceMatch": true,
+        "protectedLocalDataUnchanged": true,
+        "workspaceDataUnchanged": true,
+        "unitTests": 391,
+        "unitFailed": 0
+      }
+    }
+  }
+}

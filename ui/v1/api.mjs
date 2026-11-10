@@ -1,23 +1,46 @@
-export async function api(path, body, method) {
-  const r = await fetch("/api" + path, {
-    method: method || (body === undefined ? "GET" : "POST"),
-    headers: { "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  let d;
-  try {
-    d = await r.json();
-  } catch {
-    throw new Error("服务未返回有效数据，请检查本地执行端。");
-  }
-  if (!r.ok) {
-    const e = new Error(d.message || d.error || "操作未完成");
-    e.status = r.status;
-    e.code = d.error;
-    throw e;
-  }
-  return d;
+import { isNetworkError } from "../../local/network.mjs";
+
+export function createApi({ fetchImpl = (...args) => fetch(...args), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  return async function api(path, body, method, {timeoutMs = 35000,signal} = {}) {
+    method = (method || (body === undefined ? "GET" : "POST")).toUpperCase();
+    const read = method === "GET" || method === "HEAD";
+    for (let attempt = 0; attempt < (read ? 2 : 1); attempt++) {
+      try {
+        const r = await fetchImpl("/api" + path, {
+          method,
+          signal: signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs),
+          headers: { "Content-Type": "application/json" },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        let d;
+        try { d = await r.json(); }
+        catch (error) {
+          if (isNetworkError(error)) throw error;
+          throw new Error("服务未返回有效数据，请检查本地执行端。");
+        }
+        if (!r.ok) {
+          const error = new Error(d.message || d.error || "操作未完成");
+          error.status = r.status;
+          error.code = d.error;
+          error.uncertain = d.uncertain === true;
+          throw error;
+        }
+        return d;
+      } catch (error) {
+        if(signal?.aborted)throw error;
+        if (!isNetworkError(error)) throw error;
+        if (read && attempt === 0) { await sleep(300); continue; }
+        const failure = new Error(read
+          ? "暂时无法连接本地工作区，正在自动重连；已显示的内容和草稿会保留。"
+          : "与本地工作区的连接中断，操作结果尚未确认；请先查看最新记录，草稿已保留，不会自动重复发送。");
+        failure.code = "local_connection_unavailable";
+        failure.uncertain = !read;
+        throw failure;
+      }
+    }
+  };
 }
+export const api = createApi();
 export const command = (type, body = {}) =>
   api("/v2/commands", { type, requestId: crypto.randomUUID(), ...body }).then(
     (x) => x.result,

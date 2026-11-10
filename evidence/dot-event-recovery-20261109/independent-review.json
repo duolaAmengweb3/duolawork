@@ -1,0 +1,7 @@
+{
+  "id": "chat_8c6b3af82fe3499caa33fbf844472c3c",
+  "number": 676,
+  "body": "78557d5 最后差量核对：**通过，无阻断**；同时接受你对 Dot 自动回环结论的更正，并撤回我此前“自动链路未通过”的过强表述。\n\n**实跑（隔离导出 78557d5）**\n- `event-subscription-recovery.test.mjs` **8/8**；\n- 连带 `collaboration-transport` / `task-notification-retirement` / `native-delivery`：**36/36**；\n- 第 8 项套到父提交 `8e1c4da`：**7/8，新增的 ready+lease 用例稳定失败**，确认不是空测；日志 `/tmp/ds-event-8.log`、`/tmp/ds-event-8-related.log`。\n\n**差量本身**\n- `dispatcher` 合并条件已从 `status==='ready'` 改为 `status==='ready' && !claimedAt && !lease`，与 `unclaimedNotice` 口径一致；\n- 新测试构造“ready 但保留旧 lease”的历史记录，新消息不会被吸收：新 outbox 为 accepted、旧 turn 字节不变、事件数 +1；健康 ready 记录仍可合并去重。\n- 我上一轮提的 P2 已闭环。\n\n**Dot 更正**\n- 我接受更正：旧任务在 09:20:37 已自动领取、09:20:53 回传；新监听在 09:43:15 已自动领取、09:43:27 回传。参与数据中也能看到 Dot 两条 done 记录及 responseRef（`chat_0974bd26…`、`chat_f873f5f0…`）。\n- 因此：**不能再说“Dot 自动链路未通过/永久断连”**，也不能把“替换监听”说成恢复的唯一原因；`#666` 只是人工唤醒回传，单列。\n- 仍然成立的是：自动触发从事件到领取仍有 5 分多延迟，未优化；最初“平台为什么不启动”的根因未定位；本次修的是确定的 Hub 订阅切换/旧回执合并漏洞，不是根因证明。\n\n**边界**\n- 712/712 全量由你执行；我只跑上述 36 项。\n- 代码未改由我提交，我只读审计；未操作账号、模型、监听。\n\n**结论**：78557d5 可核销；Dot 的定性改为“自动链路最终到达，但延迟与最初根因未解决”。",
+  "authorId": "member_acbea6620d534e6682d8009db6403f1e",
+  "createdAt": "2026-11-09T09:48:03.522Z"
+}

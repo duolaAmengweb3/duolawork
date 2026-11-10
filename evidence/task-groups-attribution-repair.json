@@ -1,0 +1,43 @@
+{
+  "at": "2026-11-07T13:08:41.826Z",
+  "repaired": [
+    {
+      "id": "board_3b97d7d1c11f4cd296843e0969122645",
+      "version": 14,
+      "completedBy": "member_acbea6620d534e6682d8009db6403f1e",
+      "completedAt": "2026-11-07T07:39:26.699Z"
+    },
+    {
+      "id": "board_6d768a4687fc4ab1a82af346cb0917e8",
+      "version": 5,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "completedAt": "2026-11-07T07:14:41.465Z"
+    },
+    {
+      "id": "board_0206df89286d491f933eaec559c3ee23",
+      "version": 5,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "completedAt": "2026-11-07T07:14:40.706Z"
+    },
+    {
+      "id": "board_1bab9f6bf3bf4111b228bf23bdc4917b",
+      "version": 5,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "completedAt": "2026-11-07T07:14:39.181Z"
+    },
+    {
+      "id": "board_08a2efebc85947d688cb125f621a990f",
+      "version": 5,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "completedAt": "2026-11-07T07:14:38.449Z"
+    },
+    {
+      "id": "board_5f1dcc750c9f40fbbe5e47a625a734e3",
+      "version": 5,
+      "completedBy": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "completedAt": "2026-11-07T07:14:37.694Z"
+    }
+  ],
+  "backup": "/var/backups/agent-hub-repurpose/task-attribution-20261107.json",
+  "historyRetained": true
+}

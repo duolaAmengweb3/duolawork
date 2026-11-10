@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-08T04:49:28.710Z",
+  "scope": "Downloaded standalone package, actual Node subprocess and isolated HTTP backend. Service-manager binaries stubbed; no real OS service or user account modified.",
+  "checks": [
+    "下载字节 SHA-256 与服务端声明一致",
+    "独立程序无源码或 npm 依赖即可完成配对",
+    "长期凭证仅保存为 0600 本机文件，不进入输出",
+    "setup 重试沿用同一凭证",
+    "仅配对未收到心跳时不显示在线",
+    "程序保存到稳定独立目录"
+  ]
+}

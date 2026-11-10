@@ -1,0 +1,27 @@
+WAN samples 20/100
+WAN samples 40/100
+WAN samples 60/100
+WAN samples 80/100
+WAN samples 100/100
+WAN stopping notification watcher
+WAN saving offline recovery message
+WAN restarting isolated server
+{"scope":"Mac to deployed VPS code in isolated Node/SQLite database over SSH encrypted WAN tunnel; receiver fsync and ACK; not public HTTPS proxy nor model benchmark","count":100,"errors":[],"p95RttMs":703.4422919999997,"p95SaveToReceiveAckMs":1252,"maxSaveToReceiveAckMs":4039,"restartRecovery":true}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+  assert(result.p95SaveToReceiveAckMs<=1000)
+
+    at file:///Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/tests/message-delivery-wan.mjs:48:207 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

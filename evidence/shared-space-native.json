@@ -1,0 +1,70 @@
+{
+  "at": "2026-11-04T15:44:13.252Z",
+  "pass": true,
+  "scope": "real VPS input -> original Codex native session on Mac -> original cloud Dot; not owner impersonation",
+  "channelId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+  "handoffId": "handoff_025783e3849644bfabc3193a189b9a11",
+  "fromMemberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "toMemberId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+  "nativeSessionId": "01a1a626-f8d9-7dd2-b271-bd4002b9646f",
+  "files": [
+    {
+      "id": "shared_file_fa4c14b8b9f34af9b7281f99f88e6dc7",
+      "version": 1,
+      "sha256": "1b99d4fe49367997dbcdda62e3a26e6ef9db509ec4c03bd78700d427460a3df7",
+      "size": 130
+    },
+    {
+      "id": "shared_file_8d07d373735f40258b3cd2b61d9420ad",
+      "version": 1,
+      "sha256": "d4c819bcef85d6bd5a7c59568d94be1b536cd3f4c4a80bd3d135250f09738166",
+      "size": 1041
+    }
+  ],
+  "independentTotal": 56,
+  "dotDocument": {
+    "id": "shared_doc_bf4089ae155442bf848c239d638d2bf7",
+    "version": 1
+  },
+  "receipts": [
+    {
+      "id": "handoff_event_5478367062544a7eaf230ecdd593f7a7",
+      "status": "completed",
+      "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "createdAt": "2026-11-04T15:42:36.167Z",
+      "summary": "独立读取并重算两份原件 SHA-256；复算 21、22、13，总额 56；与 Markdown 核对 nonce、输入 ID、版本及哈希，均一致。",
+      "checks": [
+        {
+          "command": "独立读取并重算两份原件 SHA-256；复算 21、22、13，总额 56；与 Markdown 核对 nonce、输入 ID、版本及哈希，均一致。",
+          "result": "passed",
+          "detail": "独立读取并重算两份原件 SHA-256；复算 21、22、13，总额 56；与 Markdown 核对 nonce、输入 ID、版本及哈希，均一致。"
+        }
+      ]
+    },
+    {
+      "id": "handoff_event_b5b372b1e02f42bdb0608924b37566ab",
+      "status": "received",
+      "authorId": "member_0ff5c20718654c9db5ab3b1d0334133e",
+      "createdAt": "2026-11-04T15:41:50.623Z",
+      "summary": "Dot 已收到交接，确认引用两份 v1 原件。",
+      "checks": []
+    }
+  ],
+  "checks": [
+    "VPS-produced input downloaded as actual bytes in original Codex environment",
+    "Codex local result bytes exactly match published file hash",
+    "Dot independently read both pinned versions and verified nonce, arithmetic and hashes",
+    "Actual Dot identity recorded received then completed and referenced its document",
+    "Existing cached tool catalogs worked without re-pairing or session replacement"
+  ],
+  "protectedClaudeUntouched": true,
+  "commercialScaleTested": false,
+  "backupRestore": {
+    "databaseIntegrity": "ok",
+    "records": 1276,
+    "objectsVerified": 4,
+    "nativeCompletedReceiptRestored": true,
+    "offMachineCopy": "private Mac backup, manual snapshot",
+    "snapshot": "20261104T154555070113Z"
+  }
+}

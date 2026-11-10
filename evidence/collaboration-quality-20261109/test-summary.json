@@ -1,0 +1,62 @@
+{
+  "sourceCommit": "9384ee1",
+  "full": [
+    "ℹ tests 721",
+    "ℹ pass 721",
+    "ℹ fail 0",
+    "ℹ duration_ms 17866.601208"
+  ],
+  "related": {
+    "tests": 29,
+    "pass": 29,
+    "fail": 0
+  },
+  "independent": {
+    "reviewMessage": "chat_f4a0721360ad4bcea20f14448f2a32d8",
+    "tests": 29,
+    "pass": 29,
+    "fail": 0
+  },
+  "deliveryLog": "/tmp/dw-quality-fenced-deliver.log",
+  "sessionGates": [
+    "browser lifecycle",
+    "browser storage",
+    "background session",
+    "manual login",
+    "packaged Electron exit/reopen"
+  ],
+  "activationBuild": "04b359e0ff6c7ac2",
+  "finalCloudSourceCommit": "7508c38",
+  "finalFull": [
+    "ℹ tests 727",
+    "ℹ pass 727",
+    "ℹ fail 0",
+    "ℹ duration_ms 18364.406209"
+  ],
+  "finalRelated": {
+    "tests": 47,
+    "pass": 47,
+    "fail": 0
+  },
+  "independentBackground": {
+    "commit": "ed7f712",
+    "reviewMessage": "chat_f50e38f678ac49fbb80341b5a889c9e6",
+    "tests": 46,
+    "pass": 46,
+    "finalP2Patch": "8a7cb0b",
+    "p2Review": "passed in #730"
+  },
+  "finalTaskAndMemoryRelated": {
+    "tests": 51,
+    "pass": 51,
+    "fail": 0
+  },
+  "independentFinalSource": {
+    "commit": "7508c38",
+    "tests": 51,
+    "pass": 51,
+    "fail": 0,
+    "reviewMessage": "chat_496f2642843b4761ad90033a6ef0b6bf",
+    "negativeOldSource": "1bc9dd7: 16/17 (new regression failed)"
+  }
+}

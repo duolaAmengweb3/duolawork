@@ -1,0 +1,50 @@
+{
+  "at": "2026-11-08T03:37:03.013Z",
+  "build": {
+    "id": "3b982eceeec73300",
+    "version": "0.1.0",
+    "builtAt": "2026-11-08T03:23:23.085Z"
+  },
+  "desktop": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "3b982eceeec73300"
+  },
+  "online": true,
+  "originalAtelCodexWork": [
+    {
+      "id": "turn_chat_79dac74a2ced432dacc35eb98b0037e8_member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "done",
+      "claimedAt": "2026-11-08T03:04:22.849Z",
+      "expiresAt": "2026-11-08T03:59:07.526Z",
+      "completedAt": "2026-11-08T03:29:14.619Z"
+    }
+  ],
+  "members": [
+    {
+      "memberId": "member_bf4fdac30b4542c8988bb6725f47ec0b",
+      "status": "idle",
+      "assignments": 6
+    },
+    {
+      "memberId": "member_ccdf940ba6d3426da01b9f65048909e2",
+      "status": "working",
+      "assignments": 8
+    },
+    {
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "status": "working",
+      "assignments": 10
+    },
+    {
+      "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+      "status": "idle",
+      "assignments": 5
+    },
+    {
+      "memberId": "member_acbea6620d534e6682d8009db6403f1e",
+      "status": "working",
+      "assignments": 3
+    }
+  ]
+}

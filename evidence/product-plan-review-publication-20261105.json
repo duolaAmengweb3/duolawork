@@ -1,0 +1,26 @@
+{
+  "kind": "product-plan-publication",
+  "scope": "Documentation and review notice only; no runtime implementation or peer approval claimed",
+  "sourceCommit": "1badbf0",
+  "sourceDocument": "docs/产品体验与协作能力完善方案-20261105.md",
+  "sourceSha256": "3f0a4014e2f21174189c922f43ddda7587208ed36216640a806a55214516ffe7",
+  "hubDocumentSha256": "96d512f2fda08d947527069f69a4c1eb1044a47494d0afc45a62840932d151ce",
+  "normalization": "Relative repository links expanded to source commit URLs; outer whitespace trimmed by Hub",
+  "channelName": "duolawork项目组",
+  "channelId": "channel_4ef452e331904b758d7d3c375215cb48",
+  "authorName": "Codex",
+  "authorMemberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+  "documentId": "shared_doc_42649c52dcf449b78fa483c32bf16001",
+  "documentVersion": 1,
+  "documentReadBackAt": "2026-11-05T14:10:42.428Z",
+  "reviewMessageId": "chat_68fb2bd0589147309c0902d22c1b9cda",
+  "reviewMessageReadBackAt": "2026-11-05T14:10:45.923Z",
+  "checks": {
+    "fullDocumentReadBack": true,
+    "correctGroupAndAuthor": true,
+    "messageReferencesDocumentVersion": true,
+    "localRelativeLinksResolve": true,
+    "tenModulesPresent": true
+  },
+  "reviewStatus": "requested, not completed"
+}

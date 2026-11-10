@@ -1,0 +1,78 @@
+{
+  "at": "2026-11-09T16:01:21.226Z",
+  "connection": {
+    "id": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+    "platform": "grok-bot",
+    "transport": "grok-webhook",
+    "status": "verified",
+    "capabilities": [
+      "research",
+      "writing"
+    ],
+    "resourceKey": "account_109556fda97147fbae65918812f6e79e",
+    "revision": 30,
+    "toolSeenAt": "2026-11-09T15:58:44.947Z",
+    "verifiedAt": "2026-11-09T15:58:56.016Z",
+    "deliveryEvidence": {
+      "runId": "run_7396232b5dc04f83b7e2e6f8d84a3a6e",
+      "attemptId": "attempt_ff44f04fce8e455a89f8c82b699d6483",
+      "documentIds": [
+        "document_9322de9bfc5e494f87cfbb7493a72250"
+      ]
+    },
+    "pollSeconds": null,
+    "needsAuthorization": false,
+    "setup": {
+      "stage": "verified",
+      "message": "原 Agent 已完成真实往返验证。",
+      "at": "2026-11-09T15:58:56.016Z"
+    },
+    "authSeenAt": "2026-11-09T03:23:07.227Z",
+    "authorizedAt": "2026-11-09T15:55:08.269Z",
+    "subscriptionActive": false,
+    "lastDeliveryAt": "2026-10-30T11:09:25.846Z",
+    "probe": {
+      "id": "run_7396232b5dc04f83b7e2e6f8d84a3a6e",
+      "status": "completed",
+      "message": null
+    }
+  },
+  "probe": [
+    {
+      "kind": "run",
+      "id": "run_7396232b5dc04f83b7e2e6f8d84a3a6e",
+      "status": "completed",
+      "createdAt": "2026-11-09T15:57:55.941Z",
+      "completedAt": "2026-11-09T15:58:56.016Z"
+    },
+    {
+      "kind": "step",
+      "id": "step_6b9ad8e1c5cc45a88dea7f0bc2fe494a",
+      "parentId": "run_7396232b5dc04f83b7e2e6f8d84a3a6e",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "status": "completed",
+      "createdAt": "2026-11-09T15:57:55.941Z"
+    },
+    {
+      "kind": "outbox",
+      "id": "step_6b9ad8e1c5cc45a88dea7f0bc2fe494a_1",
+      "parentId": "run_7396232b5dc04f83b7e2e6f8d84a3a6e",
+      "memberId": "member_dfaf1af46a9a44ac9d44e1cdf77675d4",
+      "configVersion": 4,
+      "status": "claimed",
+      "attempts": 1,
+      "createdAt": "2026-11-09T15:57:55.941Z",
+      "receiverKind": "bot-routine",
+      "dispatchElapsedMs": 488,
+      "platformRespondedAt": "2026-11-09T15:57:56.532Z",
+      "httpStatus": 200,
+      "completedAt": "2026-11-09T15:57:55.960Z"
+    }
+  ],
+  "receiver": "official-grok-bot-routine",
+  "nativeBotName": "grok1",
+  "sameHubMember": true,
+  "oldAutomationPaused": true,
+  "oldHistoryPreserved": true,
+  "privatePlatformMemoryTransferred": false
+}

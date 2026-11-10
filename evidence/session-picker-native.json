@@ -1,0 +1,46 @@
+{
+  "at": "2026-11-04T10:42:04.393Z",
+  "build": "4514137fc8fd33a3",
+  "checks": [
+    {
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "createdAndReused": true,
+      "seconds": 20,
+      "projectNames": [
+        "Hub 独立工作区",
+        "atel",
+        "Xduola",
+        "bubu",
+        "afterhours"
+      ]
+    },
+    {
+      "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+      "createdAndReused": true,
+      "seconds": 23,
+      "projectNames": [
+        "Hub 独立工作区"
+      ]
+    }
+  ],
+  "scope": "existing Codex app-server and Gemini ACP; not Antigravity desktop or Claude VPS",
+  "channelId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+  "nativeReplies": [
+    {
+      "memberId": "member_26ac2c60371e4158bd6df1b0fa0db37d",
+      "received": true
+    },
+    {
+      "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+      "received": true
+    }
+  ],
+  "previousBindingsPreserved": true,
+  "finishedAt": "2026-11-04T10:43:40.505Z",
+  "workspaceProof": {
+    "engine": "Gemini ACP",
+    "persistentDirectory": true,
+    "nativeFileWriteAndReadVerified": true,
+    "at": "2026-11-04T10:47:54.026Z"
+  }
+}

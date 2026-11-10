@@ -11,6 +11,10 @@ if(process.env.AGENT_HUB_TEST_MODE==='1'){
 if(!app.requestSingleInstanceLock()){app.quit();}else{
 app.setName('Agent Hub');app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.focus();}});
 app.whenReady().then(async()=>{
+ const applicationIcon=path.join(__dirname,'assets/DuolaWork.png');
+ // The installed bundle can retain Electron's cached Dock image after an update.
+ // Set the running app image explicitly without changing its keychain identity.
+ if(process.platform==='darwin')app.dock.setIcon(applicationIcon);
  const dir=process.env.AGENT_HUB_DATA_DIR||path.join(os.homedir(),'.config','agent-hub');await fs.mkdir(dir,{recursive:true,mode:0o700});
  let keyPromise;
  const resolveVaultKey=()=>keyPromise??=(async()=>{
@@ -22,18 +26,29 @@ app.whenReady().then(async()=>{
  })();
  const {start}=await import(pathToFileURL(path.join(__dirname,'../local/server.mjs')).href);runtime=await start({resolveVaultKey,maintenance:process.env.AGENT_HUB_ACTIVATING==='1',notify:(title,body)=>{if(Notification.isSupported())new Notification({title,body}).show();}});
  // This window contains only the local workbench; provider logins live in persistent full Chrome profiles.
- const uiSession=session.fromPartition('persist:agent-hub-workbench');uiSession.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
- win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1',title:'Agent Hub · 你的 AI 团队',backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+ const uiSession=session.fromPartition('persist:agent-hub-workbench');
+ // Copy is a workbench action. Only its own top-level document may write;
+ // clipboard reads, embedded documents and every other permission stay denied.
+ const allowCopy=(contents,permission,origin,details)=>{
+  if(!win||contents!==win.webContents||permission!=='clipboard-sanitized-write'||details?.isMainFrame!==true)return false;
+  try{return new URL(origin).origin===runtime.url&&new URL(contents.getURL()).origin===runtime.url;}catch{return false;}
+ };
+ uiSession.setPermissionCheckHandler((contents,permission,origin,details)=>allowCopy(contents,permission,origin,details));
+ uiSession.setPermissionRequestHandler((contents,permission,callback,details)=>callback(allowCopy(contents,permission,details.requestingUrl,details)));
+ win=new BrowserWindow({width:1450,height:980,minWidth:850,minHeight:650,show:process.env.AGENT_HUB_TEST_MODE!=='1'||process.env.AGENT_HUB_TEST_VISIBLE==='1',title:'DuolaWork · 你的 AI 团队',icon:applicationIcon,backgroundColor:'#f6f6f3',webPreferences:{session:uiSession,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  win.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\//.test(url))shell.openExternal(url);return{action:'deny'};});
  win.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==runtime.url){event.preventDefault();if(/^https:\/\//.test(url))shell.openExternal(url);}});
- Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Agent Hub',submenu:[{role:'about'},{type:'separator'},{role:'hide'},{role:'quit'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'视图',submenu:[{role:'reload'},{role:'togglefullscreen'},{role:'resetzoom'},{role:'zoomin'},{role:'zoomout'}]},{role:'windowMenu'}]));
+ app.setAboutPanelOptions({applicationName:'DuolaWork',iconPath:applicationIcon});
+ // Keep app.setName above stable for existing keychain/profile identity; menu
+ // labels are explicit so Electron does not reuse that legacy internal name.
+ Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'DuolaWork',submenu:[{role:'about',label:'关于 DuolaWork'},{type:'separator'},{role:'hide',label:'隐藏 DuolaWork'},{role:'quit',label:'退出 DuolaWork'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'视图',submenu:[{role:'reload'},{role:'togglefullscreen'},{role:'resetzoom'},{role:'zoomin'},{role:'zoomout'}]},{role:'windowMenu'}]));
  runtime.setClientView({kind:'desktop',ready:false});
  await win.loadURL(runtime.url);
  const renderedBuild=await win.webContents.executeJavaScript(`new Promise(resolve=>{const end=Date.now()+5000;const check=()=>{const value=document.querySelector('[data-build-id]')?.getAttribute('data-build-id');if(value||Date.now()>end)resolve(value||null);else setTimeout(check,50);};check();})`);
  runtime.setClientView({kind:'desktop',ready:!!renderedBuild,buildId:renderedBuild});
  if(process.env.AGENT_HUB_LAUNCH_EVIDENCE){const file=path.resolve(process.env.AGENT_HUB_LAUNCH_EVIDENCE);const snapshot=await win.webContents.capturePage();await fs.writeFile(file,snapshot.toPNG(),{mode:0o600});}
 
-}).catch(error=>{if(process.env.AGENT_HUB_TEST_MODE==='1')console.error('Agent Hub test startup failed:',error.message);else require('electron').dialog.showErrorBox('Agent Hub 启动失败',error.message);app.quit();});
+}).catch(error=>{if(process.env.AGENT_HUB_TEST_MODE==='1')console.error('Agent Hub test startup failed:',error.message);else require('electron').dialog.showErrorBox('DuolaWork 启动失败',error.message);app.quit();});
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>app.quit());
 app.on('window-all-closed',()=>app.quit());app.on('before-quit',event=>{if(runtime&&!quitting){event.preventDefault();quitting=true;runtime.close().finally(()=>app.quit());}});
 }

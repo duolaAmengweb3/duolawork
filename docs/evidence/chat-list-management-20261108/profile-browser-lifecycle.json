@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-08T03:24:12.639Z",
+  "disconnectedSessionCycles": 3,
+  "checks": [
+    "failed headless and windowless startup leave no Chrome process",
+    "failed startup preserves the profile and permits a clean retry",
+    "account close and app quit both wait for pending startup and block late opens",
+    "disconnected CDP browser is reaped on quit",
+    "session cookie survives cleanup and reopen in the same profile",
+    "all isolated Chrome processes exit"
+  ],
+  "realCommercialAgentTested": false
+}

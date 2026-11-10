@@ -1,0 +1,72 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {fixture} from './collaboration-helper.mjs';
+import {conversationCommand,readChannel,claimConversation,conversationMaintenance} from '../cloud/collaboration/conversation.mjs';
+import {meetingDetail} from '../cloud/collaboration/meetings.mjs';
+import {readSpaceObject} from '../cloud/collaboration/workspace-objects.mjs';
+import {withConversationContext} from '../cloud/collaboration/inbox.mjs';
+import {callTool} from '../cloud/collaboration/api.mjs';
+const owner={owner:true},agent=memberId=>({memberId}),now='2026-11-07T07:00:00.000Z';
+async function setup(t){
+ const f=await fixture(t);let n=0;
+ const send=(type,args={},actor=owner,at=now)=>conversationCommand(f.repo,f.identity,actor,{type,requestId:`meeting-life-${++n}`,...args},at);
+ const channel=await send('channel.create',{name:'会议生命周期',memberIds:['grok','check','write'],coordinatorId:'grok'});
+ const root=await send('channel.post',{channelId:channel.id,body:'讨论具体分歧，交付结论即可'});
+ const m=await send('channel.meeting',{channelId:channel.id,action:'prepare',ownerMessageId:root.id,topicKey:'choice'},agent('grok'));
+ const meet=(action,args={},actor=agent('grok'),at=now)=>send('channel.meeting',{channelId:channel.id,meetingId:m.id,action,...args},actor,at);
+ await meet('plan',{ownerMessageId:m.lastOwnerMessageId,title:'具体分歧',goal:'比较依据',deliverable:'可采取的决定',body:'负责人筹备推导_SECRET_PLAN',stages:[{name:'分别检查',private:true},{name:'比较差异',private:false}],agenda:[{title:'依据够不够'}]});
+ return {...f,send,meet,channel,root,m};
+}
+test('same request/topic retries reuse the meeting; custom stages do not need a fixed preset or human start phrase',async t=>{
+ const f=await setup(t);
+ const duplicate=await f.send('channel.meeting',{channelId:f.channel.id,action:'prepare',ownerMessageId:f.root.id,topicKey:'choice'},agent('grok'));
+ assert.equal(duplicate.id,f.m.id);assert.equal((await f.repo.list('channel_meeting')).length,1);
+ const m=await f.meet('start');assert.equal(m.status,'running');assert.equal(m.phase,'分别检查');assert.equal(m.mode,'custom');
+ const before=(await f.repo.list('channel_turn')).length;
+ assert.equal((await f.meet('start')).id,m.id);assert.equal((await f.repo.list('channel_turn')).length,before);
+ assert.equal(m.independenceVerified,false);assert.equal(m.judgmentLabel,'分别复核已有方案');
+});
+test('private opinion, history, reviews and coordinator derivation stay out of every peer read path until publication',async t=>{
+ const f=await setup(t),m=await f.meet('start');
+ await f.meet('opinion',{round:0,sourceVersion:1,body:'SECRET_INITIAL_ALPHA'});
+ await f.meet('opinion',{round:0,sourceVersion:1,body:'SECRET_REVISED_ALPHA',changeReason:'增加独立证据'});
+ await f.meet('review',{sourceVersion:1,claim:'SECRET_CLAIM',method:'SECRET_METHOD',finding:'SECRET_FINDING'});
+ const other=agent('check');
+ const detail=await meetingDetail(f.repo,f.identity,other,{meetingId:m.id});
+ const channel=await readChannel(f.repo,f.identity,other,{channelId:f.channel.id});
+ const object=await readSpaceObject(f.repo,other,{channelId:f.channel.id,kind:'meeting',id:m.id});
+ const listed=await readSpaceObject(f.repo,other,{channelId:f.channel.id,kind:'meeting'});
+ const claim=await claimConversation(f.repo,f.identity,other,{requestId:'private-context',receiveNext:true,channelId:f.channel.id},now);
+ const context=await withConversationContext(f.repo,f.identity,other,claim);
+ const envelope=await callTool(f.repo,f.identity,other,'post_message',{requestId:'private-cached-read',channelId:f.channel.id,body:'HUB_SHARED_TOOL_V1\n'+JSON.stringify({name:'meeting',arguments:{channelId:f.channel.id,meetingId:m.id,action:'read'}})});
+ for(const [label,data] of Object.entries({detail,channel,object,listed,context,envelope}))assert.doesNotMatch(JSON.stringify(data),/SECRET_/,'leak in '+label);
+ assert.match(JSON.stringify(await meetingDetail(f.repo,f.identity,owner,{meetingId:m.id})),/SECRET_INITIAL_ALPHA/);
+ await f.meet('opinion',{round:0,sourceVersion:1,body:'check 的真实意见'},other);
+ await f.meet('opinion',{round:0,sourceVersion:1,body:'write 的真实意见'},agent('write'));
+ const published=await meetingDetail(f.repo,f.identity,other,{meetingId:m.id});
+ assert.match(JSON.stringify(published),/SECRET_REVISED_ALPHA/);assert.match(JSON.stringify(published),/SECRET_FINDING/);
+});
+test('missing summary can recover after deadline without reopening or notifying all participants',async t=>{
+ const f=await setup(t),m=await f.meet('start');
+ await conversationMaintenance(f.repo,f.identity,'2026-11-07T07:11:00.000Z');
+ const ended=await f.repo.get('channel_meeting',m.id);assert.equal(ended.status,'ended');assert.equal(ended.summaryStatus,'missing');
+ const beforeIds=new Set((await f.repo.list('channel_turn')).map(t=>t.id)),before=beforeIds.size;
+ const requested=await f.meet('retry_summary',{},owner,'2026-11-07T07:12:00.000Z');
+ await f.meet('retry_summary',{},owner,'2026-11-07T07:12:01.000Z');
+ const extra=(await f.repo.list('channel_turn')).filter(t=>!beforeIds.has(t.id));
+ assert.equal((await f.repo.list('channel_turn')).length,before+1);
+ assert.deepEqual(extra.map(t=>t.memberId),['grok']);
+ const restored=await f.meet('recover_summary',{sourceVersion:1,summary:'无人提供足够依据，当前不能决定',answers:m.agenda.map(a=>({agendaId:a.id,body:'缺少实证',status:'unresolved'}))},agent('grok'),'2026-11-07T07:12:02.000Z');
+ assert.equal(restored.status,'ended');assert.equal(restored.endedAt,ended.endedAt);assert.equal(restored.summaryStatus,'provided');assert.equal(restored.resultVersion,1);
+ assert.equal((await f.repo.list('channel_message')).filter(x=>x.type==='meeting_start').length,1);
+});
+test('revised summaries preserve original evidence and dissent, increment result version and do not broadcast',async t=>{
+ const f=await setup(t),m=await f.meet('start');
+ await f.meet('finish',{sourceVersion:1,summary:'第一版结论，仍有分歧',answers:m.agenda.map(a=>({agendaId:a.id,body:'证据不足',status:'disputed',dissent:'核验员不同意此假设'}))});
+ const request=await f.meet('request_revision',{body:'不要夸大，请重新解释'},owner);
+ await assert.rejects(()=>f.meet('revise_result',{ownerMessageId:request.revisionRequestId,sourceVersion:1,summary:'抹去分歧',answers:m.agenda.map(a=>({agendaId:a.id,body:'证据不足',dissent:''}))}),e=>e.code==='change_reason_required');
+ const revised=await f.meet('revise_result',{ownerMessageId:request.revisionRequestId,sourceVersion:1,summary:'第二版：还缺什么证据',answers:m.agenda.map(a=>({agendaId:a.id,body:'需要独立样本',status:'partial'}))});
+ assert.equal(revised.resultVersion,2);assert.equal(revised.answers[0].dissent,'核验员不同意此假设');assert.equal(revised.status,'ended');
+ const details=await meetingDetail(f.repo,f.identity,owner,{meetingId:m.id});assert.ok(details.records.some(r=>r.status==='superseded'&&r.summary==='第一版结论，仍有分歧'));
+ assert.ok((await f.repo.list('channel_turn')).filter(x=>x.status==='ready').every(x=>x.memberId==='grok'));
+});

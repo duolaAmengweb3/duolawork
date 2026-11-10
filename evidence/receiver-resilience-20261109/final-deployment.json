@@ -1,0 +1,31 @@
+{
+  "at": "2026-11-09T16:12:07.337Z",
+  "sourceCommit": "4cb03c5",
+  "localWorkerSha": "32121656e2860dbb5458fadd827b0a4a3da0af26141a2cb6cea87a160f8c71e4",
+  "deployedWorkerSha": "32121656e2860dbb5458fadd827b0a4a3da0af26141a2cb6cea87a160f8c71e4",
+  "artifactMatches": true,
+  "service": [
+    "MainPID=107762",
+    "NRestarts=0",
+    "ExecMainStartTimestamp=Mon 2026-11-09 16:11:10 UTC",
+    ""
+  ],
+  "activation": {
+    "at": "2026-11-09T16:10:10.668Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "639ffc76197d6a97",
+    "processId": 69336,
+    "desktopBuildId": "639ffc76197d6a97",
+    "backendAndDesktopMatch": true,
+    "ownerAuthorizedActiveUpdate": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "localBuild": "639ffc76197d6a97"
+}

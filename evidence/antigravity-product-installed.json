@@ -1,0 +1,282 @@
+{
+  "at": "2026-11-04T06:02:44.091Z",
+  "officialOriginalDesktop": true,
+  "realModel": true,
+  "version": "2.28.0",
+  "packaged": true,
+  "desktopRestarts": 1,
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "9144307029bec050"
+  },
+  "members": [],
+  "connections": [
+    {
+      "id": "member_2ea2ba3996204f78af96c4782cf59c9f",
+      "platform": "antigravity",
+      "transport": "muse-poll",
+      "status": "disconnected",
+      "capabilities": [
+        "research",
+        "writing"
+      ],
+      "resourceKey": "account_576bd41bb3cc4f0aa224752da58e21c4",
+      "revision": 12,
+      "toolSeenAt": null,
+      "verifiedAt": null,
+      "deliveryEvidence": {
+        "runId": "run_a91b2b3f31644959914b501517659196",
+        "attemptId": "attempt_2fd462b9edff4592a70c2afd9bf4ed56",
+        "documentIds": [
+          "document_330a95f3808c45239225309938fb6a06"
+        ]
+      },
+      "pollSeconds": 15,
+      "needsAuthorization": false,
+      "setup": null,
+      "authorizedAt": null,
+      "subscriptionActive": false,
+      "lastDeliveryAt": null,
+      "probe": {
+        "id": "run_a91b2b3f31644959914b501517659196",
+        "status": "completed",
+        "message": null
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "memberId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+      "sessionId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+      "cwd": "/private/var/folders/4m/gtq9_pwn6blfmb0nskl4vrnr0000gn/T/hub-working-session-proof-kDkae6",
+      "verified": false,
+      "status": "disconnected",
+      "enabled": false
+    }
+  ],
+  "channels": [
+    {
+      "channel": {
+        "id": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+        "name": "Gemini Original Desktop",
+        "memberIds": [],
+        "coordinatorId": null,
+        "status": "archived",
+        "maxHops": 8,
+        "wakeIntervalSeconds": 60,
+        "messageSequence": 4,
+        "createdAt": "2026-11-04T05:54:58.242Z",
+        "legacyProjectId": null,
+        "direct": true,
+        "kind": "channel",
+        "revision": 6,
+        "updatedAt": "2026-11-04T06:01:59.896Z",
+        "lastMessage": "汇报如下：\n1. 验收识别词：native_amber_f60f51f0。\n2. 专用项目：/Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e。\n3. 原分支：original-desktop-work。",
+        "lastMessageAt": "2026-11-04T05:58:59.730Z"
+      },
+      "members": [],
+      "messages": [
+        {
+          "id": "chat_4ab73b0b46e64a2fbd67331b0e1b197e",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "number": 1,
+          "body": "安装包原会话验收：回忆本会话此前的验收识别词、专用项目和分支。在该项目 test.mjs 追加 scale(-2) === -6 断言，实际执行 npm test，通过后回复本单聊。保留 notes.txt、不提交。不访问其他项目或服务器，不创建文档/会议。",
+          "authorId": "owner",
+          "createdAt": "2026-11-04T05:55:32.021Z",
+          "type": "message",
+          "mentions": [],
+          "mentionsFromText": false,
+          "replyTo": null,
+          "rootId": null,
+          "hops": 0,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T05:55:32.021Z"
+        },
+        {
+          "id": "chat_dfdd3eade8464899bcd6987b1ce7094a",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "number": 2,
+          "body": "汇报如下：\n1. 验收识别词：native_amber_f60f51f0。\n2. 专用项目与分支：专用项目为 /Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e，Git 分支为 original-desktop-work。\n3. 追加断言与测试结果：在 test.mjs 中追加了 scale(-2) === -6 断言，实际执行 npm test 全部通过，输出 \"native desktop project tests passed\"，退出码为 0。\n4. 约束保持：保留 notes.txt 未修改，未提交代码，未访问其他项目或服务器，未创建文档/会议。",
+          "authorId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "createdAt": "2026-11-04T05:56:20.790Z",
+          "type": "message",
+          "mentions": [],
+          "mentionsFromText": false,
+          "replyTo": "chat_4ab73b0b46e64a2fbd67331b0e1b197e",
+          "rootId": "chat_4ab73b0b46e64a2fbd67331b0e1b197e",
+          "hops": 1,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T05:56:20.790Z"
+        },
+        {
+          "id": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "number": 3,
+          "body": "Hub 与连接器已重开。仅从本会话记忆回复此前的验收识别词、专用项目和原分支。不要改文件、不访问服务器或其他会话、不创建任何协作产物。",
+          "authorId": "owner",
+          "createdAt": "2026-11-04T05:58:38.886Z",
+          "type": "message",
+          "mentions": [],
+          "mentionsFromText": false,
+          "replyTo": null,
+          "rootId": null,
+          "hops": 0,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T05:58:38.886Z"
+        },
+        {
+          "id": "chat_423ca4aaba724793a82e44f7069ac81f",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "number": 4,
+          "body": "汇报如下：\n1. 验收识别词：native_amber_f60f51f0。\n2. 专用项目：/Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e。\n3. 原分支：original-desktop-work。",
+          "authorId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "createdAt": "2026-11-04T05:58:59.730Z",
+          "type": "message",
+          "mentions": [],
+          "mentionsFromText": false,
+          "replyTo": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+          "rootId": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+          "hops": 1,
+          "kind": "channel_message",
+          "revision": 1,
+          "updatedAt": "2026-11-04T05:58:59.730Z"
+        }
+      ],
+      "before": null,
+      "documents": [],
+      "decisions": [],
+      "knowledge": [],
+      "meetings": [],
+      "meetingsCursor": null,
+      "tasks": [],
+      "suggestions": [],
+      "notifications": [
+        {
+          "id": "notice_turn_chat_44683d3f5f9a4ed6a5debcd2f7076455_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "stepId": "turn_chat_44683d3f5f9a4ed6a5debcd2f7076455_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "memberId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "status": "claimed",
+          "createdAt": "2026-11-04T05:58:38.886Z",
+          "dueAt": "2026-11-04T05:58:38.886Z",
+          "attempts": 0
+        },
+        {
+          "id": "notice_turn_chat_4ab73b0b46e64a2fbd67331b0e1b197e_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "stepId": "turn_chat_4ab73b0b46e64a2fbd67331b0e1b197e_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "memberId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "status": "claimed",
+          "createdAt": "2026-11-04T05:55:32.021Z",
+          "dueAt": "2026-11-04T05:55:32.021Z",
+          "attempts": 0
+        }
+      ],
+      "activity": [
+        {
+          "id": "turn_chat_44683d3f5f9a4ed6a5debcd2f7076455_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "memberId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "messageId": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+          "wakeSource": "user",
+          "number": 3,
+          "rootId": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-04T05:58:38.886Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-04T05:58:59.730Z",
+          "claimedAt": "2026-11-04T05:58:50.519Z",
+          "expiresAt": "2026-11-04T06:28:50.519Z",
+          "mergedMessageIds": [
+            "chat_44683d3f5f9a4ed6a5debcd2f7076455"
+          ],
+          "completedAt": "2026-11-04T05:58:59.730Z"
+        },
+        {
+          "id": "turn_chat_4ab73b0b46e64a2fbd67331b0e1b197e_member_2ea2ba3996204f78af96c4782cf59c9f",
+          "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+          "parentId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "memberId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+          "messageId": "chat_4ab73b0b46e64a2fbd67331b0e1b197e",
+          "wakeSource": "user",
+          "number": 1,
+          "rootId": "chat_4ab73b0b46e64a2fbd67331b0e1b197e",
+          "hops": 0,
+          "status": "done",
+          "createdAt": "2026-11-04T05:55:32.021Z",
+          "kind": "channel_turn",
+          "revision": 3,
+          "updatedAt": "2026-11-04T05:56:20.790Z",
+          "claimedAt": "2026-11-04T05:55:41.772Z",
+          "expiresAt": "2026-11-04T06:25:41.772Z",
+          "mergedMessageIds": [
+            "chat_4ab73b0b46e64a2fbd67331b0e1b197e"
+          ],
+          "completedAt": "2026-11-04T05:56:20.790Z"
+        }
+      ]
+    }
+  ],
+  "toolReceipts": [],
+  "productionHubChanged": false,
+  "providerLoginRead": false,
+  "claudeTouched": false,
+  "temporaryBindingsRemoved": true,
+  "isolatedHubStopped": true,
+  "recovery": {
+    "passed": true,
+    "originalSessionId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+    "nativePidPreserved": true,
+    "nativeAppRestarted": false,
+    "hubReopened": true,
+    "sidecarReopened": true,
+    "originalDesktopStillRunning": true,
+    "exactMemberPreserved": true,
+    "reply": {
+      "id": "chat_423ca4aaba724793a82e44f7069ac81f",
+      "scopeId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+      "parentId": "channel_12ec9bf2cb244c2e8ecd2938863e7420",
+      "number": 4,
+      "body": "汇报如下：\n1. 验收识别词：native_amber_f60f51f0。\n2. 专用项目：/Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e。\n3. 原分支：original-desktop-work。",
+      "authorId": "member_2ea2ba3996204f78af96c4782cf59c9f",
+      "createdAt": "2026-11-04T05:58:59.730Z",
+      "type": "message",
+      "mentions": [],
+      "mentionsFromText": false,
+      "replyTo": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+      "rootId": "chat_44683d3f5f9a4ed6a5debcd2f7076455",
+      "hops": 1,
+      "kind": "channel_message",
+      "revision": 1,
+      "updatedAt": "2026-11-04T05:58:59.730Z"
+    }
+  },
+  "busyQueueEvidence": "antigravity-product.json",
+  "originalProject": "/Users/duola/.local/share/agent-hub/antigravity-proof/project-dad6675e",
+  "originalConversationId": "ec7e7e51-e0cf-492e-8413-f9e64828540d",
+  "disconnectPreservedNativeSession": true,
+  "originalNativeEnvironmentUnchanged": true,
+  "projectChecks": {
+    "branch": "original-desktop-work",
+    "files": {
+      "scale.mjs": "export const scale=n=>n*3;\n",
+      "test.mjs": "import assert from 'node:assert/strict';import {scale} from './scale.mjs';assert.equal(scale(4),12);assert.equal(scale(0),0);assert(scale(0) === 0);assert.equal(scale(-2),-6);assert(scale(-2) === -6);console.log('native desktop project tests passed');\n",
+      "notes.txt": "Keep this original untracked note.\n",
+      "busy-queue.txt": "busy-start 2026-11-04T05:40:16.749Z\nbusy-finished 2026-11-04T05:40:46.755Z\n"
+    },
+    "test": "\n> test\n> node test.mjs\n\nnative desktop project tests passed\n"
+  },
+  "verifiedBeforeDeliberateDisconnect": true,
+  "finalDisconnectedStateIsCleanup": true,
+  "finalInstalledBuild": "16e30c9ff8dfafc8",
+  "finalActivationEvidence": "activation.json"
+}

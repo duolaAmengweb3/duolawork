@@ -1,0 +1,37 @@
+{
+  "at": "2026-11-09T14:11:36.919Z",
+  "method": "native CUA accessibility and screenshot observation",
+  "buildId": "152a5a4ab6ee6de5",
+  "channel": "duolawork项目组",
+  "visibleTabs": [
+    "任务",
+    "资料",
+    "记忆",
+    "会议",
+    "资源"
+  ],
+  "openedTab": "资源",
+  "connectedCards": [
+    "微信公众号",
+    "Cloudflare",
+    "Vercel",
+    "GitHub",
+    "飞书",
+    "Notion"
+  ],
+  "skillLabels": [
+    "产物评审",
+    "互补协作",
+    "经验复盘",
+    "方案取舍",
+    "证据核对",
+    "独立核查"
+  ],
+  "defaultDirectoryControlVisible": true,
+  "existingRestrictedSkillVisibleAsDisabled": true,
+  "noProductionResourceChanges": true,
+  "runningProcessId": 39695,
+  "clientViewBuildId": "152a5a4ab6ee6de5",
+  "checkedAt": "2026-11-09T14:13:07.654Z",
+  "clientBuildMatchesActivation": true
+}

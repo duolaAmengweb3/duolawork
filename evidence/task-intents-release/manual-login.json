@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T03:58:59.113Z",
+  "checks": [
+    "manual Chrome has no CDP/headless/automation/concealment flags",
+    "real fixture page observes webdriver=false and original session cookie",
+    "same account profile and browser product preserved",
+    "manual login is not reported as authenticated",
+    "automatic restore and dispatch browser blocked during login",
+    "update recovers same manual process without connecting CDP",
+    "stale owner PID resolves only the same profile/executable/proxy before return",
+    "explicit return restores background browser with original session and local storage"
+  ],
+  "realGoogleLoginTested": false,
+  "realCommercialAgentTested": false
+}

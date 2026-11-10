@@ -1,0 +1,90 @@
+{
+  "message": {
+    "id": "chat_25e711a9c79342dd8d5c2a745b569f43",
+    "scopeId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "parentId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "number": 28,
+    "body": "DuolaWork 自动验收（所有者已授权）：仅在本群现有工作对话执行一次原生终端 pwd，再用 Hub post_message 回本群报告实际目录和识别词 DW-LOCAL-GEMINI-1107。保留原模型、项目、工具与历史；不改文件、不读其他会话、不创建任何任务、不通知其他成员。",
+    "authorId": "owner",
+    "createdAt": "2026-11-07T15:40:02.185Z",
+    "type": "message",
+    "requestId": "latency-local-gemini-native-smoke-20261107",
+    "purpose": null,
+    "mentions": [
+      "member_57804695524e4e8cad1d8dd3bb272736"
+    ],
+    "mentionAll": false,
+    "recipientIds": [
+      "member_57804695524e4e8cad1d8dd3bb272736"
+    ],
+    "refs": [],
+    "mentionsFromText": false,
+    "replyTo": null,
+    "rootId": null,
+    "hops": 0,
+    "kind": "channel_message",
+    "revision": 1,
+    "updatedAt": "2026-11-07T15:40:02.185Z"
+  },
+  "reply": {
+    "id": "chat_234107948bd042768891e27ba019ac2a",
+    "scopeId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "parentId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "number": 29,
+    "body": "DW-LOCAL-GEMINI-1107\n实际目录：/Users/duola/.config/agent-hub/coding/member_57804695524e4e8cad1d8dd3bb272736/chats/channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "authorId": "member_57804695524e4e8cad1d8dd3bb272736",
+    "createdAt": "2026-11-07T15:40:44.470Z",
+    "type": "message",
+    "requestId": "req_post_25e711a9",
+    "purpose": null,
+    "mentions": [],
+    "mentionAll": false,
+    "recipientIds": [],
+    "refs": [],
+    "mentionsFromText": false,
+    "replyTo": "chat_25e711a9c79342dd8d5c2a745b569f43",
+    "replySnapshot": {
+      "body": "DuolaWork 自动验收（所有者已授权）：仅在本群现有工作对话执行一次原生终端 pwd，再用 Hub post_message 回本群报告实际目录和识别词 DW-LOCAL-GEMINI-1107。保留原模型、项目、工具与历史；不改文件、不读其他会话、不创建任何任务、不通知其他成员。",
+      "version": 1,
+      "authorId": "owner"
+    },
+    "rootId": "chat_25e711a9c79342dd8d5c2a745b569f43",
+    "hops": 1,
+    "kind": "channel_message",
+    "revision": 1,
+    "updatedAt": "2026-11-07T15:40:44.470Z"
+  },
+  "activity": {
+    "id": "turn_chat_25e711a9c79342dd8d5c2a745b569f43_member_57804695524e4e8cad1d8dd3bb272736",
+    "scopeId": "channel_6a49d2912d4d40c2aef05141bdf1a9ab",
+    "parentId": "member_57804695524e4e8cad1d8dd3bb272736",
+    "memberId": "member_57804695524e4e8cad1d8dd3bb272736",
+    "messageId": "chat_25e711a9c79342dd8d5c2a745b569f43",
+    "queuedResourceKey": "native-session:member_57804695524e4e8cad1d8dd3bb272736:db96fead6dc77ffa097a55f91b39e2289ad918ed1ea5edd9a4e90fa9468704e4",
+    "wakeSource": "user",
+    "number": 28,
+    "rootId": "chat_25e711a9c79342dd8d5c2a745b569f43",
+    "hops": 0,
+    "status": "done",
+    "createdAt": "2026-11-07T15:40:02.185Z",
+    "kind": "channel_turn",
+    "revision": 5,
+    "updatedAt": "2026-11-07T15:40:44.470Z",
+    "connectorReceivedAt": "2026-11-07T15:40:02.919Z",
+    "receiptSessionKey": "db96fead6dc77ffa097a55f91b39e2289ad918ed1ea5edd9a4e90fa9468704e4",
+    "receiptAttempt": 0,
+    "receiptSourceVersion": 1,
+    "nativeStartedAt": "2026-11-07T15:40:23.457Z",
+    "claimedAt": "2026-11-07T15:40:24.810Z",
+    "requirementVersions": {},
+    "nativeSessionId": "63fa178b-df0f-4663-95fb-adbab36febaf",
+    "nativeContextMode": "incremental",
+    "expiresAt": "2026-11-07T16:10:24.810Z",
+    "mergedMessageIds": [
+      "chat_25e711a9c79342dd8d5c2a745b569f43"
+    ],
+    "deliveryIssueIds": [],
+    "completedAt": "2026-11-07T15:40:44.470Z"
+  },
+  "scope": "original local legacy Gemini ACP member; not Antigravity desktop Sidecar"
+}

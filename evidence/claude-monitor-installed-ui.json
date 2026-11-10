@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-05T10:34:14.204Z",
+  "installedService": "http://127.0.0.1:8766",
+  "realSetupState": true,
+  "testMemberOnly": true,
+  "checks": [
+    "installed real setup state shows native reload only",
+    "clipboard exact /reload-plugins",
+    "no relaunch command on main path",
+    "real native receipt automatically becomes connected in installed UI"
+  ],
+  "nativeWindowControl": "CUA unavailable; browser inspected installed app service; activation checks actual Electron build separately"
+}

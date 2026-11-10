@@ -1,0 +1,41 @@
+{
+  "at": "2026-11-07T13:11:19.569Z",
+  "implementationCommit": "18d425e",
+  "serverWorker": {
+    "sha256": "e091d355a54b341f41fda7d31d6fad059e905bd8894bcd4da7433c4f0ac2c2f8",
+    "localSha256": "e091d355a54b341f41fda7d31d6fad059e905bd8894bcd4da7433c4f0ac2c2f8",
+    "match": true
+  },
+  "buildId": "08a46bd45314f4e8",
+  "desktopBuildId": "08a46bd45314f4e8",
+  "desktopReady": true,
+  "online": true,
+  "tests": {
+    "pass": 555,
+    "fail": 0
+  },
+  "ui": "evidence/task-groups-ui.json",
+  "layout": "evidence/sidebar-compact.json",
+  "activation": "evidence/activation.json",
+  "audit": {
+    "status": "passed",
+    "messages": [
+      446,
+      449
+    ],
+    "evidence": "evidence/task-groups-independent-audit.json",
+    "limits": [
+      "DeepSeek did not independently read the VPS backup file",
+      "DeepSeek read_todo omitted historical bodies; Codex separately verified exact original versions through read_space_object"
+    ]
+  },
+  "scope": [
+    "Todo task grouping",
+    "compact conversation avatars"
+  ],
+  "skillsProposal": "review only",
+  "attributionFixCommit": "af8d683",
+  "production": "evidence/task-groups-production.json",
+  "attributionRepair": "evidence/task-groups-attribution-repair.json",
+  "activationNote": "UI build 08a46bd45314f4e8 already activated; backend-only completion-attribution correction deployed to VPS. Subsequent optional desktop restart refused busy receiver safely; existing build remains current and online."
+}

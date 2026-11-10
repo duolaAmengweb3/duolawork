@@ -1,0 +1,16 @@
+✔ one remote MCP supports all members, new groups, multiple accounts and post-hoc exclusions (23.422292ms)
+✔ simultaneous duplicate writes execute once; uncertain writes never replay and expose no raw errors (6.005792ms)
+✔ revocation during an external call suppresses its data and stale versions cannot change scope (4.046958ms)
+✔ standard configuration import keeps multiple servers; old tool catalogs can use the common bridge (5.225458ms)
+✔ tool host pairing is one-use; a real stdio subprocess serves members without exposing config (2113.890583ms)
+✔ OAuth registration and PKCE state persist encrypted and callback replay is rejected (5.616416ms)
+✔ legacy SSE servers remain callable through the official fallback transport (2.444875ms)
+✔ full OAuth discovery, browser handoff, code exchange, reconnect and shared tool call use the SDK (429.966792ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2793.4765

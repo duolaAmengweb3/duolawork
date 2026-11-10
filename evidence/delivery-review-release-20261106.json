@@ -1,0 +1,68 @@
+{
+  "at": "2026-11-06T08:51:16.954Z",
+  "sourceCommit": "9746967",
+  "desktopBuildId": "477c37581914b61f",
+  "backendOrigin": "https://hub.manyaitool.com",
+  "artifactHashes": {
+    "worker.mjs": "2557e4707c76d604a9fc60f962893481a7f4eb16c6717ef94e8b4b5cb8e906ad",
+    "main.mjs": "8f2039da45c4536b70f20fbe207f668ef58b371090f4013f97ec2a493747c4bd"
+  },
+  "runningArtifactHashesMatch": true,
+  "services": [
+    "active",
+    "active"
+  ],
+  "health": {
+    "ok": true,
+    "service": "agent-hub-local",
+    "version": "0.1.0",
+    "time": "2026-11-06T08:51:16.978Z"
+  },
+  "desktopActivation": {
+    "at": "2026-11-06T08:51:02.087Z",
+    "url": "http://127.0.0.1:8766",
+    "buildId": "477c37581914b61f",
+    "processId": 95743,
+    "desktopBuildId": "477c37581914b61f",
+    "backendAndDesktopMatch": true,
+    "cloudOnline": true,
+    "protectedLocalDataUnchanged": true,
+    "protectedLocalMetadataUnchanged": true,
+    "ownedBrowsersPreserved": 0,
+    "observedProfileProcessesPreserved": 0,
+    "profileVerification": "关闭浏览器时核对完整资料字节",
+    "workspaceDataUnchanged": true,
+    "realCommercialAgentTested": false
+  },
+  "liveDesktop": {
+    "at": "2026-11-06T08:51:27.878Z",
+    "build": {
+      "id": "477c37581914b61f",
+      "version": "0.1.0",
+      "builtAt": "2026-11-06T08:37:05.818Z"
+    },
+    "clientView": {
+      "kind": "desktop",
+      "ready": true,
+      "buildId": "477c37581914b61f"
+    },
+    "online": true
+  },
+  "acceptanceTodo": {
+    "id": "board_8abe7e15f08241dbb4c1a8b8dc2e62f8",
+    "version": 4,
+    "status": "doing",
+    "assigneeUnchanged": true,
+    "progressReadBack": true,
+    "existingReviewerConclusionsOnly": true,
+    "remaining": "Stage 3 production acceptance"
+  },
+  "desktopWindow": {
+    "at": "2026-11-06T08:54:39.330Z",
+    "inspectedApp": "/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/Agent Hub.app",
+    "workspaceLoaded": true,
+    "memberCount": 11,
+    "channel": "duolawork项目组",
+    "observedVia": "native accessibility UI"
+  }
+}

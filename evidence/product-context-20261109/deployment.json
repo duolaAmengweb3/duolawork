@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-09T08:47:32.983Z",
+  "commit": "e54ae55deaea342132f8cf6e2b6a08ebd20f877e",
+  "builtWorkerSha256": "9b2c96f11d8be5bc0b0ad2ff237ef82ebfa48db3e732d7081891771c6fc79118",
+  "productionWorkerSha256": "9b2c96f11d8be5bc0b0ad2ff237ef82ebfa48db3e732d7081891771c6fc79118",
+  "match": true,
+  "localBuild": "08bcf2216e7517b5",
+  "desktopBuild": "08bcf2216e7517b5",
+  "desktopReady": true,
+  "cloudOnline": true
+}

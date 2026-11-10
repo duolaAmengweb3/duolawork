@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-07T13:59:42.285Z",
+  "sourceCommit": "4140f1a",
+  "buildId": "05b6d785a6141768",
+  "desktopReady": true,
+  "desktopBuildId": "05b6d785a6141768",
+  "serverSHA256": "61a2347864e2b148ed0b64a677cbbce36d1e15fc7ffd46b0d6bd38f38bd44259",
+  "serverArtifactMatches": true,
+  "skillsEndpoint": {
+    "ok": true,
+    "count": 6
+  },
+  "connectorsEndpoint": {
+    "ok": true,
+    "count": 0
+  },
+  "nativeMemberCatalog": {
+    "ok": true,
+    "count": 6
+  },
+  "tests": 562,
+  "independentAuditMessages": [
+    452,
+    454,
+    460
+  ],
+  "scope": "Deployed server bytes, actual desktop readiness, authenticated owner/member readback; no native installation asserted",
+  "task": {
+    "id": "board_fd59beea933f4ea484e6c7e5a0e6c814",
+    "status": "done",
+    "subtasks": {
+      "total": 3,
+      "done": 3,
+      "canceled": 0,
+      "blocked": 0,
+      "active": 0
+    }
+  },
+  "productionReviewId": "skill_review_df59928216f14d45b46547e1ed06d456"
+}

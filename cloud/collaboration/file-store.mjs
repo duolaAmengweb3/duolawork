@@ -1,6 +1,10 @@
 import { fail } from "./repository.mjs";
 
 export function fileStore(env, storageKind = env.FILE_STORAGE || "r2") {
+  if (storageKind === "disk") {
+    if (!env.SHARED_FILES) fail("files_unconfigured", "共享文件存储未配置", 503);
+    return env.SHARED_FILES;
+  }
   if (storageKind === "r2") {
     if (!env.FILES) fail("files_unconfigured", "R2 文件存储尚未配置", 503);
     return {

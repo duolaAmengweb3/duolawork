@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {startHarness} from './v1-harness.mjs';
+test('original Antigravity session starts with Hub, hands off one receiver only, survives update handover and stops monitoring on exit',async t=>{
+ const h=await startHarness();process.env.AGENT_HUB_DATA_DIR=path.join(h.directory,'local');const {start}=await import('../local/server.mjs');let local;
+ t.after(async()=>{await local?.close();await h.stop();});
+ await h.request('/admin/action',{type:'settings.update',payload:{automation:false}});
+ await h.request('/admin/action',{type:'platform.create',payload:{id:'antigravity',name:'Antigravity fixture'}});
+ const account=(await h.request('/admin/action',{type:'account.create',payload:{platformId:'antigravity',label:'fixture'}})).result;
+ const member=(await h.request('/admin/action',{type:'member.create',payload:{accountId:account.id,name:'fixture',mode:'connector'}})).result;
+ const project=path.join(h.directory,'original-project');await fs.mkdir(project);let starts=0;const bindings=[];
+ const host={kind:'antigravity-desktop',load:async()=>{},start:async()=>{starts++;},sessions:async()=>({items:[{id:'original-gui-session',title:'Original GUI',workspace:project,running:false}]}),status:async()=>({online:true,installed:true,supported:true}),call:async(route,body)=>{
+  if(route==='/health')return{ready:true,bindings};if(route==='/bind'){const c=JSON.parse(await fs.readFile(body.grantFile));bindings.push({sessionId:body.sessionId,memberId:c.memberId});return{};}if(route==='/unbind'){bindings.splice(0);return{};}throw Error(route);
+ }};
+ local=await start({port:0,config:{endpoint:h.base,adminKey:h.key},vaultKey:Buffer.alloc(32,42),antigravityHost:host});
+ assert.ok(local.ag.timer);assert.equal(local.ag.stopped,false);
+ local.coding.records[member.id]={memberId:member.id,engine:'antigravity',enabled:true,status:'idle',sessions:{channel:'original-managed-session'},cwd:project,grantFile:path.join(h.directory,'not-used-fixture.json'),protocol:'acp'};await local.coding.save();
+ const post=async(p,b)=>{const r=await fetch(local.url+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return{status:r.status,body:await r.json()};};
+ assert.equal((await post('/api/local/antigravity/connect',{memberId:member.id,sessionId:'original-gui-session'})).status,200);await local.ag.jobs.get(member.id);
+ assert.equal(local.coding.records[member.id].enabled,false);assert.equal(local.coding.records[member.id].sessions.channel,'original-managed-session');assert.equal(local.ag.records[member.id].sessionId,'original-gui-session');assert.equal(bindings.length,1);
+ assert.equal((await post('/api/local/coding/resume',{memberId:member.id})).status,400);
+ const client=local.ag.client(local.ag.records[member.id]),work=(await client.tool('list_work')).work[0];
+ const claim=await client.tool('claim_work',{requestId:crypto.randomUUID(),stepId:work.stepId});
+ await client.tool('submit_work',{requestId:crypto.randomUUID(),attemptId:claim.attemptId,lease:claim.lease,items:[{title:'fixture protocol receipt',body:claim.input.instruction.match(/proof_[a-z0-9]+/)[0]}]});
+ await local.ag.tick();assert.equal(local.ag.status()[0].verified,true);
+ const proofRun=local.ag.records[member.id].proofRunId;local.ag.records[member.id].proofRunId='old-unrelated-proof';await local.ag.tick();assert.equal(local.ag.status()[0].verified,false);local.ag.records[member.id].proofRunId=proofRun;await local.ag.tick();assert.equal(local.ag.status()[0].verified,true);
+ assert.equal((await post('/api/local/prepare-update',{})).status,200);assert.equal(local.ag.timer,null);
+ assert.equal((await post('/api/local/cancel-update',{})).status,200);assert.ok(local.ag.timer);assert.ok(starts>0);assert.equal(local.ag.records[member.id].sessionId,'original-gui-session');
+ await local.close();assert.equal(local.ag.timer,null);assert.equal(bindings[0].sessionId,'original-gui-session');local=null;
+});

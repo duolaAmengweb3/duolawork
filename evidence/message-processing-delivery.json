@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-06T02:52:55.075Z",
+  "candidateBuild": {
+    "id": "be8b366b2c25bebc",
+    "version": "0.1.0",
+    "builtAt": "2026-11-06T02:50:08.016Z"
+  },
+  "validation": {
+    "unitTestsPassed": 342,
+    "typecheck": true,
+    "sessionProtection": true,
+    "packagedRestart": true,
+    "standaloneServerHttp": true,
+    "isolatedDesktop": "message-processing-desktop.json",
+    "installedMacLogoAndScroll": "chat-visual-desktop.json"
+  },
+  "production": {
+    "activationBlockedByActiveWork": true,
+    "installedBuild": "d08ee31dabdd444b",
+    "desktopBuild": "d08ee31dabdd444b",
+    "backendHealthy": true,
+    "activated": false,
+    "deployed": false
+  }
+}

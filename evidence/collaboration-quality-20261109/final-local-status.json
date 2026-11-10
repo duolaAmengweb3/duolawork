@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-09T11:40:54.316Z",
+  "build": {
+    "id": "04b359e0ff6c7ac2",
+    "version": "0.1.0",
+    "builtAt": "2026-11-09T10:51:38.386Z"
+  },
+  "clientView": {
+    "kind": "desktop",
+    "ready": true,
+    "buildId": "04b359e0ff6c7ac2"
+  },
+  "online": true
+}

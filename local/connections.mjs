@@ -9,19 +9,21 @@ export class AgentConnections{
  constructor({cloud,browsers,logins,file}){Object.assign(this,{cloud,browsers,logins,file});this.transport=new MuseTransport(browsers);this.grok=new GrokTransport(browsers);this.records={};this.jobs=new Map();this.restoreAfter=new Map();this.writes=Promise.resolve();this.loaded=false;}
  async load(){this.loading??=(async()=>{try{const value=JSON.parse(await fs.readFile(this.file,'utf8'));if(value.schemaVersion!==1||!value.accounts||typeof value.accounts!=='object'||Array.isArray(value.accounts))throw new Error('invalid journal');this.records=value.accounts;}catch(e){if(e.code!=='ENOENT')throw new Error('任务连接记录无法读取，保留原账号并停止自动连接。');}})();return this.loading;}
  async save(accountId,patch){this.records[accountId]={...this.records[accountId],...patch,updatedAt:new Date().toISOString()};this.writes=this.writes.catch(()=>{}).then(()=>privateJson(this.file,{schemaVersion:1,accounts:this.records}));await this.writes;}
- snapshot(){return Object.fromEntries(Object.entries(this.records).map(([id,r])=>[id,{status:r.status,message:r.message||'',memberId:r.memberId||null,updatedAt:r.updatedAt}]));}
- async enable(account){await this.load();if(['muse','grok-bot'].includes(account.platformId)&&!this.records[account.id]?.enabled)await this.save(account.id,{enabled:true,status:'waiting_login',message:'登录后自动接入，无需填写连接参数。'});}
+ snapshot(){return Object.fromEntries(Object.entries(this.records).map(([id,r])=>[id,{status:r.status,message:r.message||'',memberId:r.memberId||null,browserPaused:!!r.browserPaused,updatedAt:r.updatedAt}]));}
+ async pauseBrowser(account){await this.load();await this.save(account.id,{browserPaused:true,message:'专用浏览器已关闭，自动恢复已暂停；登录资料保留，点击打开或连接后恢复。'});}
+ async enable(account){await this.load();if(this.records[account.id]?.browserPaused)await this.save(account.id,{browserPaused:false,message:'已恢复专用浏览器连接。'});if(['muse','grok-bot'].includes(account.platformId)&&!this.records[account.id]?.enabled)await this.save(account.id,{enabled:true,status:'waiting_login',message:'登录后自动接入，无需填写连接参数。'});}
  transportFor(account){return account.platformId==='grok-bot'?this.grok:this.transport;}
  supports(account,member){return ['muse','grok-bot'].includes(account?.platformId)&&member?.evidence?.kind==='browser_roundtrip'&&member.evidence.transport===(account.platformId==='grok-bot'?'grok-bot-web':'muse-web')&&member.status==='ready';}
  async sync(state){
   await this.load();if(this.stopped||!state.settings.automation)return;
   for(const account of state.accounts.filter(a=>['muse','grok-bot'].includes(a.platformId)&&a.status!=='disabled')){
+   if(this.records[account.id]?.browserPaused)continue;
    if(this.browsers.isManual?.(account.id)){
     // A running human SSO session is never inspected. After the owned browser
     // actually exits, return its saved profile without asking for another login.
     if(this.browsers.manual.status()[account.id]?.running!==false)continue;
     if(state.tasks.some(t=>t.steps.some(s=>s.accountId===account.id&&s.status==='running')))continue;
-    try{await this.browsers.manual.close(account.id,{finish:true});await this.browsers.ensureBackground(account,{url:account.entryUrl||BUILTIN_PLATFORMS.find(p=>p.id===account.platformId)?.entryUrl});}
+    try{await this.browsers.manual.close(account.id,{finish:true});if(this.records[account.id]?.browserPaused)continue;await this.browsers.ensureBackground(account,{url:account.entryUrl||BUILTIN_PLATFORMS.find(p=>p.id===account.platformId)?.entryUrl});}
     catch(e){await this.save(account.id,{status:'restoring',message:'登录资料已保留，恢复时遇到问题：'+e.message});continue;}
    }
    if(this.jobs.has(account.id))continue;
@@ -30,12 +32,14 @@ export class AgentConnections{
    // Only a previously confirmed session may be restored silently. The
    // observer remains read-only; it does not perform login or reset cookies.
    await this.logins.load?.();
+   if(this.records[account.id]?.browserPaused)continue;
    const remembered=this.logins.records?.[account.id];
    if(remembered?.status==='authenticated'&&this.browsers.ensureBackground&&Date.now()>(this.restoreAfter.get(account.id)||0)){
     try{await this.browsers.ensureBackground(account,{url:this.records[account.id]?.conversationUrl||account.entryUrl||BUILTIN_PLATFORMS.find(p=>p.id===account.platformId)?.entryUrl});}
     catch(e){this.restoreAfter.set(account.id,Date.now()+60000);await this.save(account.id,{status:'restoring',message:'后台恢复暂未完成：'+e.message});continue;}
    }
    if(this.stopped)return;
+   if(this.records[account.id]?.browserPaused)continue;
    if(member?.status==='ready'){if(member.evidence?.kind==='browser_roundtrip'&&this.records[account.id]?.status!=='ready')await this.save(account.id,{status:'ready',memberId:member.id,message:'任务连接已验证，原 Agent 继续负责规划与执行。'});continue;}
    const login=await this.logins.check(account,this.browsers);
    if(login.status!=='authenticated')continue;

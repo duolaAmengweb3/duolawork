@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-06T01:24:39.717Z",
+  "scope": "Real isolated Mem0/Qdrant service + shared embedding; not production workspace",
+  "checks": [
+    "asynchronous authoritative indexing",
+    "real semantic query",
+    "process restart preserves vectors",
+    "forget removes body, versions and vector",
+    "restore older database applies independent deletion ledger before reads"
+  ]
+}
