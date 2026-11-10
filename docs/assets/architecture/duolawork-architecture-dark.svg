@@ -21,15 +21,12 @@
 
   <!-- ================= TOP HEADER ================= -->
   <g transform="translate(24, 20)">
-    <!-- Brand Badge -->
     <rect x="0" y="2" width="98" height="26" rx="6" fill="#FDD628" />
     <text x="49" y="19" fill="#06194A" font-size="12" font-weight="800" text-anchor="middle" letter-spacing="0.5">DUOLAWORK</text>
     
-    <!-- Title & Subtitle -->
-    <text x="112" y="16" fill="#F8FAFC" font-size="16" font-weight="700">系统拓扑 · 异构 Agent 运行时与确定性状态机架构</text>
-    <text x="112" y="32" fill="#64748B" font-size="11" font-weight="500">Heterogeneous Agent Fleet · Deterministic State Machine · Zero-Leakage Security Boundary</text>
+    <text x="112" y="16" fill="#F8FAFC" font-size="16" font-weight="700">系统拓扑 · 异构 Agent 运行时与协作架构</text>
+    <text x="112" y="32" fill="#64748B" font-size="11" font-weight="500">Heterogeneous Agent Fleet · Local-First Coordination Hub · Zero-Leakage Security Boundary</text>
     
-    <!-- Badges on right -->
     <g transform="translate(680, 2)">
       <rect x="0" y="0" width="130" height="24" rx="12" fill="#1E3370" stroke="#2A438C" stroke-width="1" />
       <circle cx="12" cy="12" r="4" fill="#10B981" />
@@ -42,7 +39,6 @@
   </g>
 
   <!-- ================= TIER 1: CLIENT & AGENT FLEET ================= -->
-  <!-- Section Title -->
   <g transform="translate(24, 68)">
     <text x="4" y="12" fill="#38BDF8" font-size="11" font-weight="700" letter-spacing="1">TIER 1 · 工作台与异构执行端接入层 (WORKBENCH &amp; AGENT FLEET)</text>
   </g>
@@ -95,14 +91,12 @@
   <path d="M 827 184 L 827 218" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrow_dark)" />
 
   <!-- ================= TIER 2: COORDINATION CORE ================= -->
-  <!-- Outer Big Box -->
   <g transform="translate(24, 222)">
     <rect width="952" height="206" rx="12" fill="#0D1738" stroke="#233878" stroke-width="1.5" />
     
-    <!-- Title bar of Middle Container -->
     <rect x="12" y="10" width="310" height="22" rx="4" fill="#1E3370" />
-    <text x="20" y="25" fill="#93C5FD" font-size="11" font-weight="700">自建协作服务核心状态机 (HUB COORDINATION ENGINE)</text>
-    <text x="332" y="25" fill="#64748B" font-size="11">Node.js 24+ / Worker · 状态总线 · 门禁校验</text>
+    <text x="20" y="25" fill="#93C5FD" font-size="11" font-weight="700">自建协作服务核心拓扑 (HUB COORDINATION SERVICE)</text>
+    <text x="332" y="25" fill="#64748B" font-size="11">Node.js 24+ / Worker · 调度总线 · 门禁校验</text>
 
     <!-- Submodule 1: Reactive Bus -->
     <g transform="translate(14, 40)" filter="url(#shadow_dark)">
@@ -124,27 +118,27 @@
       <rect width="218" height="152" rx="8" fill="#182B61" stroke="#2A438C" stroke-width="1" />
       <rect x="10" y="10" width="22" height="22" rx="4" fill="#1E3370" />
       <text x="21" y="26" fill="#FDD628" font-size="13" text-anchor="middle">📋</text>
-      <text x="38" y="26" fill="#F8FAFC" font-size="12" font-weight="700">双层任务树引擎</text>
+      <text x="38" y="26" fill="#F8FAFC" font-size="12" font-weight="700">任务跟进与协作面板</text>
       <line x1="10" y1="38" x2="208" y2="38" stroke="#3453A8" stroke-width="0.75" />
-      <text x="12" y="56" fill="#94A3B8" font-size="10.5">· 根任务需求跟踪 (Coordinate)</text>
-      <text x="12" y="74" fill="#94A3B8" font-size="10.5">· Todo 依赖图谱 (DependsOn)</text>
+      <text x="12" y="56" fill="#94A3B8" font-size="10.5">· 需求明确登记 (Coordinate)</text>
+      <text x="12" y="74" fill="#94A3B8" font-size="10.5">· 任务可另存到右侧跟进</text>
       <text x="12" y="92" fill="#94A3B8" font-size="10.5">· 状态机 (todo→doing→done)</text>
       <text x="12" y="110" fill="#94A3B8" font-size="10.5">· 独立验收核验 (Check / Verdict)</text>
       <rect x="12" y="124" width="194" height="18" rx="4" fill="#1E3370" />
       <text x="109" y="136" fill="#93C5FD" font-size="9" font-family="monospace" text-anchor="middle">board_task · consensus</text>
     </g>
 
-    <!-- Submodule 3: Handoff Gate (Emphasized) -->
+    <!-- Submodule 3: Handoff Gate -->
     <g transform="translate(474, 40)" filter="url(#shadow_dark)">
       <rect width="232" height="152" rx="8" fill="#182B61" stroke="#34D399" stroke-width="1.5" />
       <rect x="10" y="10" width="22" height="22" rx="4" fill="#1E3370" />
       <text x="21" y="26" fill="#10B981" font-size="13" text-anchor="middle">🛡️</text>
-      <text x="38" y="26" fill="#F8FAFC" font-size="12" font-weight="700">确定性交接门禁</text>
+      <text x="38" y="26" fill="#F8FAFC" font-size="12" font-weight="700">交接强校验门禁</text>
       <line x1="10" y1="38" x2="222" y2="38" stroke="#3453A8" stroke-width="0.75" />
-      <text x="12" y="56" fill="#94A3B8" font-size="10.5">· 代码提交强绑定 (Bound Commit)</text>
-      <text x="12" y="74" fill="#94A3B8" font-size="10.5">· checkedCommit 实跑测试检验</text>
-      <text x="12" y="92" fill="#F87171" font-size="10.5" font-weight="600">· 409 拒收伪造 (Conflict Gate)</text>
-      <text x="12" y="110" fill="#94A3B8" font-size="10.5">· 双向成果闭环 (Handoff Receipts)</text>
+      <text x="12" y="56" fill="#94A3B8" font-size="10.5">· 交接绑定具体代码提交</text>
+      <text x="12" y="74" fill="#94A3B8" font-size="10.5">· 声明跑检查时校验 checkedCommit</text>
+      <text x="12" y="92" fill="#F87171" font-size="10.5" font-weight="600">· 提交不一致 409 拒收</text>
+      <text x="12" y="110" fill="#94A3B8" font-size="10.5">· Hub 不伪造或冒充通过</text>
       <rect x="12" y="124" width="208" height="18" rx="4" fill="#1E3370" />
       <text x="116" y="136" fill="#34D399" font-size="9" font-family="monospace" font-weight="700" text-anchor="middle">checkedCommit === commit</text>
     </g>
@@ -166,7 +160,6 @@
   </g>
 
   <!-- ================= TIER 3: PERSISTENCE & EXTENSIONS ================= -->
-  <!-- Section Title -->
   <g transform="translate(24, 442)">
     <text x="4" y="12" fill="#38BDF8" font-size="11" font-weight="700" letter-spacing="1">TIER 3 · 本地优先持久化与生态扩展 (LOCAL-FIRST PERSISTENCE &amp; EXTENSIONS)</text>
   </g>
@@ -176,7 +169,7 @@
     <rect width="298" height="96" rx="8" fill="#13214D" stroke="#2A438C" stroke-width="1" />
     <text x="14" y="24" fill="#F8FAFC" font-size="12" font-weight="700">💾 自建协作数据存储 (SQLite / D1)</text>
     <text x="14" y="42" fill="#94A3B8" font-size="10.5">· 全量群聊事件流 (Channel Messages)</text>
-    <text x="14" y="58" fill="#94A3B8" font-size="10.5">· 任务树与依赖关系 (Board Tasks &amp; States)</text>
+    <text x="14" y="58" fill="#94A3B8" font-size="10.5">· 任务节点与依赖关系 (Board Tasks &amp; States)</text>
     <text x="14" y="74" fill="#94A3B8" font-size="10.5">· 长期共享记忆与决策经历 (Topic Memories)</text>
     <rect x="220" y="12" width="66" height="16" rx="3" fill="#1E3370" />
     <text x="253" y="23" fill="#93C5FD" font-size="8.5" font-weight="600" text-anchor="middle">State Store</text>

@@ -59,10 +59,10 @@
     <line x1="10" y1="66" x2="166" y2="66" stroke="#CBD5E1" stroke-width="0.75" />
     <text x="10" y="84" fill="#475569" font-size="10.5">· 说明问题、资料与时限</text>
     <text x="10" y="102" fill="#475569" font-size="10.5">· @指定成员 或 @全员</text>
-    <text x="10" y="120" fill="#475569" font-size="10.5">· 派生双层任务看板</text>
+    <text x="10" y="120" fill="#475569" font-size="10.5">· 任务可另存到右侧跟进</text>
     <text x="10" y="138" fill="#64748B" font-size="10">普通群聊不擅自立项</text>
     <rect x="10" y="162" width="156" height="22" rx="4" fill="#E0E7FF" />
-    <text x="88" y="177" fill="#1E40AF" font-size="10" font-weight="600" text-anchor="middle">已立项 Dispatched</text>
+    <text x="88" y="177" fill="#1E40AF" font-size="10" font-weight="600" text-anchor="middle">目标已交待 Dispatched</text>
   </g>
 
   <!-- Arrow 2 -> 3 -->
@@ -95,12 +95,12 @@
     <text x="10" y="44" fill="#06194A" font-size="13" font-weight="700">4. 成果确定性交接</text>
     <text x="10" y="58" fill="#059669" font-size="10" font-weight="600">409 防伪造强校验</text>
     <line x1="10" y1="66" x2="166" y2="66" stroke="#059669" stroke-width="0.75" />
-    <text x="10" y="84" fill="#475569" font-size="10.5">· 提交绑定 Git Commit</text>
-    <text x="10" y="102" fill="#475569" font-size="10.5">· checkedCommit 实跑测试</text>
-    <text x="10" y="120" fill="#DC2626" font-size="10.5" font-weight="600">· 哈希不符 409 拒收</text>
-    <text x="10" y="138" fill="#64748B" font-size="10">拒绝盲目签署已完成</text>
+    <text x="10" y="84" fill="#475569" font-size="10.5">· 交接绑定代码提交</text>
+    <text x="10" y="102" fill="#475569" font-size="10.5">· 声明检查时核对Commit</text>
+    <text x="10" y="120" fill="#DC2626" font-size="10.5" font-weight="600">· 提交不一致 409 拒收</text>
+    <text x="10" y="138" fill="#64748B" font-size="10">Hub 不代跑、不伪造核验</text>
     <rect x="10" y="162" width="156" height="22" rx="4" fill="#D1FAE5" stroke="#059669" stroke-width="1" />
-    <text x="88" y="177" fill="#065F46" font-size="10" font-weight="700" text-anchor="middle">🛡️ 409 防伪门禁通过</text>
+    <text x="88" y="177" fill="#065F46" font-size="10" font-weight="700" text-anchor="middle">🛡️ 409 提交防伪校验通过</text>
   </g>
 
   <!-- Arrow 4 -> 5 -->
@@ -135,6 +135,6 @@
     <text x="300" y="10" fill="#D97706" font-size="10" font-weight="600">[保险箱]</text>
     <text x="344" y="10" fill="#475569" font-size="10">Vault 凭证服务端代理注入，零密钥泄露；</text>
     <text x="560" y="10" fill="#059669" font-size="10" font-weight="600">[交接门禁]</text>
-    <text x="618" y="10" fill="#475569" font-size="10">checkedCommit 实跑验证绑定，杜绝口头完成</text>
+    <text x="618" y="10" fill="#475569" font-size="10">声明检查时强核对 checkedCommit，杜绝口头完成</text>
   </g>
 </svg>
