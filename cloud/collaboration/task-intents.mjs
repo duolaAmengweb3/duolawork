@@ -126,21 +126,22 @@ export function taskFeedbackTargets(tasks,channel,message){
 // A reply acknowledges an inbox item, not the ongoing task. Resume only actual
 // runnable work, once per durable task/node revision. Waiting on other members
 // produces no polling turn, and a no-progress reply cannot create a wake loop.
-export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,delivery){
+export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,basis,delivery){
  if(actor.owner)return;
  const finished=async t=>t.status==='canceled'||t.status==='done'&&(!t.workSpec||(await delivery(tx,t)).valid);
  for(const task of tasks){
   if(!task.managedIntent||task.parentTaskId||await finished(task)||task.status==='blocked'||task.assigneeId!==actor.memberId)continue;
   const children=await childrenOf(tx,task.id),open=[];for(const child of children)if(!await finished(child))open.push(child);
-  const ready=[];
+  const ready=[],repair=[];
   for(const t of open)if(t.assigneeId===actor.memberId&&t.status!=='blocked'){
    let dependenciesReady=true;for(const depId of t.dependsOn||[]){const dep=await tx.get('channel_task',depId,false);if(!dep||dep.status!=='done'||!(await delivery(tx,dep)).valid)dependenciesReady=false;}
-   if(dependenciesReady)ready.push(t);
+   if(dependenciesReady){if(t.status==='done'||!(await basis(tx,t)).valid)repair.push(t);else ready.push(t);}
   }
-  if(open.length&&!ready.length)continue;
-  const stamp=[task,...ready].map(t=>t.id+':'+t.version).sort().join('|'),key=task.id+':continue:'+await digest(stamp);
+  if(open.length&&!ready.length&&!repair.length)continue;
+  const mode=ready.length?'continue':repair.length||task.status==='done'||!(await basis(tx,task)).valid?'reconcile':'continue',nodes=mode==='continue'?ready:repair;
+  const stamp=[task,...nodes].map(t=>t.id+':'+t.version).sort().join('|'),event=mode+':'+await digest(stamp),key=task.id+':'+event;
   if(await tx.get('channel_task_followup',key,false))continue;
-  const message=await helpers.channelMessage(tx,channel,actor,'任务仍在推进：'+task.title+'。本次回复只结束通知；请按最新要求继续可做节点，完成后提交实际结果。等待其他成员时无需轮询，回传会再次唤醒。',{hidden:true,type:'todo',taskId:task.id,taskEvent:'continue:'+await digest(stamp),taskIds:[task.id,...ready.map(t=>t.id)],hops:0});
+  const message=await helpers.channelMessage(tx,channel,actor,(mode==='reconcile'?'任务需要核对来源变化：':'任务仍在推进：')+task.title+(mode==='reconcile'?'。只读取并核对 taskWork 的失效来源与最新原话，明确影响后 configure/revise；当前旧约定不可执行或直接验收，不把这条复核通知当执行许可。':'。本次回复只结束通知；请按最新要求继续可做节点，完成后提交实际结果。')+'等待其他成员时无需轮询，回传会再次唤醒。',{hidden:true,type:'todo',taskId:task.id,taskEvent:event,taskIds:[task.id,...nodes.map(t=>t.id)],hops:0});
   tx.put('channel_task_followup',{id:key,scopeId:channel.id,parentId:task.id,memberId:actor.memberId,messageId:message.id,status:'pending',createdAt:tx.now});
   await helpers.enqueue(tx,identity,channel,message,actor.memberId);
  }

@@ -1,7 +1,7 @@
 import {bindMessageTasks,taskFeedbackTargets,continueTaskWork} from './task-intents.mjs';
 import {isMemoryMaintenance,foregroundWaiting,memoryBatch} from './background-memory.mjs';
 import {resolveReceptionBlock} from './receiver-wakes.mjs';
-import {taskDeliveryProperties,taskDelivery,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
+import {taskDeliveryProperties,currentTaskBasis,taskDelivery,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {manageChannel} from './channel-management.mjs';
@@ -991,7 +991,7 @@ export async function conversationCommand(
         for (const mid of targets)
           await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
         await finishTurn(tx, actor, cmd.turnId || turn?.id, "done",undefined,{kind:'message',id:message.id});
-        await continueTaskWork(tx,identity,actor,channel,linkedTasks,meetingHelpers,taskDelivery);
+        await continueTaskWork(tx,identity,actor,channel,linkedTasks,meetingHelpers,currentTaskBasis,taskDelivery);
         return message;
       }
       if (type === "channel.silent") {
