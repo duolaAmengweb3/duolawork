@@ -1,4 +1,4 @@
-import {intentActions,taskIntentCommand} from './task-intents.mjs';
+import {canonicalTask,intentActions,taskIntentCommand} from './task-intents.mjs';
 import {digest,fail,id,required} from './repository.mjs';
 import {childrenOf,validateTaskGroup} from './task-groups.mjs';
 import {bindTaskSkills} from './skill-bindings.mjs';
@@ -186,7 +186,7 @@ async function sourceMessages(tx,channel,task){
  const out=[];for(const mid of ids){const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden)out.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});}
  return out;
 }
-export async function taskSourceMessages(tx,channel,task){const original=await sourceMessages(tx,channel,task);const ids=new Set(original.map(m=>m.id));const root=task.intentRootId?await tx.get('channel_task',task.intentRootId,false):null;for(const mid of [...(task.intentSourceIds||[]),...(root?.intentSourceIds||[]),...(root?.sourceMessageIds||[]),...(root?.sourceMessageId?[root.sourceMessageId]:[])]){if(ids.has(mid))continue;const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden){original.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});ids.add(mid);}}return original;}
+export async function taskSourceMessages(tx,channel,task){const original=await sourceMessages(tx,channel,task);const ids=new Set(original.map(m=>m.id));const root=task.intentRootId?await canonicalTask(tx,channel.id,task.intentRootId):null;for(const mid of [...(task.intentSourceIds||[]),...(root?.intentSourceIds||[]),...(root?.sourceMessageIds||[]),...(root?.sourceMessageId?[root.sourceMessageId]:[])]){if(ids.has(mid))continue;const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden){original.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});ids.add(mid);}}return original;}
 async function notify(tx,identity,channel,helpers,actor,task,memberId,event,body){
  if(!memberId||memberId==='owner'||memberId===who(actor)||!channel.memberIds.includes(memberId))return;
  const key=`${task.id}:${event}:${memberId}`;if(await tx.get('channel_task_followup',key,false))return;

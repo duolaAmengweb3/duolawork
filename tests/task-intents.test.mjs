@@ -44,7 +44,7 @@ test('merge preserves IDs, original results, child dependencies and handles old 
  const child=await f.action({action:'create',title:'已完成节点',parentTaskId:left.id,assigneeId:'grok',notifyAssignee:false});const completed=await done(f,child,worker);
  const merged=await f.action({action:'merge',taskId:left.id,expectedVersion:(await f.read(left.id)).version,targetTaskId:right.id,targetVersion:right.version,reason:'同一交付目标'});
  assert.equal(merged.id,right.id);assert.equal((await f.read(completed.id)).parentTaskId,right.id);assert.equal((await f.read(completed.id)).delivery.valid,true);assert.equal((await f.read(left.id)).mergedInto,right.id);
- const msg=await f.post('沿用旧链接补充',{refs:[{kind:'task',id:left.id}]});assert.deepEqual(msg.taskIds,[right.id]);
+ const msg=await f.post('沿用旧链接补充',{refs:[{kind:'task',id:left.id}]});assert.deepEqual(msg.taskIds,[right.id]);assert.ok((await f.read(completed.id)).sourceMessages.some(m=>m.id===msg.id),'merged child must see the canonical task latest supplement');
  const late=await done(f,await f.read(left.id));assert.equal(late.id,left.id);assert.equal(late.parentTaskId,right.id);assert.equal((await f.repo.get('channel_task_submission',late.currentSubmissionId)).body,'实际交付');
 });
 test('stale, foreign, unauthorized and invalid nested revisions roll back the whole intent operation',async t=>{
