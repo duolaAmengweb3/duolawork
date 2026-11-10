@@ -98,10 +98,11 @@ export async function taskNotificationState(tx,turn){
   const follower=check.verdict==='accept'?(parent?.assigneeId||(task.managedIntent?(await tx.get('channel',task.scopeId)).coordinatorId:(!task.parentTaskId?task.assigneeId:null))||(await tx.get('channel',task.scopeId)).coordinatorId):task.assigneeId;
   if(turn.memberId!==follower)return obsolete('任务跟进成员已变更，旧提醒已自动收尾');
  }else{
-  if(terminal(task))return obsolete('任务已结束，旧执行提醒已自动收尾');
+  if(terminal(task)&&!(task.status==='done'&&turn.taskEvent.startsWith('continue:')&&!(await taskDelivery(tx,task)).valid))return obsolete('任务已结束，旧执行提醒已自动收尾');
   if(task.assigneeId!==turn.memberId)return obsolete('任务执行成员已变更，旧提醒已自动收尾');
   if(turn.taskEvent.startsWith('ready:')){const check=await tx.get('channel_task_check',turn.taskEvent.slice(6),false);const upstream=check?await tx.get('channel_task',check.taskId,false):null;if(!upstream||upstream.currentCheckId!==check.id||!(await taskDelivery(tx,upstream)).valid)return obsolete('前置成果已有变化，旧接续提醒已自动收尾');}
  }
+ if(turn.taskEvent.startsWith('continue:'))return valid; // reconciliation must be able to read and repair stale sources
  const basis=await currentTaskBasis(tx,task);
  return basis.valid?valid:{state:'waiting',reason:basis.gaps.join('；')};
 }

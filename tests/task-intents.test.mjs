@@ -89,3 +89,23 @@ test('editing an original owner message does not invalidate every child; explici
  const current=await f.read(task.id);const revised=await f.action({action:'revise',taskId:task.id,expectedVersion:current.version,intent:{goal:'方案要求，加一个交付维度'}});
  assert.equal(revised.requirementSources[0].version,2);assert.equal((await f.read(child.id)).delivery.valid,true);assert.ok(!(await f.read(task.id)).delivery.gaps.some(g=>g.includes('原始用户要求已有变化')));
 });
+
+test('audit P1 stale accepted root is runnable for reconciliation and its continuation can actually be claimed',async t=>{
+ const f=await setup(t),task=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'交付文档',body:'旧原件'});
+ const submitted=await f.action({action:'submit',taskId:task.id,expectedVersion:task.version,workSpecVersion:1,submission:{body:'有依据的结果',refs:[{kind:'document',id:doc.id}],coverage:[{id:'outcome',location:'文档'}]},selfCheck:passed});
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'新的原件',reason:'原件变更'});
+ assert.equal((await f.read(task.id)).delivery.stage,'stale');await f.post('重新核对结果',{replyTo:task.sourceMessageId,refs:[{kind:'task',id:task.id}],mentions:[]},leader);
+ const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':continue:'));assert.ok(follow);const turn=(await f.repo.list('channel_turn')).find(x=>x.messageId===follow.messageId);const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'claim-stale',stepId:turn.id});assert.equal(claim.turnId,turn.id);assert.equal((await f.repo.get('channel_turn',turn.id)).status,'active');assert.equal((await f.repo.get('channel_task',submitted.id)).acceptedSubmissionId,submitted.acceptedSubmissionId);
+});
+test('audit P1 stale done child is not counted as closed and resumes before aggregate delivery',async t=>{
+ const f=await setup(t),root=await f.plan(),doc=await f.send('channel.doc.create',{channelId:f.c.id,title:'子项来源',body:'版本一'}),child=await f.action({action:'create',title:'来源核查',parentTaskId:root.id,assigneeId:'write',notifyAssignee:false});
+ await f.action({action:'submit',taskId:child.id,expectedVersion:child.version,workSpecVersion:1,submission:{body:'实际子项',refs:[{kind:'document',id:doc.id}],coverage:[{id:'outcome',location:'文档'}]},selfCheck:passed});
+ await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'版本二',reason:'更正'});await f.post('继续复核',{replyTo:root.sourceMessageId,refs:[{kind:'task',id:root.id}],mentions:[]},leader);
+ const follow=(await f.repo.list('channel_task_followup')).find(x=>x.id.includes(':continue:'));const msg=await f.repo.get('channel_message',follow.messageId);assert.ok(msg.taskIds.includes(child.id));assert.equal((await f.read(child.id)).delivery.stage,'stale');
+});
+test('audit P2 unrelated member cannot inject owner sources; own results and addressed requirements remain usable',async t=>{
+ const f=await setup(t),task=await f.plan(),unrelated=await f.post('负责人处理的其他事情');
+ await assert.rejects(f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[unrelated.id]},worker),e=>e.code==='forbidden');
+ const directed=await f.post('请你补充来源',{mentions:['grok']});let linked=await f.action({action:'associate',taskId:task.id,expectedVersion:task.version,messageIds:[directed.id]},worker);assert.ok(linked.intentSourceIds.includes(directed.id));
+ const result=await f.post('我的核查结果',{replyTo:directed.id,mentions:[]},worker);linked=await f.action({action:'associate',taskId:task.id,expectedVersion:linked.version,messageIds:[result.id]},worker);assert.ok(linked.intentSourceIds.includes(result.id));
+});

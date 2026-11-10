@@ -34,6 +34,7 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
  if(task&&cmd.expectedVersion!==task.version)fail('version_conflict','任务已更新，请 read_todo 当前任务后重试',409);
  if(task&&!actor.owner&&who(actor)!==channel.coordinatorId&&who(actor)!==task.assigneeId&&who(actor)!==task.authorId&&cmd.action!=='associate')fail('forbidden','由任务负责人维护意图和计划',403);
  const sources=await messages(tx,channel,cmd.messageIds|| (cmd.sourceMessageId?[cmd.sourceMessageId]:[]));
+ if(cmd.action==='associate'&&!actor.owner&&who(actor)!==channel.coordinatorId&&who(actor)!==task?.assigneeId&&who(actor)!==task?.authorId&&sources.some(m=>m.authorId!==who(actor)&&!(m.authorId==='owner'&&m.recipientIds?.includes(who(actor)))))fail('forbidden','只能关联本人结果或实际交给本人的用户要求；其他归属由任务负责人维护',403);
  if(cmd.action==='plan'){
   if(task)fail('invalid_input','已有任务用 revise，不重复 plan');
   const intent=intentValue(cmd.intent);
@@ -68,7 +69,7 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
   task=await tx.get('channel_task',task.id);
   const requirementSources=(await basisSources(tx,channel,task)).map(m=>({id:m.id,version:m.version}));
   const changed=JSON.stringify(task.intent)!==JSON.stringify(intent)||JSON.stringify(task.requirementSources)!==JSON.stringify(requirementSources);
-  task=await save(tx,'channel_task',{...task,intent,requirementSources,intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:task.workSpec?{...task.workSpec,version:task.workSpec.version+1,expectedOutcome:intent.goal}:task.workSpec}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
+  task=await save(tx,'channel_task',{...task,intent,requirementSources,...(task.title===task.intent?.goal?.slice(0,150)?{title:intent.goal.slice(0,150)}:{}),...(task.body===task.intent?.goal?{body:intent.goal}:{}),intentVersion:(task.intentVersion||0)+1,managedIntent:true,intentSourceIds:[...new Set([...(task.intentSourceIds||[]),...sources.map(m=>m.id)])],...(changed?{acceptedSubmissionId:null,executionDecision:null,status:task.status==='done'?'doing':task.status,completedAt:null,completedBy:null,workSpec:task.workSpec?{...task.workSpec,version:task.workSpec.version+1,expectedOutcome:intent.goal}:task.workSpec}:{}),...(cmd.progress!==undefined?{progress:String(cmd.progress).slice(0,12000)}:{})},task,actor,cmd.reason||'按补充调整理解及受影响节点');
  }else if(cmd.action==='associate'){
   if(!sources.length)fail('invalid_input','请指定要关联的 messageIds');
   if(cmd.fromTaskId){
@@ -125,13 +126,17 @@ export function taskFeedbackTargets(tasks,channel,message){
 // A reply acknowledges an inbox item, not the ongoing task. Resume only actual
 // runnable work, once per durable task/node revision. Waiting on other members
 // produces no polling turn, and a no-progress reply cannot create a wake loop.
-export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,basis){
+export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,delivery){
  if(actor.owner)return;
+ const finished=async t=>t.status==='canceled'||t.status==='done'&&(!t.workSpec||(await delivery(tx,t)).valid);
  for(const task of tasks){
-  if(!task.managedIntent||task.parentTaskId||closed(task)||task.status==='blocked'||task.assigneeId!==actor.memberId)continue;
-  const children=await childrenOf(tx,task.id),open=children.filter(t=>!closed(t));
+  if(!task.managedIntent||task.parentTaskId||await finished(task)||task.status==='blocked'||task.assigneeId!==actor.memberId)continue;
+  const children=await childrenOf(tx,task.id),open=[];for(const child of children)if(!await finished(child))open.push(child);
   const ready=[];
-  for(const t of open)if(t.assigneeId===actor.memberId&&t.status!=='blocked'&&(await basis(tx,t)).valid)ready.push(t);
+  for(const t of open)if(t.assigneeId===actor.memberId&&t.status!=='blocked'){
+   let dependenciesReady=true;for(const depId of t.dependsOn||[]){const dep=await tx.get('channel_task',depId,false);if(!dep||dep.status!=='done'||!(await delivery(tx,dep)).valid)dependenciesReady=false;}
+   if(dependenciesReady)ready.push(t);
+  }
   if(open.length&&!ready.length)continue;
   const stamp=[task,...ready].map(t=>t.id+':'+t.version).sort().join('|'),key=task.id+':continue:'+await digest(stamp);
   if(await tx.get('channel_task_followup',key,false))continue;
