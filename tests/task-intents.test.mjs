@@ -128,3 +128,9 @@ test('audit claim rechecks every scheduled node and converts changed basis into 
  await f.send('channel.doc.edit',{channelId:f.c.id,documentId:doc.id,expectedVersion:doc.version,body:'v2',reason:'排期后更新来源'});
  const claim=await claimConversation(f.repo,f.identity,leader,{requestId:'queued-changed-basis',stepId:turn.id});assert.equal(claim.turnId,turn.id);assert.ok((await f.repo.get('channel_turn',turn.id)).taskEvent.startsWith('reconcile:'));const notice=await f.repo.get('channel_message',turn.messageId);assert.ok(notice.body.includes('不能按旧约定执行'));await assert.rejects(f.action({action:'accept',taskId:child.id,expectedVersion:child.version}),e=>e.code==='task_not_ready');assert.equal((await f.repo.list('channel_turn')).filter(t=>t.messageId===turn.messageId).length,1);
 });
+
+test('adaptive changes require current versions even for metadata actions and goal size matches the existing work spec contract',async t=>{
+ const f=await setup(t),task=await f.plan(),child=await f.action({action:'create',title:'节点',parentTaskId:task.id,assigneeId:'write',notifyAssignee:false});
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'变化'},changes:[{taskId:child.id,action:'update',body:'覆盖'}]}),e=>e.code==='version_conflict');assert.equal((await f.read(child.id)).body,child.body);
+ await assert.rejects(f.action({action:'revise',taskId:task.id,expectedVersion:task.version,intent:{goal:'x'.repeat(4001)}}),e=>e.code==='invalid_input');assert.equal((await f.read(task.id)).intentVersion,1);
+});

@@ -17,7 +17,7 @@ export async function canonicalTask(repo,channelId,taskId){
  return task;
 }
 function intentValue(v){
- if(!v||typeof v!=='object'||Array.isArray(v)||JSON.stringify(v).length>12000||typeof v.goal!=='string'||!v.goal.trim())fail('invalid_input','intent 需要 goal，其余内容按本次任务自定，最多12000字符');
+ if(!v||typeof v!=='object'||Array.isArray(v)||JSON.stringify(v).length>12000||typeof v.goal!=='string'||!v.goal.trim()||v.goal.length>4000)fail('invalid_input','intent.goal 需要4000字符以内的目标，其余内容按本次任务自定，合计最多12000字符');
  return {...v,goal:v.goal.trim()};
 }
 async function messages(tx,channel,ids){
@@ -63,6 +63,7 @@ export async function taskIntentCommand(tx,identity,actor,raw,channel,helpers,{s
    if(!change||typeof change!=='object'||seen.has(change.taskId))fail('invalid_input','受影响节点不能重复');seen.add(change.taskId);
    const node=await tx.get('channel_task',change.taskId);
    if(node.id!==task.id&&node.parentTaskId!==task.id)fail('forbidden','只能调整本任务节点',403);
+   if(change.expectedVersion!==node.version)fail('version_conflict','受影响节点已更新，请读取节点当前版本再调整',409);
    if(change.action&&!['configure','update'].includes(change.action))fail('invalid_action','节点调整只使用 configure 或 update');
    await run({...change,action:change.action||'configure',taskId:node.id,expectedVersion:change.expectedVersion,channelId:channel.id});
   }
