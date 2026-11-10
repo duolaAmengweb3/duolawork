@@ -140,7 +140,7 @@ export async function continueTaskWork(tx,identity,actor,channel,tasks,helpers,b
   const rootBasis=await basis(tx,task);
   if(open.length&&!ready.length&&!repair.length&&rootBasis.valid)continue;
   const mode=!rootBasis.valid?'reconcile':ready.length?'continue':repair.length||task.status==='done'?'reconcile':'continue',nodes=mode==='continue'?ready:repair;
-  const stamp=[task,...nodes].map(t=>t.id+':'+t.version).sort().join('|'),event=mode+':'+await digest(stamp),key=task.id+':'+event;
+  const stamp=[task,...nodes].map(t=>t.id+':'+t.version).sort().join('|'),event=mode+':'+await digest(stamp),key=task.id+':'+event+':'+actor.memberId;
   if(await tx.get('channel_task_followup',key,false))continue;
   const message=await helpers.channelMessage(tx,channel,actor,(mode==='reconcile'?'任务需要核对来源变化：':'任务仍在推进：')+task.title+(mode==='reconcile'?'。只读取并核对 taskWork 的失效来源与最新原话，明确影响后 configure/revise；当前旧约定不可执行或直接验收，不把这条复核通知当执行许可。':'。本次回复只结束通知；请按最新要求继续可做节点，完成后提交实际结果。')+'等待其他成员时无需轮询，回传会再次唤醒。',{hidden:true,type:'todo',taskId:task.id,taskEvent:event,taskIds:[task.id,...nodes.map(t=>t.id)],hops:0});
   tx.put('channel_task_followup',{id:key,scopeId:channel.id,parentId:task.id,memberId:actor.memberId,messageId:message.id,status:'pending',createdAt:tx.now});

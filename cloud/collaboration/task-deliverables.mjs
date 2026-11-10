@@ -83,6 +83,17 @@ export async function taskNotificationState(tx,turn){
  const obsolete=reason=>({state:'obsolete',reason});
  const task=await tx.get('channel_task',turn.taskId,false);
  if(!task||['canceled','deleted'].includes(task.status))return obsolete('任务已取消或移除，旧提醒已自动收尾');
+ if(turn.taskEvent.startsWith('continue:')){
+  if(task.mergedInto)return obsolete('任务已合并，旧接续提醒已结束');
+  const message=await tx.get('channel_message',turn.messageId,false);
+  for(const tid of new Set([task.id,...(message?.taskIds||[])])){
+   const node=await tx.get('channel_task',tid,false);
+   if(!node||node.scopeId!==task.scopeId||node.id!==task.id&&node.parentTaskId!==task.id)return obsolete('接续节点已移出原任务，请按新的归属继续');
+   if(node.status==='canceled'||node.id!==task.id&&node.assigneeId!==turn.memberId)return {state:'reconcile',reason:'排期后节点状态或跟进成员已变化，请核对当前计划'};
+   const current=await currentTaskBasis(tx,node);
+   if(!current.valid||node.status==='done'&&node.workSpec&&!(await taskDelivery(tx,node)).valid)return {state:'reconcile',reason:'排期后依据或成果已有变化：'+current.gaps.join('；')};
+  }
+ }
  if(turn.taskEvent.startsWith('review:')){
   if(turn.taskEvent!=='review:'+task.currentSubmissionId||task.status==='done'||task.workSpec?.reviewerId!==turn.memberId)return obsolete('成果或核对安排已有变化，旧核对提醒已自动收尾');
   const sub=await tx.get('channel_task_submission',task.currentSubmissionId,false);
@@ -111,6 +122,17 @@ const unclaimedNotice=t=>t&&!t.claimedAt&&!t.lease&&['ready','stalled','limited'
 export async function reconcileTaskNotification(tx,turn){
  if(!unclaimedNotice(turn)||!turn.taskId||!turn.taskEvent)return {state:'current',turn};
  const state=await taskNotificationState(tx,turn);
+ if(state.state==='reconcile'){
+  // Re-evaluate at claim time, not just when scheduling. This same durable
+  // delivery becomes a read/reconcile notice; no stale business execution is
+  // authorized and no second webhook/claim is manufactured.
+  const event='reconcile:'+await digest(turn.taskEvent+':'+state.reason),message=await tx.get('channel_message',turn.messageId,false);
+  if(message?.hidden)tx.put('channel_message',{...message,taskEvent:event,body:'接续领取前发现任务依据或安排有变化。只读取当前 taskWork、核对来源并 configure/revise，不能按旧约定执行或直接验收。'+state.reason});
+  const next=tx.put('channel_turn',{...turn,taskEvent:event,taskWaitReason:null,reconciledAt:tx.now});
+  const prior=await tx.get('channel_task_followup',`${turn.taskId}:${turn.taskEvent}:${turn.memberId}`,false);
+  if(prior)tx.put('channel_task_followup',{...prior,status:'reconcile',reason:state.reason,reconciledAt:tx.now});
+  return {state:'current',turn:next};
+ }
  if(state.state!=='obsolete'){
   if((turn.taskWaitReason||null)!==(state.state==='waiting'?state.reason:null)){
    const next={...turn};if(state.state==='waiting')next.taskWaitReason=state.reason;else delete next.taskWaitReason;turn=tx.put('channel_turn',next);
