@@ -51,7 +51,14 @@ export class BackgroundPage {
   return{
    inputValue:async()=>this.evaluate(sel=>{const nodes=[...document.querySelectorAll(sel)].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');if(nodes.length!==1)throw new Error('输入框不唯一');return nodes[0].value??nodes[0].innerText??'';},selector==='textarea:visible'?'textarea':'textarea,[contenteditable="true"]'),
    fill:async text=>{const count=await this.evaluate(sel=>{const nodes=[...document.querySelectorAll(sel)].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');if(nodes.length===1){const el=nodes[0];el.focus();if(el.tagName==='TEXTAREA')el.select();else{const range=document.createRange();range.selectNodeContents(el);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);}}return nodes.length;},selector==='textarea:visible'?'textarea':'textarea,[contenteditable="true"]');if(count!==1)throw new Error('输入框不唯一');await this.command('Input.insertText',{text});},
-   press:async key=>{if(key!=='Enter')throw new Error('未适配的按键');await this.command('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13,text:'\r',unmodifiedText:'\r'});await this.command('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});},
+   press:async key=>{if(key!=='Enter')throw new Error('未适配的按键');
+    // Chrome 157 needs both target activation and renderer focus for trusted
+    // keyboard delivery to a windowless target. Its native focus routing settles
+    // asynchronously after the CDP ACK; wait before the single business key.
+    // No native window, synthetic DOM event or retransmission is introduced.
+    await this.command('Page.bringToFront');await this.command('Emulation.setFocusEmulationEnabled',{enabled:true});
+    await new Promise(resolve=>setTimeout(resolve,150));
+    await this.command('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r',unmodifiedText:'\r',commands:['insertNewline']});await this.command('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});},
   };
  }
  async clickPoint(x,y){
