@@ -32,7 +32,7 @@ export async function withConversationContext(repo, identity, actor, claim,optio
   const messages=[...new Map([...pendingOwner,...context.messages].map(m=>[m.id,m])).values()].sort((a,b)=>a.number-b.number);
   const history=await nativeMessageContext(repo,turn,messages,claim.input.triggerMessageIds);
   const groupMemory=await readGroupMemory(repo,actor,{channelId:claim.channelId,includeCoverage:false});
-  const taskIds=[...new Set((claim.input.triggerMessages||[]).map(m=>m.taskId).filter(Boolean))];
+  const taskIds=[...new Set((claim.input.triggerMessages||[]).flatMap(m=>[...(m.taskIds||[]),m.taskId]).filter(Boolean))];
   if(turn.taskId&&!taskIds.includes(turn.taskId))taskIds.push(turn.taskId);
   const taskWork=await Promise.all(taskIds.slice(0,20).map(taskId=>readSpaceObject(repo,actor,{channelId:claim.channelId,kind:'task',id:taskId},{recordRead:false})));
   const result={
@@ -76,7 +76,7 @@ export async function withConversationContext(repo, identity, actor, claim,optio
       decisions: context.decisions,
       // Unrelated task submissions/checks can be long; preserve a versioned
       // index rather than replaying every historical result on every message.
-      tasks: context.tasks.map(t=>({id:t.id,title:t.title,status:t.status,version:t.version,assigneeId:t.assigneeId,parentTaskId:t.parentTaskId||null,workSpecVersion:t.workSpec?.version,
+      tasks: context.tasks.map(t=>({id:t.id,title:t.title,status:t.status,version:t.version,assigneeId:t.assigneeId,parentTaskId:t.parentTaskId||null,intent:t.intent,intentVersion:t.intentVersion,mergedInto:t.mergedInto,progress:t.progress,workSpecVersion:t.workSpec?.version,
         delivery:t.delivery?{stage:t.delivery.stage,label:t.delivery.label,valid:t.delivery.valid,gaps:t.delivery.gaps}:null,
         contentIncluded:false,read:{tool:'read_todo',arguments:{channelId:claim.channelId,taskId:t.id}}})),
       taskIndexInstruction:HUB_INSTRUCTIONS.taskIndexInstruction,

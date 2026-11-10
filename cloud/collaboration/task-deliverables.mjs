@@ -1,3 +1,4 @@
+import {intentActions,taskIntentCommand} from './task-intents.mjs';
 import {digest,fail,id,required} from './repository.mjs';
 import {childrenOf,validateTaskGroup} from './task-groups.mjs';
 import {bindTaskSkills} from './skill-bindings.mjs';
@@ -7,7 +8,7 @@ import {recordMemoryEvent} from './memory-context.mjs';
 // The wire shape is stable. Business sections and questions belong to this task,
 // never to a global per-scenario schema or an extra model invocation.
 const object={type:'object',additionalProperties:true};
-export const taskDeliveryProperties={workSpec:object,dependsOn:{type:'array',items:{type:'string'},maxItems:100},coordinationRef:object,submission:object,selfCheck:object,submissionId:{type:'string'},workSpecVersion:{type:'integer',minimum:1},criterionResults:{type:'array',items:object,maxItems:100},verdict:{type:'string',enum:['accept','changes_requested']},reason:{type:'string'},executionDecision:object};
+export const taskDeliveryProperties={workSpec:object,dependsOn:{type:'array',items:{type:'string'},maxItems:100},coordinationRef:object,submission:object,selfCheck:object,submissionId:{type:'string'},workSpecVersion:{type:'integer',minimum:1},criterionResults:{type:'array',items:object,maxItems:100},verdict:{type:'string',enum:['accept','changes_requested']},reason:{type:'string'},executionDecision:object,intent:object,messageIds:{type:'array',items:{type:'string'},maxItems:100},changes:{type:'array',items:object,maxItems:100},fromTaskId:{type:'string'},fromVersion:{type:'integer',minimum:1},targetTaskId:{type:'string'},targetVersion:{type:'integer',minimum:1}};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 // JSON object key order is not a new business deliverable. Array order remains
 // meaningful (sections, tables), while retries with reordered object keys dedupe.
@@ -94,7 +95,7 @@ export async function taskNotificationState(tx,turn){
   // follow-ups cease once their aggregate task has already been settled.
   const parent=task.parentTaskId?await tx.get('channel_task',task.parentTaskId,false):null;
   if(task.parentTaskId&&(!parent||terminal(parent)))return obsolete('所属任务已收尾，不再重复提醒旧子项');
-  const follower=check.verdict==='accept'?(parent?.assigneeId||(!task.parentTaskId?task.assigneeId:null)||(await tx.get('channel',task.scopeId)).coordinatorId):task.assigneeId;
+  const follower=check.verdict==='accept'?(parent?.assigneeId||(task.managedIntent?(await tx.get('channel',task.scopeId)).coordinatorId:(!task.parentTaskId?task.assigneeId:null))||(await tx.get('channel',task.scopeId)).coordinatorId):task.assigneeId;
   if(turn.memberId!==follower)return obsolete('任务跟进成员已变更，旧提醒已自动收尾');
  }else{
   if(terminal(task))return obsolete('任务已结束，旧执行提醒已自动收尾');
@@ -184,7 +185,7 @@ async function sourceMessages(tx,channel,task){
  const out=[];for(const mid of ids){const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden)out.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});}
  return out;
 }
-export {sourceMessages as taskSourceMessages};
+export async function taskSourceMessages(tx,channel,task){const original=await sourceMessages(tx,channel,task);const ids=new Set(original.map(m=>m.id));for(const mid of task.intentSourceIds||[]){if(ids.has(mid))continue;const m=await tx.get('channel_message',mid,false);if(m&&m.scopeId===channel.id&&!m.hidden){original.push({id:m.id,authorId:m.authorId,body:m.body,version:m.version||1});ids.add(mid);}}return original;}
 async function notify(tx,identity,channel,helpers,actor,task,memberId,event,body){
  if(!memberId||memberId==='owner'||memberId===who(actor)||!channel.memberIds.includes(memberId))return;
  const key=`${task.id}:${event}:${memberId}`;if(await tx.get('channel_task_followup',key,false))return;
@@ -201,6 +202,7 @@ async function reopenParent(tx,next,save,actor){
 }
 export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,validateRefs}){
  const authorId=who(actor),action=cmd.action;
+ if(intentActions.includes(action))return taskIntentCommand(tx,identity,actor,cmd,channel,helpers,{save,run:args=>taskCommand(tx,identity,actor,{...args,type:'channel.task'},channel,helpers,{save,validateRefs})});
  if(!['create','update','accept','configure','submit','check','bind_execution_decision'].includes(action))fail('invalid_action','Todo 操作无效');
  const old=action==='create'?null:await tx.get('channel_task',cmd.taskId);
  if(old&&old.scopeId!==channel.id)fail('forbidden','Todo 不属于本群',403);
@@ -323,7 +325,7 @@ export async function taskCommand(tx,identity,actor,cmd,channel,helpers,{save,va
  const delivery=await taskDelivery(tx,result);
  if(submitted&&!checked&&next.workSpec.checkMode==='designated')await notify(tx,identity,channel,helpers,actor,result,next.workSpec.reviewerId,'review:'+next.currentSubmissionId,`请核对「${next.title}」当前成果。对照用户原话和实际原件；完成条件也可能不完整。read_todo 后 check，不改写执行者成果。`);
  if(checked){
-  const follower=parent?.assigneeId||(!next.parentTaskId?next.assigneeId:null)||channel.coordinatorId;
+  const follower=parent?.assigneeId||(next.managedIntent?channel.coordinatorId:(!next.parentTaskId?next.assigneeId:null))||channel.coordinatorId;
   await notify(tx,identity,channel,helpers,actor,result,delivery.valid?follower:result.assigneeId,'check:'+next.currentCheckId,`「${next.title}」${delivery.label}：${delivery.check.reason}\n读取当前 Todo 和实际成果，再推进或补充。采纳纠正必须落实到产物，不能只说已采纳。`);
   if(delivery.valid&&next.parentTaskId)for(const t of await childrenOf(tx,next.parentTaskId))if(!terminal(t)&&t.dependsOn?.includes(next.id)&&(await currentTaskBasis(tx,t)).valid)await notify(tx,identity,channel,helpers,actor,t,t.assigneeId,'ready:'+next.currentCheckId,`「${t.title}」前置成果已通过，请读取当前 Todo、上游原件和用户要求后继续。`);
  }

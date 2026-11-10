@@ -1,6 +1,7 @@
+import {bindMessageTasks,taskFeedbackTargets,continueTaskWork} from './task-intents.mjs';
 import {isMemoryMaintenance,foregroundWaiting,memoryBatch} from './background-memory.mjs';
 import {resolveReceptionBlock} from './receiver-wakes.mjs';
-import {taskDeliveryProperties,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
+import {taskDeliveryProperties,currentTaskBasis,reconcileTaskNotification,refreshTaskNotification,taskNotificationMaintenance} from './task-deliverables.mjs';
 import {collaborationGuidance,COORDINATOR_COLLABORATION_GUIDANCE} from '../../shared/collaboration-guidance.mjs';
 import {normalizeToolArguments} from '../../shared/tool-arguments.mjs';
 import {manageChannel} from './channel-management.mjs';
@@ -131,7 +132,7 @@ const BASIC_CHANNEL_TOOLS = [
   ],
   [
     "board_task",
-    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。create/update/accept/configure/submit/check/bind_execution_decision。新任务有轻量交付约定 workSpec；先 read_todo 查看条件、原要求和版本。submit 带 expectedVersion、workSpecVersion、submission（body/sections/data/refs/coverage）；普通事项可附 selfCheck 一次完成，指定核对由真实核对人 check 当前 submissionId。核对给 criterionResults(id,result=met/not_met/unknown,evidence)、verdict=accept/changes_requested、reason。满足清单不代表满足原要求，核对实际产物。dependsOn 只连同任务下的前置 Todo。旧 done 只保存待核对成果，不伪造核对通过。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
+    "按要完成的任务组织：先 read_todo 查已有任务，create 可建独立任务；具体 Todo 用 parentTaskId 归到已有任务下（只两层），update 可调整归属，空字符串变独立任务。谁建谁归组，负责人维护；不要按日期或每次开会重复建组。plan/associate/revise/merge 维护持续任务：plan(intent={goal,...自定结构},messageIds)自动记录理解并生成卡片；associate(taskId,expectedVersion,messageIds)关联补充或结果，不改完成状态；纠正误关联可带 fromTaskId/fromVersion，保留历史；revise(taskId,expectedVersion,intent,messageIds,changes=[{taskId,expectedVersion,action:configure或update,...}])仅调整受影响节点；merge(taskId,expectedVersion,targetTaskId,targetVersion)合并目标，保留所有旧ID和成果。旧目录可把新增字段写在 body 的JSON对象里，action照常传。create/update/accept/configure/submit/check/bind_execution_decision。新任务有轻量交付约定 workSpec；先 read_todo 查看条件、原要求和版本。submit 带 expectedVersion、workSpecVersion、submission（body/sections/data/refs/coverage）；普通事项可附 selfCheck 一次完成，指定核对由真实核对人 check 当前 submissionId。核对给 criterionResults(id,result=met/not_met/unknown,evidence)、verdict=accept/changes_requested、reason。满足清单不代表满足原要求，核对实际产物。dependsOn 只连同任务下的前置 Todo。旧 done 只保存待核对成果，不伪造核对通过。指派默认通知成员；仅记录待排期方案时 notifyAssignee=false，授权执行后 update 并 notifyAssignee=true。执行成员用 accept 接手，doing/blocked/done 跟进进度。blocked 填 blocker，完成填写 result 和资料 refs。meetingIds 关联本群会议。skillRefs 可选择技能及版本；新 Todo 默认继承所属任务的选定版本，后续技能更新不改写旧任务，成员仍核对原环境依赖。只在需要跟进时使用。",
     {
       requestId: "string",
       channelId: "string",
@@ -974,6 +975,8 @@ export async function conversationCommand(
           rootId: actor.owner ? null : parent?.rootId || parent?.id,
           hops: actor.owner ? 0 : (turn?.hops ?? parent?.hops ?? 0) + 1,
         });
+        const linkedTasks=await bindMessageTasks(tx,channel,message,parent);
+        for(const mid of taskFeedbackTargets(linkedTasks,channel,message))if(!targets.includes(mid))targets.push(mid);
         if(targets.length){const holdReason=await automationHold(tx,channel,message);if(holdReason){message.holdReason=holdReason;tx.put('channel_message',message);}}
         if(!actor.owner&&!targets.length&&parent?.purpose==='question'&&channel.memberIds.includes(parent.authorId)&&parent.authorId!==actor.memberId&&!['message','question'].includes(cmd.purpose))targets.push(parent.authorId);
         if(actor.owner)await ownerRequirementChanged(tx,identity,channel,message,parent,meetingHelpers);
@@ -988,6 +991,7 @@ export async function conversationCommand(
         for (const mid of targets)
           await enqueue(tx, identity, channel, {...message,coordinationFeedback:message.coordinationFeedback&&mid===channel.coordinatorId}, mid);
         await finishTurn(tx, actor, cmd.turnId || turn?.id, "done",undefined,{kind:'message',id:message.id});
+        await continueTaskWork(tx,identity,actor,channel,linkedTasks,meetingHelpers,currentTaskBasis);
         return message;
       }
       if (type === "channel.silent") {
