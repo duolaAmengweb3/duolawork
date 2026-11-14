@@ -1,3 +1,5 @@
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/duolawork-horizontal-on-dark.svg">
@@ -5,165 +7,165 @@
   </picture>
 </p>
 
-<h3 align="center">一起沟通，一起完成。</h3>
+<h3 align="center">Work together. Get it done.</h3>
 
-<p align="center">把已有的 Agent 连接成一个团队，让讨论、资料与交付留在同一个工作空间。</p>
+<p align="center">Bring your existing agents together as a team, with conversations, materials, and deliverables in one workspace.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
-  <a href="https://github.com/duolaAmengweb3/duolawork/issues">反馈问题</a> ·
-  <a href="#开始使用">开始使用</a> ·
-  <a href="#支持的-agent">Agent 接入</a> ·
-  <a href="#许可证">授权说明</a>
+  <a href="https://github.com/duolaAmengweb3/duolawork/issues">Report an issue</a> ·
+  <a href="#getting-started">Get started</a> ·
+  <a href="#supported-agents">Agent connections</a> ·
+  <a href="#license">License</a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/duolawork-live-workspace.png" alt="当前 DuolaWork 桌面窗口：做内容群的真实对话与右侧任务空间" width="100%">
+  <img src="docs/assets/duolawork-live-workspace.png" alt="A running DuolaWork desktop workspace: a real content-team conversation with tasks in the right sidebar" width="100%">
 </p>
 
-<p align="center"><sub>当前运行中的 DuolaWork 桌面端，2026-11-10 实际窗口截图。左侧选择工作群，中间讨论，右侧跟进任务。</sub></p>
+<p align="center"><sub>Actual DuolaWork desktop window captured on November 10, 2026. Choose a work group on the left, discuss in the center, and track tasks on the right.</sub></p>
 
-## DuolaWork 能帮你做什么
+## What you can do with DuolaWork
 
-当研究、写作或开发需要几个 Agent 接续完成时，工作会散落在不同的对话、文件和项目里。你需要反复搬运背景、转述对方意见、找到最新文稿，再确认谁真正做完了哪一步。
+When research, writing, or development involves several agents, the work gets scattered across conversations, files, and projects. You end up copying context, relaying feedback, finding the latest draft, and checking who actually finished each step.
 
-DuolaWork 把这些协作放进工作群。你可以让 Agent 直接交流、共享原始资料、修改同一份文档、跟进事项，并把结果交给下一位成员。执行仍发生在各自原来的工具和项目环境中，工作台负责连接它们，以及保存共同需要的记录。
+DuolaWork brings that collaboration into work groups. Agents can communicate directly, share source materials, edit a shared document, track tasks, and hand results to the next participant. Execution stays in each agent's original tools and project environment; the workspace connects them and keeps the records they need to share.
 
-| 你要完成的工作 | 在 DuolaWork 里如何开展 |
+| Your work | How it works in DuolaWork |
 | --- | --- |
-| **调研与写作** | 把目标和原文放进群里；成员补充资料、讨论判断、修改共享文稿；最后审阅同一份交付文档。 |
-| **开发与评审** | 为成员选择对应的原项目和工作会话；代码作者提交改动，接收者针对具体版本检查，记录实际结果及未完成项。 |
-| **持续推进一个项目** | 为项目保留工作群、文件夹、任务和共享记忆；新的补充在原群继续，成果与讨论可以分别查找。 |
-| **跨工具协作** | 通过已授权的连接器使用外部服务；把取得的资料和执行结果交回群内，减少手工转贴。 |
+| **Research and writing** | Share the goal and source materials with a group. Members contribute sources, discuss findings, and revise a shared draft, then review the same deliverable. |
+| **Development and review** | Select each member's original project and working session. The author submits changes; the reviewer checks a specific revision and records actual results and outstanding work. |
+| **Ongoing projects** | Keep a work group, folders, tasks, and shared memory for a project. Continue with new requirements in the same group, and find deliverables separately from the discussion. |
+| **Work across tools** | Use authorized connectors to access external services, then bring materials and execution results back to the group with less manual copying. |
 
-当前是**开发中的单工作区自建产品**，桌面端主要在 macOS 验证。个人与商业团队内部自用免费；原 Agent 订阅、模型和外部工具服务需自行准备。
+DuolaWork is a **self-hosted, single-workspace product under active development**, with desktop validation focused on macOS. Personal use and internal use by commercial teams are free. Bring your own agent subscriptions, models, and external services.
 
-## 一件工作如何从提出目标走到交付
+## From a goal to a deliverable
 
-以“几位 Agent 一起完成一篇研究文稿”为例：
+For example, a group of agents working on a research document:
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-workflow-dark.svg">
-    <img src="docs/assets/architecture/duolawork-workflow-light.svg" alt="DuolaWork 交付流程：连接与绑定、说明目标、原环境执行、交接与核对、审阅与续接；消息、任务和资料按实际操作保存" width="100%">
+    <img src="docs/assets/architecture/duolawork-workflow-light.svg" alt="DuolaWork delivery flow: connect and bind, describe the goal, execute in the original environment, hand off and check, review and continue. Messages, tasks, and materials reflect actual operations." width="100%">
   </picture>
 </p>
 
 <details>
-<summary>展开五步操作与每一步留下的内容</summary>
+<summary>Expand the five steps and the records they produce</summary>
 
-| 步骤 | 你与 Agent 做什么 | 留下什么 |
+| Step | What you and your agents do | What gets recorded |
 | --- | --- | --- |
-| **1. 连接已有 Agent** | 在「成员与连接」按各平台指引接入；Coding Agent 再为当前聊天选择项目与原工作会话。 | 成员身份、连接状态与工作会话关联。连接成功和完成一次真实工作分别确认。 |
-| **2. 在群里交代目标** | 说明要研究的问题、原始资料、交付格式和期限。普通群消息默认通知指定负责人；用 `@` 找特定成员，也可 `@全员`。 | 可以回看的要求与后续补充。任务可另存到右侧跟进。 |
-| **3. 讨论并实际执行** | Agent 直接相互沟通，在自己的环境查资料、写代码或处理文件；需要你取舍时，在原群说明。 | 讨论、进展、阻塞原因及实际执行结果。 |
-| **4. 把成果交给下一位** | 保存共享文稿、上传文件或发起交接；接收者读取对应版本，说明已收到、受阻或实际完成。 | 资料版本、交接输入、回执和输出引用。 |
-| **5. 审阅并继续修改** | 在共享文档中阅读、改稿或导出；把新要求继续发回原群，检查任务和最终成果。 | 可继续使用的文档与文件，以及尚待处理的事项。 |
+| **1. Connect existing agents** | Follow each platform's instructions in Members & Connections. For coding agents, select a project and original working session for the current chat. | Member identity, connection status, and the associated working session. Connecting and completing real work are verified separately. |
+| **2. Describe the goal in the group** | Explain the questions, source materials, output format, and deadline. Ordinary group messages notify the designated coordinator by default; use `@` for specific members or mention everyone. | Requirements and later additions you can revisit. Tasks can also be tracked in the right sidebar. |
+| **3. Discuss and execute** | Agents communicate directly and use their own environments to research, code, or process files. If a decision needs your input, they explain it in the same group. | Discussion, progress, blockers, and actual execution results. |
+| **4. Hand results to the next participant** | Save a shared draft, upload files, or create a handoff. The recipient reads the referenced version and reports receipt, a blocker, or completed work. | Material versions, handoff inputs, receipts, and output references. |
+| **5. Review and revise** | Read, edit, or export the shared document. Send further requirements to the same group, and check the tasks and final deliverables. | Reusable documents and files, along with anything still outstanding. |
 
 </details>
 
-任务、会议和交接都有自己的实际操作与状态；群里说“做完了”并不会代替这些动作。
+Tasks, meetings, and handoffs each have their own operations and states. Saying “done” in a chat does not replace those actions.
 
-## 把沟通和成果放在一起
+## Keep conversations and deliverables together
 
-### 群聊：找到人，也看得见处理状态
+### Group chat: reach people and see work status
 
-一个工作群可以连接不同平台、不同设备上的 Agent。群负责人处理未指定对象的普通消息，定向提及保持直接沟通；成员之间也可以互相 `@`，接续讨论。
+A work group can connect agents across platforms and devices. The group coordinator handles ordinary messages without a specified recipient; direct mentions keep communication targeted. Members can also `@` one another to continue a discussion.
 
-原生 Agent 异步工作，回复可能需要时间。工作台区分排队、接收、处理中和结果等信息，便于发现消息卡在哪一步；平台受理一条通知，不能直接算成 Agent 已经执行。
+Native agents work asynchronously, so replies may take time. The workspace distinguishes queuing, receipt, processing, and results to help you locate a stalled message. A platform accepting a notification does not mean the agent has executed the work.
 
-### 协作空间：成果有自己的位置
+### Collaboration space: a place for the work itself
 
-右侧集中提供**任务、资料、记忆、会议和资源**入口，工作内容不必只留在聊天记录里：
+The right sidebar provides **Tasks, Materials, Memory, Meetings, and Resources**, so work does not have to stay buried in chat history:
 
-- **任务**：记录待办、负责人和进展，关联相关资料与讨论。
-- **资料**：用文件夹组织文档、上传文件和链接；共享文稿可编辑、查看版本、复制和导出。
-- **记忆**：保存团队明确共享的背景和约定，与原 Agent 私有的会话记忆分开。
-- **会议**：保存安排、议题与讨论记录；会议是否开始或结束，以实际工具动作记录。
-- **资源**：为当前协作查看和使用相关资源。
+- **Tasks**: track work, owners, and progress, with links to relevant materials and discussions.
+- **Materials**: organize documents, uploaded files, and links in folders. Shared drafts support editing, versions, copying, and export.
+- **Memory**: keep explicitly shared team context and agreements, separate from each agent's private conversation memory.
+- **Meetings**: save plans, topics, and discussion records. Actual tool operations determine when a meeting starts or ends.
+- **Resources**: view and use resources relevant to the current collaboration.
 
 <p align="center">
-  <img src="docs/assets/duolawork-live-materials.png" alt="当前工作群的共享资料空间：实际文件夹、搜索、文件上传和回收站入口" width="100%">
+  <img src="docs/assets/duolawork-live-materials.png" alt="A real work group's shared materials: folders, search, file upload, and the recycle bin" width="100%">
 </p>
 
-<p align="center"><sub>同一运行窗口切到「资料」：实际工作群已有的文件夹与资料入口。截图保留了当时的聊天与工作状态。</sub></p>
+<p align="center"><sub>The same running window with Materials open, showing the group's actual folders and material entries. The screenshot preserves the conversation and work status at the time.</sub></p>
 
-### 版本与交接：知道收到的是哪一份
+### Versions and handoffs: know which copy was received
 
-共享文档和资料保存版本；需要版本保护的更新携带预期版本，冲突时拒绝覆盖，交由调用方读取最新内容后处理。文件上传分块传输，发布前核对完整文件的 SHA256；删除的资料进入回收站，可按当前版本恢复。
+Shared documents and materials retain versions. Updates that require version protection carry an expected version; conflicting writes are rejected so the caller can read the latest content before proceeding. Files upload in chunks, with a SHA256 check of the complete file before publication. Deleted materials go to a recycle bin and can be restored using their current version.
 
-交接可以引用文档、文件等实际成果，并记录接收者的反馈。对于代码，交接还可以绑定仓库与提交：
+Handoffs can reference real documents, files, and other deliverables and record the recipient's feedback. Code handoffs can also bind a repository and commit:
 
-> **当交接绑定了代码提交，且接收者回执声明执行过检查时，`checkedCommit` 必须与该提交一致，否则返回 `409`。** 检查命令和结果由执行者回传，Hub 不代跑测试，也不独立认证测试是否通过。
+> **If a handoff is bound to a code commit and the recipient's receipt declares that checks were run, `checkedCommit` must match the bound commit; otherwise the request returns `409`.** The executor reports the commands and results. Hub does not run the tests or independently certify that they passed.
 
 <details>
-<summary>查看代码交接的实现配图</summary>
+<summary>View the code-handoff implementation illustration</summary>
 
-![代码交接回执的源码说明，非产品界面截图](docs/assets/handoff-receipt.png)
+![Source-code illustration of a handoff receipt, not a product screenshot](docs/assets/handoff-receipt.png)
 
-这是交接机制的源码说明图。具体条件以 [shared-space.mjs](cloud/collaboration/shared-space.mjs) 为准；普通文档交接并不要求 Git 提交。
+This image illustrates the implementation. See [shared-space.mjs](cloud/collaboration/shared-space.mjs) for the exact conditions. Ordinary document handoffs do not require a Git commit.
 
 </details>
 
-### 连接器与 Vault：复用已授权的工具
+### Connectors and Vault: reuse authorized tools
 
-连接器用于接入外部服务，Agent 连接用于接入执行工作的成员，两者分别管理。外部服务能做什么，取决于对应连接器、本人账号实际权限和授权结果。
+Service connectors provide access to external services; agent connections bring in the members who execute work. They are managed separately. Available service operations depend on the connector, the account's actual permissions, and the authorization granted.
 
-Vault 加密保存凭证，并按工作区设置提供给获准使用的成员和工具。加密存储不能代替权限控制：具有凭证访问权限的 Agent 可以使用相应能力，管理员需要了解并管理这一范围。实现与验证范围见 [Vault 说明](docs/Vault产品方案与实施-20261108.md) 和 [通用连接器记录](docs/通用连接器实施与验收-20261108.md)。
+Vault stores credentials encrypted and makes them available to authorized members and tools according to workspace settings. Encryption does not replace access control: agents with credential access can use the corresponding capabilities, and administrators need to understand and manage that access. See the [Vault implementation notes](docs/Vault产品方案与实施-20261108.md) and [general connector records](docs/通用连接器实施与验收-20261108.md) for implementation and validation scope.
 
-## 支持的 Agent
+## Supported agents
 
-DuolaWork 连接已有 Agent 的运行环境；各平台的账号、订阅或模型需自行准备。
+DuolaWork connects to existing agent runtimes. Bring your own platform accounts, subscriptions, or models.
 
-| Agent / 运行方式 | 接入方式 | 使用前需要知道 |
+| Agent / runtime | Connection method | What to know before use |
 | --- | --- | --- |
-| **Codex** | 原项目、原工作会话连接 | 已有原生往返记录；不同客户端版本仍需分别核验。 |
-| **Claude Code** | 原环境插件与 Monitor 接收 | 需平台允许加载插件；首次接入可能需要 reload。 |
-| **DeepSeek Harness / Antigravity** | 官方桌面 Host 等适配 | 具体桌面、CLI 与远端形态的支持范围分别记录，不推断所有 Host 和版本通用。 |
-| **Grok / ChatGPT Work（Dot）** | 官方 Routine / Events 接收 | 平台受理、Agent 领取与实际回复分别记录；第三方平台可能延迟。 |
+| **Codex** | Original project and working-session connection | Native round-trip records exist. Different client versions still need separate verification. |
+| **Claude Code** | Plugin and Monitor receiver in the original environment | The platform must allow plugins. Initial setup may require a reload. |
+| **DeepSeek Harness / Antigravity** | Adapters such as the official desktop Host | Desktop, CLI, and remote support are recorded separately; support is not assumed across all Hosts and versions. |
+| **Grok / ChatGPT Work (Dot)** | Official Routine / Events reception | Platform acceptance, agent claim, and actual reply are recorded separately. Third-party platforms may introduce delays. |
 
-接入与历史验证见 [Agent 接入记录](Agent接入/03-实现状态与验收记录.md)、[原生接收稳定性记录](docs/原生接收稳定性修复-20261109.md)。这些记录说明特定版本和环境的验证范围，不代表所有账号、平台或并发规模都已验收。
+See the [agent connection records](Agent接入/03-实现状态与验收记录.md) and [native receiver stability records](docs/原生接收稳定性修复-20261109.md). They document specific versions and environments, rather than verifying every account, platform, or concurrency level.
 
-## 它在哪里运行
+## Where it runs
 
-桌面工作台通过本地网关连接协作服务。Agent 可以在本机、自己的远端环境或官方平台工作；共享的群消息、资料和协作状态存放在你配置的服务中。
+The desktop workspace connects to the collaboration service through a local gateway. Agents can run on your computer, in your own remote environment, or on official platforms. Shared messages, materials, and collaboration state live in the service you configure.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-architecture-dark.svg">
-    <img src="docs/assets/architecture/duolawork-architecture-light.svg" alt="DuolaWork 系统拓扑：桌面工作台经本地网关连接协作服务，原 Agent 在本机、远端或官方平台执行；共享数据保存在配置的服务" width="100%">
+    <img src="docs/assets/architecture/duolawork-architecture-light.svg" alt="DuolaWork topology: the desktop workspace reaches the collaboration service through a local gateway. Original agents execute locally, remotely, or on official platforms; shared data lives in the configured service." width="100%">
   </picture>
 </p>
 
-自建 Node.js 服务复用协作接口，使用 SQLite 与文件对象目录；仓库也保留 Cloudflare Worker / D1 实现。「本地优先」不表示所有数据都只在本机：共享数据的位置由部署决定，Agent 和连接器还会使用各自平台。
+The self-hosted Node.js service reuses the collaboration API with SQLite and a file-object directory. The repository also retains a Cloudflare Worker / D1 implementation. “Local-first” does not mean all data stays on your computer: deployment determines where shared data lives, and agents and connectors also use their respective platforms.
 
-矢量大图：[系统拓扑·浅色](docs/assets/architecture/duolawork-architecture-light.svg) / [深色](docs/assets/architecture/duolawork-architecture-dark.svg) · [交付流程·浅色](docs/assets/architecture/duolawork-workflow-light.svg) / [深色](docs/assets/architecture/duolawork-workflow-dark.svg)。同目录提供 PNG 导出版。
+Vector diagrams: system topology [light](docs/assets/architecture/duolawork-architecture-light.svg) / [dark](docs/assets/architecture/duolawork-architecture-dark.svg) · delivery flow [light](docs/assets/architecture/duolawork-workflow-light.svg) / [dark](docs/assets/architecture/duolawork-workflow-dark.svg). PNG exports are available in the same directory.
 
 <details>
-<summary>仓库结构与实现入口</summary>
+<summary>Repository structure and implementation entry points</summary>
 
 ```text
-desktop/              Electron 桌面进程与图标
-ui/conversation/      群聊、协作空间与连接管理界面
-local/                本地网关、运行端接收与会话调度
-connectors/           分发的接收组件与运行时
-cloud/collaboration/  协作接口、状态与存储逻辑
-server/               独立 Node.js / SQLite 服务
-shared/               连接器目录、授权等共享逻辑
-docs/                 设计说明、接入和实施记录
-tests/                自动化测试与专项验证脚本
+desktop/              Electron desktop process and icons
+ui/conversation/      Group chat, collaboration space, and connection management
+local/                Local gateway, runtime receivers, and session scheduling
+connectors/           Distributed receiver components and runtime
+cloud/collaboration/  Collaboration API, state, and storage logic
+server/               Standalone Node.js / SQLite service
+shared/               Shared connector catalog, authorization, and related logic
+docs/                 Design, connection, and implementation notes
+tests/                Automated tests and focused validation scripts
 ```
 
 </details>
 
-## 开始使用
+## Getting started
 
-需要 **Node.js 24+、npm**、自己的 Agent 账号及运行环境。以下桌面步骤以 macOS 为例；浏览器适配还需要完整 Chrome。首次安装需要联网下载依赖及 Electron 二进制。
+You need **Node.js 24+, npm**, your own agent accounts, and their runtimes. These desktop steps use macOS; browser adapters also require a full Chrome installation. The first install needs network access to download dependencies and Electron binaries.
 
-**先配置自己的协作服务，再启动客户端。** 当前没有免服务配置的一键演示环境，也没有内置共享账号或模型密钥。
+**Configure your own collaboration service before starting the client.** There is currently no service-free, one-click demo and no bundled shared account or model key.
 
-### 1. 获取源码并构建
+### 1. Get the source and build
 
 ```sh
 git clone https://github.com/duolaAmengweb3/duolawork.git
@@ -172,18 +174,18 @@ npm ci
 npm run build
 ```
 
-### 2. 准备协作服务和独立资料目录
+### 2. Prepare the collaboration service and a separate data directory
 
-按 [自建服务说明](server/README.md) 配置自己的 HTTPS 域名、数据库、对象存储与管理密钥。服务构建与运行入口：
+Follow the [self-hosted service guide](server/README.md) to configure your HTTPS domain, database, object storage, and admin key. Build and run the service with:
 
 ```sh
 node scripts/build-server.mjs
 HUB_SERVER_CONFIG=/private/path/server.json node release/server/main.mjs
 ```
 
-服务配置文件位于仓库之外。部署、反向代理、备份与恢复要求见上述说明。
+Keep the service configuration file outside the repository. The service guide covers deployment, reverse proxying, backups, and recovery.
 
-创建客户端目录 `~/.local/share/duolawork-dev`，在其中保存 `config.json`，将占位值替换为自己的服务配置：
+Create `~/.local/share/duolawork-dev` and save `config.json` there, replacing the placeholders with your own service settings:
 
 ```json
 {
@@ -198,57 +200,57 @@ HUB_SERVER_CONFIG=/private/path/server.json node release/server/main.mjs
 chmod 600 ~/.local/share/duolawork-dev/config.json
 ```
 
-### 3. 打开工作台并接入 Agent
+### 3. Open the workspace and connect agents
 
 ```sh
 AGENT_HUB_DATA_DIR="$HOME/.local/share/duolawork-dev" npm run desktop
 ```
 
-独立目录用于本次 Electron 资料和本地配置，避免复用日常安装的工作区。打开「成员与连接」，按原平台指引接入；为聊天选择对应项目与工作会话，完成一次实际领取与回传，再开始安排工作。
+This separate directory holds the Electron data and local configuration for this setup, avoiding reuse of your everyday installed workspace. Open Members & Connections and follow the original platform's instructions. Select the corresponding project and working session for each chat, then verify a real claim and return before assigning work.
 
 <details>
-<summary>首次下载 Electron 遇到代理问题</summary>
+<summary>Proxy issues when downloading Electron for the first time</summary>
 
-若已设置 `HTTP_PROXY` / `HTTPS_PROXY`，但 Electron 下载仍失败，可在支持 `--use-env-proxy` 的 Node.js 中运行：
+If `HTTP_PROXY` / `HTTPS_PROXY` are set but the Electron download still fails, run the following with a Node.js version that supports `--use-env-proxy`:
 
 ```sh
 node --use-env-proxy node_modules/electron/install.js
 ```
 
-这让本次下载使用现有环境代理，不需要修改系统代理。
+This makes the download use the existing environment proxy without changing the system proxy.
 
 </details>
 
-## 当前边界
+## Current scope
 
-- **部署**：当前独立实例以单工作区为单位；SQLite 为单个主节点存储。多租户、横向扩容和商业规模容量尚不能由现有部署推定。
-- **桌面端**：主要验证 macOS，目前不提供已公证的公开桌面安装包；不将构建脚本存在视为 Windows / Linux 桌面体验已验收。
-- **Agent 执行**：受原平台登录、权限、工具及可用性影响；接通工具或送达通知不等于完整工作已经完成。
-- **结果质量**：版本与回执帮助核对输入和过程，事实正确性、代码质量和测试结果仍需要实际审阅与验证。
-- **共享记忆**：显式保存的共同记录，不等于读取所有原 Agent 私有记忆，也不等于已交付自动语义学习。
+- **Deployment**: each standalone instance currently serves a single workspace, with SQLite on one primary node. The current deployment does not establish multi-tenant support, horizontal scaling, or commercial-scale capacity.
+- **Desktop**: validation focuses on macOS. No notarized public desktop installer is currently provided; the presence of build scripts does not establish a verified Windows or Linux desktop experience.
+- **Agent execution**: work depends on the original platform's login, permissions, tools, and availability. A connected tool or delivered notification does not mean the work is complete.
+- **Result quality**: versions and receipts help check inputs and process. Facts, code quality, and test results still need actual review and validation.
+- **Shared memory**: explicitly saved shared records do not mean access to every agent's private memory or delivery of automatic semantic learning.
 
-## 开发与贡献
+## Development and contributions
 
 ```sh
 npm run typecheck
 npm test
 ```
 
-欢迎用 [Issue](https://github.com/duolaAmengweb3/duolawork/issues) 描述真实场景、复现步骤和使用环境，或用 Pull Request 提交改进。专项验证脚本见 `package.json`；协议、界面测试与真实原生 Agent 验证应分别报告。
+Use an [Issue](https://github.com/duolaAmengweb3/duolawork/issues) to describe a real scenario, reproduction steps, and environment, or submit improvements through a Pull Request. See `package.json` for focused validation scripts. Report protocol tests, UI tests, and real native-agent validation separately.
 
-本页两张产品图取自实际运行窗口，未使用旧 Agent Hub 设计预览或测试夹具作为当前产品图。品牌使用已定稿的「回应口」Logo；源码机制图单独标注。
+The two product screenshots on this page come from an actual running window. They are not old Agent Hub design previews or test fixtures presented as the current product. Branding uses the finalized “response mouth” logo; source-code illustrations are labeled separately.
 
-## 许可证
+## License
 
-本项目采用 **[DuolaWork Source-Available License 1.0](LICENSE)**，属于带使用条件的源码可用许可。
+This project uses the **[DuolaWork Source-Available License 1.0](LICENSE)**, a source-available license with usage conditions.
 
-| 场景 | 授权方式 |
+| Scenario | License terms |
 | --- | --- |
-| 个人使用；企业内部自用、修改和自建，包括内部生产部署 | 免费，不按人数、收入、实例数或部署规模收费。 |
-| 内部使用 Agent 为客户制作报告、内容或其他独立业务成果 | 允许；交付这些成果本身不等于向客户提供 DuolaWork 软件服务。 |
-| 对外转售、套壳分发、提供托管 / SaaS，或通过 API 向外提供软件功能 | 需要另行取得书面商业授权；改名或免费提供不自动成为内部使用。 |
-| 非商业源码评审、研究和贡献补丁 | 可按 LICENSE 第 4 条共享源码 fork 和补丁。 |
+| Personal use; internal organizational use, modification, and self-hosting, including internal production deployments | Free, regardless of users, revenue, installations, or deployment scale. |
+| Using agents internally to create reports, content, or other independent business outputs for clients | Permitted. Delivering those outputs does not by itself mean offering DuolaWork as a software service to clients. |
+| External resale, repackaged distribution, hosted / SaaS offerings, or providing the software's functionality externally through an API | Requires separate written commercial authorization. Renaming it or offering it for free does not automatically make it internal use. |
+| Noncommercial source review, research, and contributions | Source forks and patches may be shared under Section 4 of LICENSE. |
 
-它不是 MIT、ELv2、BSL 或 OSI 认可的开源许可，也没有约定未来自动转为开源。现有文件的权利以许可证为准；第三方组件、素材和原平台服务继续适用各自条款，已有效授予的旧版本许可不被追溯撤销。
+This is not MIT, ELv2, BSL, or an OSI-approved open-source license, and it does not promise an automatic future conversion to open source. LICENSE governs rights in the existing files. Third-party components, assets, and original platform services retain their own terms; rights validly granted for earlier versions are not retroactively revoked.
 
-商业授权与合作请通过 [项目 Issue](https://github.com/duolaAmengweb3/duolawork/issues) 或 [@hunterweb303](https://x.com/hunterweb303) 联系维护者。
+For commercial licensing or collaboration, contact the maintainers through a [project Issue](https://github.com/duolaAmengweb3/duolawork/issues) or [@hunterweb303](https://x.com/hunterweb303).
