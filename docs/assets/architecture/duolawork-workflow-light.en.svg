@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="980" viewBox="0 0 1440 980" role="img" aria-labelledby="title desc">
+<title id="title">DuolaWork collaboration and delivery flow</title><desc id="desc">Connect existing agents, describe the goal, execute natively, hand off and check, then review and continue. Messages, tasks, material versions and handoff records reflect actual operations. Optional code handoffs validate commit declarations without running checks.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#8799B2"/></marker>
+<filter id="shadow" x="-15%" y="-15%" width="130%" height="145%"><feDropShadow dx="0" dy="5" stdDeviation="9" flood-color="#000000" flood-opacity="0.06"/></filter></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}text{text-rendering:optimizeLegibility}</style>
+<rect x="0" y="0" width="1440" height="980" rx="32" fill="#F5F7FB"/>
+<text x="64" y="52" fill="#5B6B82" font-size="17" font-weight="500" text-anchor="start" class="mono" letter-spacing="2">DUOLAWORK  /  DELIVERY FLOW</text>
+<rect x="1218" y="30" width="158" height="32" rx="16" fill="#FDD628"/>
+<text x="1297" y="52" fill="#06194A" font-size="13" font-weight="600" text-anchor="middle" class="mono">02  /  README</text>
+<text x="64" y="117" fill="#06194A" font-size="43" font-weight="650" text-anchor="start">From a goal to work you can build on.</text>
+<text x="64" y="157" fill="#5B6B82" font-size="21" font-weight="400" text-anchor="start">Connect discussion, execution and review, with a record of every step.</text>
+<text x="64" y="218" fill="#5B6B82" font-size="18" font-weight="600" text-anchor="start">COLLABORATION FLOW</text>
+<text x="1376" y="218" fill="#5B6B82" font-size="16" font-weight="500" text-anchor="end" class="mono">01 → 05</text>
+<rect x="56" y="248" width="248" height="236" rx="22" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="76" y="268" width="40" height="28" rx="10" fill="#FDD628"/>
+<text x="96" y="288" fill="#06194A" font-size="15" font-weight="600" text-anchor="middle" class="mono">01</text>
+<text x="76" y="338" fill="#06194A" font-size="26" font-weight="650" text-anchor="start">Connect &amp; bind</text>
+<text x="76" y="378" fill="#5B6B82" font-size="17.9" font-weight="400" text-anchor="start">Connect existing accounts</text>
+<text x="76" y="405" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Choose project &amp; session</text>
+<rect x="74" y="432" width="212" height="30" rx="10" fill="#EDF2FA"/>
+<text x="180" y="453" fill="#5B6B82" font-size="15" font-weight="500" text-anchor="middle">Member / Session link</text>
+<path d="M309 364 H319" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="319,364 311,368 311,360" fill="#8799B2"/>
+<path d="M180 484 V512" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="326" y="248" width="248" height="236" rx="22" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="346" y="268" width="40" height="28" rx="10" fill="#EDF2FA"/>
+<text x="366" y="288" fill="#5B6B82" font-size="15" font-weight="600" text-anchor="middle" class="mono">02</text>
+<text x="346" y="338" fill="#06194A" font-size="26" font-weight="650" text-anchor="start">Set the goal</text>
+<text x="346" y="378" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Message the coordinator</text>
+<text x="346" y="405" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Or @ specific members</text>
+<rect x="344" y="432" width="212" height="30" rx="10" fill="#EDF2FA"/>
+<text x="450" y="453" fill="#5B6B82" font-size="15" font-weight="500" text-anchor="middle">Requirements / Sources</text>
+<path d="M579 364 H589" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="589,364 581,368 581,360" fill="#8799B2"/>
+<path d="M450 484 V512" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="596" y="248" width="248" height="236" rx="22" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="616" y="268" width="40" height="28" rx="10" fill="#EDF2FA"/>
+<text x="636" y="288" fill="#5B6B82" font-size="15" font-weight="600" text-anchor="middle" class="mono">03</text>
+<text x="616" y="338" fill="#06194A" font-size="26" font-weight="650" text-anchor="start">Execute natively</text>
+<text x="616" y="378" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Agents use their own tools</text>
+<text x="616" y="405" fill="#5B6B82" font-size="17.4" font-weight="400" text-anchor="start">Report progress &amp; blockers</text>
+<rect x="614" y="432" width="212" height="30" rx="10" fill="#EDF2FA"/>
+<text x="720" y="453" fill="#5B6B82" font-size="15" font-weight="500" text-anchor="middle">Output / Check records</text>
+<path d="M849 364 H859" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="859,364 851,368 851,360" fill="#8799B2"/>
+<path d="M720 484 V512" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="866" y="248" width="248" height="236" rx="22" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="886" y="268" width="40" height="28" rx="10" fill="#EDF2FA"/>
+<text x="906" y="288" fill="#5B6B82" font-size="15" font-weight="600" text-anchor="middle" class="mono">04</text>
+<text x="886" y="338" fill="#06194A" font-size="26" font-weight="650" text-anchor="start">Hand off &amp; check</text>
+<text x="886" y="378" fill="#5B6B82" font-size="16.9" font-weight="400" text-anchor="start">Read the referenced version</text>
+<text x="886" y="405" fill="#5B6B82" font-size="16.1" font-weight="400" text-anchor="start">Report receipt, block or finish</text>
+<rect x="884" y="432" width="212" height="30" rx="10" fill="#EDF2FA"/>
+<text x="990" y="453" fill="#5B6B82" font-size="15" font-weight="500" text-anchor="middle">Input version / Receipt</text>
+<path d="M1119 364 H1129" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1129,364 1121,368 1121,360" fill="#8799B2"/>
+<path d="M990 484 V512" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1136" y="248" width="248" height="236" rx="22" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="1156" y="268" width="40" height="28" rx="10" fill="#EDF2FA"/>
+<text x="1176" y="288" fill="#5B6B82" font-size="15" font-weight="600" text-anchor="middle" class="mono">05</text>
+<text x="1156" y="338" fill="#06194A" font-size="26" font-weight="650" text-anchor="start">Review &amp; revise</text>
+<text x="1156" y="378" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Review drafts &amp; files</text>
+<text x="1156" y="405" fill="#5B6B82" font-size="16.3" font-weight="400" text-anchor="start">Add requirements &amp; continue</text>
+<rect x="1154" y="432" width="212" height="30" rx="10" fill="#EDF2FA"/>
+<text x="1260" y="453" fill="#5B6B82" font-size="15" font-weight="500" text-anchor="middle">Deliverables / Next steps</text>
+<path d="M1260 484 V512" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M180 512 H1260" fill="none" stroke="#8799B2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M720 512 V541" fill="none" stroke="#8799B2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="720,541 716,533 724,533" fill="#8799B2"/>
+<rect x="56" y="550" width="1328" height="116" rx="24" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5"/>
+<rect x="56" y="550" width="10" height="116" rx="5" fill="#FDD628"/>
+<text x="88" y="587" fill="#06194A" font-size="23" font-weight="600" text-anchor="start">Shared workspace</text>
+<text x="88" y="622" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Record actual operations</text>
+<text x="416" y="590" fill="#06194A" font-size="23" font-weight="600" text-anchor="start">Messages / Tasks</text>
+<text x="416" y="625" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Discussion, progress &amp; actions</text>
+<text x="746" y="590" fill="#06194A" font-size="23" font-weight="600" text-anchor="start">Materials / Versions</text>
+<text x="746" y="625" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Shared drafts, files &amp; updates</text>
+<text x="1076" y="590" fill="#06194A" font-size="23" font-weight="600" text-anchor="start">Handoffs / Outputs</text>
+<text x="1076" y="625" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Input versions, feedback &amp; results</text>
+<path d="M1384 364 H1406 V692 H1120 V708" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 7"/>
+<polygon points="1120,708 1116,700 1124,700" fill="#8799B2"/>
+<text x="1260" y="683" fill="#5B6B82" font-size="15" font-weight="400" text-anchor="start">Add / Revise</text>
+<rect x="56" y="720" width="776" height="194" rx="24" fill="#FFFFFF" stroke="#DCE3EE" stroke-width="1.5"/>
+<text x="80" y="756" fill="#06194A" font-size="24" font-weight="600" text-anchor="start">Code handoff check</text>
+<rect x="342" y="733" width="60" height="28" rx="10" fill="#FFF9E8"/>
+<text x="372" y="753" fill="#5B6B82" font-size="14" font-weight="500" text-anchor="middle">Optional</text>
+<text x="80" y="791" fill="#5B6B82" font-size="19" font-weight="400" text-anchor="start">Only when a commit is bound and the receipt reports running checks.</text>
+<rect x="80" y="813" width="346" height="42" rx="12" fill="#EDF2FA"/>
+<text x="253" y="840" fill="#06194A" font-size="17" font-weight="400" text-anchor="middle" class="mono">checkedCommit == code.commit</text>
+<path d="M440 834 H471" fill="none" stroke="#8799B2" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="471,834 463,838 463,830" fill="#8799B2"/>
+<text x="496" y="829" fill="#06194A" font-size="18" font-weight="550" text-anchor="start">Match: this check passes</text>
+<text x="496" y="855" fill="#06194A" font-size="18" font-weight="550" text-anchor="start">Mismatch: 409</text>
+<text x="80" y="889" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Hub records declarations and versions; the executor must run the checks.</text>
+<rect x="856" y="720" width="528" height="194" rx="24" fill="#FFF9E8"/>
+<text x="884" y="756" fill="#06194A" font-size="24" font-weight="600" text-anchor="start">Bring new requirements back</text>
+<text x="884" y="798" fill="#06194A" font-size="23" font-weight="550" text-anchor="start">Return to the same group and original session</text>
+<text x="884" y="838" fill="#5B6B82" font-size="18" font-weight="400" text-anchor="start">Revise shared materials and retain earlier versions.</text>
+<text x="884" y="876" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Add tasks, meetings and follow-ups as needed.</text>
+<text x="64" y="949" fill="#5B6B82" font-size="17" font-weight="400" text-anchor="start">Create tasks and meetings as needed. This flow does not turn every message into a task tree.</text>
+</svg>

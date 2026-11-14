@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1060" viewBox="0 0 1440 1060" role="img" aria-labelledby="title desc">
+<title id="title">DuolaWork system and deployment topology</title><desc id="desc">The desktop connects to a self-hosted collaboration service through a local gateway. Original agents execute locally, remotely, or on official platforms. Shared data lives in the configured service. Code handoffs compare checkedCommit only when a commit is bound and the receipt reports running checks.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#8199BC"/></marker>
+<filter id="shadow" x="-15%" y="-15%" width="130%" height="145%"><feDropShadow dx="0" dy="5" stdDeviation="9" flood-color="#000000" flood-opacity="0.06"/></filter></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}text{text-rendering:optimizeLegibility}</style>
+<rect x="0" y="0" width="1440" height="1060" rx="32" fill="#071222"/>
+<text x="64" y="52" fill="#A6B8D2" font-size="17" font-weight="500" text-anchor="start" class="mono" letter-spacing="2">DUOLAWORK  /  SYSTEM MAP</text>
+<rect x="1218" y="30" width="158" height="32" rx="16" fill="#FDD628"/>
+<text x="1297" y="52" fill="#06194A" font-size="13" font-weight="600" text-anchor="middle" class="mono">01  /  README</text>
+<text x="64" y="117" fill="#EDF4FF" font-size="43" font-weight="650" text-anchor="start">Execute independently. Share progress and results.</text>
+<text x="64" y="157" fill="#A6B8D2" font-size="21" font-weight="400" text-anchor="start">Connect existing agents, keep shared records, and execute in the original environment.</text>
+<text x="64" y="224" fill="#A6B8D2" font-size="18" font-weight="600" text-anchor="start">WORKSPACE</text>
+<text x="452" y="224" fill="#A6B8D2" font-size="18" font-weight="600" text-anchor="start">COLLABORATION</text>
+<text x="1064" y="224" fill="#A6B8D2" font-size="18" font-weight="600" text-anchor="start">EXECUTION</text>
+<rect x="56" y="250" width="328" height="500" rx="26" fill="#0B192E" stroke="#2A3D59" stroke-width="1.5"/>
+<text x="80" y="289" fill="#EDF4FF" font-size="22" font-weight="600" text-anchor="start">Your computer</text>
+<rect x="80" y="318" width="280" height="130" rx="20" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<path d="M2 3H30V23H2Z M10 29H22 M16 23V29" transform="translate(102 341)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="148" y="365" fill="#EDF4FF" font-size="21.7" font-weight="600" text-anchor="start">Desktop workspace</text>
+<text x="104" y="405" fill="#A6B8D2" font-size="15.8" font-weight="400" text-anchor="start">Chat / Materials / Tasks / Meetings</text>
+<text x="104" y="430" fill="#A6B8D2" font-size="14" font-weight="400" text-anchor="start" class="mono">desktop/  +  ui/</text>
+<path d="M220 462 V530" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="220,530 216,522 224,522" fill="#8199BC"/>
+<polygon points="220,462 224,470 216,470" fill="#8199BC"/>
+<text x="240" y="504" fill="#A6B8D2" font-size="16" font-weight="400" text-anchor="start">Local link</text>
+<rect x="80" y="544" width="280" height="132" rx="20" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<path d="M3 2H29V12H3Z M3 20H29V30H3Z M8 7H9 M8 25H9 M16 12V20" transform="translate(102 565)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="148" y="589" fill="#EDF4FF" font-size="26" font-weight="600" text-anchor="start">Local gateway</text>
+<text x="104" y="628" fill="#A6B8D2" font-size="17.8" font-weight="400" text-anchor="start">Bind original project &amp; session</text>
+<text x="104" y="656" fill="#A6B8D2" font-size="14" font-weight="400" text-anchor="start" class="mono">local/  +  connectors/</text>
+<text x="80" y="718" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start">Interface and local connections</text>
+<path d="M372 610 H432" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="432,610 424,614 424,606" fill="#8199BC"/>
+<polygon points="372,610 380,606 380,614" fill="#8199BC"/>
+<text x="402" y="588" fill="#A6B8D2" font-size="13" font-weight="500" text-anchor="middle" class="mono">API</text>
+<rect x="444" y="250" width="560" height="500" rx="26" fill="#10203A" stroke="#2A3D59" stroke-width="1.5" filter="url(#shadow)"/>
+<rect x="444" y="250" width="560" height="82" rx="26" fill="#18365C"/>
+<rect x="444" y="296" width="560" height="36" rx="0" fill="#18365C"/>
+<text x="472" y="289" fill="#EDF4FF" font-size="28" font-weight="650" text-anchor="start">Hub collaboration service</text>
+<text x="472" y="316" fill="#C7D6EC" font-size="17" font-weight="400" text-anchor="start">Self-hosted / Message routing / Shared records</text>
+<rect x="468" y="350" width="242" height="126" rx="16" fill="#172C49"/>
+<path d="M3 3H29V22H15L7 29V22H3Z M9 10H23 M9 16H19" transform="translate(488 372)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="533" y="396" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start">Routing</text>
+<text x="488" y="438" fill="#A6B8D2" font-size="16.1" font-weight="400" text-anchor="start">Coordinator / @ / Group chat</text>
+<rect x="738" y="350" width="242" height="126" rx="16" fill="#172C49"/>
+<path d="M4 4H11V11H4Z M17 7H29 M4 21H11V28H4Z M17 24H29" transform="translate(758 372)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="803" y="396" fill="#EDF4FF" font-size="20.2" font-weight="600" text-anchor="start">Tasks &amp; meetings</text>
+<text x="758" y="438" fill="#A6B8D2" font-size="15.4" font-weight="400" text-anchor="start">Plans, progress &amp; actual state</text>
+<rect x="468" y="498" width="242" height="126" rx="16" fill="#172C49"/>
+<path d="M2 9V27H30V6H17L13 2H2V9Z M2 9H30" transform="translate(488 520)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="533" y="544" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start">Materials</text>
+<text x="488" y="586" fill="#A6B8D2" font-size="16.4" font-weight="400" text-anchor="start">Files, documents &amp; versions</text>
+<rect x="738" y="498" width="242" height="126" rx="16" fill="#172C49"/>
+<path d="M2 8H27L21 2 M30 24H5L11 30" transform="translate(758 520)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="803" y="544" fill="#EDF4FF" font-size="21.1" font-weight="600" text-anchor="start">Handoff receipts</text>
+<text x="758" y="586" fill="#A6B8D2" font-size="15.1" font-weight="400" text-anchor="start">Received / Blocked / Complete</text>
+<rect x="468" y="650" width="512" height="72" rx="16" fill="#292B24"/>
+<path d="M7 14V8A9 9 0 0 1 25 8V14 M4 14H28V31H4Z M16 20V25" transform="translate(488 670)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="534" y="692" fill="#EDF4FF" font-size="20.4" font-weight="600" text-anchor="start">Vault &amp; Connectors</text>
+<text x="732" y="692" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start">Authorized credentials &amp; tools</text>
+<rect x="1056" y="250" width="336" height="500" rx="26" fill="#0B192E" stroke="#2A3D59" stroke-width="1.5"/>
+<text x="1080" y="289" fill="#EDF4FF" font-size="22" font-weight="600" text-anchor="start">Work in original environments</text>
+<path d="M1014 374 H1066" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1066,374 1058,378 1058,370" fill="#8199BC"/>
+<polygon points="1014,374 1022,370 1022,378" fill="#8199BC"/>
+<rect x="1076" y="318" width="296" height="112" rx="18" fill="#10203A" stroke="#2A3D59" stroke-width="1.5"/>
+<path d="M2 3H30V29H2Z M8 10L13 16L8 22 M17 22H24" transform="translate(1094 338)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1140" y="361" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start">Local projects</text>
+<text x="1100" y="391" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start">Codex / Native Host</text>
+<text x="1100" y="415" fill="#A6B8D2" font-size="15" font-weight="400" text-anchor="start">Original folder, tools &amp; session</text>
+<path d="M1014 518 H1066" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1066,518 1058,522 1058,514" fill="#8199BC"/>
+<polygon points="1014,518 1022,514 1022,522" fill="#8199BC"/>
+<rect x="1076" y="462" width="296" height="112" rx="18" fill="#10203A" stroke="#2A3D59" stroke-width="1.5"/>
+<path d="M3 2H29V12H3Z M3 20H29V30H3Z M8 7H9 M8 25H9 M16 12V20" transform="translate(1094 482)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1140" y="505" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start">Remote runtimes</text>
+<text x="1100" y="535" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start">Claude Code / CLI</text>
+<text x="1100" y="559" fill="#A6B8D2" font-size="14.2" font-weight="400" text-anchor="start">Project &amp; context on the original device</text>
+<path d="M1014 662 H1066" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1066,662 1058,666 1058,658" fill="#8199BC"/>
+<polygon points="1014,662 1022,658 1022,666" fill="#8199BC"/>
+<rect x="1076" y="606" width="296" height="112" rx="18" fill="#10203A" stroke="#2A3D59" stroke-width="1.5"/>
+<path d="M16 1A15 15 0 1 1 15.99 1 M1 16H31 M16 1C6 11 6 21 16 31C26 21 26 11 16 1" transform="translate(1094 626)" fill="none" stroke="#EDF4FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1140" y="649" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start">Platforms</text>
+<text x="1100" y="679" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start">Grok / ChatGPT Work</text>
+<text x="1100" y="703" fill="#A6B8D2" font-size="14.3" font-weight="400" text-anchor="start">Receive &amp; reply via supported adapters</text>
+<text x="1030" y="781" fill="#A6B8D2" font-size="14" font-weight="500" text-anchor="middle">Notify / Return</text>
+<path d="M724 760 V790" fill="none" stroke="#8199BC" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="724,790 720,782 728,782" fill="#8199BC"/>
+<rect x="444" y="800" width="560" height="114" rx="22" fill="#10203A" stroke="#2A3D59" stroke-width="1.5"/>
+<text x="472" y="837" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start">Shared data in your configured service</text>
+<text x="472" y="869" fill="#A6B8D2" font-size="18" font-weight="400" text-anchor="start">Node.js / SQLite / File objects</text>
+<text x="472" y="895" fill="#A6B8D2" font-size="16" font-weight="400" text-anchor="start">Worker / D1 also retained; see deployment guide.</text>
+<text x="64" y="826" fill="#EDF4FF" font-size="24" font-weight="600" text-anchor="start">Local workspace</text>
+<text x="64" y="861" fill="#A6B8D2" font-size="19" font-weight="400" text-anchor="start">Native agent execution</text>
+<text x="64" y="892" fill="#A6B8D2" font-size="15.5" font-weight="400" text-anchor="start">Shared records; separate execution environments.</text>
+<text x="1064" y="826" fill="#EDF4FF" font-size="23" font-weight="600" text-anchor="start">Connect supported runtimes</text>
+<text x="1064" y="861" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start">Keep platform accounts, tools &amp; permissions.</text>
+<text x="1064" y="892" fill="#A6B8D2" font-size="16" font-weight="400" text-anchor="start">See connection records for forms &amp; versions.</text>
+<rect x="56" y="948" width="1336" height="76" rx="20" fill="#292B24"/>
+<text x="80" y="979" fill="#EDF4FF" font-size="17.7" font-weight="650" text-anchor="start">Optional code handoff</text>
+<text x="280" y="979" fill="#EDF4FF" font-size="20" font-weight="500" text-anchor="start">Bound commit + reported checks: compare checkedCommit; mismatch returns 409</text>
+<text x="80" y="1007" fill="#A6B8D2" font-size="17" font-weight="400" text-anchor="start">The executor runs and reports checks. Hub does not inspect repository HEAD or run tests.</text>
+</svg>

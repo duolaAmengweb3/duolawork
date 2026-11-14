@@ -47,8 +47,8 @@ For example, a group of agents working on a research document:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-workflow-dark.svg">
-    <img src="docs/assets/architecture/duolawork-workflow-light.svg" alt="DuolaWork delivery flow: connect and bind, describe the goal, execute in the original environment, hand off and check, review and continue. Messages, tasks, and materials reflect actual operations." width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-workflow-dark.en.svg">
+    <img src="docs/assets/architecture/duolawork-workflow-light.en.svg" alt="DuolaWork delivery flow: connect and bind, describe the goal, execute in the original environment, hand off and check, review and continue. Messages, tasks, and materials reflect actual operations." width="100%">
   </picture>
 </p>
 
@@ -133,14 +133,14 @@ The desktop workspace connects to the collaboration service through a local gate
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-architecture-dark.svg">
-    <img src="docs/assets/architecture/duolawork-architecture-light.svg" alt="DuolaWork topology: the desktop workspace reaches the collaboration service through a local gateway. Original agents execute locally, remotely, or on official platforms; shared data lives in the configured service." width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/duolawork-architecture-dark.en.svg">
+    <img src="docs/assets/architecture/duolawork-architecture-light.en.svg" alt="DuolaWork topology: the desktop workspace reaches the collaboration service through a local gateway. Original agents execute locally, remotely, or on official platforms; shared data lives in the configured service." width="100%">
   </picture>
 </p>
 
 The self-hosted Node.js service reuses the collaboration API with SQLite and a file-object directory. The repository also retains a Cloudflare Worker / D1 implementation. “Local-first” does not mean all data stays on your computer: deployment determines where shared data lives, and agents and connectors also use their respective platforms.
 
-Vector diagrams: system topology [light](docs/assets/architecture/duolawork-architecture-light.svg) / [dark](docs/assets/architecture/duolawork-architecture-dark.svg) · delivery flow [light](docs/assets/architecture/duolawork-workflow-light.svg) / [dark](docs/assets/architecture/duolawork-workflow-dark.svg). PNG exports are available in the same directory.
+Vector diagrams: system topology [light](docs/assets/architecture/duolawork-architecture-light.en.svg) / [dark](docs/assets/architecture/duolawork-architecture-dark.en.svg) · delivery flow [light](docs/assets/architecture/duolawork-workflow-light.en.svg) / [dark](docs/assets/architecture/duolawork-workflow-dark.en.svg). PNG exports are available in the same directory.
 
 <details>
 <summary>Repository structure and implementation entry points</summary>
