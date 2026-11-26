@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+.local/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+evidence/v2-final/*.png
+evidence/v2-final/*.json
+evidence/v2-final/*.txt

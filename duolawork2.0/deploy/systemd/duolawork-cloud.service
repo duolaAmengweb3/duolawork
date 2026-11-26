@@ -1,0 +1,27 @@
+[Unit]
+Description=DuolaWork 2.0 Cloud Control Plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=duolawork
+Group=duolawork
+EnvironmentFile=/etc/duolawork/server.env
+WorkingDirectory=/opt/duolawork/current
+ExecStart=/opt/duolawork/runtime/node/bin/node /opt/duolawork/current/dist/server/index.mjs
+UMask=0077
+Restart=on-failure
+RestartSec=3
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/duolawork
+PrivateTmp=true
+NoNewPrivileges=true
+LimitCORE=0
+MemoryHigh=256M
+MemoryMax=384M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target
