@@ -88,6 +88,52 @@ interface DesktopBridge {
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
 }
 
+function formatToolTraceRow(item: ToolTraceItem): {
+  badge: string;
+  label: string;
+  detail: string;
+  raw: string;
+} {
+  const rawName = String(item.name || '').replace(/\s+/g, ' ').trim();
+  const rawSummary = String(item.summary || '').replace(/\s+/g, ' ').trim();
+  const raw = rawSummary && rawSummary !== rawName ? `${rawName} — ${rawSummary}` : rawName || rawSummary;
+
+  let badge = '工具';
+  let label = rawName;
+  let detail = rawSummary;
+
+  if (/\s+on Web$/i.test(rawName)) {
+    badge = '搜索';
+    label = rawName.replace(/\s+on Web$/i, '').replace(/^"+|"+$/g, '').trim();
+    detail = '';
+  } else if (/^File\s+/i.test(rawName)) {
+    badge = '文件';
+    const filePath = rawName.replace(/^File\s+/i, '').trim();
+    const parts = filePath.split('/').filter(Boolean);
+    label = parts.length > 1 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : filePath;
+    detail = '';
+  } else if (/^(grep|rg|find|fd)\b/i.test(rawName)) {
+    badge = '检索';
+    label = rawName;
+    detail = '';
+  } else if (/^(python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(rawName)) {
+    badge = '命令';
+    label = rawName;
+    detail = '';
+  } else if (rawName.startsWith('duolabase:') || rawName.startsWith('duolabase_')) {
+    badge = 'DuolaBase';
+    label = rawName.replace(/^duolabase[:_]/, '');
+  } else if (/^(read|write|edit|view|list)/i.test(rawName)) {
+    badge = '文件';
+  }
+
+  if (detail && (label === detail || label.includes(detail) || detail.includes(label))) {
+    detail = '';
+  }
+
+  return { badge, label: label || '执行操作', detail, raw };
+}
+
 function getDesktopBridge(): DesktopBridge | null {
   if (typeof window === 'undefined') return null;
   const b = (window as unknown as { duolaworkDesktop?: DesktopBridge }).duolaworkDesktop;
@@ -2627,38 +2673,82 @@ export function App(): React.JSX.Element {
                                     : m.toolTrace ?? [];
                                 if (trace.length === 0) return null;
                                 const isRunningTurn = m.turnStatus === 'running';
-                                const expanded = isRunningTurn || Boolean(expandedToolMsgIds[m.id]);
+                                const userExpanded = expandedToolMsgIds[m.id];
                                 const activeItem =
                                   [...trace].reverse().find((t) => t.status === 'running') ??
                                   trace[trace.length - 1];
+                                const activeRow = formatToolTraceRow(activeItem);
+                                const showFullList = userExpanded === true;
+                                const showCompactLive = isRunningTurn && userExpanded === undefined;
+                                const showList = showFullList || showCompactLive;
+                                const visibleItems = showFullList
+                                  ? trace
+                                  : showCompactLive
+                                    ? trace.slice(-3)
+                                    : [];
+                                const hiddenLiveCount = showCompactLive
+                                  ? Math.max(0, trace.length - visibleItems.length)
+                                  : 0;
+                                const doneCount = trace.filter((t) => t.status === 'done').length;
                                 return (
                                   <div className={`turn-tool-trace ${isRunningTurn ? 'is-running' : ''}`}>
                                     <button
                                       type="button"
                                       className="turn-tool-summary"
+                                      title={activeRow.raw}
                                       onClick={() =>
-                                        setExpandedToolMsgIds((prev) => ({ ...prev, [m.id]: !prev[m.id] }))
+                                        setExpandedToolMsgIds((prev) => ({
+                                          ...prev,
+                                          [m.id]: prev[m.id] === undefined ? true : !prev[m.id]
+                                        }))
                                       }
                                     >
-                                      {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                      <span>
+                                      <span className="turn-tool-chevron">
+                                        {showFullList ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                      </span>
+                                      <i
+                                        className={`turn-tool-head-dot ${isRunningTurn ? 'is-running' : 'is-done'}`}
+                                        aria-hidden="true"
+                                      />
+                                      <span className="turn-tool-summary-text">
                                         {isRunningTurn
-                                          ? `正在执行：${activeItem.name}${activeItem.summary ? ` (${activeItem.summary})` : ''}`
+                                          ? `${activeRow.badge}：${activeRow.label}`
                                           : `已执行 ${trace.length} 项操作`}
                                       </span>
+                                      <span className="turn-tool-counter">
+                                        {isRunningTurn ? `${doneCount}/${trace.length}` : `${trace.length} 步`}
+                                      </span>
                                     </button>
-                                    {expanded && (
+                                    {showList && visibleItems.length > 0 && (
                                       <div className="turn-tool-list">
-                                        {trace.map((t, idx) => (
-                                          <div
-                                            key={`${t.id || t.name}-${idx}`}
-                                            className={`turn-tool-item status-${t.status}`}
+                                        {hiddenLiveCount > 0 && (
+                                          <button
+                                            type="button"
+                                            className="turn-tool-more-btn"
+                                            onClick={() =>
+                                              setExpandedToolMsgIds((prev) => ({ ...prev, [m.id]: true }))
+                                            }
                                           >
-                                            <i aria-hidden="true" />
-                                            <strong>{t.name}</strong>
-                                            {t.summary && <span className="truncate">{t.summary}</span>}
-                                          </div>
-                                        ))}
+                                            展开前面已完成的 {hiddenLiveCount} 步…
+                                          </button>
+                                        )}
+                                        {visibleItems.map((t, idx) => {
+                                          const row = formatToolTraceRow(t);
+                                          return (
+                                            <div
+                                              key={`${t.id || t.name}-${idx}`}
+                                              className={`turn-tool-item status-${t.status}`}
+                                              title={row.raw}
+                                            >
+                                              <i aria-hidden="true" />
+                                              <em className="turn-tool-badge">{row.badge}</em>
+                                              <strong className="turn-tool-label">{row.label}</strong>
+                                              {row.detail && (
+                                                <span className="turn-tool-detail">{row.detail}</span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
