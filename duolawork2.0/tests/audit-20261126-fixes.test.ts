@@ -7,6 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { DuolaWorkApp } from '../src/server/app.js';
+import { evaluateHubChannelMemberHealth } from '../src/server/drivers/remote-bridge-driver.js';
 import { resolveHandoffBudgetBytes } from '../src/server/handoff.js';
 import { parseLeadReviewJson } from '../src/server/tasks-fsm.js';
 import { isLocalCodingMember, resolveEffectiveDriverKind } from '../src/shared/types.js';
@@ -1615,6 +1616,117 @@ test('Audit-R4-1: Cloud AGENT_HUB_BRIDGE_URL/KEY fallback preserves remote-node 
     await browser.close();
     await app.close();
     await new Promise<void>((r) => mockHubSrv.close(() => r()));
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('Audit-R5-1: grok-webhook and dots-events stay ready when verified, and long tool-trace commands never overflow horizontally', async () => {
+  // 1. Verify transport-aware health evaluation
+  const grokHealth = evaluateHubChannelMemberHealth(
+    { transport: 'grok-webhook', status: 'verified', subscriptionActive: false, needsAuthorization: false },
+    { id: 'm_grok1', status: 'ready', mode: 'browser' },
+    { status: 'ready', browserPaused: true, message: '专用浏览器已关闭' },
+    'grok-webhook'
+  );
+  assert.equal(grokHealth.status, 'ready', 'Verified grok-webhook must be ready even when subscriptionActive=false and legacy browserPaused=true');
+
+  const dotHealth = evaluateHubChannelMemberHealth(
+    { transport: 'dots-events', status: 'verified', subscriptionActive: true, authSeenAt: '2026-11-02T06:01:36.889Z' },
+    { id: 'm_dot', status: 'unverified', mode: 'connector' },
+    null,
+    'dots-events'
+  );
+  assert.equal(dotHealth.status, 'ready', 'Verified dots-events with active subscription must be ready regardless of idle authSeenAt');
+
+  const museOffline = evaluateHubChannelMemberHealth(
+    { transport: 'muse-poll', status: 'verified', subscriptionActive: false, authSeenAt: '2026-11-10T10:49:16.944Z' },
+    { id: 'm_muse', status: 'unverified', mode: 'browser' },
+    null,
+    'muse-poll'
+  );
+  assert.equal(museOffline.status, 'offline', 'Stale muse-poll with no active poller must remain offline');
+
+  // 2. Verify Playwright rendering of .turn-tool-trace with 10 huge 260-char python/file/grep entries has ZERO horizontal overflow
+  const staticWebDir = path.resolve(process.cwd(), 'dist/web');
+  if (!fs.existsSync(path.join(staticWebDir, 'index.html'))) return;
+
+  const { app, tmpDir } = createIsolatedApp({ staticWebDir });
+  app.db.upsertMember({
+    id: 'mem_tool_ui',
+    name: 'Gemini2VPS',
+    platformId: 'antigravity',
+    driverKind: 'mock',
+    location: 'cloud-node',
+    capabilities: {
+      supportsIsolatedSessions: true,
+      supportsSessionResume: true,
+      supportsCancel: true,
+      maxConcurrentRuns: 1
+    },
+    status: 'ready',
+    statusMessage: '就绪',
+    config: {}
+  });
+  const thread = app.threads.createThread({ title: '工具卡片溢出回归', activeOwnerMemberId: 'mem_tool_ui' });
+  const now = new Date().toISOString();
+  const hugeTools = Array.from({ length: 10 }, (_, idx) => ({
+    id: `t_${idx}`,
+    name:
+      idx % 3 === 0
+        ? `python3 -c 'import sys, json; sys.path.insert(0, "/home/claude/.config/duolawork-runtime/member_ccdf940ba6d3426da01b9f65048909e2/chats/channel_6d302b18e24841f6a449b88f86b24aae"); from scripts.xhunt_pipeline import call_xhunt_api; print(${idx})'`
+        : idx % 3 === 1
+          ? `File coding/member_ccdf940ba6d3426da01b9f65048909e2/chats/channel_6d302b18e24841f6a449b88f86b24aae/scripts/xhunt_pipeline_${idx}.py`
+          : `"\\"hunterweb303\\" \\"2026年11月\\" OR \\"Nov 2026\\" site:x.com" on Web`,
+    summary: idx % 3 === 2 ? '"hunterweb303" "2026年11月" OR "Nov 2026" site:x.com' : '',
+    status: idx === 9 ? 'running' : 'done'
+  }));
+  app.db.sqlite
+    .prepare(
+      `INSERT INTO v2_thread_messages
+       (id, thread_id, seq, author_kind, author_id, target_member_id, attempt_id, body, artifact_refs_json, tool_trace_json, turn_status, created_at, updated_at)
+       VALUES (?, ?, ?, 'agent', ?, NULL, NULL, ?, '[]', ?, 'running', ?, ?)`
+    )
+    .run('msg_running_tools', thread.id, 1, 'mem_tool_ui', '正在处理…', JSON.stringify(hugeTools), now, now);
+
+  const { url } = await app.listen(0, '127.0.0.1');
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.turn-tool-trace.is-running', { state: 'visible' });
+
+    // Running view caps live visible items to 3 + "展开前面已完成的 7 步…" button, and NEVER overflows container
+    assert.equal(await page.locator('.turn-tool-item').count(), 3, 'Running mode shows compact latest 3 items by default');
+    assert.ok(await page.locator('.turn-tool-more-btn').isVisible(), 'Expand earlier steps button shown');
+
+    const overflowBeforeExpand = await page.evaluate(() => {
+      const box = document.querySelector('.turn-tool-trace') as HTMLElement;
+      const items = [...document.querySelectorAll('.turn-tool-item')] as HTMLElement[];
+      return {
+        boxOverflow: box.scrollWidth - box.clientWidth,
+        maxItemOverflow: Math.max(0, ...items.map((el) => el.scrollWidth - el.clientWidth))
+      };
+    });
+    assert.ok(overflowBeforeExpand.boxOverflow <= 1, `Box overflowed horizontally: ${JSON.stringify(overflowBeforeExpand)}`);
+    assert.ok(overflowBeforeExpand.maxItemOverflow <= 1, `Item overflowed horizontally: ${JSON.stringify(overflowBeforeExpand)}`);
+
+    // Expanding all 10 items stays strictly bounded vertically (scrollable) and horizontally (0 overflow)
+    await page.click('.turn-tool-more-btn');
+    assert.equal(await page.locator('.turn-tool-item').count(), 10, 'All 10 tool steps visible when expanded');
+    const overflowAfterExpand = await page.evaluate(() => {
+      const box = document.querySelector('.turn-tool-trace') as HTMLElement;
+      const list = document.querySelector('.turn-tool-list') as HTMLElement;
+      return {
+        boxOverflow: box.scrollWidth - box.clientWidth,
+        listHeight: list.getBoundingClientRect().height
+      };
+    });
+    assert.ok(overflowAfterExpand.boxOverflow <= 1, `Expanded box overflowed horizontally: ${JSON.stringify(overflowAfterExpand)}`);
+    assert.ok(overflowAfterExpand.listHeight <= 235, `Expanded list should scroll within max-height 220px, got ${overflowAfterExpand.listHeight}`);
+  } finally {
+    await browser.close();
+    await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

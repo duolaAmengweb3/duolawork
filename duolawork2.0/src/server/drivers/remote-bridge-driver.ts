@@ -70,44 +70,74 @@ export function evaluateHubChannelMemberHealth(
 ): { status: MemberRecord['status']; message: string } {
   const transport = String(conn?.transport || remoteMember?.mode || fallbackTransport);
 
+  if (conn?.needsAuthorization === true) {
+    return {
+      status: 'auth_required',
+      message: `需要重新完成平台授权 (${transport})`
+    };
+  }
+
+  // Cloud-to-cloud push webhooks (grok-webhook):
+  // Never keep a persistent SSE subscription (`subscriptionActive` is always false by design)
+  // and do not depend on legacy browser-mode `browserPaused` flags once verified on webhook.
+  if (transport === 'grok-webhook') {
+    if (conn?.status === 'verified') {
+      return { status: 'ready', message: `已连接 (${transport})` };
+    }
+    if (conn?.status === 'configured') {
+      return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
+    }
+    return { status: 'offline', message: `Webhook 连接暂未就绪 (${transport})` };
+  }
+
+  // Cloud-to-cloud event push (dots-events, e.g. Dot):
+  // `authSeenAt` only updates when invoked on demand, not via idle heartbeats.
+  if (transport === 'dots-events') {
+    if (conn?.status === 'verified' && conn?.subscriptionActive !== false) {
+      return { status: 'ready', message: `已连接 (${transport})` };
+    }
+    if (conn?.status === 'configured') {
+      return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
+    }
+    return { status: 'offline', message: `事件订阅未激活 (${transport})` };
+  }
+
+  // Polling / local browser connectors (muse-poll, browser):
   if (
     localConn &&
     (localConn.browserPaused === true || String(localConn.message || '').includes('已关闭'))
   ) {
     return {
       status: 'offline',
-      message: `旧版专用浏览器未开启 (${transport})`
+      message: `专用浏览器未开启 (${transport})`
     };
   }
 
-  if (conn && conn.subscriptionActive === false) {
-    return {
-      status: 'offline',
-      message: `旧版桥接接收端未运行 (${transport})`
-    };
-  }
-
-  if (conn && conn.subscriptionActive === true) {
+  if (conn?.status === 'verified') {
     const seenIso = String(
       conn.authSeenAt || conn.toolSeenAt || remoteMember?.lastSeenAt || ''
     ).trim();
     const seenMs = seenIso ? Date.parse(seenIso) : Number.NaN;
-    if (Number.isFinite(seenMs) && Date.now() - seenMs > 12 * 3600_000) {
+    if (conn.subscriptionActive === true || (Number.isFinite(seenMs) && Date.now() - seenMs <= 24 * 3600_000)) {
       return {
-        status: 'offline',
-        message: `旧版桥接超过 12 小时未活跃 (${transport})`
+        status: 'ready',
+        message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
       };
     }
+    return {
+      status: 'offline',
+      message: `本机/轮询接收端暂未运行 (${transport})`
+    };
   }
 
-  if (conn?.status === 'verified' || remoteMember?.status === 'ready' || localConn?.status === 'ready') {
+  if (conn?.status === 'configured') {
+    return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
+  }
+  if (remoteMember?.status === 'ready' || localConn?.status === 'ready') {
     return {
       status: 'ready',
       message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
     };
-  }
-  if (conn?.status === 'configured') {
-    return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
   }
   return { status: 'offline', message: `远端成员暂未在线 (${transport})` };
 }
