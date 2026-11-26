@@ -185,6 +185,51 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     assert.ok(await page.locator('.material-item-title:has-text("连接器改造说明.md")').isVisible());
     assert.equal(await page.getByRole('button', { name: /绑定工作目录/ }).count(), 1, 'Coding Agent thread shows 绑定工作目录');
 
+    // Hold the second document response so the previous editor cannot receive a quick save.
+    const original = app.artifacts.getArtifact(threadA.boundArtifactId!)!;
+    const second = app.artifacts.createArtifact({
+      sourceThreadId: threadA.id, title: '第二份测试文稿.md', content: '第二份原文',
+      writerKind: 'user', writerId: 'owner'
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: /连接器架构整理/ }).first().click();
+    const openOriginal = page.locator('.material-item-title', { hasText: original.title });
+    await openOriginal.click();
+    await page.locator('.space-detail-heading h2', { hasText: original.title }).waitFor();
+    await page.getByRole('button', { name: '返回列表' }).click();
+    let enteredResolve!: () => void;
+    const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+    let releaseResolve!: () => void;
+    const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+    await page.route('**/api/v2/artifacts/' + second.id, async (route) => {
+      if (route.request().method() === 'GET') {
+        enteredResolve();
+        await release;
+      }
+      await route.continue();
+    });
+    await page.locator('.material-item-title', { hasText: second.title }).click();
+    await entered;
+    try {
+      assert.equal(await page.getByRole('button', { name: '保存修改' }).count(), 0);
+      assert.equal(await page.getByRole('button', { name: '编辑', exact: true }).count(), 0);
+      await page.getByRole('button', { name: '返回列表' }).click();
+      await openOriginal.click();
+      await page.locator('.space-detail-heading h2', { hasText: original.title }).waitFor();
+    } finally {
+      releaseResolve();
+    }
+    await page.unrouteAll({ behavior: 'wait' });
+    await page.getByRole('button', { name: '返回列表' }).click();
+    await page.locator('.material-item-title', { hasText: second.title }).click();
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await page.getByRole('textbox', { name: '文稿编辑器' }).fill('仅修改第二份');
+    await page.getByRole('button', { name: '保存修改' }).click();
+    await page.getByText('已保存为 v2').waitFor();
+    assert.equal(app.artifacts.getArtifact(second.id)?.content, '仅修改第二份');
+    assert.equal(app.artifacts.getArtifact(original.id)?.headVersion, original.headVersion);
+    await page.getByRole('button', { name: '返回列表' }).click();
+
     // Capture Modern Light Theme Workbench Screenshot cleanly
     await page.waitForTimeout(250);
     await page.screenshot({ path: path.join(evidenceDir, 'workbench-light.png') });

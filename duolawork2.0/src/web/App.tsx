@@ -201,7 +201,7 @@ export function App(): React.JSX.Element {
   const [spaceOpen, setSpaceOpen] = useState<boolean>(() => !isMobileViewport());
   const [wideSpace, setWideSpace] = useState<boolean>(false);
   const [spaceTab, setSpaceTab] = useState<'documents' | 'tasks' | 'resources'>('documents');
-  const [spaceSelection, setSpaceSelection] = useState<{ kind: SpaceItemKind; id: string } | null>(null);
+  const [spaceSelection, updateSpaceSelection] = useState<{ kind: SpaceItemKind; id: string } | null>(null);
   const [spaceFolders, setSpaceFolders] = useState<SpaceFolderRecord[]>([]);
   const [spaceItems, setSpaceItems] = useState<SpaceItemView[]>([]);
   const [spaceTrash, setSpaceTrash] = useState<SpaceItemView[]>([]);
@@ -213,6 +213,24 @@ export function App(): React.JSX.Element {
   const [docDraft, setDocDraft] = useState<string>('');
   const [docEditing, setDocEditing] = useState<boolean>(false);
   const [docNotice, setDocNotice] = useState<string>('');
+
+  const documentEditingRef = useRef(false);
+  documentEditingRef.current = docEditing;
+  const selectionRef = useRef(spaceSelection);
+  const loadedDocument = useRef<string | null>(null);
+  const documentRequest = useRef(0);
+  const taskRequest = useRef(0);
+  const setSpaceSelection = useCallback((next: typeof spaceSelection) => {
+    loadedDocument.current = null;
+    documentRequest.current++;
+    selectionRef.current = next;
+    updateSpaceSelection(next);
+    setArtifact(null);
+    setVersions([]);
+    setDocDraft('');
+    setDocNotice('');
+    setDocEditing(false);
+  }, []);
 
   // Inline create-task state inside conversation
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
@@ -429,15 +447,24 @@ export function App(): React.JSX.Element {
     }
   }, [viewMode, streamingDeltas]);
 
-  const loadArtifactDetail = useCallback(async (artifactId: string) => {
-    if (!artifactId) return;
-    const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifactId)}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data.artifact) {
+  const loadArtifactDetail = useCallback(async (artifactId: string, refresh = false) => {
+    const selected = selectionRef.current;
+    if (selected?.kind !== 'document' || selected.id !== artifactId) return;
+    if (refresh && loadedDocument.current !== artifactId) return;
+    const request = ++documentRequest.current;
+    try {
+      const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifactId)}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (request !== documentRequest.current || (refresh && documentEditingRef.current)) return;
+      if (data.artifact?.id !== artifactId) throw new Error();
+      loadedDocument.current = artifactId;
       setArtifact(data.artifact);
       setVersions(data.versions || []);
       setDocDraft(data.artifact.content);
+      setDocNotice('');
+    } catch {
+      if (request === documentRequest.current) setDocNotice('文稿加载失败，请返回列表重新打开');
     }
   }, []);
 
@@ -456,10 +483,12 @@ export function App(): React.JSX.Element {
 
   const loadTaskDetail = useCallback(async (taskId: string, runId?: string) => {
     if (!taskId) return;
+    const request = ++taskRequest.current;
     const q = runId ? `?runId=${encodeURIComponent(runId)}` : '';
     const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}${q}`);
     if (!res.ok) return;
     const data = await res.json();
+    if (request !== taskRequest.current) return;
     setTaskDetail({
       task: data.task,
       runs: data.runs || [],
@@ -469,17 +498,14 @@ export function App(): React.JSX.Element {
     if (data.task?.sourceThreadId) {
       void loadSpace(data.task.sourceThreadId);
     }
-    if (data.artifact) {
-      setArtifact(data.artifact);
-      setVersions(data.versions || []);
-      setDocDraft(data.artifact.content);
-      setDocEditing(false);
-      setSpaceSelection({ kind: 'document', id: data.artifact.id });
-      if (!isMobileViewport()) {
-        setSpaceOpen(true);
-      }
-    }
   }, [loadSpace]);
+
+  const taskArtifactId = taskDetail?.activeRun?.finalArtifactId;
+  useEffect(() => {
+    if (viewMode !== 'task' || taskDetail?.task.id !== activeTaskId) return;
+    setSpaceSelection(taskArtifactId ? { kind: 'document', id: taskArtifactId } : null);
+    if (taskArtifactId && !isMobileViewport()) setSpaceOpen(true);
+  }, [viewMode, activeTaskId, taskDetail?.task.id, taskArtifactId, setSpaceSelection]);
 
   useEffect(() => {
     void loadBootstrap(false);
@@ -559,8 +585,8 @@ export function App(): React.JSX.Element {
       } else if (cur.viewMode === 'task' && cur.activeTaskId) {
         void cur.loadTaskDetail(cur.activeTaskId, cur.activeRunId);
       }
-      if (cur.spaceSelection?.kind === 'document' && cur.spaceSelection.id) {
-        void cur.loadArtifactDetail(cur.spaceSelection.id);
+      if (!documentEditingRef.current && cur.spaceSelection?.kind === 'document' && cur.spaceSelection.id) {
+        void cur.loadArtifactDetail(cur.spaceSelection.id, true);
       }
     };
 
@@ -749,9 +775,6 @@ export function App(): React.JSX.Element {
     setViewMode('thread');
     setSpaceSelection(null);
     setSpaceTab('documents');
-    setArtifact(null);
-    setVersions([]);
-    setDocDraft('');
     setMessagesThreadId(data.thread.id);
     setMessages([]);
     setActiveThreadId(data.thread.id);
@@ -895,10 +918,8 @@ export function App(): React.JSX.Element {
           setMessages(data.messages);
           setStreamingDeltas({});
         }
-        if (data.artifact) {
-          setArtifact(data.artifact);
-          setVersions(data.versions || []);
-          setDocDraft(data.artifact.content);
+        if (data.artifact && selectionRef.current?.id === data.artifact.id && !documentEditingRef.current) {
+          void loadArtifactDetail(data.artifact.id, true);
         }
       }
       await loadBootstrap(true);
@@ -1044,7 +1065,8 @@ export function App(): React.JSX.Element {
   };
 
   const handleSaveArtifact = async () => {
-    if (!artifact) return;
+    const selected = selectionRef.current;
+    if (!artifact || selected?.kind !== 'document' || selected.id !== artifact.id) return;
     const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifact.id)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1055,6 +1077,8 @@ export function App(): React.JSX.Element {
     });
     if (!res.ok) return;
     const data = await res.json();
+    if (selectionRef.current !== selected) return;
+    documentRequest.current++;
     setArtifact(data.artifact);
     setVersions(data.versions || []);
     setDocDraft(data.artifact.content);
@@ -1142,7 +1166,8 @@ export function App(): React.JSX.Element {
   };
 
   const handleSendArtifactBackToOriginChat = async () => {
-    if (!artifact) return;
+    const selected = selectionRef.current;
+    if (!artifact || selected?.kind !== 'document' || selected.id !== artifact.id) return;
     let latestArt = artifact;
     if (docEditing && docDraft !== artifact.content) {
       const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifact.id)}`, {
@@ -1155,6 +1180,8 @@ export function App(): React.JSX.Element {
       });
       if (res.ok) {
         const data = await res.json();
+        if (selectionRef.current !== selected) return;
+        documentRequest.current++;
         latestArt = data.artifact;
         setArtifact(data.artifact);
         setVersions(data.versions || []);
@@ -1846,9 +1873,6 @@ export function App(): React.JSX.Element {
                     resetTransientMenus();
                     setViewMode('thread');
                     setSpaceSelection(null);
-                    setArtifact(null);
-                    setVersions([]);
-                    setDocDraft('');
                     setActiveThreadId(t.id);
                     setMobileSidebarOpen(false);
                   }}

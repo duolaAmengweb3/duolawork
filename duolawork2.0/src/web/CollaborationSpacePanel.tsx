@@ -1247,6 +1247,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               })
             )}
           </div>
+        ) : selection?.kind === 'document' && artifact?.id !== selection.id ? (
+          <p role="status">{docNotice || '正在加载文稿…'}</p>
         ) : selection?.kind === 'document' ? (
           <div className="flex flex-col h-full min-h-0">
             <div className="space-detail-heading">

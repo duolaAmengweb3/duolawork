@@ -514,6 +514,41 @@ test('Audit Priority #3 & DW2-06: Scoped Execution Sandbox enforces 403 on cross
   }
 });
 
+test('Live dispatches remain owned while waiting for a slot and opening their session', async () => {
+  const { app, cleanup } = createTestApp();
+  const member = app.db.getMember('mem_grok')!;
+  const thread = app.threads.createThread({ title: '排队测试', activeOwnerMemberId: member.id });
+  let enteredResolve!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+  let releaseResolve!: () => void;
+  const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+  const ensure = app.registry.mockDriver.ensureSession.bind(app.registry.mockDriver);
+  app.registry.mockDriver.ensureSession = async (input) => {
+    enteredResolve();
+    await release;
+    return ensure(input);
+  };
+  const turns = ['first', 'queued'].map((key) => app.registry.dispatchTurn({
+    idempotencyKey: key, targetKind: 'task_step', targetId: key, threadId: thread.id,
+    member, scopeKey: key, cwd: os.tmpdir(), prompt: key
+  }));
+  try {
+    await entered;
+    const reconciled = await app.registry.reconcileInFlightAttempts();
+    assert.deepEqual(reconciled.map((r) => r.outcome), []);
+    assert.equal(app.registry.hasPendingReconcileAttempts(), false);
+    for (const key of ['first', 'queued']) {
+      assert.equal(app.registry.getAttemptByIdempotencyKey(key)?.status, 'prepared');
+    }
+    releaseResolve();
+    for (const turn of await Promise.all(turns)) assert.equal(turn.attempt.status, 'succeeded');
+  } finally {
+    releaseResolve();
+    await Promise.allSettled(turns);
+    await cleanup();
+  }
+});
+
 test('Audit Priority #1 & #2 & DW2-08: fixed-window Bot concurrency=1 serialization, webhook auth, cron slot dedup, and old-run timeout immediate slot release with single delivery', async () => {
   const { app, cleanup } = createTestApp();
   try {

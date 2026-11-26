@@ -45,6 +45,7 @@ export class DriverRegistry {
 
   private readonly activeSlots = new Map<string, Set<string>>();
   private readonly waitQueues = new Map<string, SlotWaiter[]>();
+  private readonly liveDispatches = new Set<string>();
   private readonly activeAttemptCancels = new Map<string, (reason: string) => void>();
   public mcpServersProvider?: (toolPolicy?: string) => McpHttpServerConfig[];
 
@@ -313,18 +314,19 @@ export class DriverRegistry {
     }
 
     const driver = this.getDriver(input.member.driverKind);
-    await this.acquireSlot(input.member, attemptId);
+    if (this.liveDispatches.has(attemptId)) throw new Error('该次派发仍在执行中');
 
     let timedOutReleased = false;
     const timeoutMs = input.timeoutMs ?? 900_000;
     let timeoutHandle: NodeJS.Timeout | null = null;
 
-    const effectiveMcpServers =
-      input.mcpServers ??
-      (input.toolPolicy === 'none' ? [] : this.mcpServersProvider?.(input.toolPolicy)) ??
-      [];
-
+    this.liveDispatches.add(attemptId);
     try {
+      await this.acquireSlot(input.member, attemptId);
+      const effectiveMcpServers =
+        input.mcpServers ??
+        (input.toolPolicy === 'none' ? [] : this.mcpServersProvider?.(input.toolPolicy)) ??
+        [];
       const ensured = await driver.ensureSession({
         member: input.member,
         scopeKey: input.scopeKey,
@@ -547,6 +549,7 @@ export class DriverRegistry {
       }
       throw err;
     } finally {
+      this.liveDispatches.delete(attemptId);
       this.activeAttemptCancels.delete(attemptId);
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (!timedOutReleased) {
@@ -562,7 +565,7 @@ export class DriverRegistry {
          WHERE status IN ('prepared', 'dispatched', 'running', 'reconciling')`
       )
       .all() as Array<{ id: string }>;
-    return rows.some((r) => !this.activeAttemptCancels.has(String(r.id)));
+    return rows.some((r) => !this.liveDispatches.has(String(r.id)));
   }
 
   /**
@@ -587,7 +590,7 @@ export class DriverRegistry {
 
     for (const row of rows) {
       const att = mapAttemptRow(row);
-      if (this.activeAttemptCancels.has(att.id)) {
+      if (this.liveDispatches.has(att.id)) {
         continue;
       }
       if (att.status === 'prepared') {

@@ -817,15 +817,8 @@ test('Audit-M1, M2, M3 & Browser Retry (Playwright 390x844): Mobile unobstructed
     await page.click('button[aria-label="打开协作资料"]');
     await page.waitForSelector('aside.collaboration-space', { state: 'visible' });
     await page.locator('aside.collaboration-space').getByText(doc.title).first().click();
-    const quoteBtn = page.locator('aside.collaboration-space button:has-text("引用")').first();
-    if ((await quoteBtn.count()) > 0) {
-      await quoteBtn.click();
-    } else {
-      await page.click('button[aria-label="收起协作空间"]');
-    }
-    if ((await page.locator('aside.collaboration-space').count()) > 0) {
-      await page.click('button[aria-label="收起协作空间"]');
-    }
+    await page.locator('aside.collaboration-space').getByRole('button', { name: '引用到对话' }).click();
+    await page.locator('aside.collaboration-space').waitFor({ state: 'hidden' });
     assert.equal(await page.locator('aside.collaboration-space').count(), 0);
 
     // --- M3 + H2: Simulate offline drop BEFORE server, verify draft & ref kept, then simulate "server completes, response drops" & retry with same idempotencyKey! ---
