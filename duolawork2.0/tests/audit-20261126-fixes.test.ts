@@ -1192,3 +1192,240 @@ test('Audit-R2-2: Crash/partial-failure recovery creates first thread artifact, 
     await cleanup();
   }
 });
+
+test('Audit-R3-1: Canceling attempts queued in acquireSlot or blocked in ensureSession resolves immediately without breaking maxConcurrentRuns or waking sibling canceled steps', async () => {
+  const { app, cleanup } = createIsolatedApp();
+  try {
+    // Configure a strict maxConcurrentRuns = 1 member
+    app.db.upsertMember({
+      id: 'mem_serial',
+      name: '单槽串行成员',
+      platformId: 'codex',
+      driverKind: 'mock',
+      location: 'local',
+      capabilities: {
+        supportsIsolatedSessions: true,
+        supportsSessionResume: true,
+        supportsCancel: true,
+        maxConcurrentRuns: 1
+      },
+      status: 'ready',
+      statusMessage: '在线',
+      config: {}
+    });
+
+    // --- Subcase A: Turn 1 running, Turn 2 & Turn 3 queued in waitQueues; abort Turn 2! ---
+    // Turn 2 must cancel immediately without running ensureSession/runTurn, Turn 3 MUST NOT start while Turn 1 is still active (maxActive === 1),
+    // and once Turn 1 finishes, Turn 3 acquires the slot and completes cleanly!
+    const t1 = app.threads.createThread({ title: '槽位占用对话1', activeOwnerMemberId: 'mem_serial' });
+    const t2 = app.threads.createThread({ title: '排队取消对话2', activeOwnerMemberId: 'mem_serial' });
+    const t3 = app.threads.createThread({ title: '后续排队对话3', activeOwnerMemberId: 'mem_serial' });
+
+    let activeCount = 0;
+    let maxObservedActive = 0;
+    let t1StartedResolve!: () => void;
+    const t1Started = new Promise<void>((r) => {
+      t1StartedResolve = r;
+    });
+    let releaseT1!: () => void;
+    const t1Gate = new Promise<void>((r) => {
+      releaseT1 = r;
+    });
+    const executedScopes: string[] = [];
+
+    app.registry.mockDriver.handlers.set('mem_serial', async (inp) => {
+      activeCount += 1;
+      if (activeCount > maxObservedActive) maxObservedActive = activeCount;
+      executedScopes.push(inp.scopeKey);
+      try {
+        if (inp.scopeKey.includes(t1.id)) {
+          t1StartedResolve();
+          await t1Gate;
+          return { text: '对话1正常完成' };
+        }
+        return { text: `后续完成:${inp.scopeKey}` };
+      } finally {
+        activeCount -= 1;
+      }
+    });
+
+    const p1 = app.threads.sendUserMessage({ threadId: t1.id, body: '第一条占槽消息' });
+    await t1Started;
+
+    const p2 = app.threads.sendUserMessage({ threadId: t2.id, body: '第二条排队后取消' });
+    const p3 = app.threads.sendUserMessage({ threadId: t3.id, body: '第三条继续排队' });
+    await new Promise((r) => setTimeout(r, 25));
+
+    // Abort Turn 2 while it is queued in acquireSlot!
+    const abortRes2 = await app.threads.abortActiveTurn(t2.id);
+    assert.equal(abortRes2.aborted, true);
+
+    const res2 = await Promise.race([
+      p2,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Queued Turn 2 did not settle immediately on abortActiveTurn')), 400)
+      )
+    ]);
+    assert.equal(res2.agentMessage.turnStatus, 'canceled');
+
+    // Give microtasks/timers a chance: Turn 3 MUST still be waiting because Turn 1 still holds the single slot!
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(maxObservedActive, 1, 'Aborting queued Turn 2 must NEVER wake Turn 3 while Turn 1 holds the slot');
+    assert.deepEqual(executedScopes, [`thread:${t1.id}:mem_serial`], 'Turn 2 and Turn 3 have not entered runTurn yet');
+
+    // Now finish Turn 1 -> Turn 3 must wake up and complete cleanly!
+    releaseT1();
+    const [res1, res3] = await Promise.all([p1, p3]);
+    assert.equal(res1.agentMessage.turnStatus, 'completed');
+    assert.equal(res3.agentMessage.turnStatus, 'completed');
+    assert.equal(maxObservedActive, 1, 'Strict maxConcurrentRuns=1 preserved throughout');
+    assert.equal(
+      executedScopes.some((s) => s.includes(t2.id)),
+      false,
+      'Canceled Turn 2 never entered runTurn'
+    );
+    const t2Attempts = app.registry.listAttempts({ threadId: t2.id });
+    assert.equal(t2Attempts.length, 1);
+    assert.equal(t2Attempts[0].status, 'failed');
+    assert.equal(t2Attempts[0].slotHeld, false);
+
+    // --- Subcase B: Slow ensureSession -> abortActiveTurn cancels immediately & late ensureSession resolution never invokes runTurn ---
+    const tSlow = app.threads.createThread({ title: '慢建连取消测试', activeOwnerMemberId: 'mem_serial' });
+    const origEnsureSession = app.registry.mockDriver.ensureSession.bind(app.registry.mockDriver);
+    let ensureEnteredResolve!: () => void;
+    const ensureEntered = new Promise<void>((r) => {
+      ensureEnteredResolve = r;
+    });
+    let releaseSlowEnsure!: () => void;
+    const slowEnsureGate = new Promise<void>((r) => {
+      releaseSlowEnsure = r;
+    });
+    let slowRunTurnCalled = false;
+
+    app.registry.mockDriver.ensureSession = async (inp) => {
+      if (inp.scopeKey.includes(tSlow.id)) {
+        ensureEnteredResolve();
+        await slowEnsureGate;
+      }
+      return origEnsureSession(inp);
+    };
+    app.registry.mockDriver.handlers.set('mem_serial', async (inp) => {
+      if (inp.scopeKey.includes(tSlow.id)) {
+        slowRunTurnCalled = true;
+      }
+      return { text: '正常响应' };
+    });
+
+    try {
+      const pSlow = app.threads.sendUserMessage({ threadId: tSlow.id, body: '建连卡住时点击停止' });
+      await ensureEntered;
+
+      const abortSlow = await app.threads.abortActiveTurn(tSlow.id);
+      assert.equal(abortSlow.aborted, true);
+
+      const resSlow = await Promise.race([
+        pSlow,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Turn blocked in ensureSession did not cancel immediately')), 400)
+        )
+      ]);
+      assert.equal(resSlow.agentMessage.turnStatus, 'canceled');
+
+      // Let slow ensureSession finish afterwards — runTurn must STILL never be called!
+      releaseSlowEnsure();
+      await new Promise((r) => setTimeout(r, 40));
+      assert.equal(slowRunTurnCalled, false, 'Late ensureSession completion must never invoke runTurn');
+      const slowAtt = app.registry.listAttempts({ threadId: tSlow.id })[0];
+      assert.equal(slowAtt.status, 'failed');
+    } finally {
+      app.registry.mockDriver.ensureSession = origEnsureSession;
+    }
+
+    // --- Subcase C: cancelRun on multi-step task where Step 1 holds slot, Step 2 is queued, and an unrelated Thread turn is queued behind Step 2 ---
+    let step1StartedResolve!: () => void;
+    const step1Started = new Promise<void>((r) => {
+      step1StartedResolve = r;
+    });
+    let step2EnteredRunTurn = false;
+    const abortTurnCallIds: string[] = [];
+    const mockDriverAsInterface = app.registry.getDriver('mock');
+    const origAbortTurn = mockDriverAsInterface.abortTurn.bind(mockDriverAsInterface);
+    mockDriverAsInterface.abortTurn = async (member, att) => {
+      abortTurnCallIds.push(att.id);
+      return origAbortTurn(member, att);
+    };
+
+    app.registry.mockDriver.handlers.set('mem_serial', async (inp) => {
+      if (inp.prompt.includes('并行步骤一')) {
+        step1StartedResolve();
+        await new Promise((r) => setTimeout(r, 5000));
+        return { text: '步骤一不应完成' };
+      }
+      if (inp.prompt.includes('并行步骤二')) {
+        step2EnteredRunTurn = true;
+        return { text: '步骤二绝不应被唤醒执行' };
+      }
+      return { text: '无关对话顺利接棒槽位' };
+    });
+
+    try {
+      const { initialRun } = app.tasks.createOrUpdateTask({
+        sourceThreadId: t1.id,
+        title: '双步串行槽位取消测试',
+        leadMemberId: 'mem_a',
+        spec: {
+          goal: '验证取消任务时不会把槽位误传给同一任务的排队步骤二',
+          steps: [
+            {
+              stepOrder: 1,
+              title: '并行步骤一',
+              assigneeMemberId: 'mem_serial',
+              brief: '并行步骤一',
+              acceptanceCriteria: 'ok'
+            },
+            {
+              stepOrder: 2,
+              title: '并行步骤二',
+              assigneeMemberId: 'mem_serial',
+              brief: '并行步骤二',
+              acceptanceCriteria: 'ok'
+            }
+          ]
+        }
+      });
+
+      const drivePromise = app.tasks.driveRun(initialRun!.id);
+      await step1Started;
+      await new Promise((r) => setTimeout(r, 25)); // Step 2 is now queued in waitQueues behind Step 1
+
+      // Queue an unrelated thread message behind Step 2
+      const tOther = app.threads.createThread({ title: '外部正常对话', activeOwnerMemberId: 'mem_serial' });
+      const pOther = app.threads.sendUserMessage({ threadId: tOther.id, body: '等待槽位释放' });
+      await new Promise((r) => setTimeout(r, 20));
+
+      const canceledRun = await app.tasks.cancelRun(initialRun!.id);
+      assert.equal(canceledRun.status, 'canceled');
+      await drivePromise;
+
+      const otherRes = await Promise.race([
+        pOther,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Unrelated queued thread did not receive freed slot after cancelRun')), 600)
+        )
+      ]);
+      assert.equal(otherRes.agentMessage.turnStatus, 'completed');
+      assert.equal(otherRes.agentMessage.body, '无关对话顺利接棒槽位');
+      assert.equal(step2EnteredRunTurn, false, 'Sibling Step 2 of canceled run must NEVER enter runTurn');
+
+      const runAttempts = app.registry.listAttempts({ runId: initialRun!.id });
+      assert.equal(runAttempts.length, 2);
+      assert.ok(runAttempts.every((a) => a.status === 'failed' && !a.slotHeld));
+      // Only Step 1 (which was actually running) should receive driver.abortTurn, never prepared Step 2!
+      assert.equal(abortTurnCallIds.length, 1);
+    } finally {
+      mockDriverAsInterface.abortTurn = origAbortTurn;
+    }
+  } finally {
+    await cleanup();
+  }
+});

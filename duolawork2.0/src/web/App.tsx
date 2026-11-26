@@ -101,6 +101,15 @@ function isMobileViewport(): boolean {
   return window.innerWidth <= 768;
 }
 
+function isSameSpaceSelection(
+  a: { kind: SpaceItemKind; id: string } | null,
+  b: { kind: SpaceItemKind; id: string } | null
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.kind === b.kind && a.id === b.id;
+}
+
 function makeClientRequestId(threadId: string): string {
   const rand =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -221,6 +230,12 @@ export function App(): React.JSX.Element {
   const documentRequest = useRef(0);
   const taskRequest = useRef(0);
   const setSpaceSelection = useCallback((next: typeof spaceSelection) => {
+    if (
+      isSameSpaceSelection(selectionRef.current, next) &&
+      (!next || next.kind !== 'document' || loadedDocument.current === next.id)
+    ) {
+      return;
+    }
     loadedDocument.current = null;
     documentRequest.current++;
     selectionRef.current = next;
@@ -1077,7 +1092,7 @@ export function App(): React.JSX.Element {
     });
     if (!res.ok) return;
     const data = await res.json();
-    if (selectionRef.current !== selected) return;
+    if (!isSameSpaceSelection(selectionRef.current, selected)) return;
     documentRequest.current++;
     setArtifact(data.artifact);
     setVersions(data.versions || []);
@@ -1180,7 +1195,7 @@ export function App(): React.JSX.Element {
       });
       if (res.ok) {
         const data = await res.json();
-        if (selectionRef.current !== selected) return;
+        if (!isSameSpaceSelection(selectionRef.current, selected)) return;
         documentRequest.current++;
         latestArt = data.artifact;
         setArtifact(data.artifact);

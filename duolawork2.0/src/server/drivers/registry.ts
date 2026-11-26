@@ -28,6 +28,7 @@ import { WebhookBotDriver } from './webhook-bot-driver.js';
 interface SlotWaiter {
   attemptId: string;
   grant: () => void;
+  reject: (err: Error) => void;
 }
 
 /**
@@ -83,15 +84,31 @@ export class DriverRegistry {
       set.add(attemptId);
       return;
     }
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const q = this.waitQueues.get(member.id) ?? [];
-      q.push({ attemptId, grant: resolve });
+      q.push({ attemptId, grant: resolve, reject });
       this.waitQueues.set(member.id, q);
     });
   }
 
+  private abortQueuedWaiter(memberId: string, attemptId: string, reason: string): boolean {
+    const q = this.waitQueues.get(memberId);
+    if (!q || q.length === 0) return false;
+    let removed = false;
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i].attemptId === attemptId) {
+        const [waiter] = q.splice(i, 1);
+        removed = true;
+        waiter.reject(new Error(reason));
+      }
+    }
+    return removed;
+  }
+
   /**
-   * Releases the member's concurrency slot (called on normal completion OR immediately on step timeout!).
+   * Releases the member's concurrency slot (called on normal completion OR immediately on step timeout/cancel!).
+   * Strictly removes queued waiters first and only wakes the next waiter when `attemptId` actually held an active slot
+   * and capacity is below `maxConcurrentRuns`.
    */
   public releaseMemberSlot(memberId: string, attemptId: string): void {
     try {
@@ -102,18 +119,21 @@ export class DriverRegistry {
       // Ignore if DB was already closed during shutdown.
     }
 
+    // If this attempt was still waiting in queue rather than holding an active slot, remove & reject it without touching active slots!
+    this.abortQueuedWaiter(memberId, attemptId, 'ATTEMPT_CANCELED');
+
     const set = this.activeSlots.get(memberId);
-    if (set) {
-      set.delete(attemptId);
+    const wasHoldingSlot = Boolean(set && set.delete(attemptId));
+    if (!wasHoldingSlot) {
+      return;
     }
+
+    const member = this.db.getMember(memberId);
+    const maxSlots = Math.max(1, member?.capabilities.maxConcurrentRuns || 1);
     const q = this.waitQueues.get(memberId);
-    if (q && q.length > 0) {
+    while (q && q.length > 0 && set!.size < maxSlots) {
       const next = q.shift()!;
-      if (!set) {
-        this.activeSlots.set(memberId, new Set([next.attemptId]));
-      } else {
-        set.add(next.attemptId);
-      }
+      set!.add(next.attemptId);
       next.grant();
     }
   }
@@ -317,25 +337,51 @@ export class DriverRegistry {
     if (this.liveDispatches.has(attemptId)) throw new Error('该次派发仍在执行中');
 
     let timedOutReleased = false;
+    let cancelReason: string | null = null;
     const timeoutMs = input.timeoutMs ?? 900_000;
     let timeoutHandle: NodeJS.Timeout | null = null;
 
+    let rejectCancelRace!: (err: Error) => void;
+    const cancelRace = new Promise<never>((_, reject) => {
+      rejectCancelRace = reject;
+    });
+    // Prevent unhandled rejection if canceled before Promise.race is entered
+    cancelRace.catch(() => {});
+
     this.liveDispatches.add(attemptId);
+    this.activeAttemptCancels.set(attemptId, (reason) => {
+      if (cancelReason) return;
+      cancelReason = reason;
+      this.abortQueuedWaiter(input.member.id, attemptId, reason);
+      rejectCancelRace(new Error(reason));
+    });
+
     try {
-      await this.acquireSlot(input.member, attemptId);
+      const preCheck = this.getAttempt(attemptId);
+      if (!preCheck || preCheck.status === 'failed' || preCheck.status === 'timed_out') {
+        throw new Error('ATTEMPT_CANCELED');
+      }
+
+      await Promise.race([this.acquireSlot(input.member, attemptId), cancelRace]);
+      if (cancelReason) throw new Error(cancelReason);
+
       const effectiveMcpServers =
         input.mcpServers ??
         (input.toolPolicy === 'none' ? [] : this.mcpServersProvider?.(input.toolPolicy)) ??
         [];
-      const ensured = await driver.ensureSession({
-        member: input.member,
-        scopeKey: input.scopeKey,
-        cwd: input.cwd,
-        existingNativeSessionId: input.existingNativeSessionId,
-        existingBridgeMeta: input.existingBridgeMeta,
-        dynamicTools: input.dynamicTools,
-        ...(effectiveMcpServers.length > 0 ? { mcpServers: effectiveMcpServers } : {})
-      });
+      const ensured = await Promise.race([
+        driver.ensureSession({
+          member: input.member,
+          scopeKey: input.scopeKey,
+          cwd: input.cwd,
+          existingNativeSessionId: input.existingNativeSessionId,
+          existingBridgeMeta: input.existingBridgeMeta,
+          dynamicTools: input.dynamicTools,
+          ...(effectiveMcpServers.length > 0 ? { mcpServers: effectiveMcpServers } : {})
+        }),
+        cancelRace
+      ]);
+      if (cancelReason) throw new Error(cancelReason);
 
       const sessionWasReset =
         Boolean(input.existingNativeSessionId) &&
@@ -355,7 +401,7 @@ export class DriverRegistry {
       let currentBridgeMeta: Record<string, unknown> | null =
         ensured.bridgeMeta ?? input.existingBridgeMeta ?? null;
 
-      this.db.sqlite
+      const dispatchUpdate = this.db.sqlite
         .prepare(
           `UPDATE v2_dispatch_attempts
            SET status = 'dispatched',
@@ -364,7 +410,7 @@ export class DriverRegistry {
                prompt_digest = ?,
                prompt_bytes = ?,
                handoff_bytes = ?
-           WHERE id = ?`
+           WHERE id = ? AND status = 'prepared'`
         )
         .run(
           ensured.nativeSessionId,
@@ -374,6 +420,9 @@ export class DriverRegistry {
           activeHandoffBytes,
           attemptId
         );
+      if (Number(dispatchUpdate.changes) === 0 || cancelReason) {
+        throw new Error(cancelReason || 'ATTEMPT_CANCELED');
+      }
 
       const timeoutRace = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
@@ -391,12 +440,6 @@ export class DriverRegistry {
           reject(new Error('ATTEMPT_TIMED_OUT'));
         }, timeoutMs);
         timeoutHandle.unref?.();
-      });
-
-      const cancelRace = new Promise<never>((_, reject) => {
-        this.activeAttemptCancels.set(attemptId, (reason) => {
-          reject(new Error(reason));
-        });
       });
 
       const execPromise = driver.runTurn(
@@ -473,6 +516,9 @@ export class DriverRegistry {
         .catch(() => {});
 
       const res = await Promise.race([execPromise, timeoutRace, cancelRace]);
+      if (cancelReason) {
+        throw new Error(cancelReason);
+      }
 
       const settledPrompt = res.sessionReset && fallbackFullPrompt ? fallbackFullPrompt : activePrompt;
       const settledHandoffBytes =
@@ -487,7 +533,7 @@ export class DriverRegistry {
         nativeTurns: 1,
         providerUsage: res.providerUsage
       };
-      this.db.sqlite
+      const succeedUpdate = this.db.sqlite
         .prepare(
           `UPDATE v2_dispatch_attempts
            SET status = 'succeeded',
@@ -501,7 +547,7 @@ export class DriverRegistry {
                response_text = ?,
                usage_json = ?,
                settled_at = ?
-           WHERE id = ?`
+           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
         )
         .run(
           res.nativeSessionId,
@@ -515,6 +561,9 @@ export class DriverRegistry {
           new Date().toISOString(),
           attemptId
         );
+      if (Number(succeedUpdate.changes) === 0) {
+        throw new Error(cancelReason || 'ATTEMPT_CANCELED');
+      }
 
       return {
         attempt: this.getAttempt(attemptId)!,
@@ -524,17 +573,19 @@ export class DriverRegistry {
     } catch (err) {
       const msg = redactSecrets((err as Error).message);
       if (!timedOutReleased) {
+        const isExplicitCancel = Boolean(cancelReason) || msg === 'ATTEMPT_CANCELED';
         const isDisconnect =
-          msg.includes('DISCONNECT') ||
-          msg.includes('HTTP 5') ||
-          msg.includes('fetch failed') ||
-          (msg === 'SHUTDOWN' &&
-            (input.member.driverKind === 'remote-bridge' || input.member.driverKind === 'remote-node'));
+          !isExplicitCancel &&
+          (msg.includes('DISCONNECT') ||
+            msg.includes('HTTP 5') ||
+            msg.includes('fetch failed') ||
+            (msg === 'SHUTDOWN' &&
+              (input.member.driverKind === 'remote-bridge' || input.member.driverKind === 'remote-node')));
         try {
           this.db.sqlite
             .prepare(
               `UPDATE v2_dispatch_attempts
-               SET status = ?, slot_held = 0, error_message = ?, settled_at = ?
+               SET status = ?, slot_held = 0, error_message = COALESCE(error_message, ?), settled_at = COALESCE(settled_at, ?)
                WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
             )
             .run(

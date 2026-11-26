@@ -634,6 +634,10 @@ export class TaskEngine {
         ...(step.toolPolicy !== 'none' && this.scopedToolExecutor ? SPACE_AND_DUOLABASE_TOOLS : [])
       ];
 
+      if (this.getRun(runId)?.status === 'canceled' || this.getStep(step.id)?.status === 'canceled') {
+        return;
+      }
+
       const { result } = await this.registry.dispatchTurn({
         attemptId,
         idempotencyKey: `step_exec:${step.id}:v${submissionNumber}`,
@@ -707,6 +711,10 @@ export class TaskEngine {
           `step(${step.stepOrder}): ${step.title} v${submissionNumber}`,
           run.id
         );
+      }
+
+      if (this.getRun(runId)?.status === 'canceled' || this.getStep(step.id)?.status === 'canceled') {
+        return;
       }
 
       const subSummary =
@@ -843,6 +851,10 @@ export class TaskEngine {
     ];
 
     try {
+      if (this.getRun(run.id)?.status === 'canceled' || this.getStep(step.id)?.status === 'canceled') {
+        return;
+      }
+
       const { result } = await this.registry.dispatchTurn({
         attemptId,
         idempotencyKey: `lead_review:${step.id}:v${submission.version}`,
@@ -1404,22 +1416,35 @@ export class TaskEngine {
         .run(now, runId);
     });
 
-    const attempts = this.registry.listAttempts({ runId });
-    for (const att of attempts) {
-      if (att.status === 'prepared' || att.status === 'dispatched' || att.status === 'running') {
+    const activeAttempts = this.registry
+      .listAttempts({ runId })
+      .filter((att) => att.status === 'prepared' || att.status === 'dispatched' || att.status === 'running');
+
+    // Phase 1 (synchronous): mark all attempts of this run failed & splice/reject all queued waiters
+    // BEFORE releasing any active slot or awaiting driver network calls, so freeing Step 1's slot never wakes Step 2 of the same run.
+    for (const att of activeAttempts) {
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_dispatch_attempts
+           SET status = 'failed', slot_held = 0, error_message = '任务已手动停止', settled_at = ?
+           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
+        )
+        .run(now, att.id);
+      this.registry.cancelDispatchedAttempt(att.id, 'ATTEMPT_CANCELED');
+    }
+
+    // Phase 2: release held concurrency slots immediately for other runs/threads
+    for (const att of activeAttempts) {
+      this.registry.releaseMemberSlot(att.memberId, att.id);
+    }
+
+    // Phase 3: abort only attempts that had already dispatched/started on the underlying driver
+    for (const att of activeAttempts) {
+      if (att.status === 'dispatched' || att.status === 'running') {
         const member = this.db.getMember(att.memberId);
         if (member) {
           await this.registry.getDriver(member.driverKind).abortTurn(member, att).catch(() => false);
         }
-        this.db.sqlite
-          .prepare(
-            `UPDATE v2_dispatch_attempts
-             SET status = 'failed', slot_held = 0, error_message = '任务已手动停止', settled_at = ?
-             WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
-          )
-          .run(now, att.id);
-        this.registry.releaseMemberSlot(att.memberId, att.id);
-        this.registry.cancelDispatchedAttempt(att.id, 'ATTEMPT_CANCELED');
       }
     }
 

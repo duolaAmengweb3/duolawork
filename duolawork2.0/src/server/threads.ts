@@ -415,13 +415,6 @@ export class ThreadEngine {
       const attemptId = String(attemptRow.id);
       const attempt = this.registry.getAttempt(attemptId);
       const member = attempt ? this.db.getMember(attempt.memberId) : null;
-      if (attempt && member) {
-        try {
-          aborted = await this.registry.getDriver(member.driverKind).abortTurn(member, attempt);
-        } catch {
-          aborted = false;
-        }
-      }
       this.db.sqlite
         .prepare(
           `UPDATE v2_dispatch_attempts
@@ -429,6 +422,16 @@ export class ThreadEngine {
            WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
         )
         .run(now, attemptId);
+      this.registry.cancelDispatchedAttempt(attemptId, 'ATTEMPT_CANCELED');
+      if (attempt && member && (attempt.status === 'dispatched' || attempt.status === 'running')) {
+        try {
+          aborted = await this.registry.getDriver(member.driverKind).abortTurn(member, attempt);
+        } catch {
+          aborted = false;
+        }
+      } else if (attempt) {
+        aborted = true;
+      }
       if (attempt) {
         this.registry.releaseMemberSlot(attempt.memberId, attempt.id);
       }
@@ -820,6 +823,15 @@ export class ThreadEngine {
 
     const toolTrace: ToolTraceItem[] = [];
     try {
+      const beforeDispatchMsg = this.getMessage(placeholderAgentMsg.id);
+      if (beforeDispatchMsg?.turnStatus === 'canceled') {
+        return {
+          userMessage: userMsg,
+          agentMessage: beforeDispatchMsg,
+          handoffBytes: 0
+        };
+      }
+
       const dispatchIdempotencyKey = cleanClientKey
         ? `${cleanClientKey}${retryAttemptKeySuffix}`
         : `thread_msg:${userMsg.id}`;
@@ -897,6 +909,15 @@ export class ThreadEngine {
       const settledToolTrace = toolTrace.map((t) =>
         t.status === 'running' ? { ...t, status: 'done' as const } : t
       );
+
+      const postDispatchMsg = this.getMessage(placeholderAgentMsg.id);
+      if (postDispatchMsg?.turnStatus === 'canceled') {
+        return {
+          userMessage: userMsg,
+          agentMessage: postDispatchMsg,
+          handoffBytes: effectivePacket.handoffBytes
+        };
+      }
 
       const cleanedBody = await this.applyInlineArtifactAndActions(
         result.text,
