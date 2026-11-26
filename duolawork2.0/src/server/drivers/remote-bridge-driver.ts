@@ -20,9 +20,46 @@ import {
   type TurnStreamEvent
 } from './types.js';
 
-interface HubConfigFile {
+export interface HubConfigFile {
   endpoint: string;
   adminKey: string;
+}
+
+export function resolveAgentHubBridgeCredentials(
+  explicitConfigPath?: string | null
+): HubConfigFile | null {
+  const tryReadConfigFile = (filePath: string): HubConfigFile | null => {
+    try {
+      if (!filePath || !fs.existsSync(filePath)) return null;
+      const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+      const endpoint = String(raw.endpoint || '').trim().replace(/\/+$/, '');
+      const adminKey = String(raw.adminKey || '').trim();
+      if (!endpoint || !adminKey) return null;
+      return { endpoint, adminKey };
+    } catch {
+      return null;
+    }
+  };
+
+  if (typeof explicitConfigPath === 'string' && explicitConfigPath.trim()) {
+    const fromExplicit = tryReadConfigFile(explicitConfigPath.trim());
+    if (fromExplicit) return fromExplicit;
+  }
+
+  const envUrl = String(process.env.AGENT_HUB_BRIDGE_URL || '').trim().replace(/\/+$/, '');
+  const envKey = String(process.env.AGENT_HUB_BRIDGE_KEY || '').trim();
+  if (envUrl && envKey) {
+    return { endpoint: envUrl, adminKey: envKey };
+  }
+
+  const envCfgPath = String(process.env.DUOLAWORK_AGENT_HUB_CONFIG || '').trim();
+  if (envCfgPath) {
+    const fromEnvFile = tryReadConfigFile(envCfgPath);
+    if (fromEnvFile) return fromEnvFile;
+  }
+
+  const homeDefault = path.join(os.homedir(), '.config', 'agent-hub', 'config.json');
+  return tryReadConfigFile(homeDefault);
 }
 
 /**
@@ -39,20 +76,16 @@ export class RemoteBridgeDriver implements AgentDriver {
   private readonly abortedAttempts = new Set<string>();
 
   private loadHubCredentials(member: MemberRecord): HubConfigFile {
-    const cfgPath =
+    const explicitPath =
       typeof member.config.agentHubConfigPath === 'string'
         ? member.config.agentHubConfigPath
-        : path.join(os.homedir(), '.config', 'agent-hub', 'config.json');
-    if (!fs.existsSync(cfgPath)) {
-      throw new Error(`未找到远端桥接配置文件: ${cfgPath}`);
+        : null;
+    const creds = resolveAgentHubBridgeCredentials(explicitPath);
+    if (!creds) {
+      const shownPath = explicitPath || path.join(os.homedir(), '.config', 'agent-hub', 'config.json');
+      throw new Error(`未找到远端桥接配置 (${shownPath} 或环境变量 AGENT_HUB_BRIDGE_URL / AGENT_HUB_BRIDGE_KEY)`);
     }
-    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
-    const endpoint = String(raw.endpoint || '').replace(/\/+$/, '');
-    const adminKey = String(raw.adminKey || '');
-    if (!endpoint || !adminKey) {
-      throw new Error('远端桥接配置缺少 endpoint 或 adminKey');
-    }
-    return { endpoint, adminKey };
+    return creds;
   }
 
   private async hubRequest<T = any>(

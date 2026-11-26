@@ -435,6 +435,9 @@ export class DuolaWorkDatabase {
     if (!msgCols.some((c) => c.name === 'inline_actions_applied')) {
       this.sqlite.exec(`ALTER TABLE v2_thread_messages ADD COLUMN inline_actions_applied INTEGER NOT NULL DEFAULT 0`);
     }
+    if (!msgCols.some((c) => c.name === 'clarification_card_json')) {
+      this.sqlite.exec(`ALTER TABLE v2_thread_messages ADD COLUMN clarification_card_json TEXT`);
+    }
     this.sqlite.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_v2_thread_msg_client_req
       ON v2_thread_messages(thread_id, client_request_id)

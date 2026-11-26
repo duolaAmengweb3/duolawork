@@ -9,6 +9,7 @@ export { hashPassword };
 import { AuthSandbox, SandboxForbiddenError } from './auth-sandbox.js';
 import { DuolaWorkDatabase } from './db.js';
 import { DriverRegistry } from './drivers/registry.js';
+import { resolveAgentHubBridgeCredentials } from './drivers/remote-bridge-driver.js';
 import { DuolaBaseClient, encryptSettingSecret } from './duolabase-client.js';
 import { HandoffEngine } from './handoff.js';
 import { ExecutionNodeHub } from './node-hub.js';
@@ -274,17 +275,7 @@ export class DuolaWorkApp {
   }
 
   private loadHubCredentialsReadOnly(): { endpoint: string; adminKey: string } | null {
-    try {
-      const cfgPath = path.join(this.agentHubDir, 'config.json');
-      if (!fs.existsSync(cfgPath)) return null;
-      const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8')) as Record<string, unknown>;
-      const endpoint = String(raw.endpoint || '').replace(/\/+$/, '');
-      const adminKey = String(raw.adminKey || '');
-      if (!endpoint || !adminKey) return null;
-      return { endpoint, adminKey };
-    } catch {
-      return null;
-    }
+    return resolveAgentHubBridgeCredentials(path.join(this.agentHubDir, 'config.json'));
   }
 
   private async syncLegacyArchivesReadOnly(): Promise<void> {
@@ -416,13 +407,14 @@ export class DuolaWorkApp {
           }
 
           const existing = this.db.getMember(id);
-          // Preserve pure local T3-style Coding Agents without overwriting their local CLI drivers!
+          // Preserve remote-node Execution Node runners & pure local T3-style Coding Agents without overwriting their drivers!
           if (
             existing &&
-            existing.location === 'local' &&
-            (existing.driverKind === 'codex-app-server' ||
-              existing.driverKind === 'acp-stdio' ||
-              existing.driverKind === 'claude-cli')
+            (existing.driverKind === 'remote-node' ||
+              (existing.location === 'local' &&
+                (existing.driverKind === 'codex-app-server' ||
+                  existing.driverKind === 'acp-stdio' ||
+                  existing.driverKind === 'claude-cli')))
           ) {
             continue;
           }
@@ -599,6 +591,16 @@ export class DuolaWorkApp {
       return {
         items: this.threads.listMessages(claims.threadId, { fromSeq, toSeq })
       };
+    }
+
+    if (toolName === 'task_ask_clarification') {
+      if (claims.principalKind !== 'thread_owner') {
+        throw new SandboxForbiddenError(
+          'forbidden_clarification_tool',
+          '仅对话当前负责人可发起派单前需求确认卡片'
+        );
+      }
+      return { ok: true, recorded: true };
     }
 
     if (toolName === 'task_create_or_update') {
@@ -1560,10 +1562,22 @@ export class DuolaWorkApp {
       if (msgMatch && method === 'POST') {
         const threadId = decodeURIComponent(msgMatch[1]);
         const body = await readJsonBody(req);
+        const rawClarify =
+          body.clarifyReply && typeof body.clarifyReply === 'object'
+            ? (body.clarifyReply as Record<string, unknown>)
+            : null;
+        const clarifyReply =
+          rawClarify && typeof rawClarify.messageId === 'string' && rawClarify.messageId.trim()
+            ? {
+                messageId: rawClarify.messageId.trim(),
+                summary: String(rawClarify.summary || '').trim()
+              }
+            : undefined;
         const out = await this.threads.sendUserMessage({
           threadId,
           body: String(body.body || ''),
-          idempotencyKey: typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined
+          idempotencyKey: typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined,
+          clarifyReply
         });
         const thread = this.threads.getThread(threadId)!;
         const artifact = thread.boundArtifactId

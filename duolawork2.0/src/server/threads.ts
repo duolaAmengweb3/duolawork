@@ -19,6 +19,8 @@ import {
 import {
   isExcludedClaudeVps,
   resolveEffectiveDriverKind,
+  type ClarificationCardData,
+  type ClarificationQuestionItem,
   type HandoffNoticeMeta,
   type ScopedTurnClaims,
   type ThreadMessageRecord,
@@ -27,7 +29,7 @@ import {
   type ToolTraceItem
 } from '../shared/types.js';
 
-export const DEFAULT_WORKBENCH_PROTOCOL_VERSION = 'dw2-proto-2026-11-26-v2';
+export const DEFAULT_WORKBENCH_PROTOCOL_VERSION = 'dw2-proto-2026-11-26-v3';
 
 export type ServerEventListener = (event: {
   type: string;
@@ -487,6 +489,7 @@ export class ThreadEngine {
     body: string;
     idempotencyKey?: string;
     timeoutMs?: number;
+    clarifyReply?: { messageId: string; summary: string };
   }): Promise<{
     userMessage: ThreadMessageRecord;
     agentMessage: ThreadMessageRecord;
@@ -522,6 +525,7 @@ export class ThreadEngine {
       body: string;
       idempotencyKey?: string;
       timeoutMs?: number;
+      clarifyReply?: { messageId: string; summary: string };
     },
     cleanClientKey: string | null
   ): Promise<{
@@ -680,6 +684,34 @@ export class ThreadEngine {
             };
           });
 
+    let clarifiedUpdatedMsg: ThreadMessageRecord | null = null;
+    if (input.clarifyReply?.messageId) {
+      const targetClarifyMsg = this.getMessage(input.clarifyReply.messageId);
+      if (
+        targetClarifyMsg &&
+        targetClarifyMsg.threadId === thread.id &&
+        targetClarifyMsg.clarificationCard &&
+        !targetClarifyMsg.clarificationCard.answered
+      ) {
+        const nowAns = new Date().toISOString();
+        const settledCard: ClarificationCardData = {
+          ...targetClarifyMsg.clarificationCard,
+          answered: true,
+          answeredSummary: input.clarifyReply.summary || cleanBody.slice(0, 120),
+          answeredAt: nowAns
+        };
+        this.db.sqlite
+          .prepare(
+            `UPDATE v2_thread_messages SET clarification_card_json = ?, updated_at = ? WHERE id = ?`
+          )
+          .run(JSON.stringify(settledCard), nowAns, targetClarifyMsg.id);
+        clarifiedUpdatedMsg = this.getMessage(targetClarifyMsg.id);
+      }
+    }
+
+    if (clarifiedUpdatedMsg) {
+      this.emit({ type: 'thread.message_updated', threadId: thread.id, payload: clarifiedUpdatedMsg });
+    }
     if (autoRenamed) {
       const updatedThread = this.getThread(thread.id);
       if (updatedThread) {
@@ -699,8 +731,11 @@ export class ThreadEngine {
     const allMembers = this.db.listMembers();
     const memberNameById = new Map(allMembers.map((m) => [m.id, m.name]));
     const memberNamesSummary = allMembers
-      .slice(0, 12)
-      .map((m) => `${m.name}(${m.id})`)
+      .slice(0, 14)
+      .map(
+        (m) =>
+          `${m.name}(${m.id}${m.status === 'ready' || m.status === 'busy' ? '' : `,状态:${m.status}`})`
+      )
       .join('、');
     const effectiveDriverKind = resolveEffectiveDriverKind(targetMember);
     const canReadHistoryTool =
@@ -752,11 +787,17 @@ export class ThreadEngine {
           `- 对话机制：每次消息仅由当前指定负责人单线响应；切人时历史通过 <context_handoff> 自动交接，未同步的更早历史如实说明看不到。`,
           `- 协作空间资料：右侧「资料」里的文档、文件（文本片段/路径）与链接会自动附带摘要，有需要时可调用 space_list_materials / space_read_material 或 artifact_read 查看全文。`,
           `- 外部连接器与凭证：通过 DuolaBase 工具或已挂载的 duolabase MCP 访问外部服务（connector_list → connector_discover → connector_call，凭证使用 vault_list → vault_http_proxy）。严禁调用 vault_reveal 或向对话输出明文密钥/Token！`,
-          `- 创建任务规则：${
-            effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
-              ? '优先调用 task_create_or_update 工具；若通过回复创建，请'
-              : '必须'
-          }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, startImmediately:true|false, steps 可选）。`,
+          `- 先确认后派单规则：当用户让你安排/分配单次或定时任务时，先判断需求是否已明确——` +
+            `（1）若需求还存在关键分叉或模糊点（如时间范围、选题/测评/制作等方向取舍、产出形式、执行频率未定），本轮严禁直接立项派单！请先简短给出分析建议，并${
+              effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
+                ? '调用 task_ask_clarification 工具或'
+                : ''
+            }在回复末尾附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"简明问题","options":["推荐选项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>（严格限 1～3 个关键问题，每题给 2～4 个短选项，首项放默认推荐），弹卡片让用户一键确认后再派单；` +
+            `（2）若用户需求已十分明确（目标范围、执行对象、时间/频率清楚，或刚通过确认卡片回复了选择，或明确说直接执行），则无需追问，直接${
+              effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
+                ? '调用 task_create_or_update 工具或'
+                : ''
+            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, startImmediately:true|false, steps 可选）。`,
           `- 保存文稿规则：使用 ${
             effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
               ? 'artifact_write 工具或 '
@@ -776,14 +817,14 @@ export class ThreadEngine {
 
     const compactBridgeGuard =
       targetMember.driverKind === 'remote-bridge'
-        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！只要用户要求创建单次或定时任务，必须在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求","startImmediately":false}</duolawork_task>（支持数组；可用成员名：${memberNamesSummary || targetMember.name}）。`
+        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！需求尚有模糊点时先用 <duolawork_ask>...</duolawork_ask> 提 1～3 个问题确认；需求已明确或用户已确认时，在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求","startImmediately":false}</duolawork_task>（支持数组；可用成员：${memberNamesSummary || targetMember.name}）。`
         : '';
 
     const driverActionHint =
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[可选结构化指令说明：保存右侧文稿可附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>；创建单次或定时任务可附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略）。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
+        ? `[结构化指令说明：① 派单前确认（需求有模糊或多种方向待取舍时必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，可用成员：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
 
     const formatPromptForDriver = (packet: BuiltHandoffPacket): string => {
@@ -822,6 +863,7 @@ export class ThreadEngine {
     const promptForDriver = formatPromptForDriver(initialPacket);
 
     const toolTrace: ToolTraceItem[] = [];
+    let toolClarificationCard: ClarificationCardData | null = null;
     try {
       const beforeDispatchMsg = this.getMessage(placeholderAgentMsg.id);
       if (beforeDispatchMsg?.turnStatus === 'canceled') {
@@ -866,6 +908,25 @@ export class ThreadEngine {
         dynamicTools,
         onToolCall: async (toolName, args) => {
           if (!this.actionHandler) throw new Error('Action handler not bound');
+          if (toolName === 'task_ask_clarification') {
+            await this.actionHandler.executeTool(claims, toolName, args);
+            const parsedCard = normalizeClarificationCard(args);
+            if (!parsedCard) {
+              throw new Error('确认卡片至少需要包含 1～3 个有效问题 (questions)');
+            }
+            toolClarificationCard = parsedCard;
+            return {
+              ok: true,
+              status: 'clarification_card_queued',
+              note: '已生成派单前需求确认卡片，请勿在本回合调用 task_create_or_update，等待用户确认后再立项。'
+            };
+          }
+          if (toolName === 'task_create_or_update' && toolClarificationCard) {
+            return {
+              skipped: true,
+              reason: '当前回合已发起派单前需求确认卡片，请等待用户确认后再创建任务'
+            };
+          }
           // Pin baseArtifactVersion if agent calls artifact_write without explicit expectedBaseVersion
           if (toolName === 'artifact_write' && args.expectedBaseVersion === undefined && pinnedArtifactVersion !== null) {
             args = { ...args, expectedBaseVersion: pinnedArtifactVersion };
@@ -924,7 +985,8 @@ export class ThreadEngine {
         claims,
         pinnedArtifactId,
         pinnedArtifactVersion,
-        placeholderAgentMsg.id
+        placeholderAgentMsg.id,
+        toolClarificationCard
       );
 
       const now = new Date().toISOString();
@@ -1428,7 +1490,8 @@ export class ThreadEngine {
     claims: ScopedTurnClaims,
     pinnedArtifactId: string | null,
     pinnedArtifactVersion: number | null,
-    agentMessageId?: string
+    agentMessageId?: string,
+    presetClarificationCard?: ClarificationCardData | null
   ): string {
     const keyOwner = agentMessageId || `attempt:${claims.attemptId}`;
     const artRes = this.processInlineArtifactsWithReceipts(
@@ -1440,6 +1503,25 @@ export class ThreadEngine {
     );
     let cleaned = artRes.cleaned;
     let hadTransientFailure = artRes.hadUnhandledError;
+
+    const clarifyRes = this.extractInlineClarificationSync(cleaned);
+    cleaned = clarifyRes.cleaned;
+    const activeClarifyCard = presetClarificationCard ?? clarifyRes.card;
+    if (activeClarifyCard) {
+      // Mutual exclusion: never create/dispatch tasks in the same turn as a pre-dispatch clarification card!
+      const strippedTasks = this.extractInlineTasksSync(cleaned);
+      cleaned = strippedTasks.cleaned;
+      if (agentMessageId) {
+        this.db.sqlite
+          .prepare(
+            `UPDATE v2_thread_messages
+             SET clarification_card_json = COALESCE(clarification_card_json, ?), inline_actions_applied = 1
+             WHERE id = ?`
+          )
+          .run(JSON.stringify(activeClarifyCard), agentMessageId);
+      }
+      return cleaned.trim() || '在正式派发任务前，请先确认以下细节：';
+    }
 
     const extracted = this.extractInlineTasksSync(cleaned);
     cleaned = extracted.cleaned;
@@ -1515,7 +1597,8 @@ export class ThreadEngine {
     claims: ScopedTurnClaims,
     pinnedArtifactId: string | null,
     pinnedArtifactVersion: number | null,
-    agentMessageId?: string
+    agentMessageId?: string,
+    presetClarificationCard?: ClarificationCardData | null
   ): Promise<string> {
     const keyOwner = agentMessageId || `attempt:${claims.attemptId}`;
     const artRes = this.processInlineArtifactsWithReceipts(
@@ -1527,6 +1610,25 @@ export class ThreadEngine {
     );
     let cleaned = artRes.cleaned;
     let hadTransientFailure = artRes.hadUnhandledError;
+
+    const clarifyRes = this.extractInlineClarificationSync(cleaned);
+    cleaned = clarifyRes.cleaned;
+    const activeClarifyCard = presetClarificationCard ?? clarifyRes.card;
+    if (activeClarifyCard) {
+      // Mutual exclusion: never create/dispatch tasks in the same turn as a pre-dispatch clarification card!
+      const strippedTasks = this.extractInlineTasksSync(cleaned);
+      cleaned = strippedTasks.cleaned;
+      if (agentMessageId) {
+        this.db.sqlite
+          .prepare(
+            `UPDATE v2_thread_messages
+             SET clarification_card_json = COALESCE(clarification_card_json, ?), inline_actions_applied = 1
+             WHERE id = ?`
+          )
+          .run(JSON.stringify(activeClarifyCard), agentMessageId);
+      }
+      return cleaned.trim() || '在正式派发任务前，请先确认以下细节：';
+    }
 
     const extracted = this.extractInlineTasksSync(cleaned);
     cleaned = extracted.cleaned;
@@ -1594,6 +1696,34 @@ export class ThreadEngine {
     if (cleaned.trim()) return cleaned.trim();
     if (createdCount > 0) return `已创建 ${createdCount} 项协作任务。`;
     return rawText.trim();
+  }
+
+  private extractInlineClarificationSync(text: string): {
+    cleaned: string;
+    card: ClarificationCardData | null;
+  } {
+    const matches = [...text.matchAll(/<duolawork_ask>([\s\S]*?)<\/duolawork_ask>/gi)];
+    if (matches.length === 0) {
+      return { cleaned: text, card: null };
+    }
+    let cleaned = text;
+    let card: ClarificationCardData | null = null;
+    for (const match of matches) {
+      cleaned = cleaned.replace(match[0], '').trim();
+      if (card) continue;
+      const rawPayload = match[1]
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      try {
+        const parsed = JSON.parse(rawPayload) as unknown;
+        card = normalizeClarificationCard(parsed);
+      } catch {
+        // ignore malformed ask block rather than polluting chat with raw JSON
+      }
+    }
+    return { cleaned, card };
   }
 
   private extractInlineTasksSync(text: string): {
@@ -1715,8 +1845,36 @@ export class ThreadEngine {
         }
       },
       {
+        name: 'task_ask_clarification',
+        description:
+          '当用户请求安排/分配任务但需求范围、侧重方向、产出形式或频率存在模糊点时，先弹出 1～3 个问题的确认卡片让用户选择确认，切勿在同一回合直接调用 task_create_or_update。若需求已十分明确或用户刚确认完，则无需调用此工具。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            targetMemberName: { type: 'string' },
+            summary: { type: 'string' },
+            questions: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 3,
+              items: {
+                type: 'object',
+                properties: {
+                  question: { type: 'string' },
+                  options: { type: 'array', items: { type: 'string' } },
+                  multiSelect: { type: 'boolean' }
+                },
+                required: ['question', 'options']
+              }
+            }
+          },
+          required: ['questions']
+        }
+      },
+      {
         name: 'task_create_or_update',
-        description: '在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
+        description: '在需求已明确或用户确认后，在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1820,6 +1978,51 @@ function mapThreadRow(row: Record<string, unknown>): ThreadRecord {
   };
 }
 
+export function normalizeClarificationCard(raw: unknown): ClarificationCardData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = Array.isArray(raw)
+    ? ({ questions: raw } as Record<string, unknown>)
+    : (raw as Record<string, unknown>);
+  const rawQuestions = Array.isArray(obj.questions) ? obj.questions : [];
+  const questions: ClarificationQuestionItem[] = [];
+
+  for (const item of rawQuestions) {
+    if (!item || typeof item !== 'object') continue;
+    const qObj = item as Record<string, unknown>;
+    const question = String(qObj.question || qObj.label || qObj.title || '').trim();
+    if (!question) continue;
+    const rawOpts = Array.isArray(qObj.options)
+      ? qObj.options
+      : Array.isArray(qObj.choices)
+        ? qObj.choices
+        : [];
+    const options = rawOpts
+      .map((o) => (typeof o === 'string' ? o.trim() : String((o as any)?.label || '').trim()))
+      .filter(Boolean)
+      .slice(0, 5);
+    questions.push({
+      id: `q${questions.length + 1}`,
+      question,
+      options,
+      ...(qObj.multiSelect === true || qObj.is_multi_select === true ? { multiSelect: true } : {})
+    });
+    if (questions.length >= 3) break;
+  }
+
+  if (questions.length === 0) return null;
+
+  const title = String(obj.title || '派单前需求确认').trim() || '派单前需求确认';
+  const targetMemberName = String(obj.targetMemberName || obj.targetMember || obj.assignee || '').trim();
+  const summary = String(obj.summary || '').trim();
+
+  return {
+    title,
+    ...(targetMemberName ? { targetMemberName } : {}),
+    ...(summary ? { summary } : {}),
+    questions
+  };
+}
+
 function mapMessageRow(row: Record<string, unknown>): ThreadMessageRecord {
   return {
     id: String(row.id),
@@ -1836,6 +2039,9 @@ function mapMessageRow(row: Record<string, unknown>): ThreadMessageRecord {
       : undefined,
     handoffMeta: row.handoff_meta_json
       ? (JSON.parse(String(row.handoff_meta_json)) as HandoffNoticeMeta)
+      : null,
+    clarificationCard: row.clarification_card_json
+      ? (JSON.parse(String(row.clarification_card_json)) as ClarificationCardData)
       : null,
     taskCard: row.task_card_json
       ? (JSON.parse(String(row.task_card_json)) as ThreadMessageRecord['taskCard'])
