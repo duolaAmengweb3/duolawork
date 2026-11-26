@@ -67,6 +67,8 @@ export class ClaudeCliDriver implements AgentDriver {
   public readonly kind = 'claude-cli' as const;
   private readonly activeProcesses = new Map<string, ChildProcess>();
   private readonly abortedAttempts = new Set<string>();
+  private readonly authFailureByMember = new Map<string, string>();
+  private readonly liveVerifiedAtByMember = new Map<string, number>();
 
   public resolveBinary(member: MemberRecord): string | null {
     const configured = typeof member.config.command === 'string' ? member.config.command.trim() : '';
@@ -76,9 +78,16 @@ export class ClaudeCliDriver implements AgentDriver {
     return findLocalBinaryOnPath('claude');
   }
 
-  public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
+  public async checkHealth(
+    member: MemberRecord,
+    options?: { deepProbe?: boolean }
+  ): Promise<{ status: MemberRecord['status']; message: string }> {
     if (isExcludedClaudeVps(member)) {
       return { status: 'offline', message: '按所有者规则排除 VPS 订阅 Claude 实例' };
+    }
+    const cachedAuthErr = this.authFailureByMember.get(member.id);
+    if (cachedAuthErr) {
+      return { status: 'auth_required', message: cachedAuthErr };
     }
     const bin = this.resolveBinary(member);
     if (!bin) {
@@ -90,12 +99,38 @@ export class ClaudeCliDriver implements AgentDriver {
         env: resolveLocalProxyEnv()
       });
       const parsed = tryParseJsonObject(stdout);
+      if (parsed?.loggedIn === false) {
+        return { status: 'auth_required', message: '本机 Claude Code 尚未完成账号登录' };
+      }
+      if (options?.deepProbe) {
+        const lastOk = this.liveVerifiedAtByMember.get(member.id) ?? 0;
+        if (Date.now() - lastOk > 10 * 60_000) {
+          try {
+            const probeOut = await execFileAsync(
+              bin,
+              ['-p', 'OK', '--max-turns', '1', '--output-format', 'json'],
+              { timeout: 12_000, env: resolveLocalProxyEnv() }
+            );
+            const combined = `${probeOut.stdout || ''}\n${probeOut.stderr || ''}`;
+            if (/OAuth token revoked|Failed to authenticate|Please log in again/i.test(combined)) {
+              const msg = '本机 Claude Code 登录凭证已失效，请在终端执行 claude login 重新登录';
+              this.authFailureByMember.set(member.id, msg);
+              return { status: 'auth_required', message: msg };
+            }
+            this.liveVerifiedAtByMember.set(member.id, Date.now());
+          } catch (probeErr: any) {
+            const combined = `${probeErr?.stdout || ''}\n${probeErr?.stderr || ''}\n${probeErr?.message || ''}`;
+            if (/OAuth token revoked|Failed to authenticate|Please log in again/i.test(combined)) {
+              const msg = '本机 Claude Code 登录凭证已失效，请在终端执行 claude login 重新登录';
+              this.authFailureByMember.set(member.id, msg);
+              return { status: 'auth_required', message: msg };
+            }
+          }
+        }
+      }
       if (parsed?.loggedIn === true) {
         const email = typeof parsed.email === 'string' && parsed.email ? ` (${parsed.email})` : '';
         return { status: 'ready', message: `本机 Claude Code 已就绪${email}` };
-      }
-      if (parsed?.loggedIn === false) {
-        return { status: 'auth_required', message: '本机 Claude Code 尚未完成账号登录' };
       }
       return { status: 'ready', message: '本机 Claude Code CLI 已就绪' };
     } catch (err: any) {

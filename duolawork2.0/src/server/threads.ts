@@ -824,7 +824,7 @@ export class ThreadEngine {
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（需求有模糊或多种方向待取舍时必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，可用成员：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
 
     const formatPromptForDriver = (packet: BuiltHandoffPacket): string => {

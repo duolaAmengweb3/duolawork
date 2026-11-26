@@ -51,9 +51,28 @@ export function buildEnrichedPath(existingPath = process.env.PATH || ''): string
 
 export function resolveLocalProxyEnv(): NodeJS.ProcessEnv {
   const enrichedPath = buildEnrichedPath(process.env.PATH || '');
+  const existingNoProxy = String(process.env.NO_PROXY || process.env.no_proxy || '').trim();
+  const loopbackBypass = ['127.0.0.1', 'localhost', '::1'];
+  const mergedNoProxyParts = existingNoProxy
+    ? existingNoProxy.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  for (const host of loopbackBypass) {
+    if (!mergedNoProxyParts.includes(host)) mergedNoProxyParts.push(host);
+  }
+  const mergedNoProxy = mergedNoProxyParts.join(',');
+  const hasExistingProxy = Boolean(
+    process.env.HTTP_PROXY ||
+      process.env.HTTPS_PROXY ||
+      process.env.ALL_PROXY ||
+      process.env.http_proxy ||
+      process.env.https_proxy ||
+      process.env.all_proxy
+  );
+
   const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: enrichedPath,
+    ...(hasExistingProxy ? { NO_PROXY: mergedNoProxy, no_proxy: mergedNoProxy } : {})
   };
   try {
     const cfgPath = path.join(os.homedir(), '.config', 'agent-hub', 'config.json');
@@ -69,8 +88,8 @@ export function resolveLocalProxyEnv(): NodeJS.ProcessEnv {
           http_proxy: proxy,
           https_proxy: proxy,
           all_proxy: proxy,
-          NO_PROXY: '127.0.0.1,localhost,::1',
-          no_proxy: '127.0.0.1,localhost,::1'
+          NO_PROXY: mergedNoProxy,
+          no_proxy: mergedNoProxy
         };
       }
     }

@@ -535,6 +535,25 @@ export class ExecutionNodeHub {
     if (type === 'turn.failed') {
       const attemptId = String(msg.attemptId || '');
       const errText = redactSecrets(String(msg.errorMessage || '节点执行失败'));
+      if (/OAuth token revoked|Failed to authenticate|Please log in again/i.test(errText) && attemptId) {
+        try {
+          const attRow = this.db.sqlite
+            .prepare(`SELECT member_id FROM v2_dispatch_attempts WHERE id = ?`)
+            .get(attemptId) as { member_id?: string } | undefined;
+          if (attRow?.member_id) {
+            this.db.sqlite
+              .prepare(
+                `UPDATE v2_members
+                 SET status = 'auth_required', status_message = '登录凭证已失效，请在所在节点重新登录授权', updated_at = ?
+                 WHERE id = ?`
+              )
+              .run(new Date().toISOString(), attRow.member_id);
+            this.onMembersChanged?.();
+          }
+        } catch {
+          // ignore
+        }
+      }
       const turn = this.activeTurns.get(attemptId);
       if (turn) {
         this.activeTurns.delete(attemptId);
@@ -667,6 +686,45 @@ export class ExecutionNodeHub {
     targetPath: string
   ): Promise<{ root: string; entries: WorkspaceFileEntry[] }> {
     return this.sendRpc(nodeId, 'fs.list_dir', { targetPath }, 15_000);
+  }
+
+  public async checkMemberHealth(
+    nodeId: string,
+    member: MemberRecord
+  ): Promise<{ status: MemberRecord['status']; message: string }> {
+    const node = this.getNode(nodeId);
+    if (!node || !this.isNodeOnline(nodeId)) {
+      return { status: 'offline', message: `执行节点「${node?.name || nodeId}」当前离线` };
+    }
+    try {
+      const res = await this.sendRpc<{ status: MemberRecord['status']; message: string }>(
+        nodeId,
+        'member.check_health',
+        {
+          member: {
+            id: member.id,
+            name: member.name,
+            platformId: member.platformId,
+            driverKind: member.config.localDriverKind || 'acp-stdio',
+            location: 'local',
+            capabilities: member.capabilities,
+            status: member.status,
+            statusMessage: member.statusMessage,
+            config: member.config
+          }
+        },
+        14_000
+      );
+      if (res && (res.status === 'ready' || res.status === 'busy' || res.status === 'auth_required' || res.status === 'offline')) {
+        return {
+          status: res.status,
+          message: res.message ? `${res.message} (${node.name})` : `在线 (${node.name})`
+        };
+      }
+      return { status: 'ready', message: `在线 (${node.name})` };
+    } catch {
+      return { status: 'ready', message: `在线 (${node.name})` };
+    }
   }
 
   private sendFrame(ws: WebSocket, payload: Record<string, unknown>): void {

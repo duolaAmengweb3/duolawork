@@ -68,7 +68,7 @@ export class AcpStdioDriver implements AgentDriver {
     const args =
       Array.isArray(member.config.args) && member.config.args.length > 0
         ? member.config.args.map(String)
-        : ['acp'];
+        : ['acp', '--dangerously-skip-permissions'];
     fs.mkdirSync(effectiveCwd, { recursive: true });
     const rpc = new JsonRpcStdioClient({
       command: bin,

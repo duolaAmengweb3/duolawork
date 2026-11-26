@@ -290,6 +290,36 @@ export class DuolaWorkNodeRunner {
       return;
     }
 
+    if (type === 'member.check_health') {
+      const reqId = String(msg.reqId || '');
+      try {
+        const member = msg.member as MemberRecord;
+        if (isExcludedClaudeVps(member)) {
+          this.send({
+            type: 'rpc.result',
+            reqId,
+            ok: true,
+            result: { status: 'offline', message: '按所有者规则排除 VPS 订阅 Claude 实例' }
+          });
+          return;
+        }
+        const driver = this.resolveDriver(member.driverKind);
+        const health =
+          driver instanceof ClaudeCliDriver
+            ? await driver.checkHealth(member, { deepProbe: true })
+            : await driver.checkHealth(member);
+        this.send({ type: 'rpc.result', reqId, ok: true, result: health });
+      } catch (err) {
+        this.send({
+          type: 'rpc.result',
+          reqId,
+          ok: true,
+          result: { status: 'offline', message: redactSecrets((err as Error).message) }
+        });
+      }
+      return;
+    }
+
     if (type === 'session.ensure') {
       const reqId = String(msg.reqId || '');
       try {

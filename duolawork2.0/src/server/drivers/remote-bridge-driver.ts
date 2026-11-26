@@ -62,6 +62,56 @@ export function resolveAgentHubBridgeCredentials(
   return tryReadConfigFile(homeDefault);
 }
 
+export function evaluateHubChannelMemberHealth(
+  conn: Record<string, any> | null | undefined,
+  remoteMember: Record<string, any> | null | undefined,
+  localConn: { status?: string; message?: string; browserPaused?: boolean } | null | undefined,
+  fallbackTransport = 'connector'
+): { status: MemberRecord['status']; message: string } {
+  const transport = String(conn?.transport || remoteMember?.mode || fallbackTransport);
+
+  if (
+    localConn &&
+    (localConn.browserPaused === true || String(localConn.message || '').includes('已关闭'))
+  ) {
+    return {
+      status: 'offline',
+      message: `旧版专用浏览器未开启 (${transport})`
+    };
+  }
+
+  if (conn && conn.subscriptionActive === false) {
+    return {
+      status: 'offline',
+      message: `旧版桥接接收端未运行 (${transport})`
+    };
+  }
+
+  if (conn && conn.subscriptionActive === true) {
+    const seenIso = String(
+      conn.authSeenAt || conn.toolSeenAt || remoteMember?.lastSeenAt || ''
+    ).trim();
+    const seenMs = seenIso ? Date.parse(seenIso) : Number.NaN;
+    if (Number.isFinite(seenMs) && Date.now() - seenMs > 12 * 3600_000) {
+      return {
+        status: 'offline',
+        message: `旧版桥接超过 12 小时未活跃 (${transport})`
+      };
+    }
+  }
+
+  if (conn?.status === 'verified' || remoteMember?.status === 'ready' || localConn?.status === 'ready') {
+    return {
+      status: 'ready',
+      message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
+    };
+  }
+  if (conn?.status === 'configured') {
+    return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
+  }
+  return { status: 'offline', message: `远端成员暂未在线 (${transport})` };
+}
+
 /**
  * Cross-machine Remote Bridge Driver:
  * - Connects non-destructively to existing remote native runtimes such as `Gemini2VPS`
@@ -154,17 +204,12 @@ export class RemoteBridgeDriver implements AgentDriver {
           ? ws.connections.find((c: any) => c.id === member.id)
           : null;
         const localConn = this.readLocalAgentConnection(member);
-        const transport = String(conn?.transport || member.config.hubTransport || remoteMember?.mode || 'connector');
-        if (conn?.status === 'verified' || remoteMember?.status === 'ready' || localConn?.status === 'ready') {
-          return {
-            status: 'ready',
-            message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
-          };
-        }
-        if (conn?.status === 'configured') {
-          return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
-        }
-        return { status: 'offline', message: '远端工作区成员暂未在线' };
+        return evaluateHubChannelMemberHealth(
+          conn,
+          remoteMember,
+          localConn,
+          String(member.config.hubTransport || 'connector')
+        );
       }
 
       const data = await this.hubRequest<any>(
@@ -198,6 +243,29 @@ export class RemoteBridgeDriver implements AgentDriver {
         : null;
 
     if (remoteMode === 'hub-channel') {
+      const creds = this.loadHubCredentials(input.member);
+      // Fast liveness guard: fail immediately if the legacy 1.9.6 receiver is explicitly disconnected/inactive
+      const ws = await this.hubRequest<any>(creds, '/v2/workspace').catch(() => null);
+      if (ws) {
+        const remoteMember = Array.isArray(ws?.members)
+          ? ws.members.find((m: any) => m.id === input.member.id)
+          : null;
+        const conn = Array.isArray(ws?.connections)
+          ? ws.connections.find((c: any) => c.id === input.member.id)
+          : null;
+        const localConn = this.readLocalAgentConnection(input.member);
+        const liveHealth = evaluateHubChannelMemberHealth(
+          conn,
+          remoteMember,
+          localConn,
+          String(input.member.config.hubTransport || 'connector')
+        );
+        if (liveHealth.status !== 'ready' && liveHealth.status !== 'busy') {
+          throw new Error(
+            `成员「${input.member.name}」当前不可用（${liveHealth.message}），请改派给在线成员（如 Gemini2VPS、Codex、Gemini 本机）或先启动对应连接器`
+          );
+        }
+      }
       if (existingChannelId) {
         return {
           nativeSessionId: input.existingNativeSessionId || `hub-channel:${existingChannelId}`,
@@ -205,7 +273,6 @@ export class RemoteBridgeDriver implements AgentDriver {
           bridgeMeta: { bridgeChannelId: existingChannelId, remoteMode: 'hub-channel' }
         };
       }
-      const creds = this.loadHubCredentials(input.member);
       const channelRes = await this.hubRequest<any>(creds, '/v2/commands', {
         type: 'channel.create',
         requestId: randomUUID(),
