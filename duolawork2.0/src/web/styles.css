@@ -635,6 +635,7 @@ html.dark {
 }
 .turn-tool-more-btn {
   align-self: flex-start;
+  flex-shrink: 0;
   font-size: 11px;
   color: #4b6fb8;
   padding: 1px 0 3px;
@@ -649,8 +650,10 @@ html.dark {
   gap: 6px;
   min-width: 0;
   max-width: 100%;
+  flex-shrink: 0;
+  min-height: 20px;
   overflow: hidden;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 .turn-tool-item i {
   width: 5px;
