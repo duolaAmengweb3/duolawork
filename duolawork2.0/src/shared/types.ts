@@ -196,6 +196,23 @@ export interface HandoffNoticeMeta {
   deliveredAt?: string;
 }
 
+export interface ClarificationQuestionItem {
+  id: string;
+  question: string;
+  options: string[];
+  multiSelect?: boolean;
+}
+
+export interface ClarificationCardData {
+  title: string;
+  targetMemberName?: string;
+  summary?: string;
+  questions: ClarificationQuestionItem[];
+  answered?: boolean;
+  answeredSummary?: string;
+  answeredAt?: string;
+}
+
 export interface ThreadMessageRecord {
   id: string;
   threadId: string;
@@ -208,6 +225,7 @@ export interface ThreadMessageRecord {
   artifactRefs: string[];
   toolTrace?: ToolTraceItem[];
   handoffMeta?: HandoffNoticeMeta | null;
+  clarificationCard?: ClarificationCardData | null;
   taskCard: {
     taskId: string;
     runId?: string;

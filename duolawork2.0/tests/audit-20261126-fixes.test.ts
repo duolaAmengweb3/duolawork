@@ -1429,3 +1429,192 @@ test('Audit-R3-1: Canceling attempts queued in acquireSlot or blocked in ensureS
     await cleanup();
   }
 });
+
+test('Audit-R4-1: Cloud AGENT_HUB_BRIDGE_URL/KEY fallback preserves remote-node members, and pre-dispatch Clarification Card (1-3 questions) blocks premature task creation until user confirms in UI', async () => {
+  const staticWebDir = path.resolve(process.cwd(), 'dist/web');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dw2-audit-r4-'));
+
+  // 1. Start a mock remote 1.9.6 Hub server to verify AGENT_HUB_BRIDGE_URL + AGENT_HUB_BRIDGE_KEY fallback when Mac config path is missing!
+  const mockHubSrv = http.createServer((req, res) => {
+    const u = new URL(req.url || '/', 'http://127.0.0.1');
+    res.setHeader('Content-Type', 'application/json');
+    if (req.headers.authorization !== 'Bearer mock_cloud_bridge_secret') {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      return;
+    }
+    if (u.pathname === '/v2/workspace') {
+      res.end(
+        JSON.stringify({
+          members: [
+            { id: 'member_ccdf940ba6d3426da01b9f65048909e2', name: 'Gemini2VPS', platformId: 'antigravity', status: 'ready' },
+            { id: 'member_grok_bridge', name: 'grok_cloud', platformId: 'grok-bot', mode: 'connector', status: 'ready' }
+          ],
+          connections: [{ id: 'member_grok_bridge', transport: 'grok-webhook', status: 'verified' }],
+          accounts: []
+        })
+      );
+      return;
+    }
+    if (u.pathname === '/v2/commands' && req.method === 'POST') {
+      let raw = '';
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        const parsed = JSON.parse(raw || '{}');
+        if (parsed.type === 'channel.create') {
+          res.end(JSON.stringify({ result: { id: 'ch_bridge_r4' } }));
+          return;
+        }
+        res.end(JSON.stringify({ result: { id: 'msg_bridge_r4' } }));
+      });
+      return;
+    }
+    if (u.pathname === '/v2/channel') {
+      res.end(
+        JSON.stringify({
+          channel: { id: 'ch_bridge_r4' },
+          messages: [
+            { id: 'msg_bridge_r4', authorId: 'owner', body: 'prompt' },
+            { id: 'msg_reply_r4', authorId: 'member_grok_bridge', replyTo: 'msg_bridge_r4', body: 'Grok 云端桥接已完成爆款推文归因与 3 个延展选题方案！' }
+          ]
+        })
+      );
+      return;
+    }
+    res.end(JSON.stringify({ items: [] }));
+  });
+  await new Promise<void>((r) => mockHubSrv.listen(0, '127.0.0.1', () => r()));
+  const hubPort = (mockHubSrv.address() as { port: number }).port;
+
+  const prevBridgeUrl = process.env.AGENT_HUB_BRIDGE_URL;
+  const prevBridgeKey = process.env.AGENT_HUB_BRIDGE_KEY;
+  process.env.AGENT_HUB_BRIDGE_URL = `http://127.0.0.1:${hubPort}`;
+  process.env.AGENT_HUB_BRIDGE_KEY = 'mock_cloud_bridge_secret';
+
+  const app = new DuolaWorkApp({
+    dbPath: path.join(tmpDir, 'r4.sqlite'),
+    filesDir: path.join(tmpDir, 'files'),
+    worktreesRoot: path.join(tmpDir, 'worktrees'),
+    staticWebDir,
+    autoImportAgentHub: true,
+    agentHubDir: path.join(tmpDir, 'nonexistent-mac-agent-hub-dir')
+  });
+
+  // Seed Gemini2VPS as a Cloud `remote-node` member + grok_cloud with a stale Mac config path `/Users/nonexistent/.config/agent-hub/config.json`
+  app.db.upsertMember({
+    id: 'member_ccdf940ba6d3426da01b9f65048909e2',
+    name: 'Gemini2VPS',
+    platformId: 'antigravity',
+    driverKind: 'remote-node',
+    location: 'cloud-node',
+    nodeId: 'node_cloud_test',
+    capabilities: { supportsIsolatedSessions: true, supportsSessionResume: true, supportsCancel: true, maxConcurrentRuns: 2 },
+    status: 'ready',
+    statusMessage: '在线',
+    config: { localDriverKind: 'acp-stdio' }
+  });
+  app.db.upsertMember({
+    id: 'member_grok_bridge',
+    name: 'grok_cloud',
+    platformId: 'grok-bot',
+    driverKind: 'remote-bridge',
+    location: 'remote-bridge',
+    capabilities: { supportsIsolatedSessions: false, supportsSessionResume: false, supportsCancel: false, maxConcurrentRuns: 1 },
+    status: 'ready',
+    statusMessage: '在线',
+    config: {
+      agentHubConfigPath: '/Users/nonexistent_mac_user/.config/agent-hub/config.json',
+      remoteMode: 'hub-channel',
+      hubTransport: 'grok-webhook'
+    }
+  });
+  app.db.upsertMember({
+    id: 'mem_lead_ui',
+    name: 'Gemini助手',
+    platformId: 'antigravity',
+    driverKind: 'mock',
+    location: 'cloud-node',
+    capabilities: { supportsIsolatedSessions: true, supportsSessionResume: true, supportsCancel: true, maxConcurrentRuns: 2 },
+    status: 'ready',
+    statusMessage: '在线',
+    config: {}
+  });
+
+  app.registry.mockDriver.handlers.set('mem_lead_ui', async (inp) => {
+    if (inp.prompt.includes('【已确认需求')) {
+      return {
+        text:
+          '收到你的确认！现在立即为 **grok_cloud** 正式立项并派发执行。\n' +
+          '<duolawork_task>{"title":"复盘近期爆款推文与延展选题","kind":"once","leadMemberId":"grok_cloud","goal":"按近14天范围拆解爆款原因并给出实操测评选题","startImmediately":true}</duolawork_task>'
+      };
+    }
+    // Ambiguous initial request: Agent emits <duolawork_ask> with 4 questions (must clamp to 3) AND accidentally includes <duolawork_task> (must be suppressed!)
+    return {
+      text:
+        '在正式派发给 grok_cloud 之前，先和你快速确认 3 个关键范围：\n' +
+        '<duolawork_ask>{"title":"派单前需求确认","targetMemberName":"grok_cloud","summary":"确认推文复盘范围与落地方向后立即派发","questions":[{"question":"推文时间范围看多久？","options":["最近 7 天（推荐）","最近 14 天","最近 30 天"]},{"question":"延展产出侧重哪类？（可多选）","options":["续打选题","硬核测评","轻量工具制作","信息差套利"],"multiSelect":true},{"question":"任务执行方式？","options":["单次深度复盘（推荐）","每周定时追踪"]},{"question":"多余第4题应被自动截断","options":["A","B"]}]}</duolawork_ask>\n' +
+        '<duolawork_task>{"title":"不应提前创建的抢跑任务","kind":"once","leadMemberId":"grok_cloud","goal":"抢跑"}</duolawork_task>'
+    };
+  });
+
+  const thread = app.threads.createThread({
+    title: '先确认后派单测试对话',
+    activeOwnerMemberId: 'mem_lead_ui'
+  });
+
+  const { url } = await app.listen(0, '127.0.0.1');
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+
+  try {
+    // Verify syncLegacyWorkspaceMembersReadOnly used env credentials AND preserved Gemini2VPS as `remote-node`!
+    await app.syncLegacyWorkspaceMembersReadOnly();
+    const geminiAfterSync = app.db.getMember('member_ccdf940ba6d3426da01b9f65048909e2')!;
+    assert.equal(geminiAfterSync.driverKind, 'remote-node', 'remote-node member must NOT be overwritten by legacy workspace sync');
+
+    const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'networkidle' });
+
+    // Send ambiguous task request
+    await page.fill('.chat-composer textarea', '给 grok_cloud 分配个任务，看下我最近推文为什么火，还能做什么选题或测评');
+    await page.click('.dw-send-btn');
+
+    // Clarification card must appear with max 3 questions, AND 0 tasks created yet!
+    await page.waitForSelector('[data-testid="clarification-card"]', { state: 'visible' });
+    assert.equal(
+      app.tasks.listTasks({ sourceThreadId: thread.id }).length,
+      0,
+      'Zero premature tasks created while waiting for user clarification'
+    );
+    const questionCount = await page.locator('.clarify-question-block').count();
+    assert.equal(questionCount, 3, 'Questions strictly clamped to 1..3');
+
+    // Select "最近 14 天" on Q1, toggle "硬核测评" on multi-select Q2, add a custom note, and click "确认并派发任务"!
+    await page.locator('.clarify-option-btn', { hasText: '最近 14 天' }).click();
+    await page.locator('.clarify-option-btn', { hasText: '硬核测评' }).click();
+    await page.fill('.clarify-note-input', '优先给出可本周落地的 Top 2');
+    await page.getByRole('button', { name: '确认并派发任务' }).click();
+
+    // Card transitions to answered state, task is created, AND grok_cloud executes via AGENT_HUB_BRIDGE_URL/KEY without Mac config file error!
+    await page.waitForSelector('.clarify-card.is-answered', { state: 'visible' });
+    await page.waitForFunction(
+      () => document.body.innerText.includes('Grok 云端桥接已完成爆款推文归因与 3 个延展选题方案'),
+      undefined,
+      { timeout: 8000 }
+    );
+
+    const tasksAfterConfirm = app.tasks.listTasks({ sourceThreadId: thread.id });
+    assert.equal(tasksAfterConfirm.length, 1, 'Task created cleanly right after user confirmed card');
+    const runs = app.tasks.listRuns(tasksAfterConfirm[0].id);
+    assert.equal(runs[0].status, 'completed', 'Remote-bridge step succeeded on Cloud using env bridge credentials');
+  } finally {
+    if (prevBridgeUrl === undefined) delete process.env.AGENT_HUB_BRIDGE_URL;
+    else process.env.AGENT_HUB_BRIDGE_URL = prevBridgeUrl;
+    if (prevBridgeKey === undefined) delete process.env.AGENT_HUB_BRIDGE_KEY;
+    else process.env.AGENT_HUB_BRIDGE_KEY = prevBridgeKey;
+    await browser.close();
+    await app.close();
+    await new Promise<void>((r) => mockHubSrv.close(() => r()));
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

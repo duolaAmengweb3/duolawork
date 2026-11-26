@@ -41,6 +41,7 @@ import {
   isLocalCodingMember,
   type ArtifactRecord,
   type ArtifactVersionRecord,
+  type ClarificationCardData,
   type DuolaBasePublicStatus,
   type ExecutionNodeRecord,
   type HandoffNoticeMeta,
@@ -174,6 +175,8 @@ export function App(): React.JSX.Element {
   const [inputDrafts, setInputDrafts] = useState<Record<string, string>>({});
   const [draftRefsByThread, setDraftRefsByThread] = useState<Record<string, SpaceReferenceChip[]>>({});
   const [sendingByThread, setSendingByThread] = useState<Record<string, boolean>>({});
+  const [clarifySelections, setClarifySelections] = useState<Record<string, Record<string, string[]>>>({});
+  const [clarifyNotes, setClarifyNotes] = useState<Record<string, string>>({});
   const [editingThreadTitle, setEditingThreadTitle] = useState<boolean>(false);
   const [threadTitleDraft, setThreadTitleDraft] = useState<string>('');
   const [editingWorkspace, setEditingWorkspace] = useState<boolean>(false);
@@ -869,21 +872,15 @@ export function App(): React.JSX.Element {
     await loadBootstrap(true);
   };
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const targetThreadId = activeThreadId;
-    if (!targetThreadId || sendingByThread[targetThreadId]) return;
-    const rawDraftValue = inputDrafts[targetThreadId] || '';
-    const rawText = rawDraftValue.trim();
-    const savedRefs = draftRefsByThread[targetThreadId] || [];
-    if (!rawText && savedRefs.length === 0) return;
-
-    const refPrefix =
-      savedRefs.length > 0
-        ? `[引用资料] ${savedRefs.map((r) => r.snippet).join('；')}${rawText ? '\n\n' : ''}`
-        : '';
-    const text = `${refPrefix}${rawText}`;
-
+  const submitMessageToThread = async (
+    targetThreadId: string,
+    text: string,
+    opts?: {
+      clarifyReply?: { messageId: string; summary: string };
+      restoreOnFail?: () => void;
+    }
+  ) => {
+    if (!targetThreadId || !text.trim() || sendingByThread[targetThreadId]) return;
     const prevPending = pendingClientReqByThreadRef.current[targetThreadId];
     const idempotencyKey =
       prevPending && prevPending.text === text
@@ -891,26 +888,16 @@ export function App(): React.JSX.Element {
         : makeClientRequestId(targetThreadId);
     pendingClientReqByThreadRef.current[targetThreadId] = { key: idempotencyKey, text };
 
-    const restoreUnconfirmedDraft = () => {
-      setInputDrafts((prev) => ({
-        ...prev,
-        [targetThreadId]: prev[targetThreadId] ? prev[targetThreadId] : rawDraftValue
-      }));
-      setDraftRefsByThread((prev) => ({
-        ...prev,
-        [targetThreadId]:
-          prev[targetThreadId] && prev[targetThreadId].length > 0 ? prev[targetThreadId] : savedRefs
-      }));
-    };
-
     setSendingByThread((prev) => ({ ...prev, [targetThreadId]: true }));
-    setInputDrafts((prev) => ({ ...prev, [targetThreadId]: '' }));
-    setDraftRefsByThread((prev) => ({ ...prev, [targetThreadId]: [] }));
     try {
       const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: text, idempotencyKey })
+        body: JSON.stringify({
+          body: text,
+          idempotencyKey,
+          ...(opts?.clarifyReply ? { clarifyReply: opts.clarifyReply } : {})
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -921,7 +908,7 @@ export function App(): React.JSX.Element {
             await loadThread(targetThreadId);
           }
         } else {
-          restoreUnconfirmedDraft();
+          opts?.restoreOnFail?.();
           showChatNotice(data.message || data.error || '消息未能送达服务端，草稿已保留，可直接重试');
         }
         return;
@@ -939,11 +926,121 @@ export function App(): React.JSX.Element {
       }
       await loadBootstrap(true);
     } catch {
-      restoreUnconfirmedDraft();
+      opts?.restoreOnFail?.();
       showChatNotice('网络异常，草稿与资料引用已保留，恢复网络后可直接重试');
     } finally {
       setSendingByThread((prev) => ({ ...prev, [targetThreadId]: false }));
     }
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const targetThreadId = activeThreadId;
+    if (!targetThreadId || sendingByThread[targetThreadId]) return;
+    const rawDraftValue = inputDrafts[targetThreadId] || '';
+    const rawText = rawDraftValue.trim();
+    const savedRefs = draftRefsByThread[targetThreadId] || [];
+    if (!rawText && savedRefs.length === 0) return;
+
+    const refPrefix =
+      savedRefs.length > 0
+        ? `[引用资料] ${savedRefs.map((r) => r.snippet).join('；')}${rawText ? '\n\n' : ''}`
+        : '';
+    const text = `${refPrefix}${rawText}`;
+
+    const restoreUnconfirmedDraft = () => {
+      setInputDrafts((prev) => ({
+        ...prev,
+        [targetThreadId]: prev[targetThreadId] ? prev[targetThreadId] : rawDraftValue
+      }));
+      setDraftRefsByThread((prev) => ({
+        ...prev,
+        [targetThreadId]:
+          prev[targetThreadId] && prev[targetThreadId].length > 0 ? prev[targetThreadId] : savedRefs
+      }));
+    };
+
+    setInputDrafts((prev) => ({ ...prev, [targetThreadId]: '' }));
+    setDraftRefsByThread((prev) => ({ ...prev, [targetThreadId]: [] }));
+    await submitMessageToThread(targetThreadId, text, {
+      restoreOnFail: restoreUnconfirmedDraft
+    });
+  };
+
+  const getSelectedOptionsForClarifyQuestion = (
+    messageId: string,
+    q: ClarificationCardData['questions'][number]
+  ): string[] => {
+    const chosen = clarifySelections[messageId]?.[q.id];
+    if (chosen && chosen.length > 0) return chosen;
+    return q.options.length > 0 ? [q.options[0]] : [];
+  };
+
+  const handleToggleClarifyOption = (
+    messageId: string,
+    q: ClarificationCardData['questions'][number],
+    option: string
+  ) => {
+    setClarifySelections((prev) => {
+      const msgMap = prev[messageId] || {};
+      const current = msgMap[q.id] ?? (q.options.length > 0 ? [q.options[0]] : []);
+      let next: string[];
+      if (q.multiSelect) {
+        next = current.includes(option)
+          ? current.filter((o) => o !== option)
+          : [...current, option];
+        if (next.length === 0) next = [option];
+      } else {
+        next = [option];
+      }
+      return {
+        ...prev,
+        [messageId]: {
+          ...msgMap,
+          [q.id]: next
+        }
+      };
+    });
+  };
+
+  const handleConfirmClarificationCard = async (
+    msg: ThreadMessageRecord,
+    useDefaults: boolean
+  ) => {
+    if (!msg.clarificationCard || sendingByThread[msg.threadId]) return;
+    const card = msg.clarificationCard;
+    const note = (clarifyNotes[msg.id] || '').trim();
+    const answerLines: string[] = [];
+    const summaryParts: string[] = [];
+
+    card.questions.forEach((q, idx) => {
+      const picked = useDefaults
+        ? q.options.length > 0
+          ? [q.options[0]]
+          : []
+        : getSelectedOptionsForClarifyQuestion(msg.id, q);
+      const valText = picked.length > 0 ? picked.join('、') : '按合理默认处理';
+      answerLines.push(`${idx + 1}. ${q.question}：${valText}`);
+      summaryParts.push(valText);
+    });
+
+    if (note) {
+      answerLines.push(`补充说明：${note}`);
+      summaryParts.push(note);
+    }
+
+    const header = useDefaults
+      ? '【已确认需求：按默认推荐方案立即立项派发任务】'
+      : '【已确认需求：请按以下确认项立即立项派发任务】';
+    const fullText = `${header}\n${answerLines.join('\n')}`;
+    const shortSummary = summaryParts.join(' · ').slice(0, 140);
+
+    await submitMessageToThread(msg.threadId, fullText, {
+      clarifyReply: {
+        messageId: msg.id,
+        summary: shortSummary
+      }
+    });
   };
 
   const handleAbortTurn = async () => {
@@ -2570,6 +2667,116 @@ export function App(): React.JSX.Element {
                             <div className="message-markdown">
                               <MarkdownView text={displayBody} />
                             </div>
+                            {!isUser && m.clarificationCard && (() => {
+                              const card = m.clarificationCard;
+                              const targetMem = card.targetMemberName
+                                ? members.find(
+                                    (mem) =>
+                                      mem.name.toLowerCase() === card.targetMemberName!.toLowerCase() ||
+                                      mem.id === card.targetMemberName
+                                  )
+                                : undefined;
+                              return (
+                                <div
+                                  className={`clarify-card ${card.answered ? 'is-answered' : ''}`}
+                                  data-testid="clarification-card"
+                                >
+                                  <div className="clarify-card-head">
+                                    <div className="clarify-card-title">
+                                      <ListTodo size={14} />
+                                      <strong>{card.title || '派单前需求确认'}</strong>
+                                    </div>
+                                    {card.targetMemberName && (
+                                      <span
+                                        className={`clarify-target-pill ${
+                                          targetMem && targetMem.status !== 'ready' && targetMem.status !== 'busy'
+                                            ? 'is-warn'
+                                            : ''
+                                        }`}
+                                      >
+                                        拟指派：{targetMem ? targetMem.name : card.targetMemberName}
+                                        {targetMem && targetMem.status !== 'ready' && targetMem.status !== 'busy'
+                                          ? '（当前离线）'
+                                          : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {card.summary && <p className="clarify-card-summary">{card.summary}</p>}
+                                  {card.answered ? (
+                                    <div className="clarify-answered-bar">
+                                      <CheckCircle2 size={14} />
+                                      <span>已确认：{card.answeredSummary || '已提交确认并派单'}</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="clarify-questions">
+                                        {card.questions.map((q, qIdx) => {
+                                          const selectedOpts = getSelectedOptionsForClarifyQuestion(m.id, q);
+                                          return (
+                                            <div key={q.id} className="clarify-question-block">
+                                              <div className="clarify-question-label">
+                                                <span>
+                                                  {qIdx + 1}. {q.question}
+                                                </span>
+                                                {q.multiSelect && <small>可多选</small>}
+                                              </div>
+                                              {q.options.length > 0 && (
+                                                <div className="clarify-options">
+                                                  {q.options.map((opt, optIdx) => {
+                                                    const isSelected = selectedOpts.includes(opt);
+                                                    return (
+                                                      <button
+                                                        key={`${q.id}-${optIdx}`}
+                                                        type="button"
+                                                        aria-pressed={isSelected}
+                                                        onClick={() => handleToggleClarifyOption(m.id, q, opt)}
+                                                        className={`clarify-option-btn ${isSelected ? 'is-selected' : ''}`}
+                                                      >
+                                                        {isSelected && <Check size={11} />}
+                                                        <span>{opt}</span>
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <input
+                                        type="text"
+                                        value={clarifyNotes[m.id] || ''}
+                                        onChange={(e) =>
+                                          setClarifyNotes((prev) => ({ ...prev, [m.id]: e.target.value }))
+                                        }
+                                        placeholder="补充说明、时间范围或更换执行人（选填）…"
+                                        className="dw-input clarify-note-input"
+                                      />
+                                      <div className="clarify-actions">
+                                        <button
+                                          type="button"
+                                          disabled={sending}
+                                          onClick={() => void handleConfirmClarificationCard(m, false)}
+                                          className="dw-btn dw-btn-primary dw-btn-sm"
+                                        >
+                                          <Check size={13} />
+                                          <span>确认并派发任务</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={sending}
+                                          onClick={() => void handleConfirmClarificationCard(m, true)}
+                                          className="dw-btn dw-btn-outline dw-btn-sm"
+                                        >
+                                          <Play size={12} />
+                                          <span>按默认推荐直接派发</span>
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </article>
                         </React.Fragment>
