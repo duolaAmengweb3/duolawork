@@ -713,7 +713,7 @@ export class ExecutionNodeHub {
             config: member.config
           }
         },
-        14_000
+        20_000
       );
       if (res && (res.status === 'ready' || res.status === 'busy' || res.status === 'auth_required' || res.status === 'offline')) {
         return {
@@ -723,7 +723,7 @@ export class ExecutionNodeHub {
       }
       return { status: 'ready', message: `在线 (${node.name})` };
     } catch {
-      return { status: 'ready', message: `在线 (${node.name})` };
+      return { status: 'offline', message: `成员健康探测超时 (${node.name})` };
     }
   }
 

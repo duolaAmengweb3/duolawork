@@ -1,10 +1,9 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import { promisify } from 'node:util';
 import {
   isExcludedClaudeVps,
   type DispatchAttemptRecord,
@@ -25,7 +24,43 @@ import {
   type TurnStreamEvent
 } from './types.js';
 
-const execFileAsync = promisify(execFile);
+function execCliClosedStdin(
+  bin: string,
+  args: string[],
+  timeoutMs: number
+): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, {
+      env: resolveLocalProxyEnv(),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      stdout = (stdout + String(chunk)).slice(-16_000);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = (stderr + String(chunk)).slice(-8_000);
+    });
+    child.once('error', (err) => {
+      clearTimeout(timer);
+      resolve({ code: 1, stdout, stderr: `${stderr}\n${err.message}`, timedOut });
+    });
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr, timedOut });
+    });
+  });
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function findLocalBinaryOnPath(name: string): string | null {
@@ -67,7 +102,7 @@ export class ClaudeCliDriver implements AgentDriver {
   public readonly kind = 'claude-cli' as const;
   private readonly activeProcesses = new Map<string, ChildProcess>();
   private readonly abortedAttempts = new Set<string>();
-  private readonly authFailureByMember = new Map<string, string>();
+  private readonly authFailureByMember = new Map<string, { message: string; at: number }>();
   private readonly liveVerifiedAtByMember = new Map<string, number>();
 
   public resolveBinary(member: MemberRecord): string | null {
@@ -86,46 +121,43 @@ export class ClaudeCliDriver implements AgentDriver {
       return { status: 'offline', message: '按所有者规则排除 VPS 订阅 Claude 实例' };
     }
     const cachedAuthErr = this.authFailureByMember.get(member.id);
-    if (cachedAuthErr) {
-      return { status: 'auth_required', message: cachedAuthErr };
+    if (cachedAuthErr && (!options?.deepProbe || Date.now() - cachedAuthErr.at < 30_000)) {
+      return { status: 'auth_required', message: cachedAuthErr.message };
     }
     const bin = this.resolveBinary(member);
     if (!bin) {
       return { status: 'offline', message: '未检测到本机 claude 可执行文件' };
     }
     try {
-      const { stdout } = await execFileAsync(bin, ['auth', 'status'], {
-        timeout: 8000,
-        env: resolveLocalProxyEnv()
-      });
-      const parsed = tryParseJsonObject(stdout);
+      const authRes = await execCliClosedStdin(bin, ['auth', 'status'], 8_000);
+      const parsed = tryParseJsonObject(authRes.stdout);
       if (parsed?.loggedIn === false) {
         return { status: 'auth_required', message: '本机 Claude Code 尚未完成账号登录' };
       }
       if (options?.deepProbe) {
         const lastOk = this.liveVerifiedAtByMember.get(member.id) ?? 0;
-        if (Date.now() - lastOk > 10 * 60_000) {
-          try {
-            const probeOut = await execFileAsync(
-              bin,
-              ['-p', 'OK', '--max-turns', '1', '--output-format', 'json'],
-              { timeout: 12_000, env: resolveLocalProxyEnv() }
-            );
-            const combined = `${probeOut.stdout || ''}\n${probeOut.stderr || ''}`;
-            if (/OAuth token revoked|Failed to authenticate|Please log in again/i.test(combined)) {
-              const msg = '本机 Claude Code 登录凭证已失效，请在终端执行 claude login 重新登录';
-              this.authFailureByMember.set(member.id, msg);
-              return { status: 'auth_required', message: msg };
-            }
-            this.liveVerifiedAtByMember.set(member.id, Date.now());
-          } catch (probeErr: any) {
-            const combined = `${probeErr?.stdout || ''}\n${probeErr?.stderr || ''}\n${probeErr?.message || ''}`;
-            if (/OAuth token revoked|Failed to authenticate|Please log in again/i.test(combined)) {
-              const msg = '本机 Claude Code 登录凭证已失效，请在终端执行 claude login 重新登录';
-              this.authFailureByMember.set(member.id, msg);
-              return { status: 'auth_required', message: msg };
-            }
+        if (cachedAuthErr || Date.now() - lastOk > 10 * 60_000) {
+          const probeOut = await execCliClosedStdin(
+            bin,
+            ['-p', 'OK', '--max-turns', '1', '--output-format', 'json', '--no-session-persistence'],
+            15_000
+          );
+          const combined = `${probeOut.stdout}\n${probeOut.stderr}`;
+          if (/OAuth token revoked|Failed to authenticate|Please log in again|api_error_status":401/i.test(combined)) {
+            const msg = '本机 Claude Code 登录凭证已失效，请在终端执行 claude login 重新登录';
+            this.authFailureByMember.set(member.id, { message: msg, at: Date.now() });
+            return { status: 'auth_required', message: msg };
           }
+          if (probeOut.timedOut) {
+            return { status: 'offline', message: '本机 Claude Code 连通性探测超时' };
+          }
+          const probeJson = tryParseJsonObject(probeOut.stdout);
+          if (probeOut.code !== 0 || probeJson?.is_error === true) {
+            const errDetail = typeof probeJson?.result === 'string' ? probeJson.result : combined.trim().slice(0, 120);
+            return { status: 'offline', message: redactSecrets(errDetail || '本机 Claude Code 探测返回异常') };
+          }
+          this.authFailureByMember.delete(member.id);
+          this.liveVerifiedAtByMember.set(member.id, Date.now());
         }
       }
       if (parsed?.loggedIn === true) {

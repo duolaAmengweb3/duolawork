@@ -413,6 +413,26 @@ export class ThreadEngine {
     const now = new Date().toISOString();
     let aborted = false;
 
+    const activeMsgRow = this.db.sqlite
+      .prepare(
+        `SELECT id FROM v2_thread_messages
+         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('queued', 'running')
+         ORDER BY seq DESC LIMIT 1`
+      )
+      .get(threadId) as { id: string } | undefined;
+
+    if (activeMsgRow) {
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_thread_messages
+           SET turn_status = 'canceled',
+               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+               updated_at = ?
+           WHERE id = ? AND turn_status IN ('queued', 'running')`
+        )
+        .run(now, activeMsgRow.id);
+    }
+
     if (attemptRow) {
       const attemptId = String(attemptRow.id);
       const attempt = this.registry.getAttempt(attemptId);
@@ -422,6 +442,15 @@ export class ThreadEngine {
           `UPDATE v2_dispatch_attempts
            SET status = 'failed', slot_held = 0, error_message = '已由用户停止', settled_at = ?
            WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
+        )
+        .run(now, attemptId);
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_thread_messages
+           SET turn_status = 'canceled',
+               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+               updated_at = ?
+           WHERE attempt_id = ? AND turn_status IN ('queued', 'running')`
         )
         .run(now, attemptId);
       this.registry.cancelDispatchedAttempt(attemptId, 'ATTEMPT_CANCELED');
@@ -437,22 +466,12 @@ export class ThreadEngine {
       if (attempt) {
         this.registry.releaseMemberSlot(attempt.memberId, attempt.id);
       }
-
-      this.db.sqlite
-        .prepare(
-          `UPDATE v2_thread_messages
-           SET turn_status = 'canceled',
-               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
-               updated_at = ?
-           WHERE attempt_id = ? AND turn_status = 'running'`
-        )
-        .run(now, attemptId);
     }
 
     const msgRow = this.db.sqlite
       .prepare(
         `SELECT id FROM v2_thread_messages
-         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('running', 'canceled')
+         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('queued', 'running', 'canceled')
          ORDER BY seq DESC LIMIT 1`
       )
       .get(threadId) as { id: string } | undefined;
@@ -1073,16 +1092,38 @@ export class ThreadEngine {
         handoffBytes: effectivePacket.handoffBytes
       };
     } catch (err) {
+      const now = new Date().toISOString();
+      const errText = (err as Error).message || '请求未完成';
       const currentMsg = this.getMessage(placeholderAgentMsg.id);
-      if (currentMsg?.turnStatus === 'canceled') {
+      if (
+        currentMsg?.turnStatus === 'canceled' ||
+        /ATTEMPT_CANCELED|已由用户停止|已停止本轮生成|任务已取消|回合已取消/i.test(errText)
+      ) {
+        const canceledTrace = toolTrace.map((t) =>
+          t.status === 'running' ? { ...t, status: 'error' as const } : t
+        );
+        this.db.sqlite
+          .prepare(
+            `UPDATE v2_thread_messages
+             SET turn_status = 'canceled',
+                 body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+                 tool_trace_json = COALESCE(?, tool_trace_json),
+                 updated_at = ?
+             WHERE id = ?`
+          )
+          .run(
+            canceledTrace.length > 0 ? JSON.stringify(canceledTrace) : null,
+            now,
+            placeholderAgentMsg.id
+          );
+        const canceledMsg = this.getMessage(placeholderAgentMsg.id)!;
+        this.emit({ type: 'thread.message_updated', threadId: thread.id, payload: canceledMsg });
         return {
           userMessage: userMsg,
-          agentMessage: currentMsg,
+          agentMessage: canceledMsg,
           handoffBytes: activePacket.handoffBytes
         };
       }
-      const now = new Date().toISOString();
-      const errText = (err as Error).message || '请求未完成';
       const failedTrace = toolTrace.map((t) =>
         t.status === 'running' ? { ...t, status: 'error' as const } : t
       );

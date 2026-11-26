@@ -1020,31 +1020,33 @@ export class DuolaWorkApp {
       if (pathname === '/api/v2/members/refresh-health' && method === 'POST') {
         await this.syncLegacyWorkspaceMembersReadOnly();
         const currentMembers = this.db.listMembers();
-        for (const m of currentMembers) {
-          if (isExcludedClaudeVps(m)) {
-            continue;
-          }
-          try {
-            const driver = this.registry.getDriver(m.driverKind);
-            const checked = await Promise.race([
-              driver.checkHealth(m),
-              new Promise<{ status: typeof m.status; message: string }>((resolve) =>
-                setTimeout(() => resolve({ status: 'offline', message: '健康检查超时' }), 8000)
-              )
-            ]);
-            this.db.upsertMember({
-              ...m,
-              status: checked.status,
-              statusMessage: checked.message
-            });
-          } catch (err) {
-            this.db.upsertMember({
-              ...m,
-              status: 'offline',
-              statusMessage: redactSecrets((err as Error).message)
-            });
-          }
-        }
+        await Promise.all(
+          currentMembers.map(async (m) => {
+            if (isExcludedClaudeVps(m)) {
+              return;
+            }
+            try {
+              const driver = this.registry.getDriver(m.driverKind);
+              const checked = await Promise.race([
+                driver.checkHealth(m),
+                new Promise<{ status: typeof m.status; message: string }>((resolve) =>
+                  setTimeout(() => resolve({ status: 'offline', message: '健康检查超时' }), 22_000)
+                )
+              ]);
+              this.db.upsertMember({
+                ...m,
+                status: checked.status,
+                statusMessage: checked.message
+              });
+            } catch (err) {
+              this.db.upsertMember({
+                ...m,
+                status: 'offline',
+                statusMessage: redactSecrets((err as Error).message)
+              });
+            }
+          })
+        );
         const refreshed = this.db.listMembers();
         this.threads.emit({ type: 'thread.members_refreshed', payload: refreshed });
         sendJson(res, 200, { members: refreshed });
