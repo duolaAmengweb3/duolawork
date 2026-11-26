@@ -9,7 +9,10 @@ export { hashPassword };
 import { AuthSandbox, SandboxForbiddenError } from './auth-sandbox.js';
 import { DuolaWorkDatabase } from './db.js';
 import { DriverRegistry } from './drivers/registry.js';
-import { resolveAgentHubBridgeCredentials } from './drivers/remote-bridge-driver.js';
+import {
+  evaluateHubChannelMemberHealth,
+  resolveAgentHubBridgeCredentials
+} from './drivers/remote-bridge-driver.js';
 import { DuolaBaseClient, encryptSettingSecret } from './duolabase-client.js';
 import { HandoffEngine } from './handoff.js';
 import { ExecutionNodeHub } from './node-hub.js';
@@ -450,20 +453,9 @@ export class DuolaWorkApp {
           const acc = rm.accountId ? accById.get(String(rm.accountId)) : null;
           const localConn = localConnByMemberId.get(id);
           const transport = String(conn?.transport || rm.mode || acc?.mode || 'connector');
-          const status: 'ready' | 'auth_required' | 'offline' =
-            conn?.status === 'verified' || rm.status === 'ready' || localConn?.status === 'ready'
-              ? 'ready'
-              : conn?.status === 'configured'
-                ? 'auth_required'
-                : 'offline';
-          const statusMessage =
-            localConn?.status === 'ready'
-              ? `专用浏览器已连接 (${transport})`
-              : status === 'ready'
-                ? `远端工作区成员已连接 (${transport})`
-                : status === 'auth_required'
-                  ? `已配置 (${transport})，待完成首轮连接验证`
-                  : `远端成员暂未在线 (${transport})`;
+          const evaluated = evaluateHubChannelMemberHealth(conn, rm, localConn, transport);
+          const status = evaluated.status === 'busy' ? 'ready' : evaluated.status;
+          const statusMessage = evaluated.message;
 
           this.db.upsertMember({
             id,
@@ -1028,31 +1020,33 @@ export class DuolaWorkApp {
       if (pathname === '/api/v2/members/refresh-health' && method === 'POST') {
         await this.syncLegacyWorkspaceMembersReadOnly();
         const currentMembers = this.db.listMembers();
-        for (const m of currentMembers) {
-          if (isExcludedClaudeVps(m)) {
-            continue;
-          }
-          try {
-            const driver = this.registry.getDriver(m.driverKind);
-            const checked = await Promise.race([
-              driver.checkHealth(m),
-              new Promise<{ status: typeof m.status; message: string }>((resolve) =>
-                setTimeout(() => resolve({ status: 'offline', message: '健康检查超时' }), 8000)
-              )
-            ]);
-            this.db.upsertMember({
-              ...m,
-              status: checked.status,
-              statusMessage: checked.message
-            });
-          } catch (err) {
-            this.db.upsertMember({
-              ...m,
-              status: 'offline',
-              statusMessage: redactSecrets((err as Error).message)
-            });
-          }
-        }
+        await Promise.all(
+          currentMembers.map(async (m) => {
+            if (isExcludedClaudeVps(m)) {
+              return;
+            }
+            try {
+              const driver = this.registry.getDriver(m.driverKind);
+              const checked = await Promise.race([
+                driver.checkHealth(m),
+                new Promise<{ status: typeof m.status; message: string }>((resolve) =>
+                  setTimeout(() => resolve({ status: 'offline', message: '健康检查超时' }), 22_000)
+                )
+              ]);
+              this.db.upsertMember({
+                ...m,
+                status: checked.status,
+                statusMessage: checked.message
+              });
+            } catch (err) {
+              this.db.upsertMember({
+                ...m,
+                status: 'offline',
+                statusMessage: redactSecrets((err as Error).message)
+              });
+            }
+          })
+        );
         const refreshed = this.db.listMembers();
         this.threads.emit({ type: 'thread.members_refreshed', payload: refreshed });
         sendJson(res, 200, { members: refreshed });

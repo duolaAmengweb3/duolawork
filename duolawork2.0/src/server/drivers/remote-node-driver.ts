@@ -54,7 +54,7 @@ export class RemoteNodeDriver implements AgentDriver {
     if (!this.nodeHub.isNodeOnline(nodeId)) {
       return { status: 'offline', message: `执行节点「${node.name}」当前离线` };
     }
-    return { status: 'ready', message: `在线 (${node.name})` };
+    return this.nodeHub.checkMemberHealth(nodeId, member);
   }
 
   public async ensureSession(input: SessionBindingInput): Promise<EnsuredSession> {

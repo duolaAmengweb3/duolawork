@@ -413,6 +413,26 @@ export class ThreadEngine {
     const now = new Date().toISOString();
     let aborted = false;
 
+    const activeMsgRow = this.db.sqlite
+      .prepare(
+        `SELECT id FROM v2_thread_messages
+         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('queued', 'running')
+         ORDER BY seq DESC LIMIT 1`
+      )
+      .get(threadId) as { id: string } | undefined;
+
+    if (activeMsgRow) {
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_thread_messages
+           SET turn_status = 'canceled',
+               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+               updated_at = ?
+           WHERE id = ? AND turn_status IN ('queued', 'running')`
+        )
+        .run(now, activeMsgRow.id);
+    }
+
     if (attemptRow) {
       const attemptId = String(attemptRow.id);
       const attempt = this.registry.getAttempt(attemptId);
@@ -422,6 +442,15 @@ export class ThreadEngine {
           `UPDATE v2_dispatch_attempts
            SET status = 'failed', slot_held = 0, error_message = '已由用户停止', settled_at = ?
            WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
+        )
+        .run(now, attemptId);
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_thread_messages
+           SET turn_status = 'canceled',
+               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+               updated_at = ?
+           WHERE attempt_id = ? AND turn_status IN ('queued', 'running')`
         )
         .run(now, attemptId);
       this.registry.cancelDispatchedAttempt(attemptId, 'ATTEMPT_CANCELED');
@@ -437,22 +466,12 @@ export class ThreadEngine {
       if (attempt) {
         this.registry.releaseMemberSlot(attempt.memberId, attempt.id);
       }
-
-      this.db.sqlite
-        .prepare(
-          `UPDATE v2_thread_messages
-           SET turn_status = 'canceled',
-               body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
-               updated_at = ?
-           WHERE attempt_id = ? AND turn_status = 'running'`
-        )
-        .run(now, attemptId);
     }
 
     const msgRow = this.db.sqlite
       .prepare(
         `SELECT id FROM v2_thread_messages
-         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('running', 'canceled')
+         WHERE thread_id = ? AND author_kind = 'agent' AND turn_status IN ('queued', 'running', 'canceled')
          ORDER BY seq DESC LIMIT 1`
       )
       .get(threadId) as { id: string } | undefined;
@@ -824,7 +843,7 @@ export class ThreadEngine {
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（需求有模糊或多种方向待取舍时必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，可用成员：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
 
     const formatPromptForDriver = (packet: BuiltHandoffPacket): string => {
@@ -1073,16 +1092,38 @@ export class ThreadEngine {
         handoffBytes: effectivePacket.handoffBytes
       };
     } catch (err) {
+      const now = new Date().toISOString();
+      const errText = (err as Error).message || '请求未完成';
       const currentMsg = this.getMessage(placeholderAgentMsg.id);
-      if (currentMsg?.turnStatus === 'canceled') {
+      if (
+        currentMsg?.turnStatus === 'canceled' ||
+        /ATTEMPT_CANCELED|已由用户停止|已停止本轮生成|任务已取消|回合已取消/i.test(errText)
+      ) {
+        const canceledTrace = toolTrace.map((t) =>
+          t.status === 'running' ? { ...t, status: 'error' as const } : t
+        );
+        this.db.sqlite
+          .prepare(
+            `UPDATE v2_thread_messages
+             SET turn_status = 'canceled',
+                 body = CASE WHEN trim(body) = '' THEN '已停止本轮生成' ELSE body END,
+                 tool_trace_json = COALESCE(?, tool_trace_json),
+                 updated_at = ?
+             WHERE id = ?`
+          )
+          .run(
+            canceledTrace.length > 0 ? JSON.stringify(canceledTrace) : null,
+            now,
+            placeholderAgentMsg.id
+          );
+        const canceledMsg = this.getMessage(placeholderAgentMsg.id)!;
+        this.emit({ type: 'thread.message_updated', threadId: thread.id, payload: canceledMsg });
         return {
           userMessage: userMsg,
-          agentMessage: currentMsg,
+          agentMessage: canceledMsg,
           handoffBytes: activePacket.handoffBytes
         };
       }
-      const now = new Date().toISOString();
-      const errText = (err as Error).message || '请求未完成';
       const failedTrace = toolTrace.map((t) =>
         t.status === 'running' ? { ...t, status: 'error' as const } : t
       );
