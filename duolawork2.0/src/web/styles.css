@@ -1,0 +1,1118 @@
+@import "tailwindcss";
+@import "./styles/conversation.css";
+@import "./styles/space.css";
+@import "./styles/material-library.css";
+@import "./styles/services.css";
+@import "./styles/connectors.css";
+@import "./styles/vault.css";
+@import "./styles/schedules.css";
+@import "./styles/agent-usage.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    background-color: #ffffff;
+    color: #253347;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  textarea {
+    color: inherit;
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+    background: none;
+    border: 0;
+  }
+}
+
+/* 1.9.6 shadcn-aligned button & input primitives */
+.dw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.dw-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dw-btn-sm {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+.dw-btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.dw-btn-primary {
+  background: #355cc9;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(20, 32, 57, 0.08);
+}
+.dw-btn-primary:hover:not(:disabled) {
+  background: #2c4fb5;
+}
+.dw-btn-outline {
+  background: #ffffff;
+  color: #36455d;
+  border: 1px solid #dfe5ef;
+  box-shadow: 0 1px 2px rgba(20, 32, 57, 0.03);
+}
+.dw-btn-outline:hover:not(:disabled) {
+  background: #f4f7fc;
+  border-color: #c8d3e6;
+}
+.dw-btn-ghost {
+  background: transparent;
+  color: #607089;
+}
+.dw-btn-ghost:hover:not(:disabled) {
+  background: #eff2f8;
+  color: #253347;
+}
+
+.dw-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid #dfe5ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #253347;
+  font-size: 13px;
+  outline: none;
+}
+.dw-input:focus {
+  border-color: #7b9ade;
+  box-shadow: 0 0 0 2px #edf2fc;
+}
+
+.dw-textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #dfe5ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #253347;
+  font-size: 13px;
+  line-height: 1.65;
+  outline: none;
+  resize: vertical;
+}
+.dw-textarea:focus {
+  border-color: #7b9ade;
+  box-shadow: 0 0 0 2px #edf2fc;
+}
+
+/* Theme switcher subtle placement in sidebar brand header */
+.comm-brand {
+  justify-content: space-between;
+}
+.comm-brand-id {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.comm-brand-id strong {
+  font-size: 18px;
+  letter-spacing: -0.4px;
+  color: #1f2b3f;
+}
+.comm-brand-id small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: #8993a6;
+  letter-spacing: 0.4px;
+  margin-top: 3px;
+}
+.comm-theme-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: #8895aa;
+  flex-shrink: 0;
+}
+.comm-theme-toggle:hover {
+  background: #e9edf5;
+  color: #355cc9;
+}
+
+/* Composer primary square send button styling */
+.composer-toolbar .dw-send-btn {
+  background: #5277d2;
+  color: #ffffff;
+  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.composer-toolbar .dw-send-btn:disabled {
+  background: #e9eef8;
+  color: #9eb0cf;
+  opacity: 1;
+}
+
+/* Pin button inside channel row */
+.channel-list > .channel-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  padding-right: 4px;
+}
+.channel-list > .channel-row:hover {
+  background: #eef0f5;
+}
+.channel-list > .channel-row.selected {
+  background: #e8edfb;
+  color: #3e60bc;
+}
+.channel-list > .channel-row > .channel-open-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 6px 11px 11px;
+  text-align: left;
+  color: #78869c;
+}
+.channel-list > .channel-row.selected > .channel-open-btn .channel-copy {
+  color: #3558b2;
+  font-weight: 600;
+}
+.channel-row > .channel-pin-btn {
+  opacity: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: #8c99ae;
+  flex-shrink: 0;
+}
+.channel-row:hover > .channel-pin-btn,
+.channel-row:focus-within > .channel-pin-btn,
+.channel-row > .channel-pin-btn.is-pinned {
+  opacity: 1;
+}
+.channel-row > .channel-pin-btn.is-pinned {
+  color: #355cc9;
+}
+
+/* Rich Markdown rendering aligned with 1.9.6 .message-markdown & .space-prose */
+.dw-prose {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #526078;
+  overflow-wrap: anywhere;
+}
+.dw-prose > *:first-child {
+  margin-top: 0;
+}
+.dw-prose > *:last-child {
+  margin-bottom: 0;
+}
+.dw-prose h1 {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 15px 0 8px;
+  color: #253347;
+}
+.dw-prose h2 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 14px 0 7px;
+  color: #2c3c55;
+}
+.dw-prose h3 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 12px 0 5px;
+  color: #364761;
+}
+.dw-prose p {
+  margin: 0 0 8px;
+}
+.dw-prose p:last-child {
+  margin-bottom: 0;
+}
+.dw-prose ul,
+.dw-prose ol {
+  margin: 7px 0;
+  padding-left: 21px;
+}
+.dw-prose ul {
+  list-style-type: disc;
+}
+.dw-prose ol {
+  list-style-type: decimal;
+}
+.dw-prose li {
+  margin: 3px 0;
+}
+.dw-prose strong {
+  font-weight: 600;
+  color: #35455e;
+}
+.dw-prose blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 2px solid #c7d4ee;
+  color: #8090aa;
+}
+.dw-prose pre {
+  margin: 8px 0;
+  padding: 12px 13px;
+  border-radius: 7px;
+  background: #f4f6fa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.dw-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  background: #f0f3f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.dw-prose pre code {
+  background: none;
+  padding: 0;
+}
+.dw-prose a {
+  color: #5578c7;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dw-prose hr {
+  border: 0;
+  border-top: 1px solid #e8ebf2;
+  margin: 14px 0;
+}
+
+/* Optional neutral-graphite Dark Mode keeping full readability */
+html {
+  color-scheme: light;
+}
+html.dark {
+  background-color: #111318;
+  color-scheme: dark;
+}
+.dark body,
+.dark #root,
+.dark .communication {
+  background: #111318;
+  color: #e4e9f2;
+}
+.dark .comm-sidebar {
+  background: #161920;
+  border-right-color: #252a36;
+}
+.dark .comm-brand-id strong {
+  color: #e8edf7;
+}
+.dark .comm-search {
+  background: #1f242f;
+  color: #8895ac;
+}
+.dark .comm-search input {
+  color: #dce3f0;
+}
+.dark .nav-home {
+  color: #a6b2c6;
+}
+.dark .nav-home:hover,
+.dark .channel-list > .channel-row:hover {
+  background: #202531;
+}
+.dark .nav-home.selected,
+.dark .channel-list > .channel-row.selected {
+  background: #1e2a45;
+  color: #7ea4fb;
+}
+.dark .channel-list > .channel-row > .channel-open-btn .channel-copy {
+  color: #cbd4e6;
+}
+.dark .channel-list > .channel-row.selected > .channel-open-btn .channel-copy {
+  color: #93b5ff;
+}
+.dark .comm-main,
+.dark .comm-header {
+  background: #111318;
+}
+.dark .comm-header {
+  border-bottom-color: #252a36;
+}
+.dark .comm-header h1,
+.dark .message-content > header strong,
+.dark .channel-intro h2 {
+  color: #e7ecf5;
+}
+.dark .chat-composer {
+  background: #171b23;
+  border-color: #293040;
+}
+.dark .chat-composer textarea {
+  color: #e2e8f4;
+}
+.dark .owner-message .message-markdown {
+  background: #1d2b49;
+  border-color: #2b3e67;
+  color: #dbe6fb;
+}
+.dark .dw-prose,
+.dark .message-markdown {
+  color: #c2cce0;
+}
+.dark .dw-prose h1,
+.dark .dw-prose h2,
+.dark .dw-prose h3,
+.dark .dw-prose strong {
+  color: #edf1f9;
+}
+.dark .dw-prose pre,
+.dark .dw-prose code {
+  background: #1b1f29;
+  color: #d6e0f0;
+}
+.dark .collaboration-space.space-redesign {
+  background: #14171e;
+  border-left-color: #252a36;
+}
+.dark .space-tabs,
+.dark .material-directory,
+.dark .material-trash,
+.dark .sidebar-footer {
+  border-color: #252a36;
+}
+.dark .space-tabs button.active {
+  color: #7ea4fb;
+  border-bottom-color: #5b82f6;
+}
+.dark .space-search,
+.dark .task-group,
+.dark .task-panel,
+.dark .task-intent-card,
+.dark .resource-group,
+.dark .resource-folder,
+.dark .connector-card,
+.dark .members-table-wrap,
+.dark .schedule-card,
+.dark .dw-btn-outline,
+.dark .dw-input,
+.dark .dw-textarea {
+  background: #191d26;
+  border-color: #2a3140;
+  color: #dce3f0;
+}
+.dark .material-row:hover,
+.dark .material-folder-row:hover,
+.dark .vault-row:hover {
+  background: #202531;
+}
+.dark .material-item-title,
+.dark .material-folder-open,
+.dark .task-overview .task-group-title strong,
+.dark .connector-card h3,
+.dark .vault-row-main strong,
+.dark .schedule-card-main h2,
+.dark .members-page h1,
+.dark .services-header h1,
+.dark .schedule-heading h1,
+.dark .member-name {
+  color: #e6ecf6;
+}
+.dark .workspace-services,
+.dark .scheduled-workspace,
+.dark .members-page {
+  background: #111318;
+  color: #e4e9f2;
+}
+.dark .members-table th {
+  background: #161920;
+  border-bottom-color: #252a36;
+}
+.dark .members-table td,
+.dark .vault-row,
+.dark .connector-row,
+.dark .services-header {
+  border-color: #252a36;
+}
+.dark .composer-quick-mentions button {
+  background: #1a1f2a;
+  border-color: #2a3242;
+  color: #b4c0d4;
+}
+.dark .composer-quick-mentions button[aria-pressed="true"] {
+  background: #1e2d4f;
+  border-color: #4b73cc;
+  color: #93b5ff;
+}
+.dark .mention-picker {
+  background: #191d26;
+  border-color: #2a3140;
+}
+.dark .mention-picker button:hover {
+  background: #222836;
+}
+.dark .space-reference {
+  background: #1c2844;
+  border-color: #2d4270;
+  color: #a9c4fa;
+}
+
+/* Inline creation/config panels & global minimal pill scrollbars */
+.dw-inline-panel {
+  border-color: #dce3f0;
+  background-color: #f8faff;
+  color: #2b3950;
+}
+.dw-inline-subtle {
+  background-color: #f5f7fb;
+  color: #36455d;
+}
+.dark .dw-inline-panel {
+  border-color: #2a3140;
+  background-color: #191d26;
+  color: #dce3f0;
+}
+.dark .dw-inline-subtle {
+  background-color: #1e2330;
+  color: #dce3f0;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(116, 130, 154, 0.22);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(116, 130, 154, 0.42);
+}
+.dark *::-webkit-scrollbar-thumb {
+  background: rgba(155, 171, 198, 0.22);
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgba(155, 171, 198, 0.42);
+}
+
+/* Custom dropdown menu styling without overriding semantic <button> role */
+.composer-quick-mentions .quick-members-toggle {
+  border-style: dashed;
+  color: #5b6d8a;
+  background: transparent;
+}
+.composer-quick-mentions .quick-members-toggle:hover {
+  color: #365fc0;
+  border-color: #8fa9ee;
+  background: #f0f4ff;
+}
+.dark .composer-quick-mentions .quick-members-toggle {
+  color: #93a3bd;
+  border-color: #31394b;
+  background: transparent;
+}
+.dark .composer-quick-mentions .quick-members-toggle:hover {
+  color: #93b5ff;
+  border-color: #4b73cc;
+  background: #1b2438;
+}
+.turn-tool-trace {
+  margin: 4px 0 8px;
+  border: 1px solid #e6ebf4;
+  border-radius: 8px;
+  background: #f8faff;
+  padding: 5px 9px;
+  font-size: 11px;
+  color: #5b6d88;
+}
+.turn-tool-trace.is-running {
+  border-color: #c5d4f4;
+}
+.turn-tool-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  font-weight: 500;
+  color: inherit;
+}
+.turn-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #dde4f0;
+}
+.turn-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.turn-tool-item i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8a9ab3;
+  flex-shrink: 0;
+}
+.turn-tool-item.status-running i {
+  background: #416ee6;
+}
+.turn-tool-item.status-done i {
+  background: #4ea98c;
+}
+.turn-tool-item.status-error i {
+  background: #cf5246;
+}
+.turn-tool-item strong {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.turn-tool-item span {
+  color: #8493aa;
+}
+.dark .turn-tool-trace {
+  border-color: #252c3b;
+  background: #171c26;
+  color: #9baac4;
+}
+.dark .turn-tool-list {
+  border-top-color: #262e3e;
+}
+.chat-composer textarea {
+  resize: none;
+}
+.chat-context-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 120;
+}
+.chat-context-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 11px;
+  font-size: 13px;
+  border-radius: 6px;
+  color: #36455d;
+  cursor: pointer;
+}
+.chat-context-menu > button:hover {
+  background: #f0f3fa;
+}
+.chat-context-menu > button.destructive {
+  color: #be4343;
+}
+.material-library .space-toolbar > div > button {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.dark .chat-context-menu {
+  background: #191d26;
+  border-color: #2a3140;
+}
+.dark .chat-context-menu > button {
+  color: #dce3f0;
+}
+.dark .chat-context-menu > button:hover {
+  background: #232938;
+}
+.dark .task-intent-card > button,
+.dark .task-intent-card strong,
+.dark .space-detail-heading h2 {
+  color: #e4e9f2;
+}
+.dark .task-intent-card small,
+.dark .composer-recipient,
+.dark .chat-bottom-note,
+.dark .comm-header p {
+  color: #8f9db3;
+}
+.dark .composer-toolbar .dw-send-btn:disabled {
+  background: #232938;
+  color: #6b7991;
+}
+
+/* Visual T3-style Context Handoff Divider & Inspector */
+.handoff-divider-wrap {
+  margin: 12px 24px 10px;
+}
+.handoff-divider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.handoff-divider-line {
+  flex: 1;
+  height: 1px;
+  background: #e7ebf3;
+  min-width: 24px;
+}
+.handoff-divider-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #7c889e;
+  background: transparent;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.handoff-divider-pill:not(.is-static):hover {
+  background: #f4f7fd;
+  border-color: #dce5f7;
+  color: #3d5278;
+}
+.handoff-divider-pill .handoff-icon {
+  color: #7e8ca4;
+  flex-shrink: 0;
+}
+.handoff-divider-wrap.is-pending .handoff-icon {
+  color: #5479d4;
+}
+.handoff-divider-wrap.is-delivered .handoff-icon {
+  color: #469e80;
+}
+.handoff-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #4f5f7a;
+  font-weight: 500;
+}
+.handoff-member-chip .agent-avatar {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+}
+.handoff-member-target {
+  color: #4870cf;
+}
+.handoff-arrow,
+.handoff-meta-brief {
+  color: #96a2b6;
+  font-size: 11px;
+}
+.handoff-inspector-card {
+  margin: 8px auto 4px;
+  max-width: 720px;
+  border: 1px solid #e1e8f5;
+  border-radius: 10px;
+  background: #f8faff;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #455670;
+}
+.handoff-inspector-loading {
+  padding: 8px 2px;
+  color: #7b889e;
+  text-align: center;
+}
+.handoff-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.handoff-inspector-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.handoff-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e9effd;
+  color: #3358b8;
+}
+.handoff-badge.is-subtle {
+  background: #eef1f7;
+  color: #607089;
+}
+.handoff-badge.is-pending {
+  background: #fff5e5;
+  color: #9e6a19;
+}
+.handoff-inspector-budget {
+  font-size: 11px;
+  color: #75849c;
+  font-variant-numeric: tabular-nums;
+}
+.handoff-budget-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: #e6ebf4;
+  margin: 8px 0 9px;
+  overflow: hidden;
+}
+.handoff-budget-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #4e74d4;
+  transition: width 0.2s ease;
+}
+.handoff-budget-fill.is-high {
+  background: #c8872c;
+}
+.handoff-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.handoff-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  background: #ffffff;
+  border: 1px solid #e3e9f3;
+  color: #556680;
+}
+.handoff-chip.is-accent {
+  background: #eef5ff;
+  border-color: #cde0fc;
+  color: #325ab8;
+}
+.handoff-chip.is-warn {
+  background: #fff8eb;
+  border-color: #f2dcb3;
+  color: #9a6518;
+}
+.handoff-preview-box {
+  border: 1px solid #e1e7f2;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.handoff-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #edf1f8;
+  font-size: 11px;
+  color: #7c899e;
+  background: #fbfcff;
+}
+.handoff-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: #466ac4;
+  font-size: 11px;
+}
+.handoff-copy-btn:hover {
+  background: #eef3fd;
+}
+.handoff-preview-code {
+  margin: 0;
+  padding: 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #364761;
+}
+
+.dark .handoff-divider-line {
+  background: #252c3b;
+}
+.dark .handoff-divider-pill {
+  color: #8f9db5;
+}
+.dark .handoff-divider-pill:not(.is-static):hover {
+  background: #191f2c;
+  border-color: #2b354b;
+  color: #dbe4f5;
+}
+.dark .handoff-member-chip {
+  color: #c7d2e4;
+}
+.dark .handoff-member-target {
+  color: #8cb2ff;
+}
+.dark .handoff-meta-brief,
+.dark .handoff-arrow {
+  color: #7b89a1;
+}
+.dark .handoff-inspector-card {
+  border-color: #273042;
+  background: #171b24;
+  color: #ced7e8;
+}
+.dark .handoff-badge {
+  background: #1f2b45;
+  color: #93b5ff;
+}
+.dark .handoff-badge.is-subtle {
+  background: #212735;
+  color: #9aa8bf;
+}
+.dark .handoff-badge.is-pending {
+  background: #2e2415;
+  color: #e6b467;
+}
+.dark .handoff-budget-bar {
+  background: #242b3a;
+}
+.dark .handoff-chip {
+  background: #1b202b;
+  border-color: #293244;
+  color: #b4c1d6;
+}
+.dark .handoff-chip.is-accent {
+  background: #1b2740;
+  border-color: #2d4470;
+  color: #93b5ff;
+}
+.dark .handoff-chip.is-warn {
+  background: #2b2214;
+  border-color: #4f3d21;
+  color: #eab96e;
+}
+.dark .handoff-preview-box {
+  border-color: #273042;
+  background: #12161f;
+}
+.dark .handoff-preview-bar {
+  border-bottom-color: #222938;
+  background: #161b26;
+  color: #8c9ab3;
+}
+.dark .handoff-copy-btn {
+  color: #8db3ff;
+}
+.dark .handoff-copy-btn:hover {
+  background: #1f2a42;
+}
+.dark .handoff-preview-code {
+  color: #cbd5e6;
+}
+
+/* Sidebar archive action & member/task status indicators */
+.channel-row > .channel-archive-btn {
+  opacity: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: #8c99ae;
+  flex-shrink: 0;
+}
+.channel-row:hover > .channel-archive-btn,
+.channel-row:focus-within > .channel-archive-btn {
+  opacity: 1;
+}
+.channel-row > .channel-archive-btn:hover {
+  background: rgba(190, 67, 67, 0.1);
+  color: #b84a45;
+}
+.inline-availability.waiting:before {
+  background: #c3934e;
+}
+.inline-availability.offline {
+  color: #a06b63;
+}
+.inline-availability.offline:before {
+  background: #c5584b;
+}
+.schedule-pill.error {
+  background: #fdf0ee;
+  color: #b84a45;
+}
+.connector-health.paused {
+  background: #f0f2f7;
+  color: #7d8ba1;
+}
+.task-intent-card.is-failed {
+  border-color: #f0cfc9;
+  background: #fdf6f5;
+}
+
+/* Cloud Login Gate */
+.cloud-auth-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #f6f8fc;
+}
+.dark .cloud-auth-screen {
+  background: #10131a;
+}
+.cloud-auth-card {
+  width: 100%;
+  max-width: 390px;
+  background: #ffffff;
+  border: 1px solid #e3e8f2;
+  border-radius: 14px;
+  padding: 26px 24px;
+  box-shadow: 0 12px 34px rgba(18, 28, 45, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dark .cloud-auth-card {
+  background: #171b24;
+  border-color: #273042;
+  color: #e4eaf5;
+}
+.cloud-auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #f1f4fa;
+}
+.dark .cloud-auth-tabs {
+  background: #10141d;
+}
+.cloud-auth-tabs > button {
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #65748c;
+}
+.cloud-auth-tabs > button.active {
+  background: #ffffff;
+  color: #1f2b3e;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.dark .cloud-auth-tabs > button.active {
+  background: #232a3a;
+  color: #f0f4fc;
+}
+
+/* Mobile / Narrow Viewport PWA Drawer Adaptation */
+.mobile-nav-trigger {
+  display: none;
+}
+.mobile-sidebar-backdrop {
+  display: none;
+}
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .mobile-nav-trigger {
+    display: inline-flex;
+  }
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.36);
+    z-index: 58;
+  }
+  .communication {
+    grid-template-columns: 1fr !important;
+    height: 100dvh !important;
+  }
+  .comm-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(84vw, 300px) !important;
+    z-index: 60;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.18);
+  }
+  .communication.mobile-sidebar-open .comm-sidebar {
+    transform: translateX(0);
+  }
+  .artifact-pane,
+  .space-pane,
+  .collaboration-space {
+    position: fixed;
+    inset: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    z-index: 55;
+  }
+}
+.dark .schedule-pill.error,
+.dark .task-intent-card.is-failed {
+  background: #2b1d1d;
+  border-color: #54302d;
+  color: #e69d95;
+}
+.dark .connector-health.paused {
+  background: #232836;
+  color: #8d9ab0;
+}

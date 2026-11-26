@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DuolaWork 2.0</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+    color: var(--foreground);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  button, input, textarea {
+    font: inherit;
+    color: inherit;
+  }
+  .dw-root { width: 100%; }
+  .dw-grid {
+    display: grid;
+    grid-template-columns: 158px minmax(0, 1fr) 216px;
+    gap: 10px;
+    align-items: start;
+  }
+  .dw-grid.is-wide-doc {
+    grid-template-columns: 124px minmax(0, 1fr) 268px;
+  }
+  @media (max-width: 660px) {
+    .dw-grid, .dw-grid.is-wide-doc { grid-template-columns: 1fr; }
+  }
+  .dw-pane {
+    background: var(--card);
+    color: var(--card-foreground, var(--foreground));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .dw-new-btn {
+    width: 100%;
+    border: 1px solid var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .dw-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    margin: 10px 0 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .dw-list { display: flex; flex-direction: column; gap: 3px; }
+  .dw-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius) - 2px);
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .dw-item:hover { border-color: var(--border); }
+  .dw-item.is-active { border-color: var(--ring); }
+  .dw-item-name {
+    font-size: 12px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dw-item-sub {
+    font-size: 10.5px;
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .dw-hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+  .dw-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--success);
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .dw-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .dw-head-title { font-size: 13.5px; font-weight: 650; margin: 0; }
+  .dw-head-meta { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+  .dw-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  .dw-badge-ok { border-color: var(--success); color: var(--success); }
+  .dw-badge-warn { border-color: var(--warning); color: var(--warning); }
+  .dw-ghost-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--muted-foreground);
+  }
+  .dw-ghost-btn:hover { color: var(--foreground); border-color: var(--ring); }
+  .dw-messages { display: flex; flex-direction: column; gap: 10px; }
+  .dw-msg { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .dw-msg:last-child { border-bottom: 0; padding-bottom: 0; }
+  .dw-msg-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+    font-size: 11.5px;
+  }
+  .dw-sender { font-weight: 600; }
+  .dw-time { font-size: 10.5px; color: var(--muted-foreground); }
+  .dw-msg-text { font-size: 12px; }
+  .dw-switch-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+    margin: 2px 0;
+  }
+  .dw-switch-note::before, .dw-switch-note::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--border);
+  }
+  .dw-task-card {
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .dw-task-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .dw-composer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .dw-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: calc(var(--radius) - 2px);
+    padding: 7px 9px;
+    font-size: 12px;
+    outline: none;
+  }
+  .dw-input:focus, .dw-editor:focus { border-color: var(--ring); }
+  .dw-composer-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .dw-picker-wrap { position: relative; }
+  .dw-picker-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: calc(var(--radius) - 2px);
+    padding: 4px 9px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .dw-picker-btn:hover { border-color: var(--ring); }
+  .dw-menu {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    width: 204px;
+    background: var(--popover, var(--card));
+    color: var(--popover-foreground, var(--foreground));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .dw-menu.is-open { display: flex; }
+  .dw-menu-item {
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 11.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .dw-menu-item.is-selected, .dw-menu-item:hover { border-color: var(--primary); }
+  .dw-send {
+    border: 1px solid var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 4px 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .dw-steps { display: flex; flex-direction: column; gap: 8px; }
+  .dw-runs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .dw-chip {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .dw-chip.is-active { border-color: var(--primary); font-weight: 600; }
+  .dw-doc-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .dw-doc-name {
+    font-size: 12px;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dw-seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    overflow: hidden;
+  }
+  .dw-seg button {
+    border: 0;
+    background: transparent;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    cursor: pointer;
+    color: var(--muted-foreground);
+  }
+  .dw-seg button.is-on {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-weight: 600;
+  }
+  .dw-doc-body {
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 9px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .dw-editor {
+    width: 100%;
+    min-height: 180px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: calc(var(--radius) - 2px);
+    padding: 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+    outline: none;
+  }
+  .dw-doc-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .dw-muted { font-size: 11px; color: var(--muted-foreground); }
+  .is-hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="dw-root">
+  <div class="dw-grid" id="dw-grid">
+    <!-- Left Navigation -->
+    <aside class="dw-pane" aria-label="侧边导航">
+      <button type="button" class="dw-new-btn" id="btn-new-chat">+ 新对话</button>
+
+      <div class="dw-group-title"><span>对话</span></div>
+      <div class="dw-list" id="chat-nav-list"></div>
+
+      <div class="dw-group-title" style="margin-top:12px;">
+        <span>任务</span>
+        <span>后台跟进</span>
+      </div>
+      <div class="dw-list" id="task-nav-list">
+        <button type="button" class="dw-item" data-view="task-once">
+          <span class="dw-item-name">连接器插件化改造</span>
+          <span class="dw-item-sub"><span>Gemini2VPS 负责</span><span>已完成</span></span>
+        </button>
+        <button type="button" class="dw-item" data-view="task-cron">
+          <span class="dw-item-name">每日 AI 与链上早晚报</span>
+          <span class="dw-item-sub"><span>每天 08:00</span><span>第 26 期</span></span>
+        </button>
+      </div>
+
+      <hr class="dw-hr" />
+      <div class="dw-group-title"><span>成员与连接</span></div>
+      <div class="dw-muted">
+        <div><span class="dw-dot"></span>Gemini2VPS (远端)</div>
+        <div><span class="dw-dot"></span>Codex (本机)</div>
+        <div><span class="dw-dot"></span>grok1 (Webhook)</div>
+      </div>
+    </aside>
+
+    <!-- Center Stage -->
+    <main class="dw-pane" aria-label="工作区">
+      <!-- Conversation Panel -->
+      <section id="panel-chat">
+        <div class="dw-head">
+          <div>
+            <h2 class="dw-head-title" id="chat-title"></h2>
+            <div class="dw-head-meta" id="chat-project"></div>
+          </div>
+          <span class="dw-badge" id="chat-agent-badge"></span>
+        </div>
+
+        <div class="dw-messages" id="chat-stream"></div>
+
+        <div class="dw-composer">
+          <input type="text" class="dw-input" id="chat-input" placeholder="输入消息…" aria-label="输入消息" />
+          <div class="dw-composer-bar">
+            <div class="dw-picker-wrap">
+              <button type="button" class="dw-picker-btn" id="btn-agent-picker">
+                <span class="dw-dot"></span>
+                <span id="picker-text">Codex</span>
+                <span>▾</span>
+              </button>
+              <div class="dw-menu" id="agent-menu" role="listbox" aria-label="选择当前对话成员">
+                <button type="button" class="dw-menu-item" data-agent="Gemini2VPS">
+                  <span>Gemini2VPS</span><span class="dw-muted">远端统筹</span>
+                </button>
+                <button type="button" class="dw-menu-item" data-agent="Codex">
+                  <span>Codex</span><span class="dw-muted">本机编码</span>
+                </button>
+                <button type="button" class="dw-menu-item" data-agent="grok1">
+                  <span>grok1</span><span class="dw-muted">实时搜索</span>
+                </button>
+              </div>
+            </div>
+            <button type="button" class="dw-send" id="btn-send">发送</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- One-off Task Detail -->
+      <section id="panel-task-once" class="is-hidden">
+        <div class="dw-head">
+          <div>
+            <button type="button" class="dw-ghost-btn" data-return-chat="chat-main" style="margin-bottom:6px;">← 返回原对话</button>
+            <h2 class="dw-head-title">连接器插件化改造</h2>
+            <div class="dw-head-meta">负责人：Gemini2VPS · 来源对话：连接器架构整理</div>
+          </div>
+          <span class="dw-badge dw-badge-ok">已验收完结</span>
+        </div>
+
+        <div class="dw-steps">
+          <div class="dw-task-card">
+            <div class="dw-task-card-top">
+              <span style="font-weight:600;font-size:12px;">1. 盘点现有连接器与兼容项</span>
+              <span class="dw-badge dw-badge-ok">已通过</span>
+            </div>
+            <div class="dw-muted">执行人：grok1</div>
+            <div style="font-size:11.5px;">Gemini2VPS 验收意见：清单核对完整，飞书直连与 Vercel 现有配置均列入保留范围。</div>
+          </div>
+
+          <div class="dw-task-card">
+            <div class="dw-task-card-top">
+              <span style="font-weight:600;font-size:12px;">2. 拆分四类插件并跑通回归测试</span>
+              <span class="dw-badge dw-badge-ok" id="step2-badge">已通过</span>
+            </div>
+            <div class="dw-muted">执行人：Codex</div>
+            <div class="dw-runs" style="margin:4px 0 2px;">
+              <button type="button" class="dw-chip" data-rev="1">第 1 次提交（打回修改）</button>
+              <button type="button" class="dw-chip is-active" data-rev="2">第 2 次提交（验收通过）</button>
+            </div>
+            <div id="step2-detail" style="font-size:11.5px;">
+              Codex 已补齐桥接兼容测试，120 项用例全部通过；Gemini2VPS 复核通过并已将定稿发回原对话。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Scheduled Task Detail -->
+      <section id="panel-task-cron" class="is-hidden">
+        <div class="dw-head">
+          <div>
+            <button type="button" class="dw-ghost-btn" data-return-chat="chat-daily" style="margin-bottom:6px;">← 返回原对话</button>
+            <h2 class="dw-head-title">每日 AI 与链上早晚报</h2>
+            <div class="dw-head-meta">负责人：Gemini2VPS · 每天 08:00、20:00 (Asia/Shanghai)</div>
+          </div>
+          <button type="button" class="dw-badge dw-badge-ok" id="btn-cron-state" style="background:transparent;cursor:pointer;">运行中 · 点击暂停</button>
+        </div>
+
+        <div class="dw-runs">
+          <button type="button" class="dw-chip is-active" data-period="26">第 26 期 · 今天 08:00</button>
+          <button type="button" class="dw-chip" data-period="25">第 25 期 · 昨天 20:00 (超时)</button>
+          <button type="button" class="dw-chip" data-period="24">第 24 期 · 昨天 08:00</button>
+        </div>
+
+        <div class="dw-task-card">
+          <div class="dw-task-card-top">
+            <span style="font-weight:600;font-size:12px;" id="period-title"></span>
+            <span class="dw-badge dw-badge-ok" id="period-badge"></span>
+          </div>
+          <div style="font-size:11.5px;white-space:pre-line;" id="period-desc"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Right Document Column (bound to exact threadId / runId + baseVersion) -->
+    <aside class="dw-pane" aria-label="文稿与成果">
+      <div class="dw-doc-top">
+        <span class="dw-doc-name" id="doc-title"></span>
+        <div class="dw-seg">
+          <button type="button" class="is-on" id="btn-doc-view">预览</button>
+          <button type="button" id="btn-doc-edit">编辑</button>
+        </div>
+      </div>
+
+      <div class="dw-muted" style="margin-bottom:8px;" id="doc-meta"></div>
+
+      <div class="dw-doc-body" id="doc-view"></div>
+      <textarea class="dw-editor is-hidden" id="doc-editor" aria-label="编辑文稿"></textarea>
+
+      <div class="dw-doc-foot">
+        <button type="button" class="dw-ghost-btn" id="btn-doc-wide">宽屏</button>
+        <button type="button" class="dw-ghost-btn" id="btn-doc-save">保存修改</button>
+        <button type="button" class="dw-ghost-btn" id="btn-doc-ask">发回原对话继续改</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Independent per-thread state (messages, activeAgent, draftInput, boundDocId)
+  var threads = {
+    "chat-main": {
+      id: "chat-main",
+      title: "连接器架构整理",
+      project: "项目：34号-DuolaBase",
+      activeAgent: "Codex",
+      updatedLabel: "刚刚",
+      draftInput: "顺便检查一下线上内存占用正常吗？",
+      docId: "doc-conn",
+      items: [
+        { kind: "msg", sender: "你", time: "13:20", text: "帮我梳理一下连接器怎么拆更干净，你当负责人拉个任务：先让 grok1 核对现有连接器清单，再让 Codex 把代码拆好测通。" },
+        {
+          kind: "msg",
+          sender: "Gemini2VPS",
+          time: "13:21",
+          text: "好的，拆分方案已写进右侧《连接器改造说明》，并已按分工建好任务跟进执行：",
+          taskCard: {
+            view: "task-once",
+            title: "任务 · 连接器插件化改造",
+            badge: "已完成 · 2/2 步通过",
+            sub: "负责人：Gemini2VPS · 执行：grok1（盘点清单）、Codex（代码拆分与测试）"
+          }
+        },
+        { kind: "switch", text: "已切换至 Codex" },
+        { kind: "msg", sender: "Codex", time: "13:45", text: "新版本已经部署完成，右侧文档已同步更新为最终目录结构和测试结果，你随时可以直接接着让我改细节。" }
+      ]
+    },
+    "chat-daily": {
+      id: "chat-daily",
+      title: "每日早晚报选题",
+      project: "项目：AI 与链上投研",
+      activeAgent: "Gemini2VPS",
+      updatedLabel: "08:10",
+      draftInput: "",
+      docId: "doc-daily-spec",
+      items: [
+        { kind: "msg", sender: "你", time: "昨天 21:00", text: "每天早 8 点和晚 8 点出一期 AI 与链上异动简报，grok1 抓动态，Codex 核实数据，你把关定稿。" },
+        {
+          kind: "msg",
+          sender: "Gemini2VPS",
+          time: "08:04",
+          text: "今日 08:00 第 26 期早报已验收通过并更新至右侧文档。",
+          taskCard: {
+            view: "task-cron",
+            title: "定时任务 · 每日 AI 与链上早晚报",
+            badge: "第 26 期已完成",
+            sub: "负责人：Gemini2VPS · 每天 08:00、20:00 自动执行"
+          }
+        }
+      ]
+    }
+  };
+  var threadOrder = ["chat-main", "chat-daily"];
+  var newChatCounter = 1;
+
+  // Versioned documents explicitly bound to sourceThreadId
+  var documents = {
+    "doc-conn": {
+      id: "doc-conn",
+      sourceThreadId: "chat-main",
+      title: "连接器改造说明.md",
+      version: 3,
+      author: "Codex 更新",
+      body: "# 连接器目录结构\n\n- connectors.ts：统一入口与权限校验\n- providers/\n  - http-mcp.ts：标准远程 MCP\n  - oauth-rest.ts：OAuth 接口\n  - native-apps.ts：飞书与公众号\n  - legacy-bridge.ts：旧版兼容桥\n\n测试结果：120/120 通过"
+    },
+    "doc-daily-spec": {
+      id: "doc-daily-spec",
+      sourceThreadId: "chat-daily",
+      title: "早晚报栏目要求.md",
+      version: 2,
+      author: "Gemini2VPS 整理",
+      body: "# 每日早晚报标准\n\n1. 每天 08:00、20:00 各出一期\n2. grok1 负责搜集一手动态\n3. Codex 负责交叉核实数据\n4. Gemini2VPS 审核无误后归档交付"
+    },
+    "doc-run-26": {
+      id: "doc-run-26",
+      sourceThreadId: "chat-daily",
+      title: "今日早报 (第26期).md",
+      version: 1,
+      author: "今天 08:04 定稿",
+      body: "# 11月25日 早报（第 26 期）\n\n1. MCP 生态：主流研发工具全面统一标准协议直连。\n2. 链上关注：主流标的流动性平稳，净流入集中于基础设施板块。"
+    },
+    "doc-run-25": {
+      id: "doc-run-25",
+      sourceThreadId: "chat-daily",
+      title: "第25期异常记录.md",
+      version: 1,
+      author: "昨天 20:05 归档",
+      body: "# 11月24日 晚报（第 25 期 · 未出稿）\n\n原因：外部数据源响应超时，当期已自动中止并释放执行名额，未发送半成品稿件。"
+    },
+    "doc-run-24": {
+      id: "doc-run-24",
+      sourceThreadId: "chat-daily",
+      title: "昨日早报 (第24期).md",
+      version: 1,
+      author: "昨天 08:03 定稿",
+      body: "# 11月24日 早报（第 24 期）\n\n1. 多端协作：跨机会话对账机制验证完成。\n2. 市场速览：波动率回落，重点跟踪标的未触发风险阈值。"
+    }
+  };
+
+  var periods = {
+    "26": {
+      title: "第 26 期（今天 08:00）",
+      badge: "已完成",
+      cls: "dw-badge dw-badge-ok",
+      docId: "doc-run-26",
+      desc: "1. grok1 抓取过去 12 小时重点动态（已通过）\n2. Codex 核对数据并整理成稿，经 Gemini2VPS 验收通过，已同步至右侧《今日早报 (第26期).md》。"
+    },
+    "25": {
+      title: "第 25 期（昨天 20:00）",
+      badge: "超时未完成",
+      cls: "dw-badge dw-badge-warn",
+      docId: "doc-run-25",
+      desc: "外部数据源响应超时，当期已自动中止并释放成员执行名额；右侧记录了当期异常原因，不影响第 26 期按时运行。"
+    },
+    "24": {
+      title: "第 24 期（昨天 08:00）",
+      badge: "已完成",
+      cls: "dw-badge dw-badge-ok",
+      docId: "doc-run-24",
+      desc: "各步骤均一次通过 Gemini2VPS 验收，对应历史早报可在右侧查阅。"
+    }
+  };
+
+  var currentView = "chat-main"; // threadId | 'task-once' | 'task-cron'
+  var currentPeriod = "26";
+
+  var grid = document.getElementById("dw-grid");
+  var chatNavList = document.getElementById("chat-nav-list");
+  var panelChat = document.getElementById("panel-chat");
+  var panelOnce = document.getElementById("panel-task-once");
+  var panelCron = document.getElementById("panel-task-cron");
+
+  var chatTitle = document.getElementById("chat-title");
+  var chatProject = document.getElementById("chat-project");
+  var chatBadge = document.getElementById("chat-agent-badge");
+  var chatStream = document.getElementById("chat-stream");
+  var chatInput = document.getElementById("chat-input");
+  var pickerText = document.getElementById("picker-text");
+  var menu = document.getElementById("agent-menu");
+
+  var docTitle = document.getElementById("doc-title");
+  var docMeta = document.getElementById("doc-meta");
+  var docView = document.getElementById("doc-view");
+  var docEditor = document.getElementById("doc-editor");
+  var btnView = document.getElementById("btn-doc-view");
+  var btnEdit = document.getElementById("btn-doc-edit");
+
+  function activeDocId() {
+    if (currentView === "task-once") return "doc-conn";
+    if (currentView === "task-cron") return periods[currentPeriod].docId;
+    return threads[currentView].docId;
+  }
+
+  function renderSidebar() {
+    chatNavList.innerHTML = "";
+    threadOrder.forEach(function (tid) {
+      var t = threads[tid];
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dw-item" + (currentView === tid ? " is-active" : "");
+      btn.innerHTML =
+        '<span class="dw-item-name"></span><span class="dw-item-sub"><span class="js-ag"></span><span class="js-tm"></span></span>';
+      btn.querySelector(".dw-item-name").textContent = t.title;
+      btn.querySelector(".js-ag").textContent = t.activeAgent;
+      btn.querySelector(".js-tm").textContent = t.updatedLabel;
+      btn.addEventListener("click", function () {
+        openView(tid);
+      });
+      chatNavList.appendChild(btn);
+    });
+
+    document.querySelectorAll("#task-nav-list .dw-item").forEach(function (el) {
+      el.classList.toggle("is-active", el.getAttribute("data-view") === currentView);
+    });
+  }
+
+  function renderChat(tid) {
+    var t = threads[tid];
+    chatTitle.textContent = t.title;
+    chatProject.textContent = t.project;
+    chatBadge.textContent = "当前对接：" + t.activeAgent;
+    pickerText.textContent = t.activeAgent;
+    chatInput.value = t.draftInput || "";
+
+    document.querySelectorAll(".dw-menu-item").forEach(function (m) {
+      m.classList.toggle("is-selected", m.getAttribute("data-agent") === t.activeAgent);
+    });
+
+    chatStream.innerHTML = "";
+    if (t.items.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "dw-muted";
+      empty.textContent = "新对话已就绪，直接向 " + t.activeAgent + " 描述你的需求即可。";
+      chatStream.appendChild(empty);
+      return;
+    }
+
+    t.items.forEach(function (item) {
+      if (item.kind === "switch") {
+        var note = document.createElement("div");
+        note.className = "dw-switch-note";
+        note.textContent = item.text;
+        chatStream.appendChild(note);
+        return;
+      }
+      var row = document.createElement("div");
+      row.className = "dw-msg";
+      row.innerHTML =
+        '<div class="dw-msg-top"><span class="dw-sender"></span><span class="dw-time"></span></div>' +
+        '<div class="dw-msg-text"></div>';
+      row.querySelector(".dw-sender").textContent = item.sender;
+      row.querySelector(".dw-time").textContent = item.time;
+      row.querySelector(".dw-msg-text").textContent = item.text;
+
+      if (item.taskCard) {
+        var card = document.createElement("div");
+        card.className = "dw-task-card";
+        card.style.marginTop = "8px";
+        card.innerHTML =
+          '<div class="dw-task-card-top"><span style="font-weight:600;font-size:12px;" class="js-ct"></span><span class="dw-badge dw-badge-ok js-cb"></span></div>' +
+          '<div class="dw-muted js-cs"></div>' +
+          '<div><button type="button" class="dw-ghost-btn">查看步骤与验收记录 →</button></div>';
+        card.querySelector(".js-ct").textContent = item.taskCard.title;
+        card.querySelector(".js-cb").textContent = item.taskCard.badge;
+        card.querySelector(".js-cs").textContent = item.taskCard.sub;
+        card.querySelector("button").addEventListener("click", function () {
+          openView(item.taskCard.view);
+        });
+        row.appendChild(card);
+      }
+      chatStream.appendChild(row);
+    });
+  }
+
+  function renderPeriod() {
+    var p = periods[currentPeriod];
+    document.querySelectorAll("[data-period]").forEach(function (b) {
+      b.classList.toggle("is-active", b.getAttribute("data-period") === currentPeriod);
+    });
+    document.getElementById("period-title").textContent = p.title;
+    var badge = document.getElementById("period-badge");
+    badge.className = p.cls;
+    badge.textContent = p.badge;
+    document.getElementById("period-desc").textContent = p.desc;
+  }
+
+  function setDocEdit(editing) {
+    btnView.classList.toggle("is-on", !editing);
+    btnEdit.classList.toggle("is-on", editing);
+    docView.classList.toggle("is-hidden", editing);
+    docEditor.classList.toggle("is-hidden", !editing);
+  }
+
+  function renderDoc() {
+    var doc = documents[activeDocId()];
+    docTitle.textContent = doc.title;
+    docMeta.textContent = "v" + doc.version + " · " + doc.author;
+    docView.textContent = doc.body;
+    docEditor.value = doc.body;
+    setDocEdit(false);
+  }
+
+  function saveDraftIfChat() {
+    if (threads[currentView]) {
+      threads[currentView].draftInput = chatInput.value;
+    }
+  }
+
+  function openView(target) {
+    saveDraftIfChat();
+    currentView = target;
+    var isChat = Boolean(threads[target]);
+    panelChat.classList.toggle("is-hidden", !isChat);
+    panelOnce.classList.toggle("is-hidden", target !== "task-once");
+    panelCron.classList.toggle("is-hidden", target !== "task-cron");
+
+    renderSidebar();
+    if (isChat) renderChat(target);
+    if (target === "task-cron") renderPeriod();
+    renderDoc();
+  }
+
+  // Task list & return-to-origin-chat bindings
+  document.querySelectorAll("#task-nav-list [data-view]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      openView(el.getAttribute("data-view"));
+    });
+  });
+  document.querySelectorAll("[data-return-chat]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      openView(el.getAttribute("data-return-chat"));
+    });
+  });
+
+  // + New Conversation creates a real isolated thread & document
+  document.getElementById("btn-new-chat").addEventListener("click", function () {
+    saveDraftIfChat();
+    var id = "chat-new-" + newChatCounter;
+    var docId = "doc-new-" + newChatCounter;
+    var title = "新对话 " + newChatCounter;
+    newChatCounter += 1;
+    documents[docId] = {
+      id: docId,
+      sourceThreadId: id,
+      title: title + "-草稿.md",
+      version: 1,
+      author: "空白文稿",
+      body: "# " + title + "\n\n在此记录或审阅本对话关联的方案与交付物。"
+    };
+    threads[id] = {
+      id: id,
+      title: title,
+      project: "项目：默认工作区",
+      activeAgent: "Gemini2VPS",
+      updatedLabel: "刚刚",
+      draftInput: "",
+      docId: docId,
+      items: []
+    };
+    threadOrder.unshift(id);
+    openView(id);
+    chatInput.focus();
+  });
+
+  // Per-thread Agent Switcher
+  document.getElementById("btn-agent-picker").addEventListener("click", function (e) {
+    e.stopPropagation();
+    menu.classList.toggle("is-open");
+  });
+  document.addEventListener("click", function () {
+    menu.classList.remove("is-open");
+  });
+  document.querySelectorAll(".dw-menu-item").forEach(function (item) {
+    item.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var t = threads[currentView];
+      if (!t) return;
+      var next = item.getAttribute("data-agent");
+      if (next !== t.activeAgent) {
+        t.activeAgent = next;
+        t.items.push({ kind: "switch", text: "已切换至 " + next });
+      }
+      menu.classList.remove("is-open");
+      renderSidebar();
+      renderChat(currentView);
+    });
+  });
+
+  // Send message to active thread
+  document.getElementById("btn-send").addEventListener("click", function () {
+    var t = threads[currentView];
+    if (!t) return;
+    var val = chatInput.value.trim();
+    if (!val) return;
+    t.items.push({ kind: "msg", sender: "你", time: "刚刚", text: val });
+    t.updatedLabel = "刚刚";
+    t.draftInput = "";
+    chatInput.value = "";
+    renderSidebar();
+    renderChat(currentView);
+  });
+
+  // Task Step 2 revision toggle
+  var step2Badge = document.getElementById("step2-badge");
+  var step2Detail = document.getElementById("step2-detail");
+  document.querySelectorAll("[data-rev]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var rev = btn.getAttribute("data-rev");
+      document.querySelectorAll("[data-rev]").forEach(function (b) {
+        b.classList.toggle("is-active", b === btn);
+      });
+      if (rev === "1") {
+        step2Badge.className = "dw-badge dw-badge-warn";
+        step2Badge.textContent = "打回修改";
+        step2Detail.textContent = "Gemini2VPS 验收意见：Vercel 旧版兼容桥还留在主文件里，请单独拆出并补充回归测试。";
+      } else {
+        step2Badge.className = "dw-badge dw-badge-ok";
+        step2Badge.textContent = "已通过";
+        step2Detail.textContent = "Codex 已补齐桥接兼容测试，120 项用例全部通过；Gemini2VPS 复核通过并已将定稿发回原对话。";
+      }
+    });
+  });
+
+  // Cron Period Switcher updates both center details AND right-hand Run artifact
+  document.querySelectorAll("[data-period]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      currentPeriod = btn.getAttribute("data-period");
+      renderPeriod();
+      renderDoc();
+    });
+  });
+
+  var btnCronState = document.getElementById("btn-cron-state");
+  var running = true;
+  btnCronState.addEventListener("click", function () {
+    running = !running;
+    btnCronState.className = running ? "dw-badge dw-badge-ok" : "dw-badge dw-badge-warn";
+    btnCronState.textContent = running ? "运行中 · 点击暂停" : "已暂停 · 点击恢复";
+  });
+
+  // Right Document Preview / Edit / Save / Send back to exact origin conversation
+  btnView.addEventListener("click", function () {
+    docView.textContent = docEditor.value;
+    setDocEdit(false);
+  });
+  btnEdit.addEventListener("click", function () {
+    setDocEdit(true);
+    docEditor.focus();
+  });
+  document.getElementById("btn-doc-wide").addEventListener("click", function (e) {
+    var wide = grid.classList.toggle("is-wide-doc");
+    e.target.textContent = wide ? "标准" : "宽屏";
+  });
+  document.getElementById("btn-doc-save").addEventListener("click", function () {
+    var doc = documents[activeDocId()];
+    doc.body = docEditor.value;
+    doc.version += 1;
+    doc.author = "手动保存";
+    renderDoc();
+  });
+  document.getElementById("btn-doc-ask").addEventListener("click", function () {
+    var doc = documents[activeDocId()];
+    if (!btnView.classList.contains("is-on")) {
+      doc.body = docEditor.value;
+      doc.version += 1;
+      doc.author = "手动保存";
+    }
+    var originThreadId = doc.sourceThreadId;
+    threads[originThreadId].draftInput =
+      "请按《" + doc.title + "》(v" + doc.version + ") 的最新修改继续调整";
+    openView(originThreadId);
+    chatInput.focus();
+  });
+
+  openView("chat-main");
+})();
+</script>
+</body>
+</html>

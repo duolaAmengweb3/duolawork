@@ -1,0 +1,704 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+import type http from 'node:http';
+import type { Duplex } from 'node:stream';
+import { WebSocketServer, WebSocket } from 'ws';
+import type { CloudAuthManager } from './auth.js';
+import { sha256Hex } from './auth.js';
+import type { DuolaWorkDatabase } from './db.js';
+import { emptyUnobservableUsage, redactSecrets, type EnsuredSession, type ReconcileResult, type SessionBindingInput, type TurnDispatchInput, type TurnExecutionResult, type TurnStreamEvent } from './drivers/types.js';
+import {
+  isExcludedClaudeVps,
+  type ExecutionNodeRecord,
+  type MemberCapabilities,
+  type MemberRecord,
+  type ProviderUsageMetrics,
+  type WorkspaceFileEntry
+} from '../shared/types.js';
+
+interface PendingRpc {
+  resolve: (value: any) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface ActiveNodeTurn {
+  attemptId: string;
+  onEvent?: (ev: TurnStreamEvent) => void;
+  onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
+  resolve: (res: TurnExecutionResult) => void;
+  reject: (err: Error) => void;
+}
+
+interface LiveNodeSocket {
+  nodeId: string;
+  ws: WebSocket;
+  lastPongAt: number;
+}
+
+export interface NodeHelloMember {
+  id: string;
+  name: string;
+  platformId: string;
+  localDriverKind: 'codex-app-server' | 'claude-cli' | 'acp-stdio' | 'mock';
+  capabilities?: Partial<MemberCapabilities>;
+  status?: MemberRecord['status'];
+  statusMessage?: string;
+  config?: Record<string, unknown>;
+}
+
+export class ExecutionNodeHub {
+  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
+  private readonly liveSockets = new Map<string, LiveNodeSocket>();
+  private readonly pendingRpcs = new Map<string, PendingRpc>();
+  private readonly activeTurns = new Map<string, ActiveNodeTurn>();
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+
+  public onNodesChanged?: (nodes: ExecutionNodeRecord[]) => void;
+  public onMembersChanged?: () => void;
+  public onReplayedAttemptResult?: (payload: {
+    attemptId: string;
+    ok: boolean;
+    text?: string;
+    nativeSessionId?: string | null;
+    nativeTurnId?: string | null;
+    providerUsage?: ProviderUsageMetrics;
+    errorMessage?: string;
+  }) => void;
+
+  constructor(
+    private readonly db: DuolaWorkDatabase,
+    private readonly auth: CloudAuthManager
+  ) {}
+
+  public attachToServer(server: http.Server): void {
+    server.on('upgrade', (req, socket, head) => {
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
+      if (url.pathname !== '/api/v2/nodes/ws') return;
+      this.handleUpgrade(req, socket, head);
+    });
+
+    if (!this.heartbeatTimer) {
+      this.heartbeatTimer = setInterval(() => {
+        const now = Date.now();
+        for (const [nodeId, live] of this.liveSockets.entries()) {
+          if (now - live.lastPongAt > 45_000) {
+            try {
+              live.ws.terminate();
+            } catch {
+              // ignore
+            }
+            this.handleDisconnect(nodeId, live.ws);
+            continue;
+          }
+          if (live.ws.readyState === WebSocket.OPEN) {
+            this.sendFrame(live.ws, { type: 'node.ping', ts: now });
+          }
+        }
+      }, 15_000);
+      this.heartbeatTimer.unref?.();
+    }
+  }
+
+  public close(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    for (const [, pending] of this.pendingRpcs) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('NODE_HUB_CLOSED'));
+    }
+    this.pendingRpcs.clear();
+    for (const [, turn] of this.activeTurns) {
+      turn.reject(new Error('SHUTDOWN'));
+    }
+    this.activeTurns.clear();
+    for (const [, live] of this.liveSockets) {
+      try {
+        live.ws.close();
+      } catch {
+        // ignore
+      }
+    }
+    this.liveSockets.clear();
+    this.wss.close();
+  }
+
+  public createPairingCode(input?: { name?: string; kind?: 'cloud' | 'local' }): {
+    code: string;
+    expiresAt: string;
+  } {
+    return this.auth.createMagicCode('node_pair', {
+      suggestedName: input?.name?.trim() || undefined,
+      kind: input?.kind === 'cloud' ? 'cloud' : 'local'
+    });
+  }
+
+  public pairNode(input: {
+    code: string;
+    ip?: string;
+    name?: string;
+    kind?: 'cloud' | 'local';
+    platform?: string;
+    appVersion?: string;
+    capabilities?: ExecutionNodeRecord['capabilities'];
+  }): { node: ExecutionNodeRecord; nodeToken: string } {
+    const payload = this.auth.consumeMagicCode('node_pair', input.code, input.ip || 'unknown');
+    if (!payload) {
+      const err = new Error('节点配对码无效或已过期');
+      (err as any).statusCode = 401;
+      throw err;
+    }
+
+    const kind: 'cloud' | 'local' =
+      input.kind === 'cloud' || payload.kind === 'cloud' ? 'cloud' : 'local';
+    const nodeId = `node_${kind}_${randomUUID().slice(0, 10)}`;
+    const rawToken = `dwn_${randomBytes(32).toString('base64url')}`;
+    const tokenHash = sha256Hex(rawToken);
+    const now = new Date().toISOString();
+    const name =
+      String(input.name || payload.suggestedName || (kind === 'cloud' ? '云端执行节点' : '本地执行节点')).trim();
+    const caps: ExecutionNodeRecord['capabilities'] = {
+      drivers: Array.isArray(input.capabilities?.drivers) ? input.capabilities!.drivers : [],
+      allowWorkspaceBrowse: Boolean(input.capabilities?.allowWorkspaceBrowse),
+      allowedWorkspaceRoots: Array.isArray(input.capabilities?.allowedWorkspaceRoots)
+        ? input.capabilities!.allowedWorkspaceRoots
+        : []
+    };
+
+    this.db.sqlite
+      .prepare(
+        `INSERT INTO v2_nodes (
+          id, name, kind, platform, token_hash, status, capabilities_json,
+          last_heartbeat_at, app_version, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'offline', ?, NULL, ?, ?, ?)`
+      )
+      .run(
+        nodeId,
+        name,
+        kind,
+        String(input.platform || 'unknown'),
+        tokenHash,
+        JSON.stringify(caps),
+        input.appVersion ? String(input.appVersion) : null,
+        now,
+        now
+      );
+
+    const node = this.getNode(nodeId)!;
+    this.onNodesChanged?.(this.listNodes());
+    return { node, nodeToken: rawToken };
+  }
+
+  public getNode(nodeId: string): ExecutionNodeRecord | null {
+    const row = this.db.sqlite
+      .prepare(`SELECT * FROM v2_nodes WHERE id = ?`)
+      .get(nodeId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return this.mapNodeRow(row);
+  }
+
+  public listNodes(): ExecutionNodeRecord[] {
+    const rows = this.db.sqlite
+      .prepare(`SELECT * FROM v2_nodes ORDER BY kind ASC, created_at ASC`)
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.mapNodeRow(r));
+  }
+
+  public isNodeOnline(nodeId: string | null | undefined): boolean {
+    if (!nodeId) return false;
+    const live = this.liveSockets.get(nodeId);
+    return Boolean(live && live.ws.readyState === WebSocket.OPEN);
+  }
+
+  public revokeNode(nodeId: string): boolean {
+    const live = this.liveSockets.get(nodeId);
+    if (live) {
+      try {
+        live.ws.close(4001, 'Node revoked');
+      } catch {
+        // ignore
+      }
+      this.liveSockets.delete(nodeId);
+    }
+    const now = new Date().toISOString();
+    this.db.sqlite
+      .prepare(
+        `UPDATE v2_members
+         SET status = 'offline', status_message = '所属执行节点已移除', updated_at = ?
+         WHERE node_id = ?`
+      )
+      .run(now, nodeId);
+    const res = this.db.sqlite.prepare(`DELETE FROM v2_nodes WHERE id = ?`).run(nodeId);
+    this.onNodesChanged?.(this.listNodes());
+    this.onMembersChanged?.();
+    return Number(res.changes || 0) > 0;
+  }
+
+  private handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    const authHeader = String(req.headers.authorization || '').trim();
+    const rawToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : url.searchParams.get('token')?.trim() || '';
+
+    if (!rawToken) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const tokenHash = sha256Hex(rawToken);
+    const row = this.db.sqlite
+      .prepare(`SELECT id FROM v2_nodes WHERE token_hash = ?`)
+      .get(tokenHash) as { id: string } | undefined;
+
+    if (!row) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const nodeId = String(row.id);
+    this.wss.handleUpgrade(req, socket, head, (ws) => {
+      this.registerConnection(nodeId, ws);
+    });
+  }
+
+  private registerConnection(nodeId: string, ws: WebSocket): void {
+    const prev = this.liveSockets.get(nodeId);
+    if (prev && prev.ws !== ws) {
+      try {
+        prev.ws.close(4000, 'Replaced by newer connection');
+      } catch {
+        // ignore
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    this.liveSockets.set(nodeId, { nodeId, ws, lastPongAt: Date.now() });
+    this.db.sqlite
+      .prepare(`UPDATE v2_nodes SET status = 'online', last_heartbeat_at = ?, updated_at = ? WHERE id = ?`)
+      .run(nowIso, nowIso, nodeId);
+
+    ws.on('message', (raw) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      void this.handleNodeFrame(nodeId, ws, msg).catch(() => {});
+    });
+
+    ws.on('close', () => {
+      this.handleDisconnect(nodeId, ws);
+    });
+
+    ws.on('error', () => {
+      this.handleDisconnect(nodeId, ws);
+    });
+
+    this.onNodesChanged?.(this.listNodes());
+  }
+
+  private handleDisconnect(nodeId: string, ws: WebSocket): void {
+    const current = this.liveSockets.get(nodeId);
+    if (!current || current.ws !== ws) return;
+    this.liveSockets.delete(nodeId);
+
+    const nowIso = new Date().toISOString();
+    try {
+      this.db.sqlite
+        .prepare(`UPDATE v2_nodes SET status = 'offline', updated_at = ? WHERE id = ?`)
+        .run(nowIso, nodeId);
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_members
+           SET status = 'offline', status_message = '所属执行节点离线', updated_at = ?
+           WHERE node_id = ? AND driver_kind = 'remote-node'`
+        )
+        .run(nowIso, nodeId);
+    } catch {
+      // ignore if DB already closed during shutdown
+    }
+
+    for (const [attemptId, turn] of this.activeTurns.entries()) {
+      const att = this.db.sqlite
+        .prepare(`SELECT m.node_id FROM v2_dispatch_attempts a JOIN v2_members m ON a.member_id = m.id WHERE a.id = ?`)
+        .get(attemptId) as { node_id?: string } | undefined;
+      if (att?.node_id === nodeId) {
+        this.activeTurns.delete(attemptId);
+        turn.reject(new Error('DISCONNECT: 执行节点连接断开，等待重连对账'));
+      }
+    }
+
+    this.onNodesChanged?.(this.listNodes());
+    this.onMembersChanged?.();
+  }
+
+  private async handleNodeFrame(nodeId: string, ws: WebSocket, msg: any): Promise<void> {
+    const type = String(msg?.type || '');
+    const live = this.liveSockets.get(nodeId);
+    if (live) live.lastPongAt = Date.now();
+
+    if (type === 'node.ping') {
+      this.db.sqlite
+        .prepare(`UPDATE v2_nodes SET last_heartbeat_at = ? WHERE id = ?`)
+        .run(new Date().toISOString(), nodeId);
+      this.sendFrame(ws, { type: 'node.pong', ts: msg.ts ?? Date.now() });
+      return;
+    }
+
+    if (type === 'node.pong') {
+      this.db.sqlite
+        .prepare(`UPDATE v2_nodes SET last_heartbeat_at = ? WHERE id = ?`)
+        .run(new Date().toISOString(), nodeId);
+      return;
+    }
+
+    if (type === 'node.hello') {
+      const now = new Date().toISOString();
+      const node = this.getNode(nodeId);
+      const nextCaps = {
+        drivers: Array.isArray(msg.drivers) ? msg.drivers.map(String) : node?.capabilities.drivers ?? [],
+        allowWorkspaceBrowse: Boolean(msg.allowWorkspaceBrowse ?? node?.capabilities.allowWorkspaceBrowse),
+        allowedWorkspaceRoots: Array.isArray(msg.allowedWorkspaceRoots)
+          ? msg.allowedWorkspaceRoots.map(String)
+          : node?.capabilities.allowedWorkspaceRoots ?? []
+      };
+      this.db.sqlite
+        .prepare(
+          `UPDATE v2_nodes
+           SET name = COALESCE(?, name),
+               platform = COALESCE(?, platform),
+               app_version = COALESCE(?, app_version),
+               capabilities_json = ?,
+               status = 'online',
+               last_heartbeat_at = ?,
+               updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          typeof msg.name === 'string' && msg.name.trim() ? msg.name.trim() : null,
+          typeof msg.platform === 'string' && msg.platform.trim() ? msg.platform.trim() : null,
+          typeof msg.version === 'string' && msg.version.trim() ? msg.version.trim() : null,
+          JSON.stringify(nextCaps),
+          now,
+          now,
+          nodeId
+        );
+
+      const members = Array.isArray(msg.members) ? (msg.members as NodeHelloMember[]) : [];
+      const nodeKind = node?.kind === 'cloud' ? 'cloud-node' : 'local-node';
+      for (const m of members) {
+        if (!m?.id || !m?.name) continue;
+        if (isExcludedClaudeVps({ id: m.id, name: m.name, platformId: m.platformId, driverKind: 'remote-node', location: nodeKind })) {
+          continue;
+        }
+        const existing = this.db.getMember(m.id);
+        this.db.upsertMember({
+          id: m.id,
+          name: m.name,
+          platformId: m.platformId || 'custom',
+          driverKind: 'remote-node',
+          location: nodeKind,
+          nodeId,
+          capabilities: {
+            supportsIsolatedSessions: m.capabilities?.supportsIsolatedSessions ?? true,
+            supportsSessionResume: m.capabilities?.supportsSessionResume ?? true,
+            supportsCancel: m.capabilities?.supportsCancel ?? true,
+            maxConcurrentRuns: m.capabilities?.maxConcurrentRuns ?? 2
+          },
+          status: m.status ?? 'ready',
+          statusMessage: m.statusMessage || `在线 (${node?.name || nodeId})`,
+          config: {
+            ...(existing?.config ?? {}),
+            ...(m.config ?? {}),
+            localDriverKind: m.localDriverKind || 'acp-stdio'
+          }
+        });
+      }
+
+      this.sendFrame(ws, { type: 'node.welcome', nodeId, serverTime: now });
+      this.onNodesChanged?.(this.listNodes());
+      this.onMembersChanged?.();
+      return;
+    }
+
+    if (type === 'rpc.result') {
+      const reqId = String(msg.reqId || '');
+      const pending = this.pendingRpcs.get(reqId);
+      if (!pending) return;
+      this.pendingRpcs.delete(reqId);
+      clearTimeout(pending.timer);
+      if (msg.ok) {
+        pending.resolve(msg.result);
+      } else {
+        pending.reject(new Error(redactSecrets(String(msg.error || '节点调用失败'))));
+      }
+      return;
+    }
+
+    if (type === 'turn.started') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      turn?.onEvent?.({
+        kind: 'dispatched_meta',
+        nativeTurnId: msg.nativeTurnId ? String(msg.nativeTurnId) : undefined
+      });
+      turn?.onEvent?.({ kind: 'started' });
+      return;
+    }
+
+    if (type === 'turn.delta') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn && typeof msg.text === 'string' && msg.text) {
+        turn.onEvent?.({ kind: 'delta', text: msg.text });
+      }
+      return;
+    }
+
+    if (type === 'turn.tool_trace') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn && msg.name) {
+        turn.onEvent?.({
+          kind: 'tool',
+          toolId: msg.toolId ? String(msg.toolId) : undefined,
+          toolName: String(msg.name),
+          toolSummary: msg.summary ? String(msg.summary) : undefined,
+          toolStatus: msg.status === 'done' || msg.status === 'error' ? msg.status : 'running'
+        });
+      }
+      return;
+    }
+
+    if (type === 'turn.tool_call') {
+      const callId = String(msg.callId || '');
+      const attemptId = String(msg.attemptId || '');
+      const turn = this.activeTurns.get(attemptId);
+      if (!turn?.onToolCall) {
+        this.sendFrame(ws, {
+          type: 'turn.tool_result',
+          callId,
+          ok: false,
+          error: '当前回合未绑定云端沙箱工具执行器'
+        });
+        return;
+      }
+      try {
+        const result = await turn.onToolCall(
+          String(msg.toolName || ''),
+          (msg.args as Record<string, unknown>) ?? {}
+        );
+        this.sendFrame(ws, { type: 'turn.tool_result', callId, ok: true, result });
+      } catch (err) {
+        this.sendFrame(ws, {
+          type: 'turn.tool_result',
+          callId,
+          ok: false,
+          error: redactSecrets((err as Error).message || '工具执行被拒绝')
+        });
+      }
+      return;
+    }
+
+    if (type === 'turn.completed') {
+      const attemptId = String(msg.attemptId || '');
+      const turn = this.activeTurns.get(attemptId);
+      const usage: ProviderUsageMetrics = msg.providerUsage ?? emptyUnobservableUsage();
+      if (turn) {
+        this.activeTurns.delete(attemptId);
+        turn.resolve({
+          text: String(msg.text ?? ''),
+          nativeSessionId: String(msg.nativeSessionId || ''),
+          nativeTurnId: msg.nativeTurnId ? String(msg.nativeTurnId) : null,
+          sessionReset: Boolean(msg.sessionReset),
+          providerUsage: usage
+        });
+      } else if (attemptId) {
+        // Replayed completion after reconnect / cloud restart!
+        this.onReplayedAttemptResult?.({
+          attemptId,
+          ok: true,
+          text: String(msg.text ?? ''),
+          nativeSessionId: msg.nativeSessionId ? String(msg.nativeSessionId) : null,
+          nativeTurnId: msg.nativeTurnId ? String(msg.nativeTurnId) : null,
+          providerUsage: usage
+        });
+      }
+      if (attemptId) {
+        this.sendFrame(ws, { type: 'turn.ack', attemptId });
+      }
+      return;
+    }
+
+    if (type === 'turn.failed') {
+      const attemptId = String(msg.attemptId || '');
+      const errText = redactSecrets(String(msg.errorMessage || '节点执行失败'));
+      const turn = this.activeTurns.get(attemptId);
+      if (turn) {
+        this.activeTurns.delete(attemptId);
+        turn.reject(new Error(errText));
+      } else if (attemptId) {
+        this.onReplayedAttemptResult?.({
+          attemptId,
+          ok: false,
+          errorMessage: errText
+        });
+      }
+      if (attemptId) {
+        this.sendFrame(ws, { type: 'turn.ack', attemptId });
+      }
+      return;
+    }
+  }
+
+  private sendRpc<T = any>(nodeId: string, type: string, payload: Record<string, unknown>, timeoutMs = 30_000): Promise<T> {
+    const live = this.liveSockets.get(nodeId);
+    if (!live || live.ws.readyState !== WebSocket.OPEN) {
+      const node = this.getNode(nodeId);
+      const label = node?.name || nodeId;
+      return Promise.reject(new Error(`NODE_OFFLINE: 执行节点「${label}」当前离线，请上线后重试或切换其他成员`));
+    }
+    const reqId = `rpc_${randomUUID().slice(0, 12)}`;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRpcs.delete(reqId);
+        reject(new Error(`节点响应超时 (${type})`));
+      }, timeoutMs);
+      timer.unref?.();
+      this.pendingRpcs.set(reqId, { resolve, reject, timer });
+      this.sendFrame(live.ws, { type, reqId, ...payload });
+    });
+  }
+
+  public async ensureSession(nodeId: string, input: SessionBindingInput): Promise<EnsuredSession> {
+    return this.sendRpc<EnsuredSession>(
+      nodeId,
+      'session.ensure',
+      {
+        member: {
+          id: input.member.id,
+          name: input.member.name,
+          platformId: input.member.platformId,
+          driverKind: input.member.config.localDriverKind || 'acp-stdio',
+          location: 'local',
+          capabilities: input.member.capabilities,
+          status: input.member.status,
+          statusMessage: input.member.statusMessage,
+          config: input.member.config
+        },
+        scopeKey: input.scopeKey,
+        cwd: input.cwd,
+        existingNativeSessionId: input.existingNativeSessionId ?? null,
+        dynamicTools: input.dynamicTools ?? []
+      },
+      45_000
+    );
+  }
+
+  public runTurn(
+    nodeId: string,
+    input: TurnDispatchInput,
+    onEvent?: (ev: TurnStreamEvent) => void
+  ): Promise<TurnExecutionResult> {
+    const live = this.liveSockets.get(nodeId);
+    if (!live || live.ws.readyState !== WebSocket.OPEN) {
+      const node = this.getNode(nodeId);
+      return Promise.reject(
+        new Error(`NODE_OFFLINE: 执行节点「${node?.name || nodeId}」当前离线，请上线后重试或切换其他成员`)
+      );
+    }
+
+    return new Promise<TurnExecutionResult>((resolve, reject) => {
+      this.activeTurns.set(input.attemptId, {
+        attemptId: input.attemptId,
+        onEvent,
+        onToolCall: input.onToolCall,
+        resolve,
+        reject
+      });
+
+      this.sendFrame(live.ws, {
+        type: 'turn.dispatch',
+        attemptId: input.attemptId,
+        member: {
+          id: input.member.id,
+          name: input.member.name,
+          platformId: input.member.platformId,
+          driverKind: input.member.config.localDriverKind || 'acp-stdio',
+          location: 'local',
+          capabilities: input.member.capabilities,
+          status: input.member.status,
+          statusMessage: input.member.statusMessage,
+          config: input.member.config
+        },
+        scopeKey: input.scopeKey,
+        cwd: input.cwd,
+        nativeSessionId: input.nativeSessionId,
+        prompt: input.prompt,
+        fallbackFullPrompt: input.fallbackFullPrompt ?? null,
+        timeoutMs: input.timeoutMs ?? 900_000,
+        dynamicTools: input.dynamicTools ?? []
+      });
+    });
+  }
+
+  public async abortTurn(nodeId: string, attemptId: string): Promise<boolean> {
+    const live = this.liveSockets.get(nodeId);
+    if (!live || live.ws.readyState !== WebSocket.OPEN) return false;
+    this.sendFrame(live.ws, { type: 'turn.abort', attemptId });
+    return true;
+  }
+
+  public async reconcileAttempt(nodeId: string, attemptId: string): Promise<ReconcileResult> {
+    if (!this.isNodeOnline(nodeId)) {
+      return { state: 'still_running', errorMessage: '执行节点暂未重连，等待恢复对账' };
+    }
+    try {
+      return await this.sendRpc<ReconcileResult>(nodeId, 'turn.reconcile', { attemptId }, 15_000);
+    } catch {
+      return { state: 'still_running' };
+    }
+  }
+
+  public async listNodeDirectory(
+    nodeId: string,
+    targetPath: string
+  ): Promise<{ root: string; entries: WorkspaceFileEntry[] }> {
+    return this.sendRpc(nodeId, 'fs.list_dir', { targetPath }, 15_000);
+  }
+
+  private sendFrame(ws: WebSocket, payload: Record<string, unknown>): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }
+
+  private mapNodeRow(row: Record<string, unknown>): ExecutionNodeRecord {
+    const id = String(row.id);
+    const liveOnline = this.isNodeOnline(id);
+    let caps: ExecutionNodeRecord['capabilities'] = { drivers: [] };
+    try {
+      caps = JSON.parse(String(row.capabilities_json || '{}')) as ExecutionNodeRecord['capabilities'];
+    } catch {
+      caps = { drivers: [] };
+    }
+    return {
+      id,
+      name: String(row.name),
+      kind: row.kind === 'cloud' ? 'cloud' : 'local',
+      platform: String(row.platform || 'unknown'),
+      status: liveOnline ? 'online' : 'offline',
+      capabilities: {
+        drivers: Array.isArray(caps.drivers) ? caps.drivers : [],
+        allowWorkspaceBrowse: Boolean(caps.allowWorkspaceBrowse),
+        allowedWorkspaceRoots: Array.isArray(caps.allowedWorkspaceRoots) ? caps.allowedWorkspaceRoots : []
+      },
+      lastHeartbeatAt: row.last_heartbeat_at ? String(row.last_heartbeat_at) : null,
+      appVersion: row.app_version ? String(row.app_version) : null,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    };
+  }
+}

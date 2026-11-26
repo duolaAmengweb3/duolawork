@@ -1,0 +1,21 @@
+{
+  "name": "DuolaWork",
+  "short_name": "DuolaWork",
+  "description": "云端多 Agent 协作工作台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111318",
+  "icons": [
+    {
+      "src": "/brand/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
