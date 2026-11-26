@@ -367,6 +367,14 @@ export class DuolaWorkDatabase {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS v2_inline_action_receipts (
+        action_key TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL,
+        action_kind TEXT NOT NULL,
+        result_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS v2_nodes (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,

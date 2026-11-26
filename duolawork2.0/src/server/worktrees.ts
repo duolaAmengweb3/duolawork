@@ -116,7 +116,11 @@ export class WorktreeManager {
     });
   }
 
-  public async commitStepChangesIfNeeded(worktreePath: string, commitMessage: string): Promise<string> {
+  public async commitStepChangesIfNeeded(
+    worktreePath: string,
+    commitMessage: string,
+    runId?: string
+  ): Promise<string | null> {
     const status = (await execFileAsync('git', ['status', '--porcelain'], { cwd: worktreePath })).stdout.trim();
     if (status.length > 0) {
       await execFileAsync('git', ['add', '-A'], { cwd: worktreePath });
@@ -129,7 +133,26 @@ export class WorktreeManager {
         ],
         { cwd: worktreePath }
       );
+      return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: worktreePath })).stdout.trim();
     }
+
+    if (runId) {
+      const safeRun = runId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const integrationBranch = `dw2/run-${safeRun}/integration`;
+      try {
+        const aheadRaw = (
+          await execFileAsync('git', ['rev-list', '--count', `${integrationBranch}..HEAD`], {
+            cwd: worktreePath
+          })
+        ).stdout.trim();
+        if ((Number.parseInt(aheadRaw, 10) || 0) <= 0) {
+          return null;
+        }
+      } catch {
+        // if base ref check fails, fall through to HEAD
+      }
+    }
+
     return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: worktreePath })).stdout.trim();
   }
 

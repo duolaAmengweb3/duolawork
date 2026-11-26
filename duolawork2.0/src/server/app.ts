@@ -235,6 +235,7 @@ export class DuolaWorkApp {
 
     this.threads.actionHandler = {
       executeTool: (claims, toolName, args) => this.executeScopedAgentTool(claims, toolName, args),
+      createOrUpdateTaskSync: (claims, args) => this.createOrUpdateTaskForAgentSync(claims, args),
       getActiveTasksSummaryForThread: (threadId) =>
         this.tasks.getActiveTasksSummaryForThread(threadId),
       getSpaceMaterialsSummaryForThread: (threadId, opts) =>
@@ -515,6 +516,41 @@ export class DuolaWorkApp {
     this.duolabase.setExternalCaller(fn);
   }
 
+  private createOrUpdateTaskForAgentSync(
+    claims: ScopedTurnClaims,
+    args: Record<string, unknown>
+  ) {
+    this.sandbox.assertLeadPermission(claims);
+    const rawLead = typeof args.leadMemberId === 'string' ? args.leadMemberId.trim() : '';
+    const kind = args.kind === 'scheduled' ? 'scheduled' : 'once';
+    const startImmediately =
+      args.startImmediately !== undefined
+        ? Boolean(args.startImmediately)
+        : kind !== 'scheduled';
+    const created = this.tasks.createOrUpdateTask({
+      ...(typeof args.taskId === 'string' && args.taskId.trim() ? { taskId: args.taskId.trim() } : {}),
+      sourceThreadId: claims.threadId,
+      title: String(args.title || '未命名任务'),
+      kind,
+      cronExpr: typeof args.cronExpr === 'string' ? args.cronExpr : null,
+      intervalSeconds: typeof args.intervalSeconds === 'number' ? args.intervalSeconds : null,
+      timezone:
+        typeof args.timezone === 'string' && args.timezone.trim() ? args.timezone.trim() : 'Asia/Shanghai',
+      leadMemberId: !rawLead || rawLead === 'self' ? claims.memberId : rawLead,
+      spec: {
+        goal: String(args.goal || args.title || ''),
+        acceptanceCriteria:
+          typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
+        steps: Array.isArray(args.steps) ? (args.steps as any[]) : []
+      },
+      startImmediately
+    });
+    if (created.initialRun) {
+      void this.tasks.driveRun(created.initialRun.id).catch(() => {});
+    }
+    return created;
+  }
+
   /**
    * Executes a scoped tool call from a managed Agent turn, enforcing RBAC & DuolaBase policies!
    */
@@ -566,32 +602,7 @@ export class DuolaWorkApp {
     }
 
     if (toolName === 'task_create_or_update') {
-      this.sandbox.assertLeadPermission(claims);
-      const rawLead = typeof args.leadMemberId === 'string' ? args.leadMemberId.trim() : '';
-      const kind = args.kind === 'scheduled' ? 'scheduled' : 'once';
-      const startImmediately =
-        args.startImmediately !== undefined
-          ? Boolean(args.startImmediately)
-          : kind !== 'scheduled';
-      const created = this.tasks.createOrUpdateTask({
-        sourceThreadId: claims.threadId,
-        title: String(args.title || '未命名任务'),
-        kind,
-        cronExpr: typeof args.cronExpr === 'string' ? args.cronExpr : null,
-        intervalSeconds: typeof args.intervalSeconds === 'number' ? args.intervalSeconds : null,
-        timezone: typeof args.timezone === 'string' && args.timezone.trim() ? args.timezone.trim() : 'Asia/Shanghai',
-        leadMemberId: !rawLead || rawLead === 'self' ? claims.memberId : rawLead,
-        spec: {
-          goal: String(args.goal || args.title || ''),
-          acceptanceCriteria: typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
-          steps: Array.isArray(args.steps) ? (args.steps as any[]) : []
-        },
-        startImmediately
-      });
-      if (created.initialRun) {
-        void this.tasks.driveRun(created.initialRun.id).catch(() => {});
-      }
-      return created;
+      return this.createOrUpdateTaskForAgentSync(claims, args);
     }
 
     if (toolName === 'task_review_step' || toolName === 'task_complete_run') {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -930,5 +931,271 @@ test('Audit-M1, M2, M3 & Browser Retry (Playwright 390x844): Mobile unobstructed
     await browser.close();
     if (app) await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('Audit-R2-1: Contradictory structured verdict (accept + rework comments) is downgraded to changes_requested in both JSON parser and review tool', async () => {
+  const { app, cleanup } = createIsolatedApp();
+  try {
+    // 1. Direct parseLeadReviewJson checks
+    const c1 = parseLeadReviewJson(JSON.stringify({ verdict: 'accept', comments: '数据缺失，请补充后重新提交' }));
+    assert.equal(c1.verdict, 'changes_requested');
+
+    const c2 = parseLeadReviewJson(JSON.stringify({ verdict: 'accept', comments: '不能交付，缺少对比章节，需修改' }));
+    assert.equal(c2.verdict, 'changes_requested');
+
+    const ok1 = parseLeadReviewJson(JSON.stringify({ verdict: 'accept', comments: '无数据缺失，无需补充，核验通过' }));
+    assert.equal(ok1.verdict, 'accept');
+
+    // 2. End-to-end task run where Lead calls `task_review_step` tool with contradictory {verdict:'accept', comments:'数据缺失，请补充后重新提交'} on round 1
+    const thread = app.threads.createThread({
+      title: '矛盾裁决拦截对话',
+      activeOwnerMemberId: 'mem_a'
+    });
+
+    let workerCalls = 0;
+    app.registry.mockDriver.handlers.set('mem_b', async () => {
+      workerCalls += 1;
+      return { text: workerCalls === 1 ? '初版缺项草稿' : '已补齐全部核心数据的终稿' };
+    });
+
+    let leadCalls = 0;
+    app.registry.mockDriver.handlers.set('mem_a', async (inp) => {
+      leadCalls += 1;
+      if (leadCalls === 1) {
+        await inp.onToolCall?.('task_review_step', {
+          verdict: 'accept',
+          comments: '数据缺失，请补充后重新提交'
+        });
+        return { text: '{"verdict":"accept","comments":"数据缺失，请补充后重新提交"}' };
+      }
+      return { text: '{"verdict":"accept","comments":"无数据缺失，无需修改，正式通过"}' };
+    });
+
+    const { initialRun } = app.tasks.createOrUpdateTask({
+      sourceThreadId: thread.id,
+      title: '自相矛盾验收防护任务',
+      leadMemberId: 'mem_a',
+      spec: {
+        goal: '验证第1轮矛盾通过会被转为返工，第2轮真正达标后才完成',
+        maxReviewRounds: 3,
+        steps: [
+          {
+            stepOrder: 1,
+            title: '撰写报告',
+            assigneeMemberId: 'mem_b',
+            brief: '提交完整报告',
+            acceptanceCriteria: '数据无缺失'
+          }
+        ]
+      }
+    });
+
+    const finished = await app.tasks.driveRun(initialRun!.id);
+    assert.equal(workerCalls, 2, 'Round 1 contradictory accept must trigger Round 2 worker rework');
+    assert.equal(leadCalls, 2);
+    assert.equal(finished.status, 'completed');
+    const reviews = app.tasks.listReviews(app.tasks.listSteps(finished.id)[0].id);
+    assert.equal(reviews.length, 2);
+    assert.equal(reviews[1].verdict, 'changes_requested', 'First review recorded as changes_requested');
+    assert.equal(reviews[0].verdict, 'accept', 'Second review recorded as accept');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('Audit-R2-2: Crash/partial-failure recovery creates first thread artifact, completes remaining inline tasks without duplication, and preserves git worktree commitSha', async () => {
+  const { app, tmpDir, cleanup } = createIsolatedApp();
+  try {
+    // --- Subcase A: Control plane restarts before processing a reply that generates the thread's FIRST artifact + 2 inline tasks ---
+    const threadA = app.threads.createThread({
+      title: '首份文稿恢复测试',
+      activeOwnerMemberId: 'mem_a'
+    });
+    assert.equal(threadA.boundArtifactId, null, 'New thread starts with no bound artifact');
+
+    const nowIso = new Date().toISOString();
+    app.db.sqlite
+      .prepare(
+        `INSERT INTO v2_dispatch_attempts (
+          id, target_kind, target_id, thread_id, member_id, idempotency_key, scope_key,
+          native_session_id, native_turn_id, status, slot_held, base_artifact_id, base_artifact_version,
+          prompt_digest, prompt_bytes, handoff_bytes, response_text, usage_json, dispatched_at, settled_at
+        ) VALUES (
+          'att_rec_first_art', 'thread_message', 'msg_rec_agent_1', ?, 'mem_a', 'idem_rec_first_art', 'thread:rec',
+          'sess_1', 'turn_1', 'succeeded', 0, NULL, NULL,
+          'dig', 64, 0, ?, '{"workbenchDispatches":1,"nativeTurns":1,"providerUsage":{"observable":false,"modelRequests":null,"inputTokens":null,"cachedInputTokens":null,"uncachedInputTokens":null,"outputTokens":null,"totalTokens":null}}', ?, ?
+        )`
+      )
+      .run(
+        threadA.id,
+        '已整理首份方案与两项计划。\n' +
+          '<duolawork_artifact title="重启恢复首稿.md"># 重启恢复首稿\n核心章节一与章节二</duolawork_artifact>\n' +
+          '<duolawork_task>[{"title":"恢复早报计划","kind":"scheduled","cronExpr":"0 8 * * *","leadMemberId":"mem_a","goal":"早报","startImmediately":false},{"title":"恢复晚报计划","kind":"scheduled","cronExpr":"0 20 * * *","leadMemberId":"mem_a","goal":"晚报","startImmediately":false}]</duolawork_task>',
+        nowIso,
+        nowIso
+      );
+
+    app.db.sqlite
+      .prepare(
+        `INSERT INTO v2_thread_messages (
+          id, thread_id, seq, author_kind, author_id, target_member_id, attempt_id,
+          body, artifact_refs_json, turn_status, inline_actions_applied, created_at, updated_at
+        ) VALUES ('msg_rec_agent_1', ?, 1, 'agent', 'mem_a', 'mem_a', 'att_rec_first_art', '', '[]', 'running', 0, ?, ?)`
+      )
+      .run(threadA.id, nowIso, nowIso);
+
+    const synced1 = app.threads.syncReconciledThreadTurns();
+    assert.equal(synced1.length, 1);
+
+    const updatedThreadA = app.threads.getThread(threadA.id)!;
+    assert.ok(updatedThreadA.boundArtifactId, 'First artifact must be created & bound to thread during recovery');
+    const createdArt = app.artifacts.getArtifact(updatedThreadA.boundArtifactId!)!;
+    assert.equal(createdArt.title, '重启恢复首稿.md');
+    assert.match(createdArt.content, /核心章节一与章节二/);
+
+    const recoveredTasksA = app.tasks.listTasks({ sourceThreadId: threadA.id });
+    assert.equal(recoveredTasksA.length, 2, 'Both inline tasks recovered');
+
+    // Re-running syncReconciledThreadTurns must be a strict no-op (0 duplicates)
+    app.threads.syncReconciledThreadTurns();
+    assert.equal(app.tasks.listTasks({ sourceThreadId: threadA.id }).length, 2);
+
+    // --- Subcase B: Partial transient failure on 2nd inline task -> retry with same idempotencyKey completes 2nd task without duplicating 1st! ---
+    const threadB = app.threads.createThread({
+      title: '半途失败补建测试',
+      activeOwnerMemberId: 'mem_a'
+    });
+    app.registry.mockDriver.handlers.set('mem_a', async () => ({
+      text:
+        '为你建立两项计划：\n' +
+        '<duolawork_task>{"title":"半途测试计划一","kind":"scheduled","cronExpr":"0 9 * * *","leadMemberId":"mem_a","goal":"计划一","startImmediately":false}</duolawork_task>\n' +
+        '<duolawork_task>{"title":"半途测试计划二","kind":"scheduled","cronExpr":"0 18 * * *","leadMemberId":"mem_a","goal":"计划二","startImmediately":false}</duolawork_task>'
+    }));
+
+    const origCreateSync = app.threads.actionHandler!.createOrUpdateTaskSync!;
+    let createCallCounter = 0;
+    let injectTransientThrowOnSecond = true;
+    app.threads.actionHandler!.createOrUpdateTaskSync = (claims, args) => {
+      createCallCounter += 1;
+      if (injectTransientThrowOnSecond && createCallCounter === 2) {
+        throw new Error('SIMULATED_MID_ACTION_DB_INTERRUPT');
+      }
+      return origCreateSync(claims, args);
+    };
+
+    const partialKey = 'msgreq:partial-inline-recovery-01';
+    const firstTry = await app.threads.sendUserMessage({
+      threadId: threadB.id,
+      body: '建立早晚两项计划',
+      idempotencyKey: partialKey
+    });
+    assert.equal(app.tasks.listTasks({ sourceThreadId: threadB.id }).length, 1, 'Only task #1 created before interrupt');
+    const flagAfterInterrupt = app.db.sqlite
+      .prepare(`SELECT inline_actions_applied FROM v2_thread_messages WHERE id = ?`)
+      .get(firstTry.agentMessage.id) as { inline_actions_applied: number };
+    assert.equal(flagAfterInterrupt.inline_actions_applied, 0, 'inline_actions_applied must stay 0 when an action failed transiently');
+
+    // Now clear fault injection and retry with the exact same idempotencyKey!
+    injectTransientThrowOnSecond = false;
+    app.threads.actionHandler!.createOrUpdateTaskSync = origCreateSync;
+    const retryRes = await app.threads.sendUserMessage({
+      threadId: threadB.id,
+      body: '建立早晚两项计划',
+      idempotencyKey: partialKey
+    });
+    const tasksAfterRetryB = app.tasks.listTasks({ sourceThreadId: threadB.id });
+    assert.equal(tasksAfterRetryB.length, 2, 'Retry must create missing task #2 without duplicating task #1');
+    const flagAfterRetry = app.db.sqlite
+      .prepare(`SELECT inline_actions_applied FROM v2_thread_messages WHERE id = ?`)
+      .get(retryRes.agentMessage.id) as { inline_actions_applied: number };
+    assert.equal(flagAfterRetry.inline_actions_applied, 1);
+    assert.doesNotMatch(retryRes.agentMessage.body, /自动创建任务失败/);
+
+    // --- Subcase C: Git worktree coding step with code edits + empty text "" recovered across restart preserves commitSha & merges! ---
+    const repoDir = path.join(tmpDir, 'sample-git-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
+    execFileSync('git', ['init'], { cwd: repoDir });
+    fs.writeFileSync(path.join(repoDir, 'index.js'), 'module.exports = 1;\n');
+    execFileSync('git', ['add', '-A'], { cwd: repoDir });
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@local', 'commit', '-m', 'init'], {
+      cwd: repoDir
+    });
+
+    const { task: codeTask, initialRun: codeRun } = app.tasks.createOrUpdateTask({
+      sourceThreadId: threadB.id,
+      title: '代码工作区重启提交恢复',
+      leadMemberId: 'mem_a',
+      startImmediately: true,
+      spec: {
+        goal: '修改代码但返回空正文并在落库前重启',
+        workspaceRepoPath: repoDir,
+        steps: [
+          {
+            stepOrder: 1,
+            title: '编写模块代码',
+            assigneeMemberId: 'mem_b',
+            brief: '更新 index.js',
+            acceptanceCriteria: '代码可合并',
+            useWorktree: true
+          }
+        ]
+      }
+    });
+    void codeTask;
+    const codeStep = app.tasks.listSteps(codeRun!.id)[0];
+    const wtInfo = await app.worktrees.ensureStepWorktree({
+      repoPath: repoDir,
+      runId: codeRun!.id,
+      stepId: codeStep.id
+    });
+    // Worker edited file in worktree, returned empty text "", and server restarted before recording submission!
+    fs.writeFileSync(path.join(wtInfo.worktreePath, 'index.js'), 'module.exports = 42;\n');
+    app.db.sqlite
+      .prepare(`UPDATE v2_task_steps SET status = 'running', worktree_path = ?, worktree_branch = ? WHERE id = ?`)
+      .run(wtInfo.worktreePath, wtInfo.branchName, codeStep.id);
+    app.db.sqlite
+      .prepare(
+        `INSERT INTO v2_dispatch_attempts (
+          id, target_kind, target_id, thread_id, task_id, run_id, step_id,
+          member_id, idempotency_key, scope_key, native_session_id, native_turn_id,
+          status, slot_held, prompt_digest, prompt_bytes, handoff_bytes, response_text, usage_json, dispatched_at, settled_at
+        ) VALUES (
+          'att_wt_recover', 'task_step', ?, ?, ?, ?, ?,
+          'mem_b', 'step_wt_rec_1', ?, 'sess_wt', 'turn_wt',
+          'reconciling', 0, 'dig', 64, 0, NULL,
+          '{"workbenchDispatches":1,"nativeTurns":0,"providerUsage":{"observable":false,"modelRequests":null,"inputTokens":null,"cachedInputTokens":null,"uncachedInputTokens":null,"outputTokens":null,"totalTokens":null}}', ?, NULL
+        )`
+      )
+      .run(codeStep.id, threadB.id, codeRun!.taskId, codeRun!.id, codeStep.id, codeStep.isolatedSessionKey, nowIso);
+
+    app.registry.mockDriver.reconciledResults.set('att_wt_recover', {
+      state: 'completed',
+      text: '', // Empty text, ONLY code changes in worktree!
+      nativeSessionId: 'sess_wt',
+      nativeTurnId: 'turn_wt'
+    });
+    app.registry.mockDriver.handlers.set('mem_a', async () => ({
+      text: '{"verdict":"accept","comments":"代码提交完整，验收通过"}'
+    }));
+
+    await app.registry.reconcileInFlightAttempts({ waitTimeoutMs: 0 });
+    await app.tasks.reconcileInFlightTaskRuns();
+
+    const recoveredSub = app.tasks.getLatestStepSubmission(codeStep.id);
+    assert.ok(recoveredSub, 'Recovered submission must exist');
+    assert.ok(
+      recoveredSub!.commitSha && recoveredSub!.commitSha.length >= 7,
+      'Recovered coding step must commit worktree changes and record non-null commitSha'
+    );
+    const settledCodeRun = app.tasks.getRun(codeRun!.id)!;
+    assert.equal(settledCodeRun.status, 'completed', 'Code-only recovered step must merge & complete cleanly');
+    assert.ok(settledCodeRun.integrationWorktreePath);
+    assert.equal(
+      fs.readFileSync(path.join(settledCodeRun.integrationWorktreePath!, 'index.js'), 'utf8'),
+      'module.exports = 42;\n'
+    );
+  } finally {
+    await cleanup();
   }
 });

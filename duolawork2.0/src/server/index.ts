@@ -23,8 +23,9 @@ const app = new DuolaWorkApp({
 });
 
 const { url } = await app.listen(port, host);
-void app.registry.reconcileInFlightAttempts({ waitTimeoutMs: 3000 }).then(() => {
+void app.registry.reconcileInFlightAttempts({ waitTimeoutMs: 3000 }).then(async () => {
   app.threads.syncReconciledThreadTurns();
+  await app.tasks.reconcileInFlightTaskRuns();
 });
 
 console.log(`DuolaWork 2.0 (${cloudMode ? 'cloud' : 'standalone'}) listening on ${url}`);

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
@@ -698,18 +699,21 @@ export class TaskEngine {
             ? blockedMatch[1].trim()
             : result.text;
       const cleanedDeliverable = cleanDeliverableText(subContent);
-      const subSummary =
-        explicitSubmission?.summary?.trim() ||
-        cleanedDeliverable.slice(0, 180) ||
-        (subStatus === 'blocked' ? subContent.slice(0, 180) : '（未提交有效正文）');
 
       let commitSha: string | null = null;
       if (worktreePath && subStatus === 'submitted') {
         commitSha = await this.worktrees.commitStepChangesIfNeeded(
           worktreePath,
-          `step(${step.stepOrder}): ${step.title} v${submissionNumber}`
+          `step(${step.stepOrder}): ${step.title} v${submissionNumber}`,
+          run.id
         );
       }
+
+      const subSummary =
+        explicitSubmission?.summary?.trim() ||
+        cleanedDeliverable.slice(0, 180) ||
+        (commitSha ? `代码变更提交 (${commitSha.slice(0, 8)})` : '') ||
+        (subStatus === 'blocked' ? subContent.slice(0, 180) : '（未提交有效正文）');
 
       const submission = this.recordSubmission({
         stepId: step.id,
@@ -863,10 +867,7 @@ export class TaskEngine {
             if (rawVerdict !== 'accept' && rawVerdict !== 'changes_requested' && rawVerdict !== 'ask_user') {
               throw new Error(`无效的验收裁决类型: ${rawVerdict}`);
             }
-            explicitVerdict = {
-              verdict: rawVerdict,
-              comments: String(args.comments || '')
-            };
+            explicitVerdict = normalizeLeadVerdict(rawVerdict, String(args.comments || ''));
             return { ok: true };
           }
           throw new Error(`未知负责人核验工具: ${toolName}`);
@@ -1069,7 +1070,9 @@ export class TaskEngine {
         const sub = this.getLatestStepSubmission(s.id);
         const rev = this.getLatestStepReview(s.id);
         const workerName = this.db.getMember(s.assigneeMemberId)?.name || s.assigneeMemberId;
-        const cleanBody = cleanDeliverableText(sub?.content || '');
+        const cleanBody =
+          cleanDeliverableText(sub?.content || '') ||
+          (sub?.commitSha ? `已提交代码变更（commit: \`${sub.commitSha.slice(0, 8)}\`）` : '');
         return `## ${s.stepOrder}. ${s.title}（${workerName}）\n${cleanBody}\n\n> 验收结论：${rev?.comments || '核验通过'}`;
       });
 
@@ -1516,6 +1519,25 @@ export class TaskEngine {
               const subStatus: 'submitted' | 'blocked' = blockedMatch ? 'blocked' : 'submitted';
               const subContent = blockedMatch ? blockedMatch[1].trim() : att.responseText;
               const cleaned = cleanDeliverableText(subContent);
+
+              let recoveredCommitSha: string | null = existingSub?.commitSha ?? null;
+              if (
+                !existingSub &&
+                step.worktreePath &&
+                subStatus === 'submitted' &&
+                fs.existsSync(step.worktreePath)
+              ) {
+                try {
+                  recoveredCommitSha = await this.worktrees.commitStepChangesIfNeeded(
+                    step.worktreePath,
+                    `step(${step.stepOrder}): ${step.title} v${step.latestSubmissionVersion + 1}`,
+                    run.id
+                  );
+                } catch {
+                  recoveredCommitSha = null;
+                }
+              }
+
               const sub =
                 existingSub ??
                 this.recordSubmission({
@@ -1524,9 +1546,11 @@ export class TaskEngine {
                   version: step.latestSubmissionVersion + 1,
                   assigneeMemberId: step.assigneeMemberId,
                   attemptId: att.id,
-                  summary: cleaned.slice(0, 180) || '（恢复提交）',
+                  summary:
+                    cleaned.slice(0, 180) ||
+                    (recoveredCommitSha ? `代码变更提交 (${recoveredCommitSha.slice(0, 8)})` : '（恢复提交）'),
                   content: subContent,
-                  commitSha: null,
+                  commitSha: recoveredCommitSha,
                   status: subStatus
                 });
 
@@ -1785,6 +1809,42 @@ function validateStepsDag(
   }
 }
 
+function hasContradictoryReworkInAcceptComments(comments: string): boolean {
+  const cleaned = String(comments || '')
+    .replace(
+      /(?:并无|没有|未见|未发现|不存在|无任何|无明显|无)\s*(?:数据|内容|信息|关键|明显|核心)?(?:缺失|遗漏|错误|问题|不合格|缺漏)/g,
+      ''
+    )
+    .replace(/(?:无需|不需要|不必|不用)\s*(?:补充|修改|返工|重做|调整|重新提交|退回)/g, '');
+
+  return /(?:未通过|不通过|不合格|未达标|不予通过|打回|返工|退回|驳回|重做|不能交付|无法交付|拒绝交付|拒绝通过|不可交付|尚未完成|数据缺失|内容缺失|信息缺失|关键缺失|严重缺失|缺少必要|缺失较多|请补充|需要补充|需补充|待补充|请修改|需要修改|需修改|请修正|重新提交|补充后再|修改后再|完善后再)/i.test(
+    cleaned
+  );
+}
+
+function normalizeLeadVerdict(
+  verdict: StepReviewRecord['verdict'],
+  rawComments: string
+): { verdict: StepReviewRecord['verdict']; comments: string } {
+  const comments = String(rawComments ?? '').trim();
+  if (verdict === 'changes_requested') {
+    return { verdict: 'changes_requested', comments: comments || '负责人要求返工补充' };
+  }
+  if (verdict === 'ask_user') {
+    return { verdict: 'ask_user', comments: comments || '负责人请求人工确认' };
+  }
+  if (hasContradictoryReworkInAcceptComments(comments)) {
+    return {
+      verdict: 'changes_requested',
+      comments
+    };
+  }
+  return {
+    verdict: 'accept',
+    comments: comments || '核验通过'
+  };
+}
+
 export function parseLeadReviewJson(rawText: string): {
   verdict: StepReviewRecord['verdict'];
   comments: string;
@@ -1809,28 +1869,13 @@ export function parseLeadReviewJson(rawText: string): {
       const rawVerdict = String(obj.verdict || '').trim().toLowerCase();
       const comments = String(obj.comments ?? '').trim();
       if (rawVerdict === 'changes_requested' || rawVerdict === 'reject' || rawVerdict === 'rejected') {
-        return {
-          verdict: 'changes_requested',
-          comments: comments || '负责人要求返工补充'
-        };
+        return normalizeLeadVerdict('changes_requested', comments);
       }
       if (rawVerdict === 'ask_user') {
-        return {
-          verdict: 'ask_user',
-          comments: comments || '负责人请求人工确认'
-        };
+        return normalizeLeadVerdict('ask_user', comments);
       }
       if (rawVerdict === 'accept') {
-        if (/^\s*(?:未通过|不通过|不合格|拒绝通过|不能交付|无法交付)/.test(comments)) {
-          return {
-            verdict: 'changes_requested',
-            comments
-          };
-        }
-        return {
-          verdict: 'accept',
-          comments: comments || '核验通过'
-        };
+        return normalizeLeadVerdict('accept', comments);
       }
     } catch {
       // try next candidate or fall through to strict non-accept classification
@@ -1838,9 +1883,8 @@ export function parseLeadReviewJson(rawText: string): {
   }
 
   if (
-    /(?:未通过|不通过|不合格|未达标|打回|返工|退回|驳回|重做|不能交付|无法交付|拒绝交付|拒绝通过|数据缺失|内容缺失|需要补充|请补充|请修改|需修改|changes_requested|\brejected?\b)/i.test(
-      text
-    )
+    hasContradictoryReworkInAcceptComments(text) ||
+    /(?:changes_requested|\brejected?\b)/i.test(text)
   ) {
     return {
       verdict: 'changes_requested',

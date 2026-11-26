@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
@@ -43,6 +43,10 @@ export interface StructuredActionHandler {
     toolName: string,
     args: Record<string, unknown>
   ) => Promise<unknown>;
+  createOrUpdateTaskSync?: (
+    claims: ScopedTurnClaims,
+    args: Record<string, unknown>
+  ) => { task: { id: string } };
   getActiveTasksSummaryForThread: (threadId: string) => string[];
   getSpaceMaterialsSummaryForThread?: (
     threadId: string,
@@ -550,7 +554,7 @@ export class ThreadEngine {
           this.syncReconciledThreadTurns();
         }
         const curUser = this.getMessage(existingRow.id);
-        const curAgent = existingRow.paired_message_id
+        let curAgent = existingRow.paired_message_id
           ? this.getMessage(existingRow.paired_message_id)
           : null;
         if (
@@ -558,11 +562,46 @@ export class ThreadEngine {
           curAgent &&
           (curAgent.turnStatus === 'completed' || curAgent.turnStatus === 'canceled')
         ) {
-          return {
-            userMessage: curUser,
-            agentMessage: curAgent,
-            handoffBytes: curAgent.handoffMeta?.handoffBytes ?? 0
-          };
+          if (curAgent.turnStatus === 'completed') {
+            const flagRow = this.db.sqlite
+              .prepare(`SELECT inline_actions_applied FROM v2_thread_messages WHERE id = ?`)
+              .get(curAgent.id) as { inline_actions_applied: number } | undefined;
+            if (flagRow && Number(flagRow.inline_actions_applied) === 0 && curAgent.attemptId) {
+              const att = this.registry.getAttempt(curAgent.attemptId);
+              if (att && att.responseText !== null) {
+                const retryClaims = this.sandbox.issueScopedToken({
+                  principalKind: 'thread_owner',
+                  memberId: curAgent.authorId,
+                  attemptId: att.id,
+                  threadId: thread.id,
+                  allowedArtifactIds: att.baseArtifactId ? [att.baseArtifactId] : [],
+                  toolPolicy: 'duolabase_full'
+                });
+                try {
+                  const updatedBody = await this.applyInlineArtifactAndActions(
+                    att.responseText,
+                    retryClaims,
+                    att.baseArtifactId,
+                    att.baseArtifactVersion,
+                    curAgent.id
+                  );
+                  this.db.sqlite
+                    .prepare(`UPDATE v2_thread_messages SET body = ?, updated_at = ? WHERE id = ?`)
+                    .run(updatedBody, new Date().toISOString(), curAgent.id);
+                  curAgent = this.getMessage(curAgent.id);
+                } finally {
+                  this.sandbox.revokeToken(retryClaims.token);
+                }
+              }
+            }
+          }
+          if (curAgent) {
+            return {
+              userMessage: curUser,
+              agentMessage: curAgent,
+              handoffBytes: curAgent.handoffMeta?.handoffBytes ?? 0
+            };
+          }
         }
         if (curUser && curAgent) {
           const now = new Date().toISOString();
@@ -995,13 +1034,21 @@ export class ThreadEngine {
   public syncReconciledThreadTurns(): ThreadMessageRecord[] {
     const rows = this.db.sqlite
       .prepare(
-        `SELECT m.id AS msg_id, m.thread_id, m.seq, m.author_id,
+        `SELECT m.id AS msg_id, m.thread_id, m.seq, m.author_id, m.turn_status, m.inline_actions_applied,
                 a.id AS att_id, a.response_text, a.native_session_id, a.usage_json,
                 a.bridge_meta_json, a.dispatched_at,
                 a.base_artifact_id, a.base_artifact_version
          FROM v2_thread_messages m
          JOIN v2_dispatch_attempts a ON m.attempt_id = a.id
-         WHERE m.turn_status IN ('running', 'failed')
+         WHERE (
+           m.turn_status IN ('running', 'failed')
+           OR (
+             m.author_kind = 'agent'
+             AND m.turn_status = 'completed'
+             AND m.inline_actions_applied = 0
+             AND (a.response_text LIKE '%<duolawork_artifact%' OR a.response_text LIKE '%<duolawork_task%')
+           )
+         )
            AND a.status = 'succeeded'
            AND a.response_text IS NOT NULL`
       )
@@ -1015,50 +1062,32 @@ export class ThreadEngine {
       const seqNum = Number(r.seq);
       const dispatchedAt = r.dispatched_at ? String(r.dispatched_at) : '';
       const rawText = String(r.response_text);
-      const claimRes = this.db.sqlite
-        .prepare(
-          `UPDATE v2_thread_messages SET inline_actions_applied = 1
-           WHERE id = ? AND inline_actions_applied = 0`
-        )
-        .run(msgId);
-      const canApplySideEffects = Number(claimRes.changes) === 1;
+      const pinnedArtId = r.base_artifact_id ? String(r.base_artifact_id) : null;
+      const pinnedArtVer =
+        r.base_artifact_version !== null && r.base_artifact_version !== undefined
+          ? Number(r.base_artifact_version)
+          : null;
 
-      let cleanText = stripInlineArtifactBlock(rawText, (title, content) => {
-        if (
-          canApplySideEffects &&
-          r.base_artifact_id &&
-          r.base_artifact_version !== null &&
-          r.base_artifact_version !== undefined
-        ) {
-          this.artifacts.writeArtifact({
-            artifactId: String(r.base_artifact_id),
-            expectedBaseVersion: Number(r.base_artifact_version),
-            title,
-            content,
-            writerKind: 'agent',
-            writerId: memberId,
-            attemptId: String(r.att_id)
-          });
-        }
+      const recClaims = this.sandbox.issueScopedToken({
+        principalKind: 'thread_owner',
+        memberId,
+        attemptId: String(r.att_id),
+        threadId,
+        allowedArtifactIds: pinnedArtId ? [pinnedArtId] : [],
+        toolPolicy: 'duolabase_full'
       });
-      if (/<duolawork_task>/i.test(cleanText)) {
-        const stripped = this.extractInlineTasksSync(cleanText);
-        cleanText = stripped.cleaned || cleanText;
-        if (canApplySideEffects && this.actionHandler && stripped.items.length > 0) {
-          const recClaims = this.sandbox.issueScopedToken({
-            principalKind: 'thread_owner',
-            memberId,
-            attemptId: String(r.att_id),
-            threadId,
-            allowedArtifactIds: r.base_artifact_id ? [String(r.base_artifact_id)] : [],
-            toolPolicy: 'duolabase_full'
-          });
-          void Promise.all(
-            stripped.items.map((item) => this.actionHandler!.executeTool(recClaims, 'task_create_or_update', item))
-          )
-            .catch(() => {})
-            .finally(() => this.sandbox.revokeToken(recClaims.token));
-        }
+
+      let cleanText: string;
+      try {
+        cleanText = this.applyInlineArtifactAndActionsSync(
+          rawText,
+          recClaims,
+          pinnedArtId,
+          pinnedArtVer,
+          msgId
+        );
+      } finally {
+        this.sandbox.revokeToken(recClaims.token);
       }
 
       let parsedBridgeMeta: Record<string, unknown> | null | undefined = undefined;
@@ -1273,6 +1302,193 @@ export class ThreadEngine {
     };
   }
 
+  private getActionReceipt(actionKey: string): string | null {
+    const row = this.db.sqlite
+      .prepare(`SELECT result_id FROM v2_inline_action_receipts WHERE action_key = ?`)
+      .get(actionKey) as { result_id: string } | undefined;
+    return row ? String(row.result_id) : null;
+  }
+
+  private saveActionReceipt(
+    actionKey: string,
+    messageId: string,
+    actionKind: string,
+    resultId: string
+  ): void {
+    this.db.sqlite
+      .prepare(
+        `INSERT OR IGNORE INTO v2_inline_action_receipts (
+          action_key, message_id, action_kind, result_id, created_at
+        ) VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(actionKey, messageId, actionKind, resultId, new Date().toISOString());
+  }
+
+  private processInlineArtifactsWithReceipts(
+    rawText: string,
+    claims: ScopedTurnClaims,
+    pinnedArtifactId: string | null,
+    pinnedArtifactVersion: number | null,
+    keyOwner: string
+  ): { cleaned: string; hadUnhandledError: boolean } {
+    let currentArtifactId = pinnedArtifactId;
+    let currentBaseVer = pinnedArtifactVersion;
+    let spaceChanged = false;
+    let blockIndex = 0;
+    let hadUnhandledError = false;
+
+    const cleaned = stripInlineArtifactBlock(rawText, (title, content) => {
+      const idx = blockIndex++;
+      const actionKey = `inline_artifact:${keyOwner}:${idx}`;
+      const existingReceiptId = this.getActionReceipt(actionKey);
+      if (existingReceiptId) {
+        currentArtifactId = existingReceiptId;
+        currentBaseVer = this.artifacts.getArtifact(existingReceiptId)?.headVersion ?? currentBaseVer;
+        return;
+      }
+
+      try {
+        this.db.inTransaction(() => {
+          if (!currentArtifactId) {
+            const curThread = this.getThread(claims.threadId);
+            if (curThread?.boundArtifactId) {
+              const bound = this.artifacts.getArtifact(curThread.boundArtifactId);
+              if (bound) {
+                currentArtifactId = bound.id;
+                currentBaseVer = bound.headVersion;
+              }
+            }
+          }
+
+          if (currentArtifactId && currentBaseVer !== null) {
+            const written = this.artifacts.writeArtifact({
+              artifactId: currentArtifactId,
+              expectedBaseVersion: currentBaseVer,
+              title: title || undefined,
+              content,
+              writerKind: 'agent',
+              writerId: claims.memberId,
+              attemptId: claims.attemptId
+            });
+            currentBaseVer = written.artifact.headVersion;
+            this.saveActionReceipt(actionKey, keyOwner, 'artifact_write', currentArtifactId);
+            spaceChanged = true;
+          } else {
+            const created = this.artifacts.createArtifact({
+              sourceThreadId: claims.threadId,
+              title: title || '对话文稿.md',
+              content,
+              writerKind: 'agent',
+              writerId: claims.memberId,
+              attemptId: claims.attemptId
+            });
+            currentArtifactId = created.id;
+            currentBaseVer = created.headVersion;
+            this.db.sqlite
+              .prepare(`UPDATE v2_threads SET bound_artifact_id = COALESCE(bound_artifact_id, ?) WHERE id = ?`)
+              .run(created.id, claims.threadId);
+            this.saveActionReceipt(actionKey, keyOwner, 'artifact_create', created.id);
+            spaceChanged = true;
+          }
+        });
+      } catch {
+        hadUnhandledError = true;
+      }
+    });
+
+    if (spaceChanged) {
+      this.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+    }
+    return { cleaned, hadUnhandledError };
+  }
+
+  private applyInlineArtifactAndActionsSync(
+    rawText: string,
+    claims: ScopedTurnClaims,
+    pinnedArtifactId: string | null,
+    pinnedArtifactVersion: number | null,
+    agentMessageId?: string
+  ): string {
+    const keyOwner = agentMessageId || `attempt:${claims.attemptId}`;
+    const artRes = this.processInlineArtifactsWithReceipts(
+      rawText,
+      claims,
+      pinnedArtifactId,
+      pinnedArtifactVersion,
+      keyOwner
+    );
+    let cleaned = artRes.cleaned;
+    let hadTransientFailure = artRes.hadUnhandledError;
+
+    const extracted = this.extractInlineTasksSync(cleaned);
+    cleaned = extracted.cleaned;
+    const errors = [...extracted.errors];
+    let createdCount = 0;
+
+    if (extracted.items.length > 0 && this.actionHandler) {
+      for (let i = 0; i < extracted.items.length; i++) {
+        const entry = extracted.items[i];
+        const actionKey = `inline_task:${keyOwner}:${i}`;
+        const existingTaskId = this.getActionReceipt(actionKey);
+        if (existingTaskId) {
+          createdCount += 1;
+          continue;
+        }
+        const deterministicTaskId =
+          typeof entry.taskId === 'string' && entry.taskId.trim()
+            ? entry.taskId.trim()
+            : 'task_' + createHash('sha256').update(actionKey).digest('hex').slice(0, 10);
+
+        try {
+          if (this.actionHandler.createOrUpdateTaskSync) {
+            this.db.inTransaction(() => {
+              const created = this.actionHandler!.createOrUpdateTaskSync!(claims, {
+                ...entry,
+                taskId: deterministicTaskId
+              });
+              this.saveActionReceipt(actionKey, keyOwner, 'task_create', created.task.id);
+            });
+            createdCount += 1;
+          } else {
+            hadTransientFailure = true;
+            void this.actionHandler
+              .executeTool(claims, 'task_create_or_update', { ...entry, taskId: deterministicTaskId })
+              .then((out: any) => {
+                this.saveActionReceipt(
+                  actionKey,
+                  keyOwner,
+                  'task_create',
+                  String(out?.task?.id || deterministicTaskId)
+                );
+              })
+              .catch(() => {});
+          }
+        } catch (err) {
+          const statusCode = (err as { statusCode?: number })?.statusCode;
+          if (statusCode === 400 || statusCode === 403) {
+            errors.push((err as Error).message || '任务参数校验失败');
+          } else {
+            hadTransientFailure = true;
+            errors.push((err as Error).message || '创建任务暂时失败');
+          }
+        }
+      }
+    }
+
+    if (agentMessageId && !hadTransientFailure) {
+      this.db.sqlite
+        .prepare(`UPDATE v2_thread_messages SET inline_actions_applied = 1 WHERE id = ?`)
+        .run(agentMessageId);
+    }
+
+    if (errors.length > 0) {
+      cleaned = `${cleaned ? `${cleaned}\n\n` : ''}> ⚠️ 自动创建任务失败：${errors.join('；')}`;
+    }
+    if (cleaned.trim()) return cleaned.trim();
+    if (createdCount > 0) return `已创建 ${createdCount} 项协作任务。`;
+    return rawText.trim();
+  }
+
   private async applyInlineArtifactAndActions(
     rawText: string,
     claims: ScopedTurnClaims,
@@ -1280,69 +1496,76 @@ export class ThreadEngine {
     pinnedArtifactVersion: number | null,
     agentMessageId?: string
   ): Promise<string> {
-    const canExecuteSideEffects = agentMessageId
-      ? Number(
-          this.db.sqlite
-            .prepare(
-              `UPDATE v2_thread_messages SET inline_actions_applied = 1
-               WHERE id = ? AND inline_actions_applied = 0`
-            )
-            .run(agentMessageId).changes
-        ) === 1
-      : true;
+    const keyOwner = agentMessageId || `attempt:${claims.attemptId}`;
+    const artRes = this.processInlineArtifactsWithReceipts(
+      rawText,
+      claims,
+      pinnedArtifactId,
+      pinnedArtifactVersion,
+      keyOwner
+    );
+    let cleaned = artRes.cleaned;
+    let hadTransientFailure = artRes.hadUnhandledError;
 
-    let cleaned = rawText;
+    const extracted = this.extractInlineTasksSync(cleaned);
+    cleaned = extracted.cleaned;
+    const errors = [...extracted.errors];
+    let createdCount = 0;
 
-    // 1. Optional <duolawork_artifact title="...">...</duolawork_artifact>
-    let currentArtifactId = pinnedArtifactId;
-    let currentBaseVer = pinnedArtifactVersion;
-    let spaceChanged = false;
-    cleaned = stripInlineArtifactBlock(cleaned, (title, content) => {
-      if (!canExecuteSideEffects) return;
-      if (currentArtifactId && currentBaseVer !== null) {
-        this.artifacts.writeArtifact({
-          artifactId: currentArtifactId,
-          expectedBaseVersion: currentBaseVer,
-          title: title || undefined,
-          content,
-          writerKind: 'agent',
-          writerId: claims.memberId,
-          attemptId: claims.attemptId
-        });
-        currentBaseVer += 1;
-        spaceChanged = true;
-      } else {
-        const created = this.artifacts.createArtifact({
-          sourceThreadId: claims.threadId,
-          title: title || '对话文稿.md',
-          content,
-          writerKind: 'agent',
-          writerId: claims.memberId,
-          attemptId: claims.attemptId
-        });
-        currentArtifactId = created.id;
-        currentBaseVer = created.headVersion;
-        this.db.sqlite
-          .prepare(`UPDATE v2_threads SET bound_artifact_id = COALESCE(bound_artifact_id, ?) WHERE id = ?`)
-          .run(created.id, claims.threadId);
-        spaceChanged = true;
+    if (extracted.items.length > 0 && this.actionHandler) {
+      for (let i = 0; i < extracted.items.length; i++) {
+        const entry = extracted.items[i];
+        const actionKey = `inline_task:${keyOwner}:${i}`;
+        const existingTaskId = this.getActionReceipt(actionKey);
+        if (existingTaskId) {
+          createdCount += 1;
+          continue;
+        }
+        const deterministicTaskId =
+          typeof entry.taskId === 'string' && entry.taskId.trim()
+            ? entry.taskId.trim()
+            : 'task_' + createHash('sha256').update(actionKey).digest('hex').slice(0, 10);
+
+        try {
+          if (this.actionHandler.createOrUpdateTaskSync) {
+            this.db.inTransaction(() => {
+              const created = this.actionHandler!.createOrUpdateTaskSync!(claims, {
+                ...entry,
+                taskId: deterministicTaskId
+              });
+              this.saveActionReceipt(actionKey, keyOwner, 'task_create', created.task.id);
+            });
+          } else {
+            const out = (await this.actionHandler.executeTool(claims, 'task_create_or_update', {
+              ...entry,
+              taskId: deterministicTaskId
+            })) as { task?: { id?: string } } | undefined;
+            this.saveActionReceipt(
+              actionKey,
+              keyOwner,
+              'task_create',
+              String(out?.task?.id || deterministicTaskId)
+            );
+          }
+          createdCount += 1;
+        } catch (err) {
+          const statusCode = (err as { statusCode?: number })?.statusCode;
+          if (statusCode === 400 || statusCode === 403) {
+            errors.push((err as Error).message || '任务参数校验失败');
+          } else {
+            hadTransientFailure = true;
+            errors.push((err as Error).message || '创建任务暂时失败');
+          }
+        }
       }
-    });
-    if (spaceChanged) {
-      this.emit({ type: 'thread.space_updated', threadId: claims.threadId });
     }
 
-    // 2. Optional one or more <duolawork_task>{...}|[...]</duolawork_task> blocks
-    if (!canExecuteSideEffects) {
-      const strippedOnly = this.extractInlineTasksSync(cleaned);
-      cleaned = strippedOnly.cleaned;
-      if (cleaned.trim()) return cleaned.trim();
-      if (strippedOnly.items.length > 0) return `已创建 ${strippedOnly.items.length} 项协作任务。`;
-      return rawText.trim();
+    if (agentMessageId && !hadTransientFailure) {
+      this.db.sqlite
+        .prepare(`UPDATE v2_thread_messages SET inline_actions_applied = 1 WHERE id = ?`)
+        .run(agentMessageId);
     }
 
-    const { cleaned: afterTasks, createdCount, errors } = await this.applyInlineTaskBlocks(cleaned, claims);
-    cleaned = afterTasks;
     if (errors.length > 0) {
       cleaned = `${cleaned ? `${cleaned}\n\n` : ''}> ⚠️ 自动创建任务失败：${errors.join('；')}`;
     }
