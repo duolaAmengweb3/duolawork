@@ -703,25 +703,6 @@
   color: #b2baca;
   font-size: 9px;
 }
-.space-tabs {
-  display: flex;
-  border-bottom: 1px solid #eaeef5;
-  padding: 0 15px;
-  gap: 3px;
-}
-.space-tabs button {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #9ba6b8;
-  font-size: 11px;
-  padding: 10px 9px 13px;
-  border-bottom: 2px solid transparent;
-}
-.space-tabs button.active {
-  border-color: #6b8bd0;
-  color: #5274b8;
-}
 .space-content {
   padding: 20px;
   overflow: auto;
@@ -1251,12 +1232,6 @@
   }
   .space-content {
     padding: 16px;
-  }
-  .space-tabs {
-    padding: 0 8px;
-  }
-  .space-tabs button {
-    padding: 10px 7px;
   }
 }
 @media (max-width: 850px) {

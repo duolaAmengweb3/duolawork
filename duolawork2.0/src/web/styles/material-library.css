@@ -1,61 +1,22 @@
-/* Two-section library: chronological recent updates above, drill-down document/folder manager below. */
-.material-library{min-width:0;color:#465164;font-size:12px}
-.material-library .space-toolbar{gap:2px;margin-bottom:12px}
-.material-library .space-search{padding:7px 8px;gap:6px;min-width:0;flex:1;border-radius:6px}
-.material-library .space-search input{min-width:0;width:100%;font-size:12px}
-.material-library .space-toolbar>button,.material-library .shared-upload button{width:26px;height:28px;padding:4px;flex-shrink:0}
-.material-library .shared-upload{flex-shrink:0}
-.material-shortcuts{margin-bottom:10px}
-.material-section-title{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#6f7c91;margin:0 0 6px;padding:0 4px}
-.material-section-title [role=status]{margin-left:auto;font-size:10px;font-weight:400}
-.material-section-toggle{margin-left:auto;font-size:11px;font-weight:500;color:#4c70c4;padding:1px 4px;border-radius:4px}
-.material-section-toggle:hover{background:#edf2ff}
-.material-row{display:flex;position:relative;align-items:flex-start;min-width:0;border:0;border-radius:6px;background:transparent;box-shadow:none}
-.material-row:hover,.material-row:focus-within{background:#f0f3f8}
-.material-library .material-item-open{display:flex;align-items:flex-start;gap:7px;padding:6px 5px;min-width:0;flex:1;width:auto;text-align:left;font-size:12px;font-weight:400;line-height:1.45;border:0;background:none}
-.material-library .material-item-open>svg{flex:0 0 15px;color:#7888a0;margin:2px 0 0}
-.material-item-title{display:block;min-width:0;flex:1;white-space:normal;overflow-wrap:anywhere;color:#334157;font-size:12px;font-weight:450;line-height:1.45}
-.material-item-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:2px;font-size:10.5px;font-weight:400;color:#8a96aa}
-.material-folder-chip{display:inline-flex;align-items:center;gap:3px;max-width:130px;padding:0 5px;border-radius:4px;background:#eef2f8;color:#576a89;font-size:10px;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.material-pin-badge{display:inline-flex;align-items:center;color:#355cc9;margin-right:3px;vertical-align:middle}
-.material-row-menu{flex:0 0 22px;width:22px;height:28px;display:grid;place-items:center;color:#909baa;opacity:0;margin-top:2px;border-radius:4px}
-.material-row:hover>.material-row-menu,.material-row:focus-within>.material-row-menu,.material-folder-row:hover>.material-row-menu,.material-folder-row:focus-within>.material-row-menu{opacity:1}
-.material-recent-list{max-height:230px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain}
-.material-recent-list.expanded{max-height:380px}
-.material-recent-list::-webkit-scrollbar{width:4px}.material-recent-list::-webkit-scrollbar-thumb{background:transparent;border-radius:4px}.material-recent-list:hover::-webkit-scrollbar-thumb,.material-recent-list:focus-within::-webkit-scrollbar-thumb{background:#c1c8d3}
-.material-directory{border-top:1px solid #e6ebf3;padding-top:12px;margin-top:10px}
-.material-section-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 7px;padding:0 3px;font-size:11px;color:#6f7c91}
-.material-section-heading h4{font-size:11px;font-weight:600;margin:0}
-.material-section-heading>button:last-child{font-size:10.5px;color:#4c70c4}
-.material-explorer-nav{display:flex;align-items:center;gap:6px;padding:5px 7px;margin-bottom:7px;border-radius:7px;background:#f4f7fb;border:1px solid #e6ebf3;min-width:0}
-.material-explorer-back{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;padding:2px 6px;border-radius:5px;font-size:11px;font-weight:500;color:#355cc9;background:#e8effd}
-.material-explorer-back:hover{background:#dce7fc}
-.material-breadcrumbs{display:flex;align-items:center;gap:3px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:none;font-size:11px;color:#738199;white-space:nowrap}
+/* Two-section Collaboration Space material library helpers (layout & colors use Coss UI + Tailwind v4) */
+.material-library{min-width:0}
+.material-recent-list{max-height:236px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain}
+.material-recent-list.expanded{max-height:390px}
+.material-recent-list::-webkit-scrollbar{width:4px}
+.material-recent-list::-webkit-scrollbar-thumb{background:transparent;border-radius:4px}
+.material-recent-list:hover::-webkit-scrollbar-thumb,.material-recent-list:focus-within::-webkit-scrollbar-thumb{background:var(--border)}
 .material-breadcrumbs::-webkit-scrollbar{display:none}
-.material-breadcrumb-btn{color:#5a6a84;padding:1px 3px;border-radius:4px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.material-breadcrumb-btn:hover{background:#e7edf7;color:#2e4772}
-.material-breadcrumb-btn.current{font-weight:600;color:#2b3a55}
-.material-root-select{display:flex;align-items:center;gap:6px;font-weight:600;color:#647289;font-size:11px;padding:2px 0}
-.material-root-select.active{color:#3d5888}
-.material-folder-row{display:flex;align-items:center;min-width:0;border-radius:6px;padding:1px 2px}
-.material-folder-row:hover,.material-folder-row:focus-within{background:#f0f3f8}
-.material-folder-row.selected{background:#eaf0fa}
-.material-folder-open{display:flex;align-items:center;min-width:0;flex:1;gap:7px;text-align:left;padding:6px 5px;font-size:12px;font-weight:450;line-height:1.45;color:#394861}
-.material-folder-open>svg:first-child{flex:0 0 15px;color:#5c7eb8}
-.material-folder-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.material-folder-count{flex-shrink:0;font-size:10px;color:#8e9bb0;padding:0 4px}
-.material-folder-chevron{flex-shrink:0;color:#9aa6ba}
-.material-folder-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px;border:1px dashed #dfe6f1;border-radius:8px;text-align:center;color:#8391a7;font-size:11px}
-.material-folder-empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:4px}
-.material-search-folder{display:flex;align-items:flex-start;gap:7px;width:100%;text-align:left;padding:8px 4px;font-size:12px;line-height:1.6;color:#5c6e89}
-.material-search-folder>span{flex:1;min-width:0;overflow-wrap:anywhere}
-.material-search-folder>svg{flex-shrink:0;margin-top:3px}
-.material-list-loading,.material-list-empty{font-size:11px;font-weight:400;color:#9aa4b3;padding:8px 5px;margin:0}
-.material-load-more{padding:7px 5px;font-size:11px;color:#8294af;display:block}
-.material-trash{display:flex;align-items:center;gap:6px;font-size:11px;color:#929eae;border-top:1px solid #e8ecf2;margin-top:14px;padding:12px 4px 2px;width:100%;text-align:left}
 @media(hover:none){.material-row-menu{opacity:1}}
-.material-context{font-size:11px;color:#7b8aa0;line-height:1.7;border-top:1px solid #edf0f5;padding-top:10px;margin-top:10px}.material-context-tasks{margin:10px 0}.material-context-tasks>button,.material-source-history>button{display:block;text-align:left;width:100%;padding:8px 9px;border:1px solid #e9edf4;border-radius:7px;margin-top:6px;color:#536987;background:#fafbfe}.material-context-tasks small,.material-source-history small{display:block;font-size:10px;color:#8795aa}.material-context-tasks p{font-size:11px}.material-source-history>button span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.material-external-source a{margin-left:6px;color:#416ac0}.material-associate-form{display:grid;gap:7px;margin:10px 0}.material-associate-form input,.material-associate-form select{width:100%;min-width:0;border:1px solid #dce4ef;border-radius:6px;background:white;padding:7px;font-size:12px}.material-folder-dialog-list{display:grid;gap:8px}.material-file-text{white-space:pre-wrap;overflow:auto;max-height:50vh;overflow-wrap:anywhere;background:#f5f7fa;border:1px solid #e5eaf2;border-radius:8px;padding:14px;font-size:12px;line-height:1.7}.material-pdf-frame{width:100%;height:52vh;border:1px solid #e5eaf2;border-radius:8px}.material-working-outputs{margin:12px 0;padding:14px;background:#f5f8fd;border:1px solid #e4eaf5;border-radius:10px}.material-working-outputs h4{font-size:12px;color:#516784;margin:0 0 8px}.material-working-outputs button{display:block;width:100%;text-align:left;font-size:13px;color:#3c629e;padding:6px 0}.material-working-outputs small{display:block;color:#8b98ab;font-size:10px}.material-history-notice{font-size:12px;line-height:1.7;background:#f4f6fa;padding:9px 12px;border-radius:7px;color:#72829b}.material-history-notice button{margin-left:8px;color:#416ac0}
-
-.material-context-tasks>button.material-unlink{display:inline-block;width:auto;padding:2px 0;margin:3px 0 5px;border:0;background:transparent;font-size:10px;color:#8b97a8}.material-source-snapshot{margin:10px 0}.material-library .space-object-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-.material-source-snapshot a{overflow-wrap:anywhere;color:#416ac0}
+.material-context{font-size:11px;color:var(--muted-foreground);line-height:1.7;border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+.material-context-tasks{margin:10px 0}
+.material-context-tasks>button,.material-source-history>button{display:block;text-align:left;width:100%;padding:8px 9px;border:1px solid var(--border);border-radius:8px;margin-top:6px;color:var(--foreground);background:var(--card)}
+.material-context-tasks small,.material-source-history small{display:block;font-size:10px;color:var(--muted-foreground)}
+.material-context-tasks p{font-size:11px}
+.material-source-history>button span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.material-external-source a{margin-left:6px;color:var(--info-foreground)}
+.material-associate-form{display:grid;gap:7px;margin:10px 0}
+.material-file-text{white-space:pre-wrap;overflow:auto;max-height:50vh;overflow-wrap:anywhere;background:var(--muted);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;line-height:1.7;color:var(--foreground)}
+.material-pdf-frame{width:100%;height:52vh;border:1px solid var(--border);border-radius:8px}
+.material-context-tasks>button.material-unlink{display:inline-block;width:auto;padding:2px 0;margin:3px 0 5px;border:0;background:transparent;font-size:10px;color:var(--muted-foreground)}
+.material-source-snapshot{margin:10px 0}
+.material-source-snapshot a{overflow-wrap:anywhere;color:var(--info-foreground)}

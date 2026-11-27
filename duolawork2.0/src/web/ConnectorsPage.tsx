@@ -1,7 +1,6 @@
 import { useViewCache, useViewData } from './view-cache.js';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Check,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -13,8 +12,16 @@ import {
   Wrench,
   X
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { DuolaBasePublicStatus } from '../shared/types.js';
 import { ServiceIcon } from './ServiceIcon.js';
+import { Badge } from './components/ui/badge.js';
+import { Button } from './components/ui/button.js';
+import { Card } from './components/ui/card.js';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
+import { Frame, FramePanel } from './components/ui/frame.js';
+import { Input } from './components/ui/input.js';
+import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 
 interface ConnectorItem {
   id: string;
@@ -58,14 +65,14 @@ export function ConnectorsPage({
   const views = useViewCache();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [notice, setNotice] = useState<string>('');
   const [query, setQuery] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [checkingId, setCheckingId] = useState<string | null>(null);
-  const [toolsByConn, setToolsByConn] = useState<Record<string, Array<{ name: string; description?: string }>>>({});
+  const [toolsByConn, setToolsByConn] = useState<
+    Record<string, Array<{ name: string; description?: string }>>
+  >({});
   const [expandedConnId, setExpandedConnId] = useState<string | null>(null);
 
-  // Add/edit drawer
   const [editorOpen, setEditorOpen] = useState<boolean>(false);
   const [editId, setEditId] = useState<string>('');
   const [editName, setEditName] = useState<string>('');
@@ -77,30 +84,49 @@ export function ConnectorsPage({
   const [editToken, setEditToken] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
 
-  // Optional DuolaBase endpoint/token config
   const [configOpen, setConfigOpen] = useState<boolean>(false);
   const [cfgEndpoint, setCfgEndpoint] = useState<string>(duolabaseStatus.endpoint);
   const [cfgToken, setCfgToken] = useState<string>('');
 
   const qs = new URLSearchParams();
-  if (category) qs.set('category',category);
-  if (query.trim()) qs.set('query',query.trim());
+  if (category) qs.set('category', category);
+  if (query.trim()) qs.set('query', query.trim());
   const enabled = duolabaseStatus.enabled && duolabaseStatus.hasToken;
-  const url = '/api/v2/duolabase/connectors?'+qs.toString();
-  const {data, read} = useViewData<{items?: ConnectorItem[]} | ConnectorItem[]>(url, 30000, enabled);
+  const url = '/api/v2/duolabase/connectors?' + qs.toString();
+  const { data, read } = useViewData<{ items?: ConnectorItem[] } | ConnectorItem[]>(
+    url,
+    30000,
+    enabled
+  );
   const items = Array.isArray(data) ? data : data?.items ?? [];
+
   const loadConnectors = async () => {
     views.expire('/api/v2/duolabase/connectors');
-    setLoading(true); setError('');
-    try { await read(); } catch (err) { setError((err as Error).message); }
-    finally {setLoading(false);}
+    setLoading(true);
+    setError('');
+    try {
+      await read();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
+
   useEffect(() => {
     let active = true;
-    setLoading(enabled && !views.peek(url));setError('');
-    void read().catch(err => {if (active) setError(err.message);})
-      .finally(() => {if (active) setLoading(false);});
-    return () => {active = false;};
+    setLoading(enabled && !views.peek(url));
+    setError('');
+    void read()
+      .catch((err) => {
+        if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [enabled, read, url, views]);
 
   const handleCheck = async (id: string) => {
@@ -110,10 +136,9 @@ export function ConnectorsPage({
       const res = await fetch(`/api/v2/duolabase/connectors/${encodeURIComponent(id)}/check`, {
         method: 'POST'
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '检测失败');
-      setNotice('已完成连通性检测并同步工具列表');
-      setTimeout(() => setNotice(''), 2500);
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.message || '检测失败');
+      toast.success('已完成连通性检测并同步工具列表');
       await loadConnectors();
     } catch (err) {
       setError((err as Error).message);
@@ -131,9 +156,13 @@ export function ConnectorsPage({
     if (toolsByConn[id]) return;
     try {
       const res = await fetch(`/api/v2/duolabase/connectors/${encodeURIComponent(id)}/tools`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '读取工具列表失败');
-      const tools = Array.isArray(data?.tools) ? data.tools : Array.isArray(data?.items) ? data.items : [];
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.message || '读取工具列表失败');
+      const tools = Array.isArray(out?.tools)
+        ? out.tools
+        : Array.isArray(out?.items)
+          ? out.items
+          : [];
       setToolsByConn((prev) => ({ ...prev, [id]: tools }));
     } catch (err) {
       setError((err as Error).message);
@@ -167,11 +196,10 @@ export function ConnectorsPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '保存连接器失败');
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.message || '保存连接器失败');
       setEditorOpen(false);
-      setNotice('连接器已保存并托管至 DuolaBase');
-      setTimeout(() => setNotice(''), 2500);
+      toast.success('连接器已保存并托管至 DuolaBase');
       await loadConnectors();
     } catch (err) {
       setError((err as Error).message);
@@ -194,60 +222,50 @@ export function ConnectorsPage({
       views.expire('/api/v2/duolabase/', true);
       setCfgToken('');
       setConfigOpen(false);
+      toast.success('已更新 DuolaBase 网关配置');
       await onReloadStatus();
       await loadConnectors();
     }
   };
 
-  const activeCount = useMemo(
-    () => items.filter((i) => isConnectorReady(i)).length,
-    [items]
-  );
+  const activeCount = useMemo(() => items.filter((i) => isConnectorReady(i)).length, [items]);
 
   return (
-    <section className="workspace-services">
-      <div className="connector-workspace">
-        <header className="services-header">
-          <div>
-            <span className="service-heading-icon">
-              <Plug size={20} />
-            </span>
-            <div>
-              <h1>连接器统一管理</h1>
-              <p>
-                由 DuolaBase 统一托管 OAuth 与外部工具权限（按需懒加载，不向每轮对话灌注整套工具列表）。
-              </p>
+    <section className="h-full w-full overflow-y-auto bg-background text-foreground">
+      <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 px-5 py-7 sm:px-8 sm:py-8">
+        {/* Unified Header */}
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="m-0 text-xl font-semibold tracking-tight text-foreground">
+                连接器统一管理
+              </h1>
+              <Badge variant={duolabaseStatus.enabled ? 'success' : 'secondary'} size="sm">
+                {duolabaseStatus.enabled ? `在线 ${activeCount} / ${items.length}` : '已关闭'}
+              </Badge>
             </div>
+            <p className="m-0 text-[13px] text-muted-foreground">
+              由 DuolaBase 统一托管 OAuth 与外部工具权限，按需懒加载调用。
+            </p>
           </div>
 
-          <div className="services-header-actions">
-            <button
-              type="button"
-              onClick={() => void loadConnectors()}
-              disabled={loading}
-              className="dw-btn dw-btn-outline dw-btn-sm"
-            >
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => void loadConnectors()} disabled={loading}>
               <RefreshCw size={13} className={loading ? 'is-refreshing' : ''} />
               <span>刷新</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfigOpen((v) => !v)}
-              className="dw-btn dw-btn-outline dw-btn-sm"
-            >
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setConfigOpen((v) => !v)}>
               <Settings2 size={13} />
               <span>服务设置</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void onToggleDuolabase()}
-              className="dw-btn dw-btn-outline dw-btn-sm"
-              style={{ color: duolabaseStatus.enabled ? '#27846b' : '#7b879c' }}
-            >
-              {duolabaseStatus.enabled ? `已启用 · 在线 ${activeCount}/${items.length}` : '已关闭 · 点击启用'}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void onToggleDuolabase()}>
+              <span
+                className={`size-1.5 rounded-full ${duolabaseStatus.enabled ? 'bg-emerald-500' : 'bg-neutral-400'}`}
+              />
+              <span>{duolabaseStatus.enabled ? '已启用' : '点击启用'}</span>
+            </Button>
+            <Button
+              size="sm"
               disabled={!duolabaseStatus.enabled}
               onClick={() => {
                 setEditId('');
@@ -259,311 +277,385 @@ export function ConnectorsPage({
                 setEditToken('');
                 setEditorOpen(true);
               }}
-              className="dw-btn dw-btn-primary dw-btn-sm"
             >
               <Plus size={14} />
               <span>添加连接器</span>
-            </button>
+            </Button>
           </div>
         </header>
 
         {configOpen && (
-          <form
-            onSubmit={handleSaveGatewayConfig}
-            className="mb-5 rounded-xl border p-4 flex flex-col gap-3 text-xs dw-inline-panel"
-          >
-            <div className="flex items-center justify-between">
-              <strong>DuolaBase 网关设置</strong>
-              <a
-                href={duolabaseStatus.consoleUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="connector-login"
-              >
-                <span>打开 DuolaBase 控制台</span>
-                <ExternalLink size={12} />
-              </a>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1.5">
-                <span>MCP 接入地址</span>
-                <input
-                  type="url"
-                  value={cfgEndpoint}
-                  onChange={(e) => setCfgEndpoint(e.target.value)}
-                  className="dw-input"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span>
-                  管理令牌（{duolabaseStatus.hasToken ? `已就绪 · 来源：${duolabaseStatus.tokenSource}` : '未配置'}）
-                </span>
-                <input
-                  type="password"
-                  value={cfgToken}
-                  onChange={(e) => setCfgToken(e.target.value)}
-                  placeholder={duolabaseStatus.hasToken ? '留空保持已有令牌不变' : '粘贴 Bearer 访问令牌'}
-                  className="dw-input"
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setConfigOpen(false)} className="dw-btn dw-btn-outline dw-btn-sm">
-                取消
-              </button>
-              <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                保存配置
-              </button>
-            </div>
-          </form>
+          <Frame className="dw-inline-panel">
+            <FramePanel className="p-4 sm:p-5">
+              <form onSubmit={handleSaveGatewayConfig} className="flex flex-col gap-3.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-sm font-semibold text-foreground">DuolaBase 网关设置</strong>
+                  <a
+                    href={duolabaseStatus.consoleUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-info-foreground hover:underline"
+                  >
+                    <span>打开 DuolaBase 控制台</span>
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">MCP 接入地址</span>
+                    <Input
+                      nativeInput
+                      type="url"
+                      value={cfgEndpoint}
+                      onChange={(e) => setCfgEndpoint(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">
+                      管理令牌（
+                      {duolabaseStatus.hasToken ? `已就绪 · 来源：${duolabaseStatus.tokenSource}` : '未配置'}）
+                    </span>
+                    <Input
+                      nativeInput
+                      type="password"
+                      value={cfgToken}
+                      onChange={(e) => setCfgToken(e.target.value)}
+                      placeholder={
+                        duolabaseStatus.hasToken ? '留空保持已有令牌不变' : '粘贴 Bearer 访问令牌'
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setConfigOpen(false)}>
+                    取消
+                  </Button>
+                  <Button type="submit" size="sm">
+                    保存配置
+                  </Button>
+                </div>
+              </form>
+            </FramePanel>
+          </Frame>
         )}
 
         {error && (
-          <div className="services-error mb-4 flex items-center justify-between">
-            <span>{error}</span>
-            <button type="button" onClick={() => setError('')} aria-label="关闭错误">
-              <X size={14} />
-            </button>
-          </div>
-        )}
-        {notice && (
           <div
-            className="mb-4 rounded-lg px-3 py-2 text-xs flex items-center gap-1.5"
-            style={{ backgroundColor: '#eaf7f2', color: '#27846b' }}
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-2.5 text-xs text-destructive-foreground"
           >
-            <Check size={14} />
-            <span>{notice}</span>
+            <span>{error}</span>
+            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label="关闭错误">
+              <X size={13} />
+            </Button>
           </div>
         )}
 
-        <div className="connector-browse">
-          <div className="connector-categories">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.id || 'all'}
-                type="button"
-                aria-pressed={category === c.id}
-                onClick={() => setCategory(c.id)}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
+        {/* Category Tabs + Search */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Tabs value={category} onValueChange={(v) => setCategory(String(v))}>
+            <TabsList size="sm" className="flex-wrap">
+              {CATEGORIES.map((c) => (
+                <TabsTab key={c.id || 'all'} value={c.id}>
+                  {c.label}
+                </TabsTab>
+              ))}
+            </TabsList>
+          </Tabs>
 
-          <div className="connector-search">
-            <Search size={14} />
-            <input
+          <div className="relative flex w-full items-center sm:w-64">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2.5 z-10 text-muted-foreground"
+            />
+            <Input
+              nativeInput
+              size="sm"
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索连接器名称或平台…"
-              className="dw-input"
+              className="pl-7 [&_input]:pl-7"
             />
           </div>
         </div>
 
         {editorOpen && (
-          <form
-            onSubmit={handleSaveConnector}
-            className="mb-6 rounded-xl border p-5 connector-form dw-inline-panel"
-          >
-            <div className="flex items-center justify-between">
-              <strong style={{ fontSize: 15 }}>{editId ? '更新连接器配置' : '接入新外部连接器'}</strong>
-              <button type="button" onClick={() => setEditorOpen(false)} aria-label="关闭编辑">
-                <X size={15} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label>
-                <span>连接器名称</span>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="例如：GitHub 研发仓库"
-                  className="dw-input"
-                />
-              </label>
-              <label>
-                <span>业务分类</span>
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {CATEGORIES.filter((c) => c.id).map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setEditCategory(c.id)}
-                      className={editCategory === c.id ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </label>
-              <label>
-                <span>传输协议</span>
-                <div className="flex gap-1.5 pt-1">
-                  {(['http_mcp', 'http_api'] as const).map((tr) => (
-                    <button
-                      key={tr}
-                      type="button"
-                      onClick={() => setEditTransport(tr)}
-                      className={editTransport === tr ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
-                    >
-                      {tr === 'http_mcp' ? 'HTTP MCP' : 'HTTP API'}
-                    </button>
-                  ))}
-                </div>
-              </label>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label>
-                <span>Endpoint URL</span>
-                <input
-                  type="url"
-                  required
-                  value={editUrl}
-                  onChange={(e) => setEditUrl(e.target.value)}
-                  placeholder="https://api.example.com/mcp"
-                  className="dw-input"
-                />
-              </label>
-              <label>
-                <span>认证凭证（加密存入 DuolaBase Vault）</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditAuthMode(editAuthMode === 'none' ? 'bearer' : 'none')}
-                    className="dw-btn dw-btn-outline dw-btn-sm"
+          <Frame className="dw-inline-panel">
+            <FramePanel className="p-4 sm:p-5">
+              <form onSubmit={handleSaveConnector} className="flex flex-col gap-4 text-xs">
+                <div className="flex items-center justify-between">
+                  <strong className="text-sm font-semibold text-foreground">
+                    {editId ? '更新连接器配置' : '接入新外部连接器'}
+                  </strong>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setEditorOpen(false)}
+                    aria-label="关闭编辑"
                   >
-                    {editAuthMode === 'none' ? '无需鉴权' : 'Bearer Token'}
-                  </button>
-                  {editAuthMode === 'bearer' && (
-                    <input
-                      type="password"
-                      value={editToken}
-                      onChange={(e) => setEditToken(e.target.value)}
-                      placeholder={editId ? '留空保留原密钥' : '粘贴 API Token / 密钥'}
-                      className="dw-input"
-                    />
-                  )}
+                    <X size={14} />
+                  </Button>
                 </div>
-              </label>
-            </div>
-            <footer>
-              <button type="button" onClick={() => setEditorOpen(false)} className="dw-btn dw-btn-outline dw-btn-sm">
-                取消
-              </button>
-              <button type="submit" disabled={saving} className="dw-btn dw-btn-primary dw-btn-sm">
-                {saving ? '保存检测中…' : '保存并检测'}
-              </button>
-            </footer>
-          </form>
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">连接器名称</span>
+                    <Input
+                      nativeInput
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="例如：GitHub 研发仓库"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">业务分类</span>
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {CATEGORIES.filter((c) => c.id).map((c) => (
+                        <Button
+                          key={c.id}
+                          size="xs"
+                          variant={editCategory === c.id ? 'default' : 'outline'}
+                          onClick={() => setEditCategory(c.id)}
+                        >
+                          {c.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">传输协议</span>
+                    <div className="flex gap-1.5 pt-0.5">
+                      {(['http_mcp', 'http_api'] as const).map((tr) => (
+                        <Button
+                          key={tr}
+                          size="xs"
+                          variant={editTransport === tr ? 'default' : 'outline'}
+                          onClick={() => setEditTransport(tr)}
+                        >
+                          {tr === 'http_mcp' ? 'HTTP MCP' : 'HTTP API'}
+                        </Button>
+                      ))}
+                    </div>
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">Endpoint URL</span>
+                    <Input
+                      nativeInput
+                      type="url"
+                      required
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      placeholder="https://api.example.com/mcp"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-muted-foreground">认证凭证（加密存入 DuolaBase Vault）</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditAuthMode(editAuthMode === 'none' ? 'bearer' : 'none')}
+                      >
+                        {editAuthMode === 'none' ? '无需鉴权' : 'Bearer Token'}
+                      </Button>
+                      {editAuthMode === 'bearer' && (
+                        <div className="flex-1">
+                          <Input
+                            nativeInput
+                            type="password"
+                            value={editToken}
+                            onChange={(e) => setEditToken(e.target.value)}
+                            placeholder={editId ? '留空保留原密钥' : '粘贴 API Token / 密钥'}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditorOpen(false)}>
+                    取消
+                  </Button>
+                  <Button type="submit" size="sm" loading={saving}>
+                    {saving ? '保存检测中…' : '保存并检测'}
+                  </Button>
+                </div>
+              </form>
+            </FramePanel>
+          </Frame>
         )}
 
-        {!duolabaseStatus.enabled || !duolabaseStatus.hasToken ? (
-          <div className="connector-start">
-            <Plug size={34} />
-            <h2>{!duolabaseStatus.enabled ? 'DuolaBase 连接器当前已关闭' : '尚未检测到 DuolaBase 授权令牌'}</h2>
-            <p>
-              {!duolabaseStatus.enabled
-                ? '启用后可在此集中查看与管理飞书、GitHub、Gmail、Notion、Vercel 等外部服务连接。'
-                : '请点击右上角“服务设置”填入 DuolaBase 访问令牌，或保持本机 Codex 的 [mcp_servers.duolabase] 配置有效。'}
-            </p>
-          </div>
+        {/* Connector Grid */}
+        {!enabled ? (
+          <Frame>
+            <FramePanel>
+              <Empty className="py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Plug />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-base">
+                    {!duolabaseStatus.enabled
+                      ? 'DuolaBase 连接器当前已关闭'
+                      : '尚未检测到 DuolaBase 授权令牌'}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {!duolabaseStatus.enabled
+                      ? '启用后可在此集中查看与管理飞书、GitHub、Gmail、Notion、Vercel 等外部服务连接。'
+                      : '请点击右上角「服务设置」填入 DuolaBase 访问令牌。'}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            </FramePanel>
+          </Frame>
         ) : data === undefined ? (
-          error ? null : <p className="connector-empty-inline" role="status">正在读取连接器…</p>
-        ) : items.length === 0 ? (
-          <p className="connector-empty-inline">没有匹配的连接器，可点击右上角「添加连接器」快速接入。</p>
-        ) : (
-          <div className="connector-section">
-            <div className="connector-section-heading">
-              <h2>
-                已托管服务 <span>{items.length}</span>
-              </h2>
-              <small>均通过 DuolaBase 代理鉴权与调用</small>
+          error ? null : (
+            <div className="py-12 text-center text-xs text-muted-foreground" role="status">
+              正在读取连接器…
             </div>
-            <div className="connector-grid">
-              {items.map((conn) => {
-                const isOk = isConnectorReady(conn);
-                const isDisabled = conn.status === 'disabled' || conn.status === 'inactive';
-                const expanded = expandedConnId === conn.id;
-                const tools = toolsByConn[conn.id] ?? conn.tools ?? [];
-                return (
-                  <article key={conn.id} className="connector-row connector-card">
-                    <div className="connector-card-top">
-                      <ServiceIcon provider={conn.provider} />
-                      <span className={`connector-health ${isOk ? 'ready' : isDisabled ? 'paused' : 'attention'}`}>
-                        {isDisabled ? '已停用' : isOk ? '可用' : conn.health || conn.status || '待检测'}
-                      </span>
+          )
+        ) : items.length === 0 ? (
+          <Frame>
+            <FramePanel>
+              <Empty className="py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Plug />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-base">没有匹配的连接器</EmptyTitle>
+                  <EmptyDescription>
+                    调整分类或搜索词，或点击右上角「添加连接器」快速接入。
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            </FramePanel>
+          </Frame>
+        ) : (
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((conn) => {
+              const isOk = isConnectorReady(conn);
+              const isDisabled = conn.status === 'disabled' || conn.status === 'inactive';
+              const expanded = expandedConnId === conn.id;
+              const tools = toolsByConn[conn.id] ?? conn.tools ?? [];
+              return (
+                <Card
+                  key={conn.id}
+                  render={<article />}
+                  className="connector-card gap-3.5 p-4 transition-colors hover:border-ring/50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="shrink-0">
+                        <ServiceIcon provider={conn.provider} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="m-0 truncate text-[14px] font-semibold text-foreground">
+                          {conn.name}
+                        </h3>
+                        <p className="m-0 mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                          {conn.provider || 'custom'} · {conn.transport || 'http_mcp'}
+                        </p>
+                      </div>
                     </div>
+                    <Badge
+                      variant={isOk ? 'success' : isDisabled ? 'secondary' : 'warning'}
+                      size="sm"
+                      className="shrink-0"
+                    >
+                      {isDisabled ? '已停用' : isOk ? '可用' : conn.health || conn.status || '待检测'}
+                    </Badge>
+                  </div>
 
-                    <div className="connector-main">
-                      <h3>{conn.name}</h3>
-                      <p>
-                        {conn.provider || 'custom'} · {conn.transport || 'http_mcp'}
-                        {conn.toolCount !== undefined ? ` · ${conn.toolCount} 个工具` : ''}
-                      </p>
-                      {conn.endpointUrl && <small>{conn.endpointUrl}</small>}
+                  {conn.endpointUrl && (
+                    <div
+                      className="truncate font-mono text-[11px] text-muted-foreground/85"
+                      title={conn.endpointUrl}
+                    >
+                      {conn.endpointUrl}
                     </div>
+                  )}
 
-                    {conn.lastError && <div className="services-error">{conn.lastError}</div>}
+                  {conn.lastError && (
+                    <div className="rounded-lg bg-destructive/8 px-2.5 py-1.5 text-[11px] text-destructive-foreground">
+                      {conn.lastError}
+                    </div>
+                  )}
 
-                    <div className="connector-card-actions">
-                      <button
-                        type="button"
+                  <div className="mt-auto flex items-center justify-between gap-1.5 border-t border-border pt-3">
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="xs"
                         onClick={() => void handleToggleTools(conn.id)}
-                        className="dw-btn dw-btn-outline dw-btn-sm"
                       >
-                        <Wrench size={12} />
-                        <span>查看工具</span>
-                        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      </button>
-                      <button
-                        type="button"
+                        <Wrench size={11} />
+                        <span>
+                          查看工具
+                          {conn.toolCount !== undefined ? ` (${conn.toolCount})` : ''}
+                        </span>
+                        {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
                         onClick={() => void handleCheck(conn.id)}
                         disabled={checkingId === conn.id}
-                        className="dw-btn dw-btn-outline dw-btn-sm"
                       >
-                        <RefreshCw size={12} className={checkingId === conn.id ? 'is-refreshing' : ''} />
+                        <RefreshCw
+                          size={11}
+                          className={checkingId === conn.id ? 'is-refreshing' : ''}
+                        />
                         <span>检测</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditId(conn.id);
-                          setEditName(conn.name);
-                          setEditProvider(conn.provider || 'custom');
-                          setEditCategory(conn.category || 'general');
-                          setEditTransport(conn.transport === 'http_api' ? 'http_api' : 'http_mcp');
-                          setEditUrl(conn.endpointUrl || '');
-                          setEditToken('');
-                          setEditorOpen(true);
-                        }}
-                        className="dw-btn dw-btn-ghost dw-btn-sm"
-                      >
-                        编辑
-                      </button>
+                      </Button>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => {
+                        setEditId(conn.id);
+                        setEditName(conn.name);
+                        setEditProvider(conn.provider || 'custom');
+                        setEditCategory(conn.category || 'general');
+                        setEditTransport(conn.transport === 'http_api' ? 'http_api' : 'http_mcp');
+                        setEditUrl(conn.endpointUrl || '');
+                        setEditToken('');
+                        setEditorOpen(true);
+                      }}
+                    >
+                      编辑
+                    </Button>
+                  </div>
 
-                    {expanded && (
-                      <div className="connector-tools">
-                        {tools.length === 0 ? (
-                          <p>暂未发现可用工具或正在读取…</p>
-                        ) : (
-                          tools.map((t) => (
-                            <div key={t.name}>
-                              <strong>{t.name}</strong>
-                              {t.description && <p>{t.description}</p>}
+                  {expanded && (
+                    <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-muted/40 p-2.5 text-xs">
+                      {tools.length === 0 ? (
+                        <p className="m-0 text-muted-foreground">暂未发现可用工具或正在读取…</p>
+                      ) : (
+                        tools.map((t) => (
+                          <div
+                            key={t.name}
+                            className="border-b border-border/60 pb-1.5 last:border-0 last:pb-0"
+                          >
+                            <div className="font-mono text-[11.5px] font-medium text-foreground">
+                              {t.name}
                             </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+                            {t.description && (
+                              <p className="m-0 mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                                {t.description}
+                              </p>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

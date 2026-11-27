@@ -1,4 +1,5 @@
 import { ViewCache, ViewCacheContext, useViewCache } from './view-cache.js';
+import { Toaster } from 'sonner';
 import { ModelPicker } from './ModelPicker.js';
 import { outcomeStatus } from '../shared/task-progress.js';
 import { readableTurnFailure } from '../shared/turn-timeout.js';
@@ -3916,6 +3917,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           </div>
         ) : null}
       </main>
+      <Toaster position="bottom-right" theme={dark ? 'dark' : 'light'} />
     </WorkbenchColumns>
   );
 }

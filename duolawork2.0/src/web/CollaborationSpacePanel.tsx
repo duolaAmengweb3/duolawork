@@ -63,6 +63,12 @@ import {
 } from '../shared/types.js';
 import { AgentAvatar } from './AgentAvatar.js';
 import { MarkdownView } from './markdown.js';
+import { Badge } from './components/ui/badge.js';
+import { Button } from './components/ui/button.js';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
+import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
+import { Input } from './components/ui/input.js';
+import { formatCronHuman } from './lib/format.js';
 
 export interface SpaceTaskSummary extends TaskRecord {
   latestRun: TaskRunRecord | null;
@@ -833,51 +839,61 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     const folderLabel = item.folderId ? folderPathById.get(item.folderId) || '' : '';
     const timeLabel = opts?.showTime !== false ? formatSpaceTime(item.updatedAt) : '';
     return (
-      <div key={key} className="material-row" data-item-id={item.id} data-item-kind={item.kind}>
+      <div
+        key={key}
+        className="material-row group flex items-start rounded-lg px-1.5 py-1 transition-colors hover:bg-muted/60 focus-within:bg-muted/60"
+        data-item-id={item.id}
+        data-item-kind={item.kind}
+      >
         <button
           type="button"
           onClick={() => {
             setDocEditing(false);
             onSelectItem({ kind: item.kind, id: item.id });
           }}
-          className="material-item-open"
+          className="material-item-open flex min-w-0 flex-1 items-start gap-2.5 p-1 text-left"
           title={`${item.title} · ${kindLabel(item)}${folderLabel ? ` · 目录：${folderLabel}` : ''}`}
         >
-          <Icon size={15} />
-          <span className="material-item-title">
-            <span>
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground">
+            <Icon size={13.5} />
+          </span>
+          <span className="material-item-title block min-w-0 flex-1">
+            <span className="block break-words text-[12.5px] font-medium leading-snug text-foreground">
               {item.pinnedAt && (
-                <span className="material-pin-badge" title="已置顶">
+                <span className="material-pin-badge mr-1 inline-flex align-middle text-info-foreground" title="已置顶">
                   <Pin size={10} />
                 </span>
               )}
               {item.title}
             </span>
-            <span className="material-item-meta">
-              <span>{kindLabel(item)}</span>
+            <span className="material-item-meta mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-foreground">
+              <span className="font-mono">{kindLabel(item)}</span>
               {opts?.showFolderChip && folderLabel && (
-                <span className="material-folder-chip" title={folderLabel}>
-                  <Folder size={9} />
-                  <span>{folderLabel}</span>
+                <span
+                  className="material-folder-chip inline-flex max-w-[130px] items-center gap-1 truncate rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground"
+                  title={folderLabel}
+                >
+                  <Folder size={9} className="shrink-0" />
+                  <span className="truncate">{folderLabel}</span>
                 </span>
               )}
               {item.taskId && <span>· 任务产物</span>}
-              {timeLabel && <span>· {timeLabel}</span>}
+              {timeLabel && <span className="font-mono">· {timeLabel}</span>}
             </span>
           </span>
         </button>
 
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="relative shrink-0 self-center" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => setRowMenuKey(menuOpen ? null : key)}
-            className="material-row-menu"
+            className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
             aria-label={`操作资料 ${item.title}`}
           >
             <MoreHorizontal size={14} />
           </button>
           {menuOpen && (
-            <div className="chat-context-menu absolute right-0 top-full mt-1">
+            <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -941,30 +957,40 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     const entryCount = folderEntryCountById.get(folder.id) ?? 0;
 
     return (
-      <div key={folder.id} className="material-folder-row relative" data-folder-id={folder.id}>
+      <div
+        key={folder.id}
+        className="material-folder-row group relative flex items-center rounded-lg px-1.5 py-0.5 transition-colors hover:bg-muted/60 focus-within:bg-muted/60"
+        data-folder-id={folder.id}
+      >
         <button
           type="button"
           onClick={() => setActiveFolderId(folder.id)}
-          className="material-folder-open"
+          className="material-folder-open flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1.5 text-left"
           title={`打开文件夹「${folder.title}」`}
         >
-          <Folder size={15} />
-          <span className="material-folder-name">{folder.title}</span>
-          <span className="material-folder-count">{entryCount > 0 ? `${entryCount} 项` : '空'}</span>
-          <ChevronRight size={13} className="material-folder-chevron" />
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Folder size={13.5} />
+          </span>
+          <span className="material-folder-name min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+            {folder.title}
+          </span>
+          <Badge variant="secondary" size="sm" className="material-folder-count font-mono text-[10px]">
+            {entryCount > 0 ? `${entryCount} 项` : '空'}
+          </Badge>
+          <ChevronRight size={13} className="material-folder-chevron shrink-0 text-muted-foreground" />
         </button>
 
         <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => setFolderMenuId(menuOpen ? null : folder.id)}
-            className="material-row-menu"
+            className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
             aria-label={`管理文件夹 ${folder.title}`}
           >
             <MoreHorizontal size={14} />
           </button>
           {menuOpen && (
-            <div className="chat-context-menu absolute right-0 top-full mt-1">
+            <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -1212,62 +1238,78 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       )}
 
       {/* Top Bar */}
-      <div className="space-title">
-        <div className="space-navigation">
+      <div className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-1.5">
           {selection || showTrash ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => {
                 onSelectItem(null);
                 setShowTrash(false);
               }}
-              className="space-back"
+              className="space-back -ml-1.5 text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft size={13} />
               <span>返回列表</span>
-            </button>
+            </Button>
           ) : (
-            <strong>协作空间</strong>
+            <strong className="text-[13.5px] font-semibold tracking-tight text-foreground">
+              协作空间
+            </strong>
           )}
         </div>
 
-        <div className="space-window-actions">
-          <button
-            type="button"
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onToggleWide}
             aria-label={wideSpace ? '标准协作空间宽度' : '展开协作空间宽度'}
             title={wideSpace ? '标准宽度' : '宽屏显示'}
+            className="text-muted-foreground hover:text-foreground"
           >
-            {wideSpace ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-          <button
-            type="button"
+            {wideSpace ? <Minimize2 size={13.5} /> : <Maximize2 size={13.5} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onCloseSpace}
             aria-label="收起协作空间"
             title="收起协作空间"
+            className="text-muted-foreground hover:text-foreground"
           >
-            <X size={15} />
-          </button>
+            <X size={14} />
+          </Button>
         </div>
       </div>
 
-      {/* Category Tabs */}
+      {/* Category Tabs — Coss UI Segmented Control Surface */}
       {!selection && !showTrash && (
-        <nav aria-label="协作空间分类" className="space-tabs">
-          {([
-            ['documents', `资料${items.length > 0 ? ` (${items.length})` : ''}`],
-            ['tasks', `任务${threadTasks.length > 0 ? ` (${threadTasks.length})` : ''}`],
-            ['resources', '资源']
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onTabChange(key)}
-              className={tab === key ? 'active' : ''}
-            >
-              {label}
-            </button>
-          ))}
+        <nav aria-label="协作空间分类" className="space-tabs border-b border-border/60 px-4 py-2.5">
+          <div className="grid w-full grid-cols-3 gap-0.5 rounded-lg bg-muted p-0.5">
+            {([
+              ['documents', `资料${items.length > 0 ? ` (${items.length})` : ''}`],
+              ['tasks', `任务${threadTasks.length > 0 ? ` (${threadTasks.length})` : ''}`],
+              ['resources', '资源']
+            ] as const).map(([key, label]) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onTabChange(key)}
+                  className={
+                    active
+                      ? 'active flex h-7 items-center justify-center rounded-md bg-background px-2 text-xs font-medium text-foreground shadow-xs/5 ring-1 ring-border/70 transition-all'
+                      : 'flex h-7 items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground'
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </nav>
       )}
 
@@ -1632,46 +1674,53 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             {renderContextSection()}
           </div>
         ) : tab === 'documents' ? (
-          <div className="material-library flex flex-col min-h-full">
-            <div className="space-toolbar">
-              <label className="space-search">
-                <Search size={13} />
-                <input
+          <div className="material-library flex min-h-full flex-col gap-3">
+            {/* Search & Quick Actions Toolbar */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex min-w-0 flex-1 items-center">
+                <Search
+                  size={13}
+                  className="pointer-events-none absolute left-2.5 z-10 text-muted-foreground"
+                />
+                <Input
+                  nativeInput
+                  size="sm"
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索资料…"
                   aria-label="搜索协作空间资料"
+                  className="pl-7 [&_input]:pl-7"
                 />
-              </label>
+              </div>
 
               <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => void handleUploadFiles(e)} />
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="icon-sm"
                 disabled={!thread || uploading}
                 onClick={() => fileInputRef.current?.click()}
-                className="dw-btn dw-btn-outline"
                 aria-label="上传文件"
                 title={uploading ? '上传中…' : '上传本地文件'}
               >
-                <Paperclip size={14} />
-              </button>
+                <Paperclip size={13.5} />
+              </Button>
 
               <div className="relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
+                <Button
+                  variant={kindFilter ? 'secondary' : 'outline'}
+                  size="icon-sm"
                   onClick={() => {
                     setFilterMenuOpen((o) => !o);
                     setAddMenuOpen(false);
                   }}
-                  className="dw-btn dw-btn-outline"
-                  style={kindFilter ? { borderColor: '#355cc9', color: '#355cc9' } : undefined}
                   aria-label="筛选资料类型"
+                  className={kindFilter ? 'border-ring text-foreground' : ''}
                 >
-                  <SlidersHorizontal size={14} />
-                </button>
+                  <SlidersHorizontal size={13.5} />
+                </Button>
                 {filterMenuOpen && (
-                  <div className="chat-context-menu absolute right-0 top-full mt-1">
+                  <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
                     {([
                       ['', '全部类型'],
                       ['document', '文档'],
@@ -1695,20 +1744,20 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </div>
 
               <div className="relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="icon-sm"
                   disabled={!thread}
                   onClick={() => {
                     setAddMenuOpen((o) => !o);
                     setFilterMenuOpen(false);
                   }}
-                  className="dw-btn dw-btn-outline"
                   aria-label="添加资料"
                 >
                   <Plus size={14} />
-                </button>
+                </Button>
                 {addMenuOpen && (
-                  <div className="chat-context-menu absolute right-0 top-full mt-1">
+                  <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
                     <button
                       type="button"
                       onClick={() => {
@@ -1751,305 +1800,346 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             </div>
 
             {createMode && (
-              <form
-                onSubmit={handleCreateSubmit}
-                className="mb-3 rounded-xl border p-3 flex flex-col gap-2 text-xs dw-inline-panel"
-              >
-                <div className="font-semibold">
-                  {createMode === 'document' ? '新建文档' : createMode === 'link' ? '添加链接' : '新建文件夹'}
-                  {effectiveActiveFolderId
-                    ? `（在 /${folderPathById.get(effectiveActiveFolderId) || '当前目录'}）`
-                    : ''}
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  placeholder={
-                    createMode === 'document'
-                      ? '文档名称（如：产品方案.md）'
-                      : createMode === 'link'
-                        ? '链接标题'
-                        : '文件夹名称'
-                  }
-                  className="dw-input"
-                />
-                {createMode === 'link' && (
-                  <input
-                    type="url"
-                    required
-                    value={draftUrl}
-                    onChange={(e) => setDraftUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="dw-input"
-                  />
-                )}
-                {createMode !== 'folder' && (
-                  <textarea
-                    rows={createMode === 'document' ? 3 : 2}
-                    value={draftNote}
-                    onChange={(e) => setDraftNote(e.target.value)}
-                    placeholder={createMode === 'document' ? '初始正文内容（可选）' : '备注说明（可选）'}
-                    className="dw-textarea"
-                  />
-                )}
-                <div className="flex justify-end gap-1.5">
-                  <button type="button" onClick={() => setCreateMode(null)} className="dw-btn dw-btn-outline dw-btn-sm">
-                    取消
-                  </button>
-                  <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                    确认
-                  </button>
-                </div>
-              </form>
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="rounded-lg p-3">
+                  <form onSubmit={handleCreateSubmit} className="flex flex-col gap-2 text-xs">
+                    <div className="font-semibold text-foreground">
+                      {createMode === 'document' ? '新建文档' : createMode === 'link' ? '添加链接' : '新建文件夹'}
+                      {effectiveActiveFolderId
+                        ? `（/${folderPathById.get(effectiveActiveFolderId) || '当前目录'}）`
+                        : ''}
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      placeholder={
+                        createMode === 'document'
+                          ? '文档名称（如：产品方案.md）'
+                          : createMode === 'link'
+                            ? '链接标题'
+                            : '文件夹名称'
+                      }
+                      className="dw-input"
+                    />
+                    {createMode === 'link' && (
+                      <input
+                        type="url"
+                        required
+                        value={draftUrl}
+                        onChange={(e) => setDraftUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="dw-input"
+                      />
+                    )}
+                    {createMode !== 'folder' && (
+                      <textarea
+                        rows={createMode === 'document' ? 3 : 2}
+                        value={draftNote}
+                        onChange={(e) => setDraftNote(e.target.value)}
+                        placeholder={createMode === 'document' ? '初始正文内容（可选）' : '备注说明（可选）'}
+                        className="dw-textarea"
+                      />
+                    )}
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="outline" size="xs" onClick={() => setCreateMode(null)}>
+                        取消
+                      </Button>
+                      <Button type="submit" size="xs">
+                        确认
+                      </Button>
+                    </div>
+                  </form>
+                </FramePanel>
+              </Frame>
             )}
 
             {renameTarget && (
-              <form
-                onSubmit={handleRenameConfirm}
-                className="mb-3 rounded-xl border p-3 flex flex-col gap-2 text-xs dw-inline-panel"
-              >
-                <div className="font-semibold">重命名</div>
-                <input
-                  type="text"
-                  required
-                  value={renameTarget.title}
-                  onChange={(e) => setRenameTarget({ ...renameTarget, title: e.target.value })}
-                  className="dw-input"
-                />
-                <div className="flex justify-end gap-1.5">
-                  <button type="button" onClick={() => setRenameTarget(null)} className="dw-btn dw-btn-outline dw-btn-sm">
-                    取消
-                  </button>
-                  <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                    保存
-                  </button>
-                </div>
-              </form>
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="rounded-lg p-3">
+                  <form onSubmit={handleRenameConfirm} className="flex flex-col gap-2 text-xs">
+                    <div className="font-semibold text-foreground">重命名</div>
+                    <input
+                      type="text"
+                      required
+                      value={renameTarget.title}
+                      onChange={(e) => setRenameTarget({ ...renameTarget, title: e.target.value })}
+                      className="dw-input"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="outline" size="xs" onClick={() => setRenameTarget(null)}>
+                        取消
+                      </Button>
+                      <Button type="submit" size="xs">
+                        保存
+                      </Button>
+                    </div>
+                  </form>
+                </FramePanel>
+              </Frame>
             )}
 
             {moveTarget && (
-              <div
-                className="mb-3 rounded-xl border p-3 flex flex-col gap-1.5 text-xs dw-inline-panel"
-              >
-                <div className="font-semibold">移动「{moveTarget.title}」到目录</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: null });
-                    setMoveTarget(null);
-                  }}
-                  className="dw-btn dw-btn-outline dw-btn-sm justify-start"
-                >
-                  / 根目录
-                </button>
-                {folders.map((fld) => (
-                  <button
-                    key={fld.id}
-                    type="button"
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="flex flex-col gap-1.5 rounded-lg p-3 text-xs">
+                  <div className="font-semibold text-foreground">移动「{moveTarget.title}」到目录</div>
+                  <Button
+                    variant="outline"
+                    size="xs"
                     onClick={() => {
-                      void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: fld.id });
+                      void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: null });
                       setMoveTarget(null);
                     }}
-                    className="dw-btn dw-btn-outline dw-btn-sm justify-start truncate"
+                    className="justify-start"
                   >
-                    / {folderPathById.get(fld.id) || fld.title}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setMoveTarget(null)}
-                  className="dw-btn dw-btn-ghost dw-btn-sm self-end"
-                >
-                  取消
-                </button>
-              </div>
+                    / 根目录
+                  </Button>
+                  {folders.map((fld) => (
+                    <Button
+                      key={fld.id}
+                      variant="outline"
+                      size="xs"
+                      onClick={() => {
+                        void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: fld.id });
+                        setMoveTarget(null);
+                      }}
+                      className="justify-start truncate"
+                    >
+                      / {folderPathById.get(fld.id) || fld.title}
+                    </Button>
+                  ))}
+                  <Button variant="ghost" size="xs" onClick={() => setMoveTarget(null)} className="self-end">
+                    取消
+                  </Button>
+                </FramePanel>
+              </Frame>
             )}
 
             {props.materialsState !== 'ready' && thread ? (
-              <div className="space-blank my-auto" role="status">
+              <div className="my-auto py-10 text-center text-xs text-muted-foreground" role="status">
                 {props.materialsState === 'error' ? (
-                  <><strong>资料加载失败</strong><button className="dw-btn" onClick={() => void onRefreshSpace()}>重新加载资料</button></>
-                ) : <strong>正在加载资料…</strong>}
+                  <div className="flex flex-col items-center gap-2">
+                    <strong>资料加载失败</strong>
+                    <Button variant="outline" size="xs" onClick={() => void onRefreshSpace()}>
+                      重新加载资料
+                    </Button>
+                  </div>
+                ) : (
+                  <span>正在加载资料…</span>
+                )}
               </div>
             ) : searching ? (
-              <div>
-                <div className="material-section-heading">
-                  <h4>搜索结果 ({filteredItems.length})</h4>
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <h4 className="m-0 text-[11px] font-semibold text-muted-foreground">
+                    搜索结果 ({filteredItems.length})
+                  </h4>
                   <button
                     type="button"
                     onClick={() => {
                       setQuery('');
                       setKindFilter('');
                     }}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
                   >
                     清除筛选
                   </button>
-                </div>
-                {filteredItems.length === 0 ? (
-                  <p className="material-list-empty">没有找到匹配资料</p>
-                ) : (
-                  filteredItems.map((it) =>
-                    renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'search' })
-                  )
-                )}
-              </div>
+                </FrameHeader>
+                <FramePanel className="rounded-lg p-1">
+                  {filteredItems.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">没有找到匹配资料</p>
+                  ) : (
+                    filteredItems.map((it) =>
+                      renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'search' })
+                    )
+                  )}
+                </FramePanel>
+              </Frame>
             ) : items.length === 0 && folders.length === 0 ? (
-              <div className="space-blank my-auto">
-                <span><FolderOpen size={20} /></span>
-                <strong>还没有资料</strong>
-                <p>拖拽任意格式文件到此处、点击 + 新建文档或文件夹；Agent 产出的文件与目录也会自动归档到这里。</p>
-              </div>
+              <Empty className="my-auto py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FolderOpen />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-sm">还没有资料</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    拖拽任意文件到此处或点击 + 新建文档；Agent 产出的文件也会自动归档到这里。
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
-              <div>
-                {/* Top section: chronological recent updates (saved or edited) */}
+              <div className="flex flex-col gap-3">
+                {/* Top section: chronological recent updates (Coss Frame) */}
                 {recentItems.length > 0 && (
-                  <section className="material-shortcuts" data-testid="space-recent-section" aria-label="最近更新">
-                    <div className="material-section-title">
-                      <Clock size={11} />
-                      <span>最近更新 ({recentItems.length})</span>
-                      {recentItems.length > 6 && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedRecent((v) => !v)}
-                          className="material-section-toggle"
-                        >
-                          {expandedRecent ? '收起' : `查看全部`}
-                        </button>
-                      )}
-                    </div>
-                    <div className={`material-recent-list ${expandedRecent ? 'expanded' : ''}`}>
-                      {(expandedRecent ? recentItems : recentItems.slice(0, 6)).map((it) =>
-                        renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'recent' })
-                      )}
-                    </div>
+                  <section
+                    className="material-shortcuts"
+                    data-testid="space-recent-section"
+                    aria-label="最近更新"
+                  >
+                    <Frame className="rounded-xl">
+                      <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                          <Clock size={11} />
+                          <span>最近更新 ({recentItems.length})</span>
+                        </span>
+                        {recentItems.length > 6 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRecent((v) => !v)}
+                            className="text-[11px] font-medium text-info-foreground hover:underline"
+                          >
+                            {expandedRecent ? '收起' : '查看全部'}
+                          </button>
+                        )}
+                      </FrameHeader>
+                      <FramePanel className="rounded-lg p-1">
+                        <div className={`material-recent-list ${expandedRecent ? 'expanded' : ''}`}>
+                          {(expandedRecent ? recentItems : recentItems.slice(0, 6)).map((it) =>
+                            renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'recent' })
+                          )}
+                        </div>
+                      </FramePanel>
+                    </Frame>
                   </section>
                 )}
 
-                {/* Bottom section: drill-down document & folder manager */}
+                {/* Bottom section: drill-down document & folder manager (Coss Frame) */}
                 <section
-                  className={recentItems.length > 0 ? 'material-directory' : ''}
                   data-testid="space-manager-section"
                   aria-label="文档管理"
                 >
-                  <div className="material-section-heading">
-                    <span className="material-root-select active">
-                      <FolderOpen size={12} />
-                      <span>文档管理</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateMode('folder');
-                        setDraftTitle('');
-                      }}
-                      title={effectiveActiveFolderId ? '在当前目录下新建子文件夹' : '在根目录新建文件夹'}
-                    >
-                      + 新建文件夹
-                    </button>
-                  </div>
-
-                  {effectiveActiveFolderId && (
-                    <div className="material-explorer-nav" data-testid="space-folder-nav">
+                  <Frame className="rounded-xl">
+                    <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                        <FolderOpen size={11.5} />
+                        <span>文档管理</span>
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
-                          const cur = folderById.get(effectiveActiveFolderId);
-                          setActiveFolderId(cur?.parentFolderId ?? null);
+                          setCreateMode('folder');
+                          setDraftTitle('');
                         }}
-                        className="material-explorer-back"
-                        aria-label="返回上一级文件夹"
+                        title={effectiveActiveFolderId ? '在当前目录下新建子文件夹' : '在根目录新建文件夹'}
+                        className="text-[11px] font-medium text-info-foreground hover:underline"
                       >
-                        <ArrowLeft size={12} />
-                        <span>返回上级</span>
+                        + 新建文件夹
                       </button>
-                      <div className="material-breadcrumbs" aria-label="当前文件夹路径">
-                        <button
-                          type="button"
-                          onClick={() => setActiveFolderId(null)}
-                          className="material-breadcrumb-btn"
-                        >
-                          根目录
-                        </button>
-                        {breadcrumbs.map((crumb, idx) => {
-                          const isLast = idx === breadcrumbs.length - 1;
-                          return (
-                            <React.Fragment key={crumb.id}>
-                              <span>/</span>
-                              <button
-                                type="button"
-                                onClick={() => setActiveFolderId(crumb.id)}
-                                className={`material-breadcrumb-btn ${isLast ? 'current' : ''}`}
-                                title={crumb.title}
-                              >
-                                {crumb.title}
-                              </button>
-                            </React.Fragment>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    </FrameHeader>
 
-                  {currentChildFolders.map((fld) => renderFolderRow(fld))}
-                  {currentFolderItems.map((it) =>
-                    renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
-                  )}
+                    <FramePanel className="rounded-lg p-1.5">
+                      {effectiveActiveFolderId && (
+                        <div
+                          className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border bg-muted/45 px-2 py-1.5"
+                          data-testid="space-folder-nav"
+                        >
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => {
+                              const cur = folderById.get(effectiveActiveFolderId);
+                              setActiveFolderId(cur?.parentFolderId ?? null);
+                            }}
+                            aria-label="返回上一级文件夹"
+                            className="h-6 px-1.5 text-[11px]"
+                          >
+                            <ArrowLeft size={11} />
+                            <span>返回上级</span>
+                          </Button>
+                          <div
+                            className="material-breadcrumbs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] text-muted-foreground"
+                            aria-label="当前文件夹路径"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setActiveFolderId(null)}
+                              className="rounded px-1 py-0.5 hover:bg-accent hover:text-foreground"
+                            >
+                              根目录
+                            </button>
+                            {breadcrumbs.map((crumb, idx) => {
+                              const isLast = idx === breadcrumbs.length - 1;
+                              return (
+                                <React.Fragment key={crumb.id}>
+                                  <span className="opacity-50">/</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveFolderId(crumb.id)}
+                                    className={`max-w-[110px] truncate rounded px-1 py-0.5 hover:bg-accent ${
+                                      isLast ? 'font-semibold text-foreground' : ''
+                                    }`}
+                                    title={crumb.title}
+                                  >
+                                    {crumb.title}
+                                  </button>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
-                  {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
-                    <div className="material-folder-empty">
-                      <span>{effectiveActiveFolderId ? '当前文件夹为空' : '根目录暂无未归档文件'}</span>
-                      <div className="material-folder-empty-actions">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="dw-btn dw-btn-outline dw-btn-sm"
-                        >
-                          <Paperclip size={11} />
-                          <span>上传文件</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreateMode('document');
-                            setDraftTitle('');
-                            setDraftNote('');
-                          }}
-                          className="dw-btn dw-btn-outline dw-btn-sm"
-                        >
-                          <FileText size={11} />
-                          <span>新建文档</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreateMode('folder');
-                            setDraftTitle('');
-                          }}
-                          className="dw-btn dw-btn-outline dw-btn-sm"
-                        >
-                          <Folder size={11} />
-                          <span>新建文件夹</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                      {currentChildFolders.map((fld) => renderFolderRow(fld))}
+                      {currentFolderItems.map((it) =>
+                        renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
+                      )}
+
+                      {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
+                        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-3 py-5 text-center text-[11.5px] text-muted-foreground">
+                          <span>{effectiveActiveFolderId ? '当前文件夹为空' : '根目录暂无未归档文件'}</span>
+                          <div className="flex flex-wrap justify-center gap-1.5">
+                            <Button variant="outline" size="xs" onClick={() => fileInputRef.current?.click()}>
+                              <Paperclip size={11} />
+                              <span>上传文件</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => {
+                                setCreateMode('document');
+                                setDraftTitle('');
+                                setDraftNote('');
+                              }}
+                            >
+                              <FileText size={11} />
+                              <span>新建文档</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => {
+                                setCreateMode('folder');
+                                setDraftTitle('');
+                              }}
+                            >
+                              <Folder size={11} />
+                              <span>新建文件夹</span>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </FramePanel>
+                  </Frame>
                 </section>
               </div>
             )}
 
-            <div className="mt-auto">
-              <button type="button" onClick={() => setShowTrash(true)} className="material-trash">
+            <div className="mt-auto pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTrash(true)}
+                className="material-trash flex w-full items-center gap-1.5 border-t border-border pt-2.5 text-left text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+              >
                 <Trash2 size={12} />
                 <span>回收站{trash.length > 0 ? ` (${trash.length})` : ''}</span>
               </button>
             </div>
           </div>
         ) : tab === 'tasks' ? (
-          <div className="task-overview">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="space-filters" style={{ margin: 0 }}>
+          <div className="task-overview flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
                 {([
                   ['active', '进行中'],
                   ['done', '已完成'],
@@ -2059,342 +2149,464 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     key={val}
                     type="button"
                     onClick={() => setTaskFilter(val)}
-                    className={taskFilter === val ? 'active' : ''}
+                    className={
+                      taskFilter === val
+                        ? 'rounded-md bg-background px-2.5 py-1 text-[11.5px] font-medium text-foreground shadow-xs/5 ring-1 ring-border/70'
+                        : 'rounded-md px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground hover:text-foreground'
+                    }
                   >
                     {label}
                   </button>
                 ))}
               </div>
-              <button type="button" onClick={onOpenCreateTask} className="dw-btn dw-btn-outline dw-btn-sm">
+              <Button variant="outline" size="xs" onClick={onOpenCreateTask}>
                 <Plus size={12} />
                 <span>指派任务</span>
-              </button>
+              </Button>
             </div>
 
             {filteredTasks.length === 0 ? (
-              <div className="space-blank">
-                <span><ListTodo size={20} /></span>
-                <strong>暂无匹配的本对话任务</strong>
-                <p>点击“指派任务”或在对话里和负责人约定分工即可立项执行。</p>
-              </div>
+              <Empty className="py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <ListTodo />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-sm">暂无匹配的本对话任务</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    点击「指派任务」或在对话里和负责人约定分工即可立项执行。
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
-              filteredTasks.map((t) => {
-                const leadName = memberById.get(t.leadMemberId)?.name || t.leadMemberId;
-                const runStatus = t.latestRun?.status;
-                const stateClass =
-                  runStatus === 'completed'
-                    ? 'done'
-                    : runStatus === 'waiting_user' ||
-                        runStatus === 'timed_out' ||
-                        runStatus === 'failed'
-                      ? 'attention'
-                      : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
-                        ? ''
-                        : 'working';
-                const statusLabel = outcomeStatus(t.latestRun) ?? (t.status === 'paused' ? (runStatus === 'running' ? '当前步骤结束后暂停' : '已暂停') : !runStatus
-                  ? t.kind === 'scheduled'
-                    ? t.scheduleEnabled
-                      ? '等待定时触发'
-                      : '已暂停'
-                    : '待启动'
-                  : runStatus === 'completed'
-                    ? t.kind === 'scheduled' && t.latestRun
-                      ? `第 ${t.latestRun.runNumber} 期已完成`
-                      : '已完成'
-                    : runStatus === 'waiting_user'
-                      ? '待你确认'
-                      : runStatus === 'failed'
-                        ? '执行失败'
-                        : runStatus === 'timed_out'
-                          ? '超时未完成'
-                          : runStatus === 'canceled'
-                            ? '已取消'
-                            : '进行中');
-                return (
-                  <div key={t.id} className="task-group">
-                    <div className="task-group-heading">
-                      <button type="button" onClick={() => onOpenTask(t.id)} className="task-group-title">
-                        <strong className="flex items-center gap-1">
-                          {t.kind === 'scheduled' && <Clock size={12} />}
-                          <span>{t.title}</span>
-                        </strong>
-                        <small>
-                          {leadName} 负责{t.kind === 'scheduled' && t.cronExpr ? ` · ${t.cronExpr}` : ''}
-                        </small>
-                      </button>
-                      <span className={`task-overview-state ${stateClass}`}>{statusLabel}</span>
-                    </div>
+              <div className="flex flex-col gap-2.5">
+                {filteredTasks.map((t) => {
+                  const leadName = memberById.get(t.leadMemberId)?.name || t.leadMemberId;
+                  const runStatus = t.latestRun?.status;
+                  const badgeVariant =
+                    runStatus === 'completed'
+                      ? 'success'
+                      : runStatus === 'failed' || runStatus === 'timed_out'
+                        ? 'error'
+                        : runStatus === 'waiting_user'
+                          ? 'warning'
+                          : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
+                            ? 'secondary'
+                            : 'info';
+                  const statusLabel =
+                    outcomeStatus(t.latestRun) ??
+                    (t.status === 'paused'
+                      ? runStatus === 'running'
+                        ? '当前步骤结束后暂停'
+                        : '已暂停'
+                      : !runStatus
+                        ? t.kind === 'scheduled'
+                          ? t.scheduleEnabled
+                            ? '等待定时触发'
+                            : '已暂停'
+                          : '待启动'
+                        : runStatus === 'completed'
+                          ? t.kind === 'scheduled' && t.latestRun
+                            ? `第 ${t.latestRun.runNumber} 期已完成`
+                            : '已完成'
+                          : runStatus === 'waiting_user'
+                            ? '待你确认'
+                            : runStatus === 'failed'
+                              ? '执行失败'
+                              : runStatus === 'timed_out'
+                                ? '超时未完成'
+                                : runStatus === 'canceled'
+                                  ? '已取消'
+                                  : '进行中');
 
-                    {t.steps && t.steps.length > 0 && (
-                      <div className="task-children">
-                        {t.steps.map((st) => (
-                          <div key={st.id} className="task-child">
-                            <div className="task-child-open">
-                              <span
-                                className={`task-step-icon ${
-                                  st.status === 'accepted'
-                                    ? 'done'
-                                    : st.status === 'running'
-                                      ? 'working'
-                                      : st.status === 'blocked' || st.status === 'failed' || st.status === 'timed_out'
-                                        ? 'attention'
-                                        : ''
-                                }`}
-                              >
-                                •
-                              </span>
-                              <span>
-                                <strong>{st.stepOrder}. {st.title}</strong>
-                                <small>{memberById.get(st.assigneeMemberId)?.name || st.assigneeMemberId}</small>
-                              </span>
+                  return (
+                    <Frame key={t.id} className="rounded-xl">
+                      <FramePanel className="flex flex-col gap-2.5 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask(t.id)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-1.5 text-[13px] font-semibold leading-snug text-foreground hover:underline">
+                              {t.kind === 'scheduled' && (
+                                <Clock size={12} className="shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="line-clamp-2">{t.title}</span>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span>{leadName} 负责</span>
+                              {t.kind === 'scheduled' && t.cronExpr && (
+                                <Badge variant="outline" size="sm" className="font-mono text-[10px]">
+                                  {formatCronHuman(t.cronExpr)}
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                          <Badge
+                            variant={badgeVariant}
+                            size="sm"
+                            className="task-overview-state shrink-0"
+                          >
+                            {statusLabel}
+                          </Badge>
+                        </div>
 
-                    <div className="task-artifacts">
-                      {t.latestRun?.finalArtifactId && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDocEditing(false);
-                            onSelectItem({ kind: 'document', id: t.latestRun!.finalArtifactId! });
-                          }}
-                          className="task-artifact"
-                        >
-                          <FileText size={13} />
-                          <span>查看交付产物</span>
-                          <small>正文</small>
-                        </button>
-                      )}
-                      <button type="button" onClick={() => onOpenTask(t.id)} className="task-discuss" style={{ padding: '4px 2px' }}>
-                        查看步骤详情 →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                        {t.steps && t.steps.length > 0 && (
+                          <div className="space-y-1.5 border-t border-border/60 pt-2">
+                            {t.steps.map((st) => (
+                              <div key={st.id} className="flex items-start gap-2 text-xs">
+                                <span
+                                  className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
+                                    st.status === 'accepted'
+                                      ? 'bg-emerald-500'
+                                      : st.status === 'running'
+                                        ? 'bg-blue-500'
+                                        : st.status === 'blocked' ||
+                                            st.status === 'failed' ||
+                                            st.status === 'timed_out'
+                                          ? 'bg-amber-500'
+                                          : 'bg-foreground/25'
+                                  }`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate font-medium text-foreground/90">
+                                    {st.stepOrder}. {st.title}
+                                  </div>
+                                  <div className="text-[10.5px] text-muted-foreground">
+                                    {memberById.get(st.assigneeMemberId)?.name || st.assigneeMemberId}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-1.5 border-t border-border/60 pt-2">
+                          {t.latestRun?.finalArtifactId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDocEditing(false);
+                                onSelectItem({ kind: 'document', id: t.latestRun!.finalArtifactId! });
+                              }}
+                              className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+                            >
+                              <FileText size={13} className="shrink-0 text-muted-foreground" />
+                              <span className="min-w-0 flex-1 truncate font-medium">查看交付产物</span>
+                              <Badge variant="secondary" size="sm" className="text-[10px]">
+                                正文
+                              </Badge>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask(t.id)}
+                            className="inline-flex items-center gap-1 self-start text-[11.5px] font-medium text-info-foreground hover:underline"
+                          >
+                            <span>查看步骤详情 →</span>
+                          </button>
+                        </div>
+                      </FramePanel>
+                    </Frame>
+                  );
+                })}
+              </div>
             )}
           </div>
         ) : (() => {
           const activeOwner = members.find((m) => m.id === thread?.activeOwnerMemberId) ?? null;
           const isLocalOwner = isLocalCodingMember(activeOwner);
           return (
-          <div className="channel-resources">
-            <div className="resource-section">
-              <h3>
-                <span>本机工作目录</span>
-                <button type="button" onClick={() => void onChooseWorkspace()}>
-                  {hasDesktopDialog ? (thread?.workspacePath ? '更换目录' : '选择目录') : '设置路径'}
-                </button>
-              </h3>
-              <div className="resource-folder">
-                <FolderOpen size={14} />
-                <span className="flex-1 min-w-0 truncate">
-                  {thread?.workspacePath || '尚未绑定本机工作目录'}
-                </span>
-                {hasDesktopDialog && (
+            <div className="channel-resources flex flex-col gap-3.5">
+              {/* Resource 1: Workspace Directory */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">本机工作目录</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setWsPathInput(thread?.workspacePath || '');
-                      setEditingWsPath((v) => !v);
-                    }}
-                    className="text-[11px]"
-                    style={{ color: '#4c70c4' }}
+                    onClick={() => void onChooseWorkspace()}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
                   >
-                    手动输入
+                    {hasDesktopDialog ? (thread?.workspacePath ? '更换目录' : '选择目录') : '设置路径'}
                   </button>
-                )}
-              </div>
-              {!isLocalOwner && (
-                <small className="block text-[10.5px] mt-1.5" style={{ color: '#8795aa' }}>
-                  提示：当前对接成员为远端/Web，本地目录仅本机编码成员（如 Codex / Claude）可直接读写。
-                </small>
-              )}
-
-              {editingWsPath && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setEditingWsPath(false);
-                    void onSaveWorkspacePath(wsPathInput.trim() || null);
-                  }}
-                  className="flex items-center gap-1.5 mt-2"
-                >
-                  <input
-                    type="text"
-                    value={wsPathInput}
-                    onChange={(e) => setWsPathInput(e.target.value)}
-                    placeholder="输入目录绝对路径"
-                    className="dw-input"
-                  />
-                  <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                    确定
-                  </button>
-                </form>
-              )}
-
-              {thread?.workspacePath && (
-                <div className="resource-group mt-2 p-2.5">
-                  <div className="flex items-center justify-between text-[11px] mb-1.5" style={{ color: '#8391a7' }}>
-                    <span className="truncate">/{wsSubpath}</span>
-                    <div className="flex items-center gap-2">
-                      {wsSubpath && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const parts = wsSubpath.split('/').filter(Boolean);
-                            parts.pop();
-                            void loadWorkspaceFiles(parts.join('/'));
-                          }}
-                          className="underline"
-                        >
-                          上级目录
-                        </button>
-                      )}
-                      <button type="button" onClick={() => void loadWorkspaceFiles(wsSubpath,true)} className="underline">
-                        刷新
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-2 rounded-lg p-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-xs">
+                    <FolderOpen size={14} className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
+                      {thread?.workspacePath || '尚未绑定本机工作目录'}
+                    </span>
+                    {hasDesktopDialog && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWsPathInput(thread?.workspacePath || '');
+                          setEditingWsPath((v) => !v);
+                        }}
+                        className="shrink-0 text-[11px] font-medium text-info-foreground hover:underline"
+                      >
+                        手动输入
                       </button>
-                    </div>
-                  </div>
-                  {wsError ? (
-                    <div className="text-[11px]" style={{ color: '#b77824' }}>{wsError}</div>
-                  ) : wsBusy ? (
-                    <div className="text-[11px]" style={{ color: '#8391a7' }}>读取目录中…</div>
-                  ) : (
-                    <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
-                      {wsEntries.map((ent) => (
-                        <div key={ent.relPath} className="material-row">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (ent.kind === 'dir') {
-                                void loadWorkspaceFiles(ent.relPath);
-                              } else {
-                                onQuoteToChat({
-                                  id: ent.relPath,
-                                  kind: 'workspace_file',
-                                  title: ent.name,
-                                  subLabel: formatBytes(ent.sizeBytes),
-                                  snippet: `请查看文件 ${ent.relPath}`
-                                });
-                              }
-                            }}
-                            className="material-item-open"
-                          >
-                            {ent.kind === 'dir' ? <Folder size={13} /> : <File size={13} />}
-                            <span className="material-item-title truncate">{ent.name}</span>
-                          </button>
-                          <span className="text-[10px] pr-2 self-center" style={{ color: '#94a1b5' }}>
-                            {ent.kind === 'file' ? formatBytes(ent.sizeBytes) : '目录'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="resource-section">
-              <h3>
-                <span>DuolaBase 连接与凭证</span>
-                <button type="button" onClick={() => onNavigatePage('connectors')}>
-                  管理连接器
-                </button>
-              </h3>
-              <div className="resource-group">
-                <div className="resource-row">
-                  <span className="connector-symbol">
-                    <Plug size={15} />
-                  </span>
-                  <div className="resource-row-main">
-                    <strong>DuolaBase MCP 网关</strong>
-                    <small className={duolabaseStatus.enabled && duolabaseStatus.hasToken ? 'resource-ready' : ''}>
-                      {!duolabaseStatus.enabled
-                        ? '已暂停连接'
-                        : duolabaseStatus.hasToken
-                          ? `已连通 (${duolabaseStatus.endpoint})`
-                          : '尚未配置访问令牌'}
-                    </small>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="切换 DuolaBase 状态"
-                    onClick={() => void onToggleDuolabase()}
-                    className={`resource-toggle ${duolabaseStatus.enabled ? 'on' : ''}`}
-                  >
-                    <span />
-                  </button>
-                </div>
-                {duolabaseStatus.enabled && duolabaseStatus.hasToken && (resBusy || resSummary) && (
-                  <div className="px-3 pb-2.5 pt-1 border-t" style={{ borderColor: '#edf1f7' }}>
-                    <div className="text-[11px]" style={{ color: '#6b7a90' }}>
-                      {resBusy && !resSummary
-                        ? '正在读取实时连接器与凭证统计…'
-                        : resSummary
-                          ? `已接入 ${resSummary.connectorCount} 个连接器 · ${resSummary.vaultCount ?? '—'} 条 Vault 凭证`
-                          : null}
-                    </div>
-                    {resSummary && resSummary.activeConnectors.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {resSummary.activeConnectors.map((c) => (
-                          <button
-                            key={c.id || c.name}
-                            type="button"
-                            onClick={() => onNavigatePage('connectors')}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] hover:bg-[#f2f6ff]"
-                            style={{ borderColor: '#e2e8f2', color: '#395175' }}
-                            title={c.toolCount ? `${c.toolCount} 个可用工具` : undefined}
-                          >
-                            <Plug size={10} />
-                            <span className="truncate max-w-[140px]">{c.name || c.provider || '连接器'}</span>
-                          </button>
-                        ))}
-                      </div>
                     )}
                   </div>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => onNavigatePage('connectors')} className="dw-btn dw-btn-outline dw-btn-sm flex-1">
-                  <Plug size={12} />
-                  <span>连接器</span>
-                </button>
-                <button type="button" onClick={() => onNavigatePage('vault')} className="dw-btn dw-btn-outline dw-btn-sm flex-1">
-                  <KeyRound size={12} />
-                  <span>Vault 凭证库</span>
-                </button>
-              </div>
-            </div>
 
-            <div className="resource-section">
-              <h3>
-                <span>成员与运行端 ({members.length})</span>
-                <button type="button" onClick={() => void onRefreshMembers()} disabled={refreshingMembers}>
-                  <RefreshCw size={11} className={refreshingMembers ? 'is-refreshing' : ''} />
-                  <span>刷新</span>
-                </button>
-              </h3>
-              <div className="resource-group p-2.5 flex flex-col gap-2">
-                {members.map((m) => (
-                  <div key={m.id} className="space-member" style={{ margin: '2px 0' }}>
-                    <AgentAvatar small name={m.name} platformId={m.platformId} status={m.status} />
-                    <div>
-                      <strong>{m.name}</strong>
-                      <small>{m.location === 'remote-bridge' ? '远端桥接' : m.location === 'webhook' ? 'Webhook Bot' : '本机接入'}</small>
+                  {!isLocalOwner && (
+                    <p className="m-0 text-[11px] leading-relaxed text-muted-foreground">
+                      提示：当前对接成员为远端/Web，本地目录仅本机编码成员（如 Codex / Claude）可直接读写。
+                    </p>
+                  )}
+
+                  {editingWsPath && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        setEditingWsPath(false);
+                        void onSaveWorkspacePath(wsPathInput.trim() || null);
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Input
+                        nativeInput
+                        size="sm"
+                        type="text"
+                        value={wsPathInput}
+                        onChange={(e) => setWsPathInput(e.target.value)}
+                        placeholder="输入目录绝对路径"
+                      />
+                      <Button type="submit" size="xs">
+                        确定
+                      </Button>
+                    </form>
+                  )}
+
+                  {thread?.workspacePath && (
+                    <div className="rounded-lg border border-border bg-muted/25 p-2">
+                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="truncate font-mono">/{wsSubpath}</span>
+                        <div className="flex items-center gap-2">
+                          {wsSubpath && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const parts = wsSubpath.split('/').filter(Boolean);
+                                parts.pop();
+                                void loadWorkspaceFiles(parts.join('/'));
+                              }}
+                              className="hover:text-foreground hover:underline"
+                            >
+                              上级目录
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void loadWorkspaceFiles(wsSubpath, true)}
+                            className="hover:text-foreground hover:underline"
+                          >
+                            刷新
+                          </button>
+                        </div>
+                      </div>
+                      {wsError ? (
+                        <div className="text-[11px] text-warning-foreground">{wsError}</div>
+                      ) : wsBusy ? (
+                        <div className="text-[11px] text-muted-foreground">读取目录中…</div>
+                      ) : (
+                        <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                          {wsEntries.map((ent) => (
+                            <div
+                              key={ent.relPath}
+                              className="flex items-center rounded-md px-1.5 py-1 transition-colors hover:bg-muted/70"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (ent.kind === 'dir') {
+                                    void loadWorkspaceFiles(ent.relPath);
+                                  } else {
+                                    onQuoteToChat({
+                                      id: ent.relPath,
+                                      kind: 'workspace_file',
+                                      title: ent.name,
+                                      subLabel: formatBytes(ent.sizeBytes),
+                                      snippet: `请查看文件 ${ent.relPath}`
+                                    });
+                                  }
+                                }}
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-foreground"
+                              >
+                                {ent.kind === 'dir' ? (
+                                  <Folder size={13} className="shrink-0 text-amber-500" />
+                                ) : (
+                                  <File size={13} className="shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="truncate">{ent.name}</span>
+                              </button>
+                              <span className="shrink-0 pl-2 font-mono text-[10px] text-muted-foreground">
+                                {ent.kind === 'file' ? formatBytes(ent.sizeBytes) : '目录'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
+                  )}
+                </FramePanel>
+              </Frame>
+
+              {/* Resource 2: DuolaBase Connectors & Vault */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    DuolaBase 连接与凭证
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigatePage('connectors')}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
+                  >
+                    管理连接器
+                  </button>
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-3 rounded-lg p-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/50 text-foreground">
+                      <Plug size={14} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold text-foreground">
+                        DuolaBase MCP 网关
+                      </div>
+                      <small
+                        className={`block truncate text-[11px] ${
+                          duolabaseStatus.enabled && duolabaseStatus.hasToken
+                            ? 'text-success-foreground'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {!duolabaseStatus.enabled
+                          ? '已暂停连接'
+                          : duolabaseStatus.hasToken
+                            ? `已连通 (${duolabaseStatus.endpoint})`
+                            : '尚未配置访问令牌'}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="切换 DuolaBase 状态"
+                      aria-pressed={duolabaseStatus.enabled}
+                      onClick={() => void onToggleDuolabase()}
+                      className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        duolabaseStatus.enabled ? 'bg-primary' : 'bg-input'
+                      }`}
+                    >
+                      <span
+                        className={`block size-4 rounded-full bg-background shadow-sm transition-transform ${
+                          duolabaseStatus.enabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
-                ))}
-              </div>
-              <button type="button" onClick={() => onNavigatePage('members')} className="dw-btn dw-btn-ghost dw-btn-sm w-full justify-start">
-                <Users size={12} />
-                <span>查看完整成员与 Token 用量 →</span>
-              </button>
+
+                  {duolabaseStatus.enabled && duolabaseStatus.hasToken && (resBusy || resSummary) && (
+                    <div className="border-t border-border/60 pt-2.5">
+                      <div className="font-mono text-[11px] text-muted-foreground">
+                        {resBusy && !resSummary
+                          ? '正在读取实时连接器与凭证统计…'
+                          : resSummary
+                            ? `已接入 ${resSummary.connectorCount} 个连接器 · ${resSummary.vaultCount ?? '—'} 条 Vault 凭证`
+                            : null}
+                      </div>
+                      {resSummary && resSummary.activeConnectors.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {resSummary.activeConnectors.map((c) => (
+                            <button
+                              key={c.id || c.name}
+                              type="button"
+                              onClick={() => onNavigatePage('connectors')}
+                              className="inline-flex max-w-[150px] items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:border-ring hover:bg-muted"
+                              title={c.toolCount ? `${c.toolCount} 个可用工具` : undefined}
+                            >
+                              <Plug size={10} className="shrink-0 text-muted-foreground" />
+                              <span className="truncate">{c.name || c.provider || '连接器'}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button variant="outline" size="xs" onClick={() => onNavigatePage('connectors')}>
+                      <Plug size={11.5} />
+                      <span>连接器</span>
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => onNavigatePage('vault')}>
+                      <KeyRound size={11.5} />
+                      <span>Vault 凭证库</span>
+                    </Button>
+                  </div>
+                </FramePanel>
+              </Frame>
+
+              {/* Resource 3: Team Members & Runtimes */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    成员与运行端 ({members.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void onRefreshMembers()}
+                    disabled={refreshingMembers}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <RefreshCw size={11} className={refreshingMembers ? 'is-refreshing' : ''} />
+                    <span>刷新</span>
+                  </button>
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-1 rounded-lg p-1.5">
+                  <div className="divide-y divide-border/50">
+                    {members.map((m) => (
+                      <div key={m.id} className="flex items-center gap-2.5 px-2 py-2">
+                        <AgentAvatar small name={m.name} platformId={m.platformId} status={m.status} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-foreground">{m.name}</div>
+                          <div className="text-[10.5px] text-muted-foreground">
+                            {m.location === 'remote-bridge'
+                              ? '远端桥接'
+                              : m.location === 'webhook'
+                                ? 'Webhook Bot'
+                                : '本机接入'}
+                          </div>
+                        </div>
+                        <Badge
+                          variant={
+                            m.status === 'ready'
+                              ? 'success'
+                              : m.status === 'auth_required'
+                                ? 'warning'
+                                : 'secondary'
+                          }
+                          size="sm"
+                          className="text-[10px]"
+                        >
+                          {m.status === 'ready' ? '在线' : m.status === 'auth_required' ? '待验证' : '离线'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => onNavigatePage('members')}
+                    className="mt-1 w-full justify-start text-muted-foreground hover:text-foreground"
+                  >
+                    <Users size={12} />
+                    <span>查看完整成员与 Token 用量 →</span>
+                  </Button>
+                </FramePanel>
+              </Frame>
             </div>
-          </div>
           );
         })()}
       </div>
