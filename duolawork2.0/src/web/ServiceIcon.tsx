@@ -38,10 +38,18 @@ export function ServiceIcon({
   provider?: string;
 }): React.JSX.Element {
   const brand = provider ? SERVICE_BRANDS[provider] : undefined;
+  const monochromeDarkInvert = provider === 'github' || provider === 'github-mcp';
   return (
     <span className="connector-symbol">
       {brand ? (
-        <img src={brand[0]} width={28} height={28} alt={brand[1]} draggable={false} />
+        <img
+          src={brand[0]}
+          width={28}
+          height={28}
+          alt={brand[1]}
+          draggable={false}
+          className={monochromeDarkInvert ? 'dark:invert' : undefined}
+        />
       ) : (
         <Plug size={20} />
       )}

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/coss-theme.css";
 @import "./styles/conversation.css";
 @import "./styles/space.css";
 @import "./styles/material-library.css";
@@ -414,28 +415,14 @@ html.dark {
   color: #d6e0f0;
 }
 .dark .collaboration-space.space-redesign {
-  background: #14171e;
-  border-left-color: #252a36;
+  background: var(--sidebar);
+  border-left-color: var(--border);
 }
-.dark .space-tabs,
-.dark .material-directory,
-.dark .material-trash,
 .dark .sidebar-footer {
   border-color: #252a36;
 }
-.dark .space-tabs button.active {
-  color: #7ea4fb;
-  border-bottom-color: #5b82f6;
-}
-.dark .space-search,
-.dark .task-group,
 .dark .task-panel,
 .dark .task-intent-card,
-.dark .resource-group,
-.dark .resource-folder,
-.dark .connector-card,
-.dark .members-table-wrap,
-.dark .schedule-card,
 .dark .dw-btn-outline,
 .dark .dw-input,
 .dark .dw-textarea {
@@ -443,32 +430,9 @@ html.dark {
   border-color: #2a3140;
   color: #dce3f0;
 }
-.dark .material-row:hover,
-.dark .material-folder-row:hover,
-.dark .vault-row:hover {
-  background: #202531;
-}
-.dark .material-folder-chip {
-  background: #212735;
-  color: #9cb0d1;
-}
-.dark .material-explorer-nav {
-  background: #191d26;
-  border-color: #283040;
-}
-.dark .material-explorer-back {
-  background: #22304d;
-  color: #93b5ff;
-}
-.dark .material-breadcrumb-btn {
-  color: #9aa7bd;
-}
-.dark .material-breadcrumb-btn.current {
-  color: #e6ecf6;
-}
 .dark .material-folder-empty {
-  border-color: #2b3344;
-  color: #8c99af;
+  border-color: var(--border);
+  color: var(--muted-foreground);
 }
 
 /* Interactive Chat Images + Composer Image Strip */
