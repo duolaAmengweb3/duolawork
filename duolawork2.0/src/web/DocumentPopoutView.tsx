@@ -44,16 +44,19 @@ function estimateReadingMeta(text: string): { chars: number; minutes: number } {
 }
 
 export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.JSX.Element {
-  const [dark, setDark] = useState<boolean>(() => {
+  const [paperTheme, setPaperTheme] = useState<'light' | 'sepia' | 'dark'>(() => {
     try {
-      return localStorage.getItem('dw2_theme') === 'dark';
+      const saved = localStorage.getItem('dw2_reader_theme');
+      if (saved === 'light' || saved === 'sepia' || saved === 'dark') return saved;
+      return localStorage.getItem('dw2_theme') === 'dark' ? 'dark' : 'light';
     } catch {
-      return false;
+      return 'light';
     }
   });
+  const dark = paperTheme === 'dark';
   const [pinned, setPinned] = useState<boolean>(false);
   const [wide, setWide] = useState<boolean>(false);
-  const [fontSize, setFontSize] = useState<number>(15.5);
+  const [fontSize, setFontSize] = useState<number>(16);
   const [tocOpen, setTocOpen] = useState<boolean>(true);
   const [activeHeadingId, setActiveHeadingId] = useState<string>('');
 
@@ -86,11 +89,11 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
     try {
-      localStorage.setItem('dw2_theme', dark ? 'dark' : 'light');
+      localStorage.setItem('dw2_reader_theme', paperTheme);
     } catch {
       // ignore storage errors
     }
-  }, [dark]);
+  }, [dark, paperTheme]);
 
   const displayTitle = artifact?.title || target.title || (target.kind === 'document' ? '文档阅读器' : '文件预览');
 
@@ -296,7 +299,11 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+    <div
+      className={`dw-reader-shell flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground ${
+        paperTheme === 'sepia' ? 'is-sepia' : ''
+      }`}
+    >
       <Toaster position="bottom-right" theme={dark ? 'dark' : 'light'} richColors closeButton />
 
       {/* Top Reader Chrome */}
@@ -500,15 +507,36 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => setDark((v) => !v)}
-            title={dark ? '切换到浅色模式' : '切换到深色模式'}
-            aria-label={dark ? '切换到浅色模式' : '切换到深色模式'}
-          >
-            {dark ? <Sun size={13} /> : <Moon size={13} />}
-          </Button>
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5">
+            {([
+              ['light', '浅色', Sun],
+              ['sepia', '护眼', null],
+              ['dark', '深色', Moon]
+            ] as const).map(([val, label, Icon]) => {
+              const active = paperTheme === val;
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setPaperTheme(val)}
+                  title={`切换为${label}纸张`}
+                  aria-label={`切换为${label}模式`}
+                  className={
+                    active
+                      ? 'inline-flex h-6 items-center gap-1 rounded-md bg-muted px-2 text-[11px] font-medium text-foreground'
+                      : 'inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground'
+                  }
+                >
+                  {Icon ? (
+                    <Icon size={11.5} />
+                  ) : (
+                    <span className="size-2.5 rounded-full border border-amber-700/40 bg-[#f3e6c8]" />
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </header>
 
@@ -601,10 +629,14 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
             ) : (
               <div
                 ref={readerScrollRef}
-                className="h-full overflow-y-auto px-6 py-8 sm:px-12 sm:py-10 coss-scroll"
+                className="dw-reader-canvas h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8 coss-scroll"
                 style={{ '--dw-reader-size': `${fontSize}px` } as React.CSSProperties}
               >
-                <article className={`mx-auto w-full ${wide ? 'max-w-[1080px]' : 'max-w-[780px]'}`}>
+                <article
+                  className={`dw-reader-paper mx-auto w-full px-7 py-8 sm:px-14 sm:py-12 ${
+                    wide ? 'max-w-[1080px]' : 'max-w-[820px]'
+                  }`}
+                >
                   <MarkdownView text={draft || '(空文档)'} className="dw-reader-prose" />
                 </article>
               </div>
@@ -638,10 +670,14 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
             </div>
           ) : (
             <div
-              className="h-full overflow-y-auto px-6 py-7 sm:px-10 sm:py-9 coss-scroll"
+              className="dw-reader-canvas h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8 coss-scroll"
               style={{ '--dw-reader-size': `${fontSize}px` } as React.CSSProperties}
             >
-              <div className={`mx-auto w-full ${wide || !isMarkdownFile ? 'max-w-[1120px]' : 'max-w-[780px]'}`}>
+              <div
+                className={`dw-reader-paper mx-auto w-full px-7 py-8 sm:px-12 sm:py-10 ${
+                  wide || !isMarkdownFile ? 'max-w-[1120px]' : 'max-w-[820px]'
+                }`}
+              >
                 <RichTextFileViewer
                   title={displayTitle}
                   mimeType={target.mimeType}

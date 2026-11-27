@@ -4,6 +4,7 @@ import { App } from './App.js';
 import { DocumentPopoutView } from './DocumentPopoutView.js';
 import { parsePopoutParams } from './lib/popout.js';
 import './styles.css';
+import './styles/reader.css';
 
 const popoutTarget = parsePopoutParams();
 
