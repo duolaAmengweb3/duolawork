@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
-import { MarkdownView } from './markdown.js';
+import { highlightCodeLine, MarkdownView } from './markdown.js';
 
 export type RichTextFormat = 'markdown' | 'html' | 'csv' | 'json' | 'code' | 'plain';
 
@@ -259,7 +259,9 @@ export function RichTextFileViewer({
                   <td className="w-10 select-none border-r border-border/60 px-2.5 py-0.5 text-right text-[10.5px] text-muted-foreground/70 tabular-nums">
                     {idx + 1}
                   </td>
-                  <td className="whitespace-pre px-3 py-0.5 text-foreground">{ln || ' '}</td>
+                  <td className="whitespace-pre px-3 py-0.5 text-foreground">
+                    {ln ? highlightCodeLine(ln) : ' '}
+                  </td>
                 </tr>
               ))}
             </tbody>

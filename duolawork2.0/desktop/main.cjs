@@ -368,17 +368,20 @@ app.whenReady().then(async () => {
       return { ok: false };
     }
 
-    const key = typeof opts?.key === 'string' && opts.key.trim() ? opts.key.trim() : targetUrl;
+    const key = typeof opts?.key === 'string' && opts.key.trim() ? opts.key.trim() : 'reader-workspace';
     const existing = popoutWindows.get(key);
     if (existing && !existing.isDestroyed()) {
       if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
+      if (opts?.tabPayload && !existing.webContents.isDestroyed()) {
+        existing.webContents.send('dw2:reader-open-tab', opts.tabPayload);
+      }
       return { ok: true, reused: true };
     }
 
-    const width = Math.max(680, Math.min(1600, Number(opts?.width) || 1080));
-    const height = Math.max(520, Math.min(1200, Number(opts?.height) || 800));
+    const width = Math.max(680, Math.min(1600, Number(opts?.width) || 1160));
+    const height = Math.max(520, Math.min(1200, Number(opts?.height) || 820));
     const win = new BrowserWindow({
       width,
       height,
