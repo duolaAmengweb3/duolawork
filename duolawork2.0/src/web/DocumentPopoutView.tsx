@@ -273,7 +273,7 @@ function ReaderTabPane({
       });
       toast.success(
         data.conflict
-          ? `检测到并发修改，已另存为冲突分支 v${data.artifact.headVersion}`
+          ? `检测到并发修改，已另存为冲突分支 v${data.savedVersion.version}`
           : `已保存为 v${data.artifact.headVersion}`
       );
       void loadDocument('sync');

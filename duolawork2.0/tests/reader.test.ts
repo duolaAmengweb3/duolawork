@@ -66,6 +66,19 @@ test('Reader protects edits during save, follows remote changes and restores the
     assert.equal(await editor.inputValue(), 'Still typing');
     await page.keyboard.press('Control+s');
     await page.getByText('v4', {exact: true}).waitFor();
+    await editor.fill('Local conflict');
+    const keepDraft = page.waitForEvent('dialog').then(async dialog => {
+      assert.equal(dialog.type(), 'beforeunload');
+      await dialog.dismiss();
+    });
+    await page.evaluate(() => { setTimeout(() => location.reload(), 0); });
+    await keepDraft;
+    assert.equal(await editor.inputValue(), 'Local conflict');
+    const remote = await page.request.post(url + api, {data: {expectedBaseVersion: 4, content: 'Other author'}});
+    assert.ok(remote.ok());
+    await page.getByRole('button', {name: '保存', exact: true}).click();
+    await page.getByText('检测到并发修改，已另存为冲突分支 v6', {exact: true}).waitFor();
+    assert.equal(app.artifacts.getArtifact(docs[0].id)?.content, 'Other author');
     for (const doc of docs.slice(1)) {
       await page.getByLabel('打开更多资料标签').click();
       await page.getByRole('menuitem').getByText(doc.title, {exact: true}).click();
