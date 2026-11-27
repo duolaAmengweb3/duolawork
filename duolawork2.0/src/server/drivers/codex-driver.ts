@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type { DispatchAttemptRecord, MemberRecord, ProviderUsageMetrics } from '../../shared/types.js';
@@ -10,10 +11,12 @@ import {
   sanitizeToolSummary,
   type AgentDriver,
   type EnsuredSession,
+  type GeneratedImage,
   type ReconcileResult,
   type SessionBindingInput,
   type TurnDispatchInput,
   type TurnExecutionResult,
+  progressOnOutput,
   type TurnStreamEvent
 } from './types.js';
 
@@ -115,6 +118,11 @@ export function fromCodexWireToolName(wireName: string, wireToLogical?: Map<stri
   return wireName.startsWith('hub_') ? wireName.slice(4) : wireName;
 }
 
+function toolsetSignature(tools: NonNullable<SessionBindingInput['dynamicTools']>): string {
+  const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+  return createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
+}
+
 export class CodexAppServerDriver implements AgentDriver {
   public readonly kind = 'codex-app-server' as const;
   private readonly activeTurns = new Map<string, ActiveCodexTurn>();
@@ -152,6 +160,47 @@ export class CodexAppServerDriver implements AgentDriver {
     }
   }
 
+  public async listModels(member: MemberRecord) {
+    const rpc = await this.openInitializedClient(member, os.tmpdir());
+    try {
+      const models: import('../../shared/types.js').RuntimeModel[] = [];
+      let cursor: string | null = null;
+      let defaultModel: string | undefined;
+      const seen = new Set<string>();
+      do {
+        const page: {
+          data: Array<{
+            model: string;
+            displayName: string;
+            hidden: boolean;
+            isDefault: boolean;
+            supportedReasoningEfforts: Array<{ reasoningEffort: string }>;
+            defaultReasoningEffort: string;
+          }>;
+          nextCursor?: string;
+        } = await rpc.call('model/list', { cursor, limit: 100 }, 12000);
+        for (const model of page.data ?? []) {
+          if (model.hidden || !model.model) continue;
+          models.push({
+            id: model.model,
+            label: model.displayName || model.model,
+            efforts: (model.supportedReasoningEfforts ?? []).map(
+              (e: { reasoningEffort: string }) => e.reasoningEffort
+            ),
+            defaultEffort: model.defaultReasoningEffort
+          });
+          if (model.isDefault) defaultModel = model.model;
+        }
+        cursor = page.nextCursor ?? null;
+        if (cursor && seen.has(cursor)) break;
+        if (cursor) seen.add(cursor);
+      } while (cursor && models.length < 500);
+      return { models, defaultModel };
+    } finally {
+      await rpc.stop();
+    }
+  }
+
   public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
     const bin = this.resolveBinary(member);
     if (!fs.existsSync(bin)) {
@@ -180,10 +229,15 @@ export class CodexAppServerDriver implements AgentDriver {
       inputSchema: t.inputSchema
     }));
 
-    if (input.existingNativeSessionId) {
+    const codexToolset = toolsetSignature(input.dynamicTools ?? []);
+    const bridgeMeta = { ...input.existingBridgeMeta, codexToolset };
+    // Codex only registers dynamicTools on thread/start. Resume retains the original schema.
+    const compatible = input.existingBridgeMeta?.codexToolset === codexToolset ||
+      (!input.existingBridgeMeta?.codexToolset && dynamicTools.length === 0);
+    if (input.existingNativeSessionId && compatible) {
       const prepared = this.preparedSessionClients.get(input.existingNativeSessionId);
       if (prepared && !prepared.isClosed) {
-        return { nativeSessionId: input.existingNativeSessionId, resumed: true };
+        return { nativeSessionId: input.existingNativeSessionId, resumed: true, bridgeMeta };
       }
       const rpc = await this.openInitializedClient(input.member, input.cwd);
       try {
@@ -195,7 +249,7 @@ export class CodexAppServerDriver implements AgentDriver {
         });
         const id = String(resumed?.thread?.id || input.existingNativeSessionId);
         this.preparedSessionClients.set(id, rpc);
-        return { nativeSessionId: id, resumed: true };
+        return { nativeSessionId: id, resumed: true, bridgeMeta };
       } catch {
         await rpc.stop();
       }
@@ -213,7 +267,7 @@ export class CodexAppServerDriver implements AgentDriver {
       const id = String(created?.thread?.id || '');
       if (!id) throw new Error('Codex app-server 未返回 thread.id');
       this.preparedSessionClients.set(id, rpc);
-      return { nativeSessionId: id, resumed: false };
+      return { nativeSessionId: id, resumed: false, bridgeMeta };
     } catch (err) {
       await rpc.stop();
       throw err;
@@ -224,6 +278,7 @@ export class CodexAppServerDriver implements AgentDriver {
     input: TurnDispatchInput,
     onEvent?: (ev: TurnStreamEvent) => void
   ): Promise<TurnExecutionResult> {
+    const generatedImages = new Map<string, GeneratedImage>();
     const timeoutMs = input.timeoutMs ?? 10 * 60_000;
     const wireToLogical = new Map<string, string>();
     const dynamicTools = (input.dynamicTools ?? []).map((t) => {
@@ -266,6 +321,7 @@ export class CodexAppServerDriver implements AgentDriver {
 
     let turnId: string | null = null;
     const finalChunks = new Map<string, string>();
+    const progress = progressOnOutput(onEvent);
     let streamedDeltaText = '';
     let latestAgentText = '';
     let modelRequests = 0;
@@ -343,6 +399,7 @@ export class CodexAppServerDriver implements AgentDriver {
         if (params.turnId && params.turnId !== turnId) return;
         if (params.turn?.id && params.turn.id !== turnId) return;
 
+        if (method.startsWith('item/reasoning/') || method === 'item/commandExecution/outputDelta' || method === 'item/fileChange/outputDelta') progress();
         if (method === 'turn/started') {
           onEvent?.({ kind: 'started', nativeTurnId: turnId });
         }
@@ -353,11 +410,18 @@ export class CodexAppServerDriver implements AgentDriver {
           streamedDeltaText += params.delta;
           onEvent?.({ kind: 'delta', text: params.delta });
         }
+        if (params.item?.type === 'reasoning' && (method === 'item/started' || method === 'item/completed')) {
+          onEvent?.({ kind: 'activity', phase: method === 'item/started' ? 'thinking' : 'processing' });
+        }
         if (method === 'item/started' && params.item && params.item.type !== 'agentMessage' && params.item.type !== 'reasoning' && params.item.type !== 'userMessage') {
           const trace = extractCodexItemTrace(params.item, 'running');
           if (trace) onEvent?.(trace);
         }
         if (method === 'item/completed' && params.item) {
+          if (params.item.type === 'imageGeneration' && params.item.status === 'completed') {
+            const { id, result, savedPath } = params.item;
+            generatedImages.set(id, { id, dataBase64: result, localPath: savedPath });
+          }
           if (params.item.type === 'agentMessage') {
             const txt = String(params.item.text || '');
             if (txt) {
@@ -402,6 +466,7 @@ export class CodexAppServerDriver implements AgentDriver {
         }
         const started = await rpc.call('turn/start', {
           threadId: sessionId,
+          ...(input.member.inference ? {model:input.member.inference.model,effort:input.member.inference.effort} : {}),
           input: turnInputs
         });
         turnId = String(started?.turn?.id || '');
@@ -428,6 +493,8 @@ export class CodexAppServerDriver implements AgentDriver {
       const usage = computeCodexUsage(modelRequests, lastCumulative, lastSingleUsage);
       return {
         text: finalText,
+        ...(generatedImages.size ? { generatedImages: [...generatedImages.values()] } : {}),
+        bridgeMeta: { ...input.bridgeMeta, codexToolset: toolsetSignature(input.dynamicTools ?? []) },
         nativeSessionId: sessionId,
         nativeTurnId: turnId,
         ...(sessionReset ? { sessionReset: true } : {}),

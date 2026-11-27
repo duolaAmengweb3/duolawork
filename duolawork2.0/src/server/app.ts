@@ -1,4 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { parseOutcome } from './task-outcomes.js';
+import dns from 'node:dns/promises';
+import net from 'node:net';
+import https from 'node:https';
+import { readTurnExport } from './drivers/chat-image-delivery.js';
+import { createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -6,7 +11,7 @@ import path from 'node:path';
 import { ArtifactStore } from './artifacts.js';
 import { CloudAuthManager, hashPassword, type CloudAuthOptions } from './auth.js';
 export { hashPassword };
-import { AuthSandbox, SandboxForbiddenError } from './auth-sandbox.js';
+import { AuthSandbox, SandboxForbiddenError, isReadOnlyConnectorTool } from './auth-sandbox.js';
 import { DuolaWorkDatabase } from './db.js';
 import { DriverRegistry } from './drivers/registry.js';
 import {
@@ -191,8 +196,13 @@ export class DuolaWorkApp {
     this.nodeHub.onMembersChanged = () => {
       this.threads.emit({ type: 'thread.members_refreshed', payload: this.db.listMembers() });
     };
+    this.registry.onLateThreadReceipt = () => { this.threads.syncReconciledThreadTurns(); };
     this.nodeHub.onReplayedAttemptResult = (payload) => {
       const att = this.registry.getAttempt(payload.attemptId);
+      if (att && payload.ok && ['timed_out', 'late_ignored'].includes(att.status)) {
+        this.registry.recoverLateThreadReply(att, payload);
+        return;
+      }
       if (!att || !['prepared', 'dispatched', 'running', 'reconciling'].includes(att.status)) {
         return;
       }
@@ -552,13 +562,11 @@ export class DuolaWorkApp {
     this.sandbox.assertLeadPermission(claims);
     const rawLead = typeof args.leadMemberId === 'string' ? args.leadMemberId.trim() : '';
     const kind = args.kind === 'scheduled' ? 'scheduled' : 'once';
-    const startImmediately =
-      args.startImmediately !== undefined
-        ? Boolean(args.startImmediately)
-        : kind !== 'scheduled';
+    const startImmediately = kind === 'once' || args.startImmediately === true;
     const created = this.tasks.createOrUpdateTask({
       ...(typeof args.taskId === 'string' && args.taskId.trim() ? { taskId: args.taskId.trim() } : {}),
       sourceThreadId: claims.threadId,
+      requesterMemberId: claims.memberId,
       title: String(args.title || '未命名任务'),
       kind,
       cronExpr: typeof args.cronExpr === 'string' ? args.cronExpr : null,
@@ -567,6 +575,7 @@ export class DuolaWorkApp {
         typeof args.timezone === 'string' && args.timezone.trim() ? args.timezone.trim() : 'Asia/Shanghai',
       leadMemberId: !rawLead || rawLead === 'self' ? claims.memberId : rawLead,
       spec: {
+        outcome: parseOutcome(args.outcome),
         goal: String(args.goal || args.title || ''),
         acceptanceCriteria:
           typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
@@ -588,6 +597,7 @@ export class DuolaWorkApp {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
+    const step = claims.principalKind === 'task_worker' ? claims.stepId : null;
     if (toolName === 'artifact_read') {
       const artId = String(args.artifactId || '');
       const art = this.artifacts.getArtifact(artId);
@@ -694,7 +704,9 @@ export class DuolaWorkApp {
       if (!['document', 'file', 'link'].includes(kind) || !id) {
         throw new Error('请指定有效的资料类型 (document/file/link) 与 ID');
       }
-      return this.space.readMaterialForAgent(claims.threadId, kind, id);
+      const material = this.space.readMaterialForAgent(claims.threadId, kind, id);
+      if (kind === 'document') this.space.observeDocument(claims.attemptId, id, Number(material.headVersion));
+      return material;
     }
 
     if (toolName === 'space_create_folder') {
@@ -717,6 +729,37 @@ export class DuolaWorkApp {
       };
     }
 
+    if (toolName === 'space_upload_to_connector') {
+      const { fileId, connectorId, toolName: target, base64Field: field } = args;
+      if (typeof fileId !== 'string' || typeof connectorId !== 'string' || !connectorId ||
+          typeof target !== 'string' || !target || typeof field !== 'string' ||
+          !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(field) || field in Object.prototype) {
+        throw new Error('请指定资料文件、连接器、上传工具和有效的 Base64 字段名');
+      }
+      this.sandbox.assertExternalToolAllowed(claims, 'connector_call', { toolName: target });
+      const metadata = args.arguments ?? {};
+      if (typeof metadata !== 'object' || Array.isArray(metadata) || Object.hasOwn(metadata, field)) {
+        throw new Error('上传参数只需填写元数据，文件内容由资料区提供');
+      }
+      const active = this.space.listSpace(claims.threadId).items.some(it => it.kind === 'file' && it.id === fileId);
+      const found = active && this.space.getFileWithPath(fileId);
+      if (!found || found.file.threadId !== claims.threadId) throw new Error('当前对话中没有这个可用文件');
+      // DuolaBase MCP accepts a 2 MiB JSON request, including the Base64 and envelope.
+      const maxBody = 2 * 1024 * 1024;
+      if (4 * Math.ceil(found.file.sizeBytes / 3) > maxBody) throw new Error('文件超过连接器单次内联上传大小');
+      const bytes = await fs.promises.readFile(found.absPath);
+      const payload = {
+        connectorId, toolName: target,
+        arguments: { ...metadata, [field]: bytes.toString('base64') },
+        requestId: createHash('sha256').update(JSON.stringify([
+          claims.attemptId, connectorId, target, field, Object.entries(metadata).sort(([a], [b]) => a.localeCompare(b))
+        ])).update(bytes).digest('hex')
+      };
+      if (Buffer.byteLength(JSON.stringify(payload)) + 256 > maxBody) throw new Error('文件及元数据超过连接器单次请求大小');
+      if (step && !this.tasks.outcomes.claimWrite(step,toolName,args)) return {alreadySubmitted:true, message:'已提交本次上传，请核对原结果。'};
+      return this.duolabase.callTool('connector_call', payload, 60_000);
+    }
+
     if (toolName === 'space_save_file') {
       let name = typeof args.name === 'string' ? args.name.trim() : '';
       let dataBase64 = typeof args.dataBase64 === 'string' ? args.dataBase64 : undefined;
@@ -725,15 +768,12 @@ export class DuolaWorkApp {
 
       // If running directly on the same host (without remote node-runner hydration), hydrate localPath here
       if (localPath && !dataBase64 && content === undefined) {
-        const resolved = path.resolve(localPath);
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          throw new Error(`找不到本地文件: ${localPath}`);
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) throw new Error(`本地文件为空: ${localPath}`);
-        if (st.size > 24 * 1024 * 1024) throw new Error(`单个文件超过 24 MiB 限制: ${localPath}`);
-        dataBase64 = fs.readFileSync(resolved).toString('base64');
-        if (!name) name = path.basename(resolved);
+        const member = this.db.getMember(claims.memberId);
+        if (member?.driverKind === 'remote-node') throw new Error('请由执行节点读取本回合文件再上传');
+        const cwd = this.registry.localTurnDirectory(claims.attemptId);
+        if (!cwd) throw new Error('本回合工作目录已关闭');
+        dataBase64 = readTurnExport(localPath, cwd).toString('base64');
+        if (!name) name = path.basename(localPath);
       }
 
       if (!name) {
@@ -751,6 +791,17 @@ export class DuolaWorkApp {
         replaceExisting: args.replaceExisting !== false
       });
       this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      if (step) {
+        const file = this.space.getFileWithPath(saved.file.id);
+        if (!file) throw new Error('写入后的文件未找到，请重新保存');
+        const digest = createHash('sha256');
+        for await (const chunk of fs.createReadStream(file.absPath)) digest.update(chunk);
+        if (digest.digest('hex') !== saved.file.sha256) throw new Error('写入后的文件与提交内容不一致，请重新保存');
+        this.tasks.outcomes.recordMaterial(step, {
+          kind: 'file', resource_id: saved.file.id, name: saved.file.name,
+          folder_path: saved.folderPath.replace(/^\/+|\/+$/g, ''), revision: saved.file.sha256
+        });
+      }
       const previewUrl = `/api/v2/space/files/${encodeURIComponent(saved.file.id)}`;
       return {
         ok: true,
@@ -776,15 +827,12 @@ export class DuolaWorkApp {
       const localPath = typeof args.localPath === 'string' ? args.localPath.trim() : '';
 
       if (localPath && !dataBase64) {
-        const resolved = path.resolve(localPath);
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          throw new Error(`找不到本地图片: ${localPath}`);
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) throw new Error(`本地图片为空: ${localPath}`);
-        if (st.size > 24 * 1024 * 1024) throw new Error(`图片超过 24 MiB 限制: ${localPath}`);
-        dataBase64 = fs.readFileSync(resolved).toString('base64');
-        if (!name) name = path.basename(resolved);
+        const member = this.db.getMember(claims.memberId);
+        if (member?.driverKind === 'remote-node') throw new Error('请由执行节点读取本回合文件再上传');
+        const cwd = this.registry.localTurnDirectory(claims.attemptId);
+        if (!cwd) throw new Error('本回合工作目录已关闭');
+        dataBase64 = readTurnExport(localPath, cwd).toString('base64');
+        if (!name) name = path.basename(localPath);
       }
 
       if (!dataBase64) throw new Error('请提供图片内容 (localPath 或 dataBase64)');
@@ -796,7 +844,8 @@ export class DuolaWorkApp {
         name,
         mimeType: typeof args.mimeType === 'string' ? args.mimeType : undefined,
         buffer: buf,
-        uploaderId: claims.memberId
+        uploaderId: claims.memberId,
+        reuseIdentical: true
       });
       const alt = typeof args.alt === 'string' && args.alt.trim() ? args.alt.trim() : saved.name;
       return {
@@ -815,6 +864,7 @@ export class DuolaWorkApp {
       const content = typeof args.content === 'string' ? args.content : '';
       if (!title) throw new Error('请提供文档标题 (title)');
       const saved = this.space.saveOrUpdateDocumentForAgent({
+        expectedBaseVersion: typeof args.expectedBaseVersion === "number" ? args.expectedBaseVersion : undefined,
         threadId: claims.threadId,
         title,
         content,
@@ -829,6 +879,7 @@ export class DuolaWorkApp {
         writerId: claims.memberId,
         attemptId: claims.attemptId
       });
+      if (step) this.tasks.outcomes.recordMaterial(step,{kind:'document',resource_id:saved.artifact.id,name:saved.artifact.title,folder_path:saved.folderPath.replace(/^\/+|\/+$/g,''),revision:String(saved.artifact.headVersion)});
       this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
       return {
         ok: true,
@@ -914,6 +965,13 @@ export class DuolaWorkApp {
     if (toolName.startsWith('duolabase:')) {
       const mcpTool = toolName.slice('duolabase:'.length);
       this.sandbox.assertExternalToolAllowed(claims, mcpTool, args);
+      if (step) {
+        const httpWrite = mcpTool==='vault_http_proxy' && !['GET','HEAD','OPTIONS'].includes(String(args.method || 'GET').toUpperCase());
+        const connectorWrite = mcpTool==='connector_call' && this.tasks.outcomes.get(step)?.spec.kind==='external' && !isReadOnlyConnectorTool(String(args.toolName || ''));
+        if ((httpWrite || connectorWrite) && !this.tasks.outcomes.claimWrite(step,toolName,args)) {
+          return {alreadySubmitted:true, message:'本步已提交同一操作，请只读核对原结果。'};
+        }
+      }
       if (this.externalMcpCaller) {
         return this.externalMcpCaller(mcpTool, args);
       }
@@ -1003,6 +1061,7 @@ export class DuolaWorkApp {
     this.scheduler.start(15_000);
     const runBackgroundReconcile = () => {
       if (this.reconcileInProgress) return;
+      this.tasks.dispatchPendingReturns();
       const hasRunningMsgs = Boolean(
         this.db.sqlite
           .prepare(`SELECT 1 FROM v2_thread_messages WHERE turn_status = 'running' LIMIT 1`)
@@ -1412,7 +1471,7 @@ export class DuolaWorkApp {
         }
         const tasks = this.tasks.listTasks().map((t) => ({
           ...t,
-          latestRun: this.tasks.listRuns(t.id)[0] ?? null
+          latestRun: this.tasks.listRuns(t.id, true)[0] ?? null
         }));
         const duolabase = this.duolabase.getPublicStatus();
         const archives = this.db.sqlite
@@ -1421,6 +1480,7 @@ export class DuolaWorkApp {
 
         sendJson(res, 200, {
           members,
+          cloudMode: ['1','true'].includes(process.env.DUOLAWORK_CLOUD_MODE ?? ''),
           nodes: this.nodeHub.listNodes(),
           threads,
           tasks,
@@ -1817,6 +1877,13 @@ export class DuolaWorkApp {
         return;
       }
 
+      const continueMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/messages\/([^/]+)\/continue$/);
+      if (continueMatch && method === 'POST') {
+        const result = await this.threads.continueInterruptedTurn(decodeURIComponent(continueMatch[1]), decodeURIComponent(continueMatch[2]));
+        sendJson(res, result.status === 'continued' ? 202 : 200, result);
+        return;
+      }
+
       const ownerMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/owner$/);
       if (ownerMatch && method === 'POST') {
         const threadId = decodeURIComponent(ownerMatch[1]);
@@ -1850,12 +1917,27 @@ export class DuolaWorkApp {
                 summary: String(rawClarify.summary || '').trim()
               }
             : undefined;
-        const out = await this.threads.sendUserMessage({
+        const execution = this.threads.sendUserMessage({
           threadId,
           body: String(body.body || ''),
           idempotencyKey: typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined,
           clarifyReply
         });
+        // Browsers follow the running message over SSE. A durable acknowledgement keeps
+        // long turns independent of proxy timeouts while other API clients can await the result.
+        if (req.headers.prefer === 'respond-async' && typeof body.idempotencyKey === 'string') {
+          const accepted = this.db.sqlite.prepare(
+            `SELECT m.id FROM v2_thread_messages u JOIN v2_thread_messages m ON m.id = u.paired_message_id
+             WHERE u.thread_id = ? AND u.client_request_id = ? AND m.turn_status = 'running'`
+          ).get(threadId, body.idempotencyKey.trim());
+          if (accepted) {
+            void execution.catch(() => {}); // ThreadEngine records and emits the terminal outcome.
+            res.setHeader('Preference-Applied', 'respond-async');
+            sendJson(res, 202, { messageId: accepted.id });
+            return;
+          }
+        }
+        const out = await execution;
         const thread = this.threads.getThread(threadId)!;
         const artifact = thread.boundArtifactId
           ? this.artifacts.getArtifact(thread.boundArtifactId)
@@ -1879,7 +1961,7 @@ export class DuolaWorkApp {
         const tasks = this.tasks
           .listTasks({ sourceThreadId: threadId })
           .map((t) => {
-            const latestRun = this.tasks.listRuns(t.id)[0] ?? null;
+            const latestRun = this.tasks.listRuns(t.id, true)[0] ?? null;
             const steps = latestRun ? this.tasks.listSteps(latestRun.id) : [];
             return { ...t, latestRun, steps };
           });
@@ -2002,6 +2084,7 @@ export class DuolaWorkApp {
         const disp = download ? 'attachment' : 'inline';
         const encodedName = encodeURIComponent(found.file.name);
         res.writeHead(200, {
+          'Content-Security-Policy': "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
           'Content-Type': found.file.mimeType || 'application/octet-stream',
           'Content-Length': String(found.file.sizeBytes),
           'X-Content-Type-Options': 'nosniff',
@@ -2077,6 +2160,7 @@ export class DuolaWorkApp {
         const disp = download ? 'attachment' : 'inline';
         const encodedName = encodeURIComponent(found.image.name);
         res.writeHead(200, {
+          'Content-Security-Policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'",
           'Content-Type': found.image.mimeType || 'image/png',
           'Content-Length': String(found.image.sizeBytes),
           'X-Content-Type-Options': 'nosniff',
@@ -2180,7 +2264,8 @@ export class DuolaWorkApp {
           if (!found) return sendJson(res, 404, { error: '文件不存在' });
           const dlName = encodeURIComponent(preferredName || found.file.name);
           res.writeHead(200, {
-            'Content-Type': found.file.mimeType || 'application/octet-stream',
+            'Content-Security-Policy': "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+          'Content-Type': found.file.mimeType || 'application/octet-stream',
             'Content-Length': String(found.file.sizeBytes),
             'X-Content-Type-Options': 'nosniff',
             'Content-Disposition': `attachment; filename*=UTF-8''${dlName}`
@@ -2374,10 +2459,7 @@ export class DuolaWorkApp {
       if (pathname === '/api/v2/tasks' && method === 'POST') {
         const body = await readJsonBody(req);
         const kind = body.kind === 'scheduled' ? 'scheduled' : 'once';
-        const startImmediately =
-          body.startImmediately !== undefined
-            ? Boolean(body.startImmediately)
-            : kind !== 'scheduled';
+        const startImmediately = kind === 'once' || body.startImmediately === true;
         const created = this.tasks.createOrUpdateTask({
           taskId: typeof body.taskId === 'string' ? body.taskId : undefined,
           sourceThreadId: String(body.sourceThreadId || ''),
@@ -2431,6 +2513,13 @@ export class DuolaWorkApp {
         return;
       }
 
+      const pauseMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/pause$/);
+      if (pauseMatch && method === 'POST') {
+        const body = await readJsonBody(req);
+        if (typeof body.paused !== 'boolean') return sendJson(res, 400, { error: '需要指定暂停状态' });
+        const task = this.tasks.setPaused(decodeURIComponent(pauseMatch[1]), body.paused);
+        return sendJson(res, 200, { task });
+      }
       const toggleMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/schedule$/);
       if (toggleMatch && method === 'POST') {
         const taskId = decodeURIComponent(toggleMatch[1]);
@@ -2443,13 +2532,9 @@ export class DuolaWorkApp {
       const runNowMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/run$/);
       if (runNowMatch && method === 'POST') {
         const taskId = decodeURIComponent(runNowMatch[1]);
-        const { run } = this.tasks.instantiateRun({
-          taskId,
-          plannedSlotAt: `manual:${Date.now()}`,
-          triggerType: 'manual'
-        });
-        void this.tasks.driveRun(run.id).catch(() => {});
-        sendJson(res, 201, { run });
+        const { run, created } = this.tasks.requestManualRun(taskId, url.searchParams.get('retryFromRunId') || undefined);
+        if (created) void this.tasks.driveRun(run.id).catch(() => {});
+        sendJson(res, created ? 201 : 200, { run });
         return;
       }
 
@@ -2459,6 +2544,28 @@ export class DuolaWorkApp {
         const run = await this.tasks.cancelRun(runId);
         sendJson(res, 200, { run });
         return;
+      }
+
+      const inferenceRoute = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/members\/([^/]+)\/inference$/);
+      if (inferenceRoute && (method==='GET' || method==='PUT')) {
+        const thread=this.threads.getThread(decodeURIComponent(inferenceRoute[1]));
+        const member=this.db.getMember(decodeURIComponent(inferenceRoute[2]));
+        if (!thread || !member) return sendJson(res,404,{error:'未找到对话或成员'});
+        if (method==='PUT') {
+          const body=await readJsonBody(req);
+          const preference=await this.registry.savePreference(thread.id,member,String(body.model || ''),body.effort ? String(body.effort) : null);
+          return sendJson(res,200,{preference});
+        }
+        const preference=this.registry.getPreference(thread.id,member.id);
+        const catalog=url.searchParams.has('catalog') ? await this.registry.modelCatalog(member,url.searchParams.get('model') || preference?.model || undefined) : undefined;
+        return sendJson(res,200,{preference,catalog});
+      }
+
+      const verifyRun = pathname.match(/^\/api\/v2\/runs\/([^/]+)\/verify$/);
+      if (verifyRun && method === 'POST') {
+        const body = await readJsonBody(req);
+        const run = await this.tasks.resolveExternalCheck(decodeURIComponent(verifyRun[1]),String(body.stepId || ''),body.confirmedByUser===true);
+        return sendJson(res,200,{run});
       }
 
       const waitingReplyMatch = pathname.match(/^\/api\/v2\/runs\/([^/]+)\/reply$/);
@@ -2654,65 +2761,60 @@ function contentTypeFor(filePath: string): string {
   return 'application/octet-stream';
 }
 
-function isBlockedPrivateHost(hostname: string): boolean {
-  const h = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
-  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1') {
-    return true;
-  }
-  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-  }
-  if (/^(?:fc|fd|fe80)/i.test(h)) return true;
-  return false;
+// Permit globally routed media hosts. Check every DNS answer and pin the chosen one for each hop.
+const excludedMediaHosts = new net.BlockList();
+for (const [base, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+  ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+  ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]
+] as const) excludedMediaHosts.addSubnet(base, prefix, 'ipv4');
+for (const [base, prefix] of [
+  ['2001::', 23], ['2001:db8::', 32], ['2002::', 16], ['3fff::', 20]
+] as const) excludedMediaHosts.addSubnet(base, prefix, 'ipv6');
+
+function publicMediaAddress(address: string): boolean {
+  if (net.isIPv4(address)) return !excludedMediaHosts.check(address, 'ipv4');
+  return net.isIPv6(address) && /^[23]/.test(address) && !excludedMediaHosts.check(address, 'ipv6');
 }
 
 async function fetchSafeExternalMedia(rawUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error('无效的图片链接地址');
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error('仅支持 http 或 https 图片地址');
-  }
-  if (isBlockedPrivateHost(parsed.hostname)) {
-    throw new Error('禁止访问内网或本机地址');
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(parsed.toString(), {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': 'DuolaWork/2.0' }
+  const signal = AbortSignal.timeout(15000);
+  const max = 20 * 1024 * 1024;
+  let url = new URL(rawUrl);
+  for (let hop = 0; hop <= 5; hop++) {
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('无效的图片地址');
+    const host = url.hostname.replace(/^\\[|\\]$/g, '');
+    const addresses = net.isIP(host) ? [{ address:host, family:net.isIP(host) }] : await dns.lookup(host, { all:true });
+    if (!addresses.length || !addresses.every(item => publicMediaAddress(item.address))) throw new Error('图片需要公开的网络地址');
+    const first = addresses[0];
+    const response = await new Promise<http.IncomingMessage>((resolve,reject) => {
+      (url.protocol === 'https:' ? https : http).get(url, {
+        signal, agent:false, family:first.family,
+        lookup: (_host, _options, cb) => cb(null, first.address, first.family),
+        headers: { 'User-Agent':'DuolaWork/2.0' }
+      }, resolve).on('error',reject);
     });
-    if (!res.ok) {
-      throw new Error(`远端图片拉取失败 (HTTP ${res.status})`);
-    }
-    const finalParsed = new URL(res.url || parsed.toString());
-    if (isBlockedPrivateHost(finalParsed.hostname)) {
-      throw new Error('禁止重定向至内网地址');
-    }
-    const contentLength = Number(res.headers.get('content-length') || 0);
-    if (contentLength > 20 * 1024 * 1024) {
-      throw new Error('远端图片超过 20 MiB 限制');
-    }
-    const arr = await res.arrayBuffer();
-    if (arr.byteLength === 0) throw new Error('远端图片内容为空');
-    if (arr.byteLength > 20 * 1024 * 1024) throw new Error('远端图片超过 20 MiB 限制');
-    const rawCt = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    const mimeType = rawCt || 'image/png';
-    return { buffer: Buffer.from(arr), mimeType };
-  } finally {
-    clearTimeout(timer);
+    try {
+      const status = response.statusCode ?? 0;
+      if ([301,302,303,307,308].includes(status) && response.headers.location) {
+        url = new URL(response.headers.location, url);
+        continue;
+      }
+      if (status < 200 || status >= 300) throw new Error('远端图片拉取失败 (HTTP ' + status + ')');
+      if (Number(response.headers['content-length']) > max) throw new Error('远端图片超过 20 MiB 限制');
+      const chunks: Buffer[] = [];
+      let size=0;
+      for await (const chunk of response) {
+        size += chunk.length;
+        if (size > max) throw new Error('远端图片超过 20 MiB 限制');
+        chunks.push(chunk);
+      }
+      if (!size) throw new Error('远端图片为空');
+      return {buffer:Buffer.concat(chunks,size), mimeType:(response.headers['content-type'] || 'image/png').split(';')[0].trim().toLowerCase()};
+    } finally { response.destroy(); }
   }
+  throw new Error('图片地址重定向过多');
 }
 
 function mimeToImageExt(mime: string): string {

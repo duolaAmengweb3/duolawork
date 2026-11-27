@@ -125,6 +125,10 @@ export class DuolaWorkDatabase {
         UNIQUE(thread_id, seq)
       );
 
+      CREATE TABLE IF NOT EXISTS v2_document_observations (
+        attempt_id TEXT NOT NULL, artifact_id TEXT NOT NULL REFERENCES v2_artifacts(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL, PRIMARY KEY(attempt_id,artifact_id)
+      );
       CREATE TABLE IF NOT EXISTS v2_handoff_cursors (
         thread_id TEXT NOT NULL REFERENCES v2_threads(id) ON DELETE CASCADE,
         member_id TEXT NOT NULL REFERENCES v2_members(id),
@@ -217,6 +221,25 @@ export class DuolaWorkDatabase {
         UNIQUE(step_id, version)
       );
 
+      CREATE TABLE IF NOT EXISTS v2_step_outcomes (
+        step_id TEXT PRIMARY KEY REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        spec_json TEXT NOT NULL,
+        verified_resource_id TEXT,
+        state TEXT NOT NULL DEFAULT 'open',
+        checks INTEGER NOT NULL DEFAULT 0,
+        next_check_at INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS v2_step_material_receipts (
+        step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL, resource_id TEXT NOT NULL, name TEXT NOT NULL, folder_path TEXT NOT NULL,
+        revision TEXT NOT NULL,
+        PRIMARY KEY (step_id, kind, resource_id)
+      );
+      CREATE TABLE IF NOT EXISTS v2_step_external_calls (
+        step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        signature TEXT NOT NULL,
+        PRIMARY KEY (step_id, signature)
+      );
       CREATE TABLE IF NOT EXISTS v2_step_reviews (
         id TEXT PRIMARY KEY,
         step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
@@ -405,6 +428,9 @@ export class DuolaWorkDatabase {
       );
     `);
 
+    if (!this.sqlite.prepare("SELECT 1 FROM pragma_table_info('v2_dispatch_attempts') WHERE name='inference_json'").get()) {
+      this.sqlite.exec('ALTER TABLE v2_dispatch_attempts ADD COLUMN inference_json TEXT');
+    }
     const threadCols = this.sqlite.prepare(`PRAGMA table_info(v2_threads)`).all() as Array<{ name: string }>;
     if (!threadCols.some((c) => c.name === 'pinned_at')) {
       this.sqlite.exec(`ALTER TABLE v2_threads ADD COLUMN pinned_at TEXT`);
@@ -459,7 +485,15 @@ export class DuolaWorkDatabase {
       WHERE client_request_id IS NOT NULL;
     `);
 
+    const taskCols = this.sqlite.prepare('PRAGMA table_info(v2_tasks)').all() as Array<{ name: string }>;
+    if (!taskCols.some(c => c.name === 'requester_member_id')) {
+      this.sqlite.exec('ALTER TABLE v2_tasks ADD COLUMN requester_member_id TEXT REFERENCES v2_members(id)');
+    }
     const runCols = this.sqlite.prepare(`PRAGMA table_info(v2_task_runs)`).all() as Array<{ name: string }>;
+    if (!runCols.some(c => c.name === 'return_member_id')) {
+      this.sqlite.exec('ALTER TABLE v2_task_runs ADD COLUMN return_member_id TEXT REFERENCES v2_members(id)');
+    }
+    this.sqlite.exec('CREATE INDEX IF NOT EXISTS idx_v2_pending_task_returns ON v2_task_runs(status) WHERE return_member_id IS NOT NULL');
     if (!runCols.some((c) => c.name === 'lead_member_id')) {
       this.sqlite.exec(`ALTER TABLE v2_task_runs ADD COLUMN lead_member_id TEXT`);
     }
@@ -567,7 +601,9 @@ export class DuolaWorkDatabase {
 
   public listMembers(): MemberRecord[] {
     const rows = this.sqlite
-      .prepare(`SELECT * FROM v2_members ORDER BY created_at ASC, id ASC`)
+      .prepare(`SELECT * FROM v2_members WHERE id NOT IN (
+        SELECT value FROM json_each(COALESCE((SELECT value_json FROM v2_settings WHERE key='archived_member_ids'),'[]'))
+      ) ORDER BY created_at ASC, id ASC`)
       .all() as Record<string, unknown>[];
     return rows.map(mapMemberRow);
   }

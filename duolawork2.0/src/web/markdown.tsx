@@ -183,7 +183,12 @@ function isAllowedImageSrc(raw: string): boolean {
 
 function extractSpaceFileId(src: string): string | null {
   const m = src.trim().match(/^\/api\/v2\/space\/files\/([^?#]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
 }
 
 function ChatImageCard({
@@ -237,12 +242,12 @@ function ChatImageCard({
   return (
     <>
       <figure className="dw-chat-image-card" data-testid="chat-image-card">
-        <div className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} title="点击查看大图">
+        <button type="button" className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} aria-label={`查看大图：${label || '图片'}`} title="点击查看大图">
           <img src={src} alt={label || '图片'} loading="lazy" />
           <span className="dw-chat-image-zoom" aria-hidden="true">
             <Maximize2 size={12} />
           </span>
-        </div>
+        </button>
         {(actions || label) && (
           <figcaption className="dw-chat-image-bar">
             {label && (
@@ -352,6 +357,19 @@ function ChatImageCard({
   );
 }
 
+const filenamePatterns = new WeakMap<MarkdownSpaceResolver, RegExp>();
+function filenamePattern(resolver: MarkdownSpaceResolver) {
+    const cached = filenamePatterns.get(resolver);
+    if (cached) return cached;
+    const names = resolver.items.map(it => it.title).filter(name => /\.[a-z0-9]{1,12}$/i.test(name));
+    if (!names.length) return null;
+    const byLength = [...new Set(names)].sort((a,b) => b.length - a.length);
+    const options = byLength.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const pattern = new RegExp('(?<![\\w./-])(?:' + options + ')(?![\\w/-]|\\.[a-z0-9])', 'gi');
+    filenamePatterns.set(resolver,pattern);
+    return pattern;
+}
+
 function renderInline(
   text: string,
   keyPrefix: string,
@@ -366,9 +384,22 @@ function renderInline(
   let match: RegExpExecArray | null;
   let part = 0;
 
+  const appendPlain = (plain: string) => {
+    if (!spaceResolver) { out.push(plain); return; }
+    const pattern = filenamePattern(spaceResolver);
+    if (!pattern) { out.push(plain); return; }
+    let from = 0;
+    for (const match of plain.matchAll(pattern)) {
+      const exact = spaceResolver.items.filter(it => it.title.toLowerCase() === match[0].toLowerCase());
+      if (exact.length !== 1) continue;
+      out.push(plain.slice(from,match.index), renderSpaceRefChip({type:'item', item:exact[0]}, match[0], spaceResolver, keyPrefix + '-file-' + part++));
+      from = match.index + match[0].length;
+    }
+    out.push(plain.slice(from));
+  };
   while ((match = tokenRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      out.push(text.slice(lastIndex, match.index));
+      appendPlain(text.slice(lastIndex, match.index));
     }
     const token = match[0];
     if (token.startsWith('`') && token.endsWith('`')) {
@@ -457,7 +488,7 @@ function renderInline(
   }
 
   if (lastIndex < text.length) {
-    out.push(text.slice(lastIndex));
+    appendPlain(text.slice(lastIndex));
   }
   return out.length > 0 ? out : [text];
 }
@@ -500,14 +531,18 @@ export function MarkdownView({
 
     // Standalone image line -> render directly as figure without wrapping in <p>
     const standaloneImg = line.trim().match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
-    if (standaloneImg && isAllowedImageSrc(standaloneImg[2])) {
+    if (standaloneImg) {
       blocks.push(
-        <ChatImageCard
-          key={`blk-${key++}`}
-          src={standaloneImg[2]}
-          alt={standaloneImg[1] || ''}
-          actions={imageActions}
-        />
+        isAllowedImageSrc(standaloneImg[2]) ? (
+          <ChatImageCard
+            key={`blk-${key++}`}
+            src={standaloneImg[2]}
+            alt={standaloneImg[1] || ''}
+            actions={imageActions}
+          />
+        ) : (
+          <p key={`blk-${key++}`}>{standaloneImg[1] || '图片'}（图片地址无法在此打开）</p>
+        )
       );
       i += 1;
       continue;
@@ -521,13 +556,11 @@ export function MarkdownView({
     }
 
     // Headings
-    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       const body = renderInline(headingMatch[2].trim(), `h-${key}`, imageActions, spaceResolver);
-      if (level === 1) blocks.push(<h1 key={`blk-${key++}`}>{body}</h1>);
-      else if (level === 2) blocks.push(<h2 key={`blk-${key++}`}>{body}</h2>);
-      else blocks.push(<h3 key={`blk-${key++}`}>{body}</h3>);
+      blocks.push(React.createElement('h' + level, {key:'blk-' + key++}, body));
       i += 1;
       continue;
     }
@@ -590,13 +623,14 @@ export function MarkdownView({
     }
 
     // Paragraph (consume consecutive plain lines, stopping at standalone image lines)
-    const pLines: string[] = [];
+    // Always consume the current line, including unrecognized Markdown.
+    const pLines: string[] = [lines[i++]];
     while (
       i < lines.length &&
       lines[i].trim() !== '' &&
       !lines[i].trimStart().startsWith('```') &&
       !/^!\[([^\]]*)\]\(([^\s)]+)\)$/.test(lines[i].trim()) &&
-      !/^(#{1,3})\s+/.test(lines[i]) &&
+      !/^(#{1,6})\s+/.test(lines[i]) &&
       !lines[i].trimStart().startsWith('>') &&
       !/^\s*[-*+]\s+/.test(lines[i]) &&
       !/^\s*\d+\.\s+/.test(lines[i])

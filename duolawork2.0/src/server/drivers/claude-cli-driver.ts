@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -21,6 +22,7 @@ import {
   type SessionBindingInput,
   type TurnDispatchInput,
   type TurnExecutionResult,
+  progressOnOutput,
   type TurnStreamEvent
 } from './types.js';
 
@@ -111,6 +113,66 @@ export class ClaudeCliDriver implements AgentDriver {
       return configured;
     }
     return findLocalBinaryOnPath('claude');
+  }
+
+  public async listModels(member: MemberRecord): Promise<import('../../shared/types.js').ModelCatalog> {
+    const bin = this.resolveBinary(member);
+    if (!bin) throw new Error('Claude CLI 未安装');
+    const child = spawn(
+      bin,
+      [
+        '-p',
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--no-session-persistence'
+      ],
+      { cwd: os.tmpdir(), env: resolveLocalProxyEnv(), stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+    const lines = createInterface({ input: child.stdout });
+    try {
+      return await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('读取 Claude 模型超时')), 12000);
+        child.once('close', () => {
+          clearTimeout(timeout);
+          reject(new Error('Claude 未返回模型列表'));
+        });
+        child.once('error', (e) => {
+          clearTimeout(timeout);
+          reject(e);
+        });
+        child.stdin.once('error', reject);
+        lines.on('line', (line) => {
+          let msg;
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            return;
+          }
+          if (msg.type !== 'control_response' || msg.response?.request_id !== 'models') return;
+          clearTimeout(timeout);
+          const catalog = msg.response?.response?.models;
+          if (!Array.isArray(catalog)) return reject(new Error('Claude 暂时无法提供模型'));
+          resolve({
+            defaultModel: 'default',
+            models: catalog.map((m) => ({
+              id: m.value,
+              label: m.displayName || m.value,
+              efforts: m.supportsEffort ? (m.supportedEffortLevels ?? []) : []
+            }))
+          });
+        });
+        child.stdin.write(
+          JSON.stringify({ type: 'control_request', request_id: 'models', request: { subtype: 'initialize' } }) +
+            '\n'
+        );
+      });
+    } finally {
+      lines.close();
+      child.kill();
+    }
   }
 
   public async checkHealth(
@@ -287,6 +349,8 @@ export class ClaudeCliDriver implements AgentDriver {
         'stream-json',
         '--verbose',
         '--include-partial-messages',
+        ...(input.member.inference ? ['--model',input.member.inference.model] : []),
+        ...(input.member.inference?.effort ? ['--effort',input.member.inference.effort] : []),
         '--permission-mode',
         'bypassPermissions',
         ...(tmpMcpPath ? ['--mcp-config', tmpMcpPath] : []),
@@ -300,6 +364,7 @@ export class ClaudeCliDriver implements AgentDriver {
       });
       this.activeProcesses.set(input.attemptId, child);
 
+    const progress = progressOnOutput(onEvent);
     let streamedText = '';
     let assistantText = '';
     let resultText = '';
@@ -311,6 +376,8 @@ export class ClaudeCliDriver implements AgentDriver {
     let stderr = '';
     let timedOut = false;
 
+    const pendingTools = new Map<string, string>();
+    let thinkingBlock: number | undefined;
     const rl = readline.createInterface({ input: child.stdout });
     rl.on('line', (line) => {
       const trimmed = line.trim();
@@ -324,13 +391,34 @@ export class ClaudeCliDriver implements AgentDriver {
 
       if (msg.type === 'stream_event') {
         const ev = msg.event;
-        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') {
+        if (ev?.type === 'content_block_delta' && (ev.delta?.type === 'thinking_delta' || ev.delta?.type === 'input_json_delta')) progress();
+        if (ev?.type === 'content_block_start' && ev.content_block?.type === 'thinking') {
+          thinkingBlock = ev.index;
+          onEvent?.({ kind: 'activity', phase: 'thinking' });
+        } else if (ev?.type === 'content_block_stop' && thinkingBlock !== undefined && ev.index === thinkingBlock) {
+          thinkingBlock = undefined;
+          onEvent?.({ kind: 'activity', phase: 'processing' });
+        } else if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use' && ev.content_block.id && ev.content_block.name) {
+          const { id, name } = ev.content_block;
+          pendingTools.set(id, name);
+          onEvent?.({ kind: 'tool', toolId: id, toolName: name, toolStatus: 'running' });
+        } else if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') {
           streamedText += ev.delta.text;
           onEvent?.({ kind: 'delta', text: ev.delta.text });
         }
         return;
       }
 
+      if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+        for (const block of msg.message.content) {
+          const name = pendingTools.get(block?.tool_use_id);
+          if (block?.type === 'tool_result' && name) {
+            pendingTools.delete(block.tool_use_id);
+            onEvent?.({ kind: 'tool', toolId: block.tool_use_id, toolName: name, toolStatus: block.is_error ? 'error' : 'done' });
+          }
+        }
+        return;
+      }
       if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
         const parts: string[] = [];
         for (const item of msg.message.content) {
@@ -339,6 +427,7 @@ export class ClaudeCliDriver implements AgentDriver {
           } else if (item?.type === 'tool_use' && item.name) {
             const inp = item.input && typeof item.input === 'object' ? (item.input as Record<string, unknown>) : {};
             const toolName = String(item.name);
+            if (item.id) pendingTools.set(String(item.id), toolName);
             const summary =
               inp.command !== undefined
                 ? sanitizeToolSummary('command', inp.command)

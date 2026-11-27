@@ -1,5 +1,8 @@
+import { deliveryLabel } from '../shared/task-progress.js';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import { StepOutcomes, parseOutcome, matchesReadback, outcomeSchema, splitSubmittedOutcome } from './task-outcomes.js';
+import type { TaskOutcome } from '../shared/types.js';
 import os from 'node:os';
 import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
@@ -33,6 +36,8 @@ export class TaskEngine {
   private readonly activeFinalizations = new Set<string>();
   private readonly stepFailureReasons = new Map<string, string>();
   private taskReconcileRunning = false;
+  public readonly outcomes: StepOutcomes;
+  private readonly checking = new Set<string>();
   public space?: SpaceStore;
   public scopedToolExecutor?: (
     claims: ScopedTurnClaims,
@@ -47,7 +52,7 @@ export class TaskEngine {
     private readonly registry: DriverRegistry,
     private readonly threads: ThreadEngine,
     private readonly worktrees: WorktreeManager
-  ) {}
+  ) { this.outcomes = new StepOutcomes(db); }
 
   private resolveMember(idOrName: string): MemberRecord | null {
     const trimmed = String(idOrName || '').trim();
@@ -60,6 +65,7 @@ export class TaskEngine {
 
   public createOrUpdateTask(input: {
     taskId?: string;
+    requesterMemberId?: string;
     sourceThreadId: string;
     projectId?: string;
     title: string;
@@ -72,6 +78,7 @@ export class TaskEngine {
     leadMemberId: string;
     toolPolicy?: ToolPolicy;
     spec: {
+      outcome?: TaskOutcome;
       goal?: string;
       acceptanceCriteria?: string;
       maxReviewRounds?: number;
@@ -79,6 +86,7 @@ export class TaskEngine {
       workspaceRepoPath?: string | null;
       integrationTestCommand?: string | null;
       steps?: Array<{
+        outcome?: TaskOutcome;
         stepOrder?: number;
         title?: string;
         assigneeMemberId?: string;
@@ -132,13 +140,13 @@ export class TaskEngine {
       }
     }
 
-    const rawGoal = String(input.spec?.goal || cleanTitle).trim() || cleanTitle;
+    const rawGoal = String(input.spec?.goal || existing?.spec.goal || cleanTitle).trim() || cleanTitle;
     const rawAcceptance =
-      String(input.spec?.acceptanceCriteria || '满足各分工步骤验收条件并通过负责人终审').trim();
+      String(input.spec?.acceptanceCriteria || existing?.spec.acceptanceCriteria || '满足各分工步骤验收条件并通过负责人终审').trim();
     const rawSteps =
       Array.isArray(input.spec?.steps) && input.spec.steps.length > 0
         ? input.spec.steps
-        : [
+        : existing?.spec.steps ?? [
             {
               stepOrder: 1,
               title: cleanTitle,
@@ -149,6 +157,7 @@ export class TaskEngine {
             }
           ];
 
+    if (input.spec?.outcome && rawSteps.length > 1) throw badRequest('多步任务请在相应步骤上指定交付结果');
     const normalizedSteps = rawSteps.map((s, idx) => {
       const targetRef = String(s.assigneeMemberId || '').trim();
       const worker = targetRef ? this.resolveMember(targetRef) : lead;
@@ -171,6 +180,7 @@ export class TaskEngine {
       return {
         stepOrder: typeof s.stepOrder === 'number' && Number.isInteger(s.stepOrder) && s.stepOrder > 0 ? s.stepOrder : idx + 1,
         title: stepTitle,
+        outcome: parseOutcome(s.outcome ?? (rawSteps.length === 1 ? input.spec.outcome : undefined)),
         assigneeMemberId: worker.id,
         dependsOnOrders: uniqueDeps,
         brief: String(s.brief || stepTitle || rawGoal).trim(),
@@ -185,10 +195,10 @@ export class TaskEngine {
     const normalizedSpec: TaskSpec = {
       goal: rawGoal,
       acceptanceCriteria: rawAcceptance,
-      maxReviewRounds: input.spec?.maxReviewRounds ?? 3,
-      stepTimeoutMs: input.spec?.stepTimeoutMs ?? 900_000,
-      workspaceRepoPath: input.spec?.workspaceRepoPath ?? thread.workspacePath ?? null,
-      integrationTestCommand: input.spec?.integrationTestCommand ?? null,
+      maxReviewRounds: input.spec?.maxReviewRounds ?? existing?.spec.maxReviewRounds ?? 3,
+      stepTimeoutMs: input.spec?.stepTimeoutMs ?? existing?.spec.stepTimeoutMs ?? 900_000,
+      workspaceRepoPath: input.spec?.workspaceRepoPath === undefined ? existing?.spec.workspaceRepoPath ?? thread.workspacePath ?? null : input.spec.workspaceRepoPath,
+      integrationTestCommand: input.spec?.integrationTestCommand === undefined ? existing?.spec.integrationTestCommand ?? null : input.spec.integrationTestCommand,
       steps: normalizedSteps
     };
 
@@ -224,72 +234,75 @@ export class TaskEngine {
       return { task: updated, initialRun: null };
     }
 
-    const taskId = input.taskId ?? 'task_' + randomUUID().slice(0, 10);
-    const leadSessionKey = `task_lead:${taskId}`;
+    return this.db.inTransaction(() => {
+      const taskId = input.taskId ?? 'task_' + randomUUID().slice(0, 10);
+      const leadSessionKey = `task_lead:${taskId}`;
 
-    this.db.sqlite
-      .prepare(
-        `INSERT INTO v2_tasks (
-          id, project_id, source_thread_id, title, kind, cron_expr, interval_seconds,
-          timezone, misfire_policy, schedule_enabled, template_version,
-          lead_member_id, lead_session_key, tool_policy, spec_json, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'active', ?, ?)`
-      )
-      .run(
-        taskId,
-        input.projectId ?? thread.projectId,
-        input.sourceThreadId,
-        cleanTitle,
-        kind,
-        cleanCron,
-        cleanInterval,
-        timezone,
-        input.misfirePolicy ?? (kind === 'scheduled' ? 'catch_up_once' : 'skip_stale'),
-        input.scheduleEnabled === false ? 0 : 1,
-        lead.id,
-        leadSessionKey,
-        input.toolPolicy ?? 'duolabase_full',
-        JSON.stringify(normalizedSpec),
-        now,
-        now
-      );
+      this.db.sqlite
+        .prepare(
+          `INSERT INTO v2_tasks (
+            id, project_id, source_thread_id, title, kind, cron_expr, interval_seconds,
+            timezone, misfire_policy, schedule_enabled, template_version,
+            requester_member_id, lead_member_id, lead_session_key, tool_policy, spec_json, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?)`
+        )
+        .run(
+          taskId,
+          input.projectId ?? thread.projectId,
+          input.sourceThreadId,
+          cleanTitle,
+          kind,
+          cleanCron,
+          cleanInterval,
+          timezone,
+          input.misfirePolicy ?? (kind === 'scheduled' ? 'catch_up_once' : 'skip_stale'),
+          input.scheduleEnabled === false ? 0 : 1,
+          input.requesterMemberId ?? null,
+          lead.id,
+          leadSessionKey,
+          input.toolPolicy ?? 'duolabase_full',
+          JSON.stringify(normalizedSpec),
+          now,
+          now
+        );
 
-    const task = this.getTask(taskId)!;
+      const task = this.getTask(taskId)!;
 
-    const assigneesNames = [
-      ...new Set(
-        normalizedSpec.steps.map((s) => this.db.getMember(s.assigneeMemberId)?.name || s.assigneeMemberId)
-      )
-    ].join('、');
+      const assigneesNames = [
+        ...new Set(
+          normalizedSpec.steps.map((s) => this.db.getMember(s.assigneeMemberId)?.name || s.assigneeMemberId)
+        )
+      ].join('、');
 
-    const scheduleHint =
-      task.kind === 'scheduled' && task.cronExpr
-        ? `（定时：${task.cronExpr}，负责人：${lead.name}，执行：${assigneesNames}）`
-        : `（负责人：${lead.name}，执行：${assigneesNames}）`;
+      const scheduleHint =
+        task.kind === 'scheduled' && task.cronExpr
+          ? `（定时：${task.cronExpr}，负责人：${lead.name}，执行：${assigneesNames}）`
+          : `（负责人：${lead.name}，执行：${assigneesNames}）`;
 
-    this.threads.appendSystemMessage({
-      threadId: task.sourceThreadId,
-      authorKind: 'system_task_card',
-      authorId: lead.id,
-      body: `已立项任务《${task.title}》${scheduleHint}`,
-      taskCard: { taskId: task.id, kind: 'created' }
-    });
-
-    let initialRun: TaskRunRecord | null = null;
-    const shouldStartImmediately =
-      input.startImmediately !== undefined ? input.startImmediately : kind === 'once';
-    if (shouldStartImmediately) {
-      const started = this.instantiateRun({
-        taskId: task.id,
-        plannedSlotAt: kind === 'once' ? `once:${task.id}:1` : `immediate:${task.id}:${Date.now()}`,
-        triggerType: 'immediate'
+      this.threads.appendSystemMessage({
+        threadId: task.sourceThreadId,
+        authorKind: 'system_task_card',
+        authorId: lead.id,
+        body: `已立项任务《${task.title}》${scheduleHint}`,
+        taskCard: { taskId: task.id, kind: 'created' }
       });
-      initialRun = started.run;
-    }
 
-    this.threads.emit({ type: 'task.created', taskId: task.id, threadId: task.sourceThreadId, payload: task });
-    this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
-    return { task, initialRun };
+      let initialRun: TaskRunRecord | null = null;
+      const shouldStartImmediately =
+        input.startImmediately !== undefined ? input.startImmediately : kind === 'once';
+      if (shouldStartImmediately) {
+        const started = this.instantiateRun({
+          taskId: task.id,
+          plannedSlotAt: kind === 'once' ? `once:${task.id}:1` : `immediate:${task.id}:${Date.now()}`,
+          triggerType: 'immediate'
+        });
+        initialRun = started.run;
+      }
+
+      this.threads.emit({ type: 'task.created', taskId: task.id, threadId: task.sourceThreadId, payload: task });
+      this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
+      return { task, initialRun };
+    });
   }
 
   /**
@@ -332,6 +345,8 @@ export class TaskEngine {
         writerId: task.leadMemberId
       });
 
+      const requester = task.requesterMemberId;
+      const delegated = requester && (requester !== task.leadMemberId || task.spec.steps.some(step => step.assigneeMemberId !== requester));
       const runLeadSessionKey = `task_lead:${task.id}:${runId}`;
 
       this.db.sqlite
@@ -340,9 +355,9 @@ export class TaskEngine {
             id, task_id, run_number, planned_slot_at, template_version, trigger_type,
             status, delivery_stage, waiting_question, integration_worktree_path,
             integration_branch, final_artifact_id, summary,
-            lead_member_id, lead_session_key, tool_policy, spec_json,
+            return_member_id, lead_member_id, lead_session_key, tool_policy, spec_json,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 'running', 'steps_running', NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, 'running', 'steps_running', NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           runId,
@@ -352,6 +367,7 @@ export class TaskEngine {
           task.templateVersion,
           input.triggerType,
           runArtifact.id,
+          delegated ? requester : null,
           task.leadMemberId,
           runLeadSessionKey,
           task.toolPolicy,
@@ -398,9 +414,12 @@ export class TaskEngine {
             now,
             now
           );
+        this.outcomes.declare(stepId, st.outcome);
       }
 
       const run = this.getRun(runId)!;
+      if (task.kind==='scheduled') this.threads.appendSystemMessage({threadId:task.sourceThreadId,authorKind:'system_task_card',authorId:task.leadMemberId,
+        body:`《${task.title}》第 ${runNumber} 期`,taskCard:{taskId:task.id,runId,kind:'started'}});
       this.threads.emit({ type: 'task.run_created', taskId: task.id, runId, payload: run });
       return { run, created: true };
     });
@@ -419,6 +438,73 @@ export class TaskEngine {
     };
   }
 
+  public requestManualRun(taskId: string, retryFromRunId?: string) {
+    return this.db.inTransaction(() => {
+      const task = this.getTask(taskId);
+      if (!task) throw badRequest('任务不存在');
+      const runs = this.listRuns(taskId);
+      const existing = task.kind === 'once' ? runs[0] : runs.find(r =>
+        ['running', 'paused', 'waiting_user', 'waiting_node_online'].includes(r.status));
+      if (retryFromRunId && existing && this.listSteps(existing.id).some(step=>this.outcomes.get(step.id)?.spec.kind==='external')) throw badRequest('此任务含外部操作，请核对原任务，避免重复执行');
+      if (retryFromRunId && task.kind === 'once' && existing?.id === retryFromRunId &&
+          ['failed','timed_out'].includes(existing.status) && task.status === 'active') {
+        return this.instantiateRun({taskId, plannedSlotAt: 'retry:' + existing.id, triggerType:'manual'});
+      }
+      if (existing) return { run: existing, created: false };
+      if (task.status === 'paused') throw badRequest('任务已暂停');
+      return this.instantiateRun({ taskId, plannedSlotAt: 'manual:' + randomUUID(), triggerType: 'manual' });
+    });
+  }
+
+  public setPaused(taskId: string, paused: boolean): TaskRecord {
+    const task = this.getTask(taskId);
+    if (!task) throw badRequest('任务不存在');
+    if (task.status === 'completed' || task.status === 'canceled') return task;
+    const runs = this.listRuns(taskId);
+    const now = new Date().toISOString();
+    this.db.inTransaction(() => {
+      this.db.sqlite.prepare("UPDATE v2_tasks SET status=?, schedule_enabled=?, updated_at=? WHERE id=?")
+        .run(paused ? 'paused' : 'active', paused ? 0 : 1, now, taskId);
+      if (!paused) this.db.sqlite.prepare("UPDATE v2_task_runs SET status='running', updated_at=? WHERE task_id=? AND status='paused'").run(now, taskId);
+    });
+    for (const run of runs) {
+      if (paused ? run.status === 'running' : run.status === 'paused') void this.driveRun(run.id).catch(() => {});
+    }
+    this.threads.emit({ type: 'task.updated', taskId, threadId: task.sourceThreadId });
+    this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
+    return this.getTask(taskId)!;
+  }
+
+  // Terminal runs are their own durable delivery queue. A paired thread message is the receipt.
+  public dispatchPendingReturns(): void {
+    const pending = this.db.sqlite.prepare(`SELECT r.id, r.return_member_id, t.requester_member_id, t.title, t.source_thread_id
+      FROM v2_task_runs r JOIN v2_tasks t ON t.id=r.task_id JOIN v2_threads th ON th.id=t.source_thread_id
+      JOIN v2_members m ON m.id=r.return_member_id
+      WHERE r.return_member_id IS NOT NULL AND r.status IN ('completed','failed','timed_out')
+        AND th.status='active' AND m.status IN ('ready','busy')
+        AND NOT EXISTS (SELECT 1 FROM v2_thread_messages WHERE thread_id=th.id AND client_request_id='task-return:' || r.id)
+        AND NOT EXISTS (SELECT 1 FROM v2_thread_messages WHERE thread_id=th.id AND turn_status IN ('running','queued'))
+      ORDER BY r.updated_at`).all() as Array<{ id: string; return_member_id: string; requester_member_id: string | null; title: string; source_thread_id: string }>;
+    const startedThreads = new Set<string>();
+    for (const row of pending) {
+      if (startedThreads.has(row.source_thread_id)) continue;
+      startedThreads.add(row.source_thread_id);
+      const run = this.getRun(row.id)!;
+      const artifact = run.finalArtifactId && this.artifacts.getArtifact(run.finalArtifactId);
+      const context = [
+        '系统交付回执：你是这项任务的发起成员。请在原对话接手，核对交付并完成用户原先授权的剩余工作。',
+        '按发起本次委派时的用户请求判断范围。已完成的操作不要重复执行或重新派单。没有剩余授权工作就向用户简短汇报。回执不授权新的发布、发送等外部操作。',
+        !row.requester_member_id && '这是补送的历史交付，只核对并回复本次交付结果。不要改动、上传、发布或群发任何内容。',
+        '原对话已有执行人的成果。只汇报新核对的结果或剩余工作，不复述已展示的全文。',
+        '任务：' + row.title, run.spec?.goal && '原定目标：' + run.spec.goal,
+        '有具体文件要求时请打开实际交付资料，核对目录和内容。发现遗漏时按原授权补齐。', '结果：' + run.summary,
+        artifact && run.status === 'completed' && '交付文档 ' + artifact.id + '\n' + artifact.content.slice(0, 18000)
+      ].filter(Boolean).join('\n');
+      void this.threads.receiveTaskResult(row.source_thread_id, row.return_member_id, run.id, context)
+        .catch(error => console.warn('Task return dispatch failed', run.id, (error as Error).name));
+    }
+  }
+
   /**
    * Drives a `TaskRun` to completion or `waiting_user` / `timed_out` deterministically.
    */
@@ -431,6 +517,14 @@ export class TaskEngine {
       }
 
       const steps = this.listSteps(runId);
+      if (this.getTask(run.taskId)?.status === 'paused' && run.deliveryStage === 'steps_running') {
+        // Allow acknowledged in-flight work and its review to land before entering the checkpoint.
+        if (!steps.some(step => this.activeStepRuns.has(step.id) || step.status === 'running' || (step.status === 'submitted' && this.outcomes.get(step.id)?.state!=='checking'))) {
+          this.db.sqlite.prepare("UPDATE v2_task_runs SET status='paused', updated_at=? WHERE id=? AND status='running'").run(new Date().toISOString(), run.id);
+          this.threads.emit({ type: 'thread.space_updated', threadId: this.getTask(run.taskId)!.sourceThreadId });
+        }
+        return this.getRun(runId)!;
+      }
       const acceptedIds = new Set(steps.filter((s) => s.status === 'accepted').map((s) => s.id));
 
       // Check if all steps are accepted -> trigger atomic single finalization!
@@ -448,6 +542,15 @@ export class TaskEngine {
       );
 
       if (readySteps.length === 0) {
+        for (const step of steps.filter(s=>s.status==='submitted')) {
+          const state = this.outcomes.get(step.id)?.state;
+          if (state === 'manual') {
+            this.pauseRunWaitingUser(run.id, this.resolveEffectiveTaskForRun(run)!, '请核对「'+step.title+'」的外部结果');
+            return this.getRun(runId)!;
+          }
+          if (state === 'checking') await this.checkExternal(this.resolveEffectiveTaskForRun(run)!,run,step);
+        }
+        if (this.listSteps(runId).some((s,i)=>s.status!==steps[i].status)) continue;
         const stillBusy = steps.some((s) => s.status === 'running' || s.status === 'submitted');
         if (stillBusy) {
           return this.getRun(runId)!;
@@ -571,9 +674,13 @@ export class TaskEngine {
 
       const promptLines = [
         `你正在执行任务《${task.title}》的独立分工步骤（第 ${submissionNumber} 版提交）：`,
+        `- 委派的总目标（用于理解要求，只执行分配给你的步骤）：${task.spec.goal}`,
+        `- 整体验收要求：${task.spec.acceptanceCriteria}`,
         `- 步骤名称：${step.title}`,
         `- 本步要求：${step.brief}`,
-        `- 验收标准：${step.acceptanceCriteria}`
+        `- 验收标准：${step.acceptanceCriteria}`,
+        '请按实际成果提交。交付文件请先保存到约定目录；总目标明确给出完整文本时，在 step_submit_result 的 material 结果中用 expectedText 保留原文供系统读回核对；外部操作请在 step_submit_result 的 outcome 中声明 external，可提供目标资源只读 GET 和预期字段以便系统核对。外部操作结果未知时勿再次执行。无法调用提交工具时，在正文后另起一行用 <duolawork_outcome> 包含同一份 JSON 结果要求，再以 </duolawork_outcome> 结束。',
+        ...(this.outcomes.get(step.id) ? ['本步约定的交付要求：'+JSON.stringify(this.outcomes.get(step.id)!.spec)] : [])
       ];
       const linkedMaterialsDigest =
         this.space?.getTaskLinkedMaterialsDigest(task.id, task.sourceThreadId, {
@@ -623,6 +730,7 @@ export class TaskEngine {
           inputSchema: {
             type: 'object',
             properties: {
+              outcome: outcomeSchema,
               summary: { type: 'string' },
               content: { type: 'string' },
               status: { type: 'string', enum: ['submitted', 'blocked'] }
@@ -661,6 +769,7 @@ export class TaskEngine {
         onToolCall: async (toolName, args) => {
           if (toolName === 'step_submit_result') {
             this.sandbox.assertWorkerStepPermission(workerClaims, run.id, step!.id);
+            this.outcomes.declare(step!.id,parseOutcome(args.outcome));
             explicitSubmission = {
               summary: String(args.summary || step!.title),
               content: String(args.content || ''),
@@ -691,7 +800,9 @@ export class TaskEngine {
         .prepare(`UPDATE v2_task_steps SET native_session_id = ? WHERE id = ?`)
         .run(result.nativeSessionId, step.id);
 
-      const blockedMatch = result.text.match(/<duolawork_blocked>([\s\S]*?)<\/duolawork_blocked>/);
+      const submitted=splitSubmittedOutcome(result.text);
+      this.outcomes.declare(step.id,submitted.outcome);
+      const blockedMatch = submitted.text.match(/<duolawork_blocked>([\s\S]*?)<\/duolawork_blocked>/);
       const subStatus: 'submitted' | 'blocked' =
         explicitSubmission?.status ?? (blockedMatch ? 'blocked' : 'submitted');
       const subContent =
@@ -699,7 +810,7 @@ export class TaskEngine {
           ? explicitSubmission.content
           : blockedMatch
             ? blockedMatch[1].trim()
-            : result.text;
+            : submitted.text;
       const cleanedDeliverable = cleanDeliverableText(subContent);
 
       let commitSha: string | null = null;
@@ -776,6 +887,7 @@ export class TaskEngine {
         return;
       }
       if (curStep && task) {
+        if (curRun && this.recoverUncertainExternal(task,curRun,curStep)) return;
         if (msg.includes('ATTEMPT_TIMED_OUT')) {
           this.db.sqlite
             .prepare(`UPDATE v2_task_steps SET status = 'timed_out', updated_at = ? WHERE id = ?`)
@@ -801,6 +913,145 @@ export class TaskEngine {
     }
   }
 
+  private recoverUncertainExternal(task: TaskRecord, run: TaskRunRecord, step: TaskStepRecord): boolean {
+    const outcome = this.outcomes.get(step.id);
+    if (outcome?.spec.kind !== 'external' || run.status !== 'running') return false;
+    this.db.inTransaction(() => {
+      if (!this.getLatestStepSubmission(step.id)) {
+        this.recordSubmission({
+          stepId: step.id,
+          runId: run.id,
+          version: step.latestSubmissionVersion + 1,
+          assigneeMemberId: step.assigneeMemberId,
+          attemptId: null,
+          summary: '执行回执中断',
+          content: '执行回执中断，正在核对原操作的结果。',
+          commitSha: null,
+          status: 'submitted'
+        });
+      }
+      this.db.sqlite.prepare("UPDATE v2_task_steps SET status='submitted' WHERE id=?").run(step.id);
+      this.db.sqlite
+        .prepare("UPDATE v2_step_outcomes SET state='checking' WHERE step_id=? AND state='open'")
+        .run(step.id);
+    });
+    this.threads.emit({
+      type: 'task.step_updated',
+      taskId: task.id,
+      runId: run.id,
+      threadId: task.sourceThreadId
+    });
+    return true;
+  }
+
+  private async checkExternal(task: TaskRecord, run: TaskRunRecord, step: TaskStepRecord): Promise<void> {
+    const outcome = this.outcomes.get(step.id);
+    if (
+      outcome?.state !== 'checking' ||
+      outcome.spec.kind !== 'external' ||
+      outcome.next_check_at > Date.now() ||
+      this.checking.has(step.id)
+    )
+      return;
+    const sub = this.getLatestStepSubmission(step.id);
+    if (!sub) return;
+    this.checking.add(step.id);
+    try {
+      const probe = outcome.spec.readback;
+      let confirmed = false;
+      if (probe && this.scopedToolExecutor && step.toolPolicy !== 'none') {
+        const claims = this.sandbox.issueScopedToken({
+          principalKind: 'task_worker',
+          memberId: step.assigneeMemberId,
+          attemptId: 'verify_' + step.id,
+          threadId: task.sourceThreadId,
+          taskId: task.id,
+          runId: run.id,
+          stepId: step.id,
+          allowedArtifactIds: [],
+          toolPolicy: 'duolabase_readonly'
+        });
+        try {
+          const raw = await this.scopedToolExecutor(claims, 'duolabase:vault_http_proxy', {
+            credentialId: probe.credentialId,
+            url: probe.url,
+            method: 'GET'
+          });
+          confirmed = matchesReadback(raw, probe);
+        } catch {
+          /* The target may be offline or eventually consistent. Only repeat the read. */
+        } finally {
+          this.sandbox.revokeToken(claims.token);
+        }
+      }
+      if (
+        this.getRun(run.id)?.status !== 'running' ||
+        this.outcomes.get(step.id)?.state !== 'checking' ||
+        this.getTask(task.id)?.status === 'paused'
+      )
+        return;
+      this.db.inTransaction(() => {
+        if (confirmed) {
+          this.db.sqlite.prepare("UPDATE v2_step_outcomes SET state='verified' WHERE step_id=?").run(step.id);
+          this.finishExternalReview(task, run, step, sub, '已读回目标结果');
+        } else if (!probe || step.toolPolicy === 'none' || outcome.checks >= 3) {
+          this.db.sqlite.prepare("UPDATE v2_step_outcomes SET state='manual' WHERE step_id=?").run(step.id);
+          this.pauseRunWaitingUser(
+            run.id,
+            task,
+            '「' + step.title + '」的外部结果尚未核实。可在目标系统核对后确认，原操作不会重复提交。'
+          );
+        } else {
+          this.db.sqlite
+            .prepare('UPDATE v2_step_outcomes SET checks=checks+1,next_check_at=? WHERE step_id=?')
+            .run(Date.now() + [5000, 15000, 60000][outcome.checks], step.id);
+        }
+      });
+    } finally {
+      this.checking.delete(step.id);
+    }
+  }
+
+  private finishExternalReview(
+    task: TaskRecord,
+    run: TaskRunRecord,
+    step: TaskStepRecord,
+    sub: StepSubmissionRecord,
+    reason: string
+  ) {
+    if (sub.attemptId === null && sub.summary === '执行回执中断') {
+      const content = reason + '：' + step.title;
+      this.db.sqlite
+        .prepare('UPDATE v2_step_submissions SET summary=?,content=? WHERE id=?')
+        .run(content, content, sub.id);
+      sub = { ...sub, summary: content, content };
+    }
+    this.applyReviewDecision(task, run, step, sub, 'accept', reason, null);
+  }
+
+  public async resolveExternalCheck(runId: string, stepId: string, confirmedByUser: boolean) {
+    const run = this.getRun(runId),
+      step = this.getStep(stepId),
+      outcome = this.outcomes.get(stepId);
+    if (!run || !step || step.runId !== run.id || run.status !== 'waiting_user' || outcome?.state !== 'manual')
+      throw badRequest('此步骤当前无需人工核对');
+    const task = this.resolveEffectiveTaskForRun(run)!;
+    const sub = this.getLatestStepSubmission(step.id);
+    if (!sub || (!confirmedByUser && (outcome.spec.kind !== 'external' || !outcome.spec.readback)))
+      throw badRequest('没有可自动核对的目标');
+    this.db.inTransaction(() => {
+      this.db.sqlite
+        .prepare('UPDATE v2_step_outcomes SET state=?,checks=0,next_check_at=0 WHERE step_id=?')
+        .run(confirmedByUser ? 'attested' : 'checking', step.id);
+      this.db.sqlite
+        .prepare("UPDATE v2_task_runs SET status='running',waiting_question=NULL WHERE id=?")
+        .run(runId);
+      if (confirmedByUser) this.finishExternalReview(task, run, step, sub, '用户已核实外部结果');
+    });
+    this.threads.emit({ type: 'task.step_updated', taskId: task.id, runId, threadId: task.sourceThreadId });
+    return this.driveRun(runId);
+  }
+
   private async runLeadStepReview(
     task: TaskRecord,
     run: TaskRunRecord,
@@ -823,6 +1074,7 @@ export class TaskEngine {
     const reviewPrompt = [
       `你是任务《${task.title}》的负责人，请核验以下执行步骤提交（第 ${submission.version} 版）：`,
       `- 步骤：${step.title}`,
+      `- 委派总目标：${task.spec.goal}。整体验收要求：${task.spec.acceptanceCriteria}`,
       `- 原定验收标准：${step.acceptanceCriteria}`,
       `- 执行人提交内容：\n${submission.content}`,
       `\n请严格只输出一段 JSON 裁决：{"verdict":"accept"|"changes_requested"|"ask_user","comments":"具体核验意见或需向用户确认的问题"}`
@@ -929,12 +1181,34 @@ export class TaskEngine {
     verdict: StepReviewRecord['verdict'],
     comments: string,
     attemptId: string | null = null
-  ): StepReviewRecord {
+  ): StepReviewRecord | null {
     const effectiveTask = this.resolveEffectiveTaskForRun(run) ?? task;
     let effectiveVerdict = verdict;
     let effectiveComments = comments;
+    const outcome=this.outcomes.get(step.id);
+    if (outcome?.spec.kind==='external' && !['verified','attested'].includes(outcome.state) && verdict==='accept') {
+      // Even a revision request must not repeat an external operation with an unknown result.
+      this.db.sqlite.prepare("UPDATE v2_step_outcomes SET state='checking' WHERE step_id=? AND state='open'").run(step.id);
+      return null;
+    }
+    if (outcome?.spec.kind==='external' && verdict==='changes_requested') {
+      effectiveVerdict='ask_user';
+      effectiveComments='外部操作已提交，负责人要求复核：'+comments;
+    }
+    if (effectiveVerdict==='accept' && outcome?.spec.kind==='material') {
+      const receipt=this.outcomes.material(step.id,task.sourceThreadId,outcome.spec,this.space);
+      if (receipt) {
+        this.db.sqlite.prepare("UPDATE v2_step_outcomes SET state='verified',verified_resource_id=? WHERE step_id=?").run(receipt.id,step.id);
+        effectiveComments='已核对本步保存的资料：'+receipt.name;
+      } else {
+        effectiveVerdict='changes_requested';
+        effectiveComments='「'+outcome.spec.name+'」尚未符合交付要求。请核对名称、目录和约定的内容，重新保存后提交。';
+      }
+    }
+    if (outcome?.spec.kind==='external' && verdict==='accept') effectiveComments=outcome.state==='attested'?'用户已核实外部结果':'已从外部系统读回目标结果';
     if (
       effectiveVerdict === 'accept' &&
+      (!outcome || outcome.spec.kind === 'reply') &&
       cleanDeliverableText(submission.content).length === 0 &&
       !submission.commitSha
     ) {
@@ -1094,26 +1368,28 @@ export class TaskEngine {
         integrationNote +
         '\n';
 
-      if (run.finalArtifactId) {
-        const curArt = this.artifacts.getArtifact(run.finalArtifactId);
-        if (curArt) {
-          this.artifacts.writeArtifact({
-            artifactId: curArt.id,
-            expectedBaseVersion: curArt.headVersion,
-            content: fullDeliverable,
-            writerKind: 'agent',
-            writerId: task.leadMemberId
-          });
-        }
-      }
-
+      const progress=this.outcomes.progress(run.id);
+      const outcomeLabel=deliveryLabel(progress);
+      const material=progress.find(s=>s.material)?.material;
       const summaryLine =
         task.kind === 'scheduled'
-          ? `《${task.title}》第 ${run.runNumber} 期已全部验收完成（${steps.length}/${steps.length} 步通过）。`
-          : `任务《${task.title}》已全部验收完成（${steps.length}/${steps.length} 步通过）。`;
+          ? `《${task.title}》第 ${run.runNumber} 期：${outcomeLabel}。`
+          : `任务《${task.title}》：${outcomeLabel}。`;
 
       const now = new Date().toISOString();
       this.db.inTransaction(() => {
+        if (run.finalArtifactId) {
+          const curArt = this.artifacts.getArtifact(run.finalArtifactId);
+          if (curArt) {
+            this.artifacts.writeArtifact({
+              artifactId: curArt.id,
+              expectedBaseVersion: curArt.headVersion,
+              content: fullDeliverable,
+              writerKind: 'agent',
+              writerId: task.leadMemberId
+            });
+          }
+        }
         this.db.sqlite
           .prepare(
             `UPDATE v2_task_runs
@@ -1127,32 +1403,31 @@ export class TaskEngine {
             .prepare(`UPDATE v2_tasks SET status = 'completed', updated_at = ? WHERE id = ?`)
             .run(now, task.id);
         }
-      });
-
-      // Solo/single-owner deliveries also push complete content directly as an agent message in the thread!
-      if (steps.length === 1 && steps[0].assigneeMemberId === task.leadMemberId) {
-        const directBody = cleanDeliverableText(this.getLatestStepSubmission(steps[0].id)?.content || '');
-        if (directBody) {
-          this.threads.appendSystemMessage({
-            threadId: task.sourceThreadId,
-            authorKind: 'agent',
-            authorId: task.leadMemberId,
-            body: directBody,
-            artifactRefs: run.finalArtifactId ? [run.finalArtifactId] : []
-          });
+        // Solo/single-owner deliveries also push complete content directly as an agent message in the thread!
+        if (steps.length === 1 && steps[0].assigneeMemberId === task.leadMemberId) {
+          const directBody = cleanDeliverableText(this.getLatestStepSubmission(steps[0].id)?.content || '');
+          if (directBody) {
+            this.threads.appendSystemMessage({
+              threadId: task.sourceThreadId,
+              authorKind: 'agent',
+              authorId: task.leadMemberId,
+              body: directBody,
+              artifactRefs: run.finalArtifactId ? [run.finalArtifactId] : []
+            });
+          }
         }
-      }
 
-      // Post strictly ONE clean delivery card back to the origin conversation!
-      this.threads.appendSystemMessage({
-        threadId: task.sourceThreadId,
-        authorKind: 'system_task_card',
-        authorId: task.leadMemberId,
-        body: summaryLine,
-        artifactRefs: run.finalArtifactId ? [run.finalArtifactId] : [],
-        taskCard: { taskId: task.id, runId: run.id, kind: 'delivered' }
+        // Post strictly ONE clean delivery card back to the origin conversation!
+        this.threads.appendSystemMessage({
+          threadId: task.sourceThreadId,
+          authorKind: 'system_task_card',
+          authorId: task.leadMemberId,
+          body: summaryLine,
+          artifactRefs: run.finalArtifactId ? [run.finalArtifactId] : [],
+          taskCard: { taskId: task.id, runId: run.id, kind: 'delivered', outcomeLabel, material }
+        });
+
       });
-
       this.threads.emit({
         type: 'task.run_delivered',
         taskId: task.id,
@@ -1164,6 +1439,7 @@ export class TaskEngine {
         type: 'thread.space_updated',
         threadId: task.sourceThreadId
       });
+      this.dispatchPendingReturns();
       this.disposeStepScopesForRun(steps, task.leadSessionKey, task.leadMemberId);
     } catch (err) {
       if (this.getRun(run.id)?.status === 'canceled') {
@@ -1211,6 +1487,7 @@ export class TaskEngine {
   }): Promise<TaskRunRecord> {
     const run = this.getRun(input.runId);
     if (!run) throw new Error(`运行实例不存在: ${input.runId}`);
+    if (this.listSteps(run.id).some(s=>this.outcomes.get(s.id)?.state==='manual')) throw badRequest('请先核对待确认的外部结果');
     if (run.status !== 'waiting_user') {
       throw new Error(`当前运行实例不在等待确认状态 (${run.status})`);
     }
@@ -1334,11 +1611,15 @@ export class TaskEngine {
     return row ? mapRunRow(row) : null;
   }
 
-  public listRuns(taskId: string): TaskRunRecord[] {
+  public listRuns(taskId: string, latestOnly = false): TaskRunRecord[] {
     const rows = this.db.sqlite
-      .prepare(`SELECT * FROM v2_task_runs WHERE task_id = ? ORDER BY run_number DESC`)
+      .prepare(`SELECT r.*, reply.turn_status AS return_turn_status FROM v2_task_runs r
+        JOIN v2_tasks t ON t.id=r.task_id
+        LEFT JOIN v2_thread_messages receipt ON receipt.thread_id=t.source_thread_id AND receipt.client_request_id='task-return:'||r.id
+        LEFT JOIN v2_thread_messages reply ON reply.id=receipt.paired_message_id
+        WHERE r.task_id = ? ORDER BY r.run_number DESC ${latestOnly ? 'LIMIT 1' : ''}`)
       .all(taskId) as Record<string, unknown>[];
-    return rows.map(mapRunRow);
+    return rows.map(row=>({...mapRunRow(row),progress:this.outcomes.progress(String(row.id))}));
   }
 
   public getStep(id: string): TaskStepRecord | null {
@@ -1380,7 +1661,7 @@ export class TaskEngine {
   public getActiveTasksSummaryForThread(threadId: string): string[] {
     const tasks = this.listTasks({ sourceThreadId: threadId });
     return tasks.map((t) => {
-      const latestRun = this.listRuns(t.id)[0];
+      const latestRun = this.listRuns(t.id, true)[0];
       const leadName = this.db.getMember(t.leadMemberId)?.name || t.leadMemberId;
       return `- 任务《${t.title}》(${t.kind === 'scheduled' ? '定时' : '单次'}, 负责人:${leadName}) 状态=${latestRun?.status ?? t.status}${latestRun?.waitingQuestion ? ` 待确认:${latestRun.waitingQuestion}` : ''}`;
     });
@@ -1402,7 +1683,7 @@ export class TaskEngine {
         .prepare(
           `UPDATE v2_task_runs
            SET status = 'canceled', waiting_question = NULL, summary = '已手动停止本轮执行', updated_at = ?
-           WHERE id = ? AND status IN ('running', 'waiting_user')`
+           WHERE id = ? AND status IN ('running', 'waiting_user', 'paused')`
         )
         .run(now, runId);
       this.db.sqlite
@@ -1468,7 +1749,7 @@ export class TaskEngine {
 
     const runs = this.listRuns(taskId);
     for (const r of runs) {
-      if (r.status === 'running' || r.status === 'waiting_user') {
+      if (r.status === 'running' || r.status === 'paused' || r.status === 'waiting_user') {
         await this.cancelRun(r.id);
       }
     }
@@ -1538,9 +1819,19 @@ export class TaskEngine {
             }
             if (att && att.status === 'succeeded' && att.responseText !== null) {
               const existingSub = this.listSubmissions(step.id).find((s) => s.attemptId === att.id);
-              const blockedMatch = att.responseText.match(/<duolawork_blocked>([\s\S]*?)<\/duolawork_blocked>/);
+              let recovered: ReturnType<typeof splitSubmittedOutcome>;
+              try {
+                recovered = splitSubmittedOutcome(att.responseText);
+              } catch {
+                if (this.recoverUncertainExternal(effectiveTask, run, step)) continue;
+                this.stepFailureReasons.set(step.id, '执行端提交的交付信息格式无效');
+                this.db.sqlite.prepare("UPDATE v2_task_steps SET status='failed', updated_at=? WHERE id=?").run(new Date().toISOString(), step.id);
+                continue;
+              }
+              this.outcomes.declare(step.id,recovered.outcome);
+              const blockedMatch = recovered.text.match(/<duolawork_blocked>([\s\S]*?)<\/duolawork_blocked>/);
               const subStatus: 'submitted' | 'blocked' = blockedMatch ? 'blocked' : 'submitted';
-              const subContent = blockedMatch ? blockedMatch[1].trim() : att.responseText;
+              const subContent = blockedMatch ? blockedMatch[1].trim() : recovered.text;
               const cleaned = cleanDeliverableText(subContent);
 
               let recoveredCommitSha: string | null = existingSub?.commitSha ?? null;
@@ -1605,6 +1896,7 @@ export class TaskEngine {
               continue;
             }
 
+            if (this.recoverUncertainExternal(effectiveTask,run,step)) continue;
             const now = new Date().toISOString();
             if (att?.status === 'timed_out') {
               this.db.sqlite
@@ -1627,6 +1919,8 @@ export class TaskEngine {
           }
 
           if (step.status === 'submitted') {
+            const confirmation = this.outcomes.get(step.id)?.state;
+            if (confirmation === 'checking' || confirmation === 'manual') continue;
             const latestSub = this.getLatestStepSubmission(step.id);
             if (!latestSub) {
               this.stepFailureReasons.set(step.id, '步骤提交记录缺失，无法继续验收');
@@ -1940,6 +2234,7 @@ function mapTaskRow(row: Record<string, unknown>): TaskRecord {
     misfirePolicy: row.misfire_policy as TaskRecord['misfirePolicy'],
     scheduleEnabled: Number(row.schedule_enabled) !== 0,
     templateVersion: Number(row.template_version),
+    requesterMemberId: row.requester_member_id ? String(row.requester_member_id) : null,
     leadMemberId: String(row.lead_member_id),
     leadSessionKey: String(row.lead_session_key),
     toolPolicy: row.tool_policy as TaskRecord['toolPolicy'],
@@ -1965,6 +2260,8 @@ function mapRunRow(row: Record<string, unknown>): TaskRunRecord {
     runNumber: Number(row.run_number),
     plannedSlotAt: String(row.planned_slot_at),
     templateVersion: Number(row.template_version),
+    returnMemberId: row.return_member_id ? String(row.return_member_id) : null,
+    returnTurnStatus: (row.return_turn_status as TaskRunRecord['returnTurnStatus']) ?? null,
     triggerType: row.trigger_type as TaskRunRecord['triggerType'],
     status: row.status as TaskRunRecord['status'],
     deliveryStage: row.delivery_stage as TaskRunRecord['deliveryStage'],

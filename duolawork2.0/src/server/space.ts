@@ -271,7 +271,12 @@ export class SpaceStore {
     return null;
   }
 
+  public observeDocument(attempt: string, artifact: string, version: number): void {
+    this.db.sqlite.prepare('INSERT OR REPLACE INTO v2_document_observations (attempt_id,artifact_id,version) VALUES (?,?,?)').run(attempt,artifact,version);
+  }
+
   public saveOrUpdateDocumentForAgent(input: {
+    expectedBaseVersion?: number;
     threadId: string;
     title: string;
     content: string;
@@ -319,15 +324,19 @@ export class SpaceStore {
 
     if (existingId) {
       const existing = this.artifacts.getArtifact(existingId)!;
+      const observed = input.attemptId && this.db.sqlite.prepare('SELECT version FROM v2_document_observations WHERE attempt_id=? AND artifact_id=?').get(input.attemptId,existing.id) as {version:number} | undefined;
+      const base = input.expectedBaseVersion ?? (observed ? observed.version : undefined);
+      if (base !== existing.headVersion) throw new Error('文档已更新或尚未读取，请读取最新内容再合并保存');
       const written = this.artifacts.writeArtifact({
         artifactId: existing.id,
-        expectedBaseVersion: existing.headVersion,
+        expectedBaseVersion: base,
         title: cleanTitle,
         content: input.content,
         writerKind: 'agent',
         writerId: input.writerId,
         attemptId: input.attemptId ?? null
       });
+      if (input.attemptId) this.observeDocument(input.attemptId, existing.id, written.artifact.headVersion);
       if (targetFolderId !== undefined) {
         this.upsertItemMeta('document', written.artifact.id, input.threadId, { folderId: targetFolderId });
       }
@@ -352,6 +361,7 @@ export class SpaceStore {
       writerId: input.writerId,
       attemptId: input.attemptId ?? null
     });
+    if (input.attemptId) this.observeDocument(input.attemptId, created.id, created.headVersion);
     const finalFolderId = targetFolderId ?? null;
     this.upsertItemMeta('document', created.id, input.threadId, { folderId: finalFolderId });
     this.db.sqlite
@@ -617,6 +627,7 @@ export class SpaceStore {
     mimeType?: string;
     buffer: Buffer;
     uploaderId?: string;
+    reuseIdentical?: boolean;
   }): {
     id: string;
     threadId: string;
@@ -634,6 +645,15 @@ export class SpaceStore {
     if (!buf || buf.length === 0) throw new Error('图片内容为空');
     if (buf.length > 24 * 1024 * 1024) throw new Error('单张图片不能超过 24 MiB');
 
+    const sha256 = createHash('sha256').update(buf).digest('hex');
+    if (input.reuseIdentical) {
+      const row = this.db.sqlite.prepare(
+        'SELECT id FROM v2_chat_images WHERE thread_id = ? AND uploader_id = ? AND sha256 = ? LIMIT 1'
+      ).get(input.threadId, input.uploaderId ?? 'owner', sha256) as { id: string } | undefined;
+      const existing = row && this.getChatImageWithPath(row.id);
+      if (existing) return { ...existing.image, absPath: existing.absPath, url: `/api/v2/chat-images/${existing.image.id}` };
+    }
+
     const id = 'img_' + randomUUID().slice(0, 12);
     const dir = path.join(this.filesRoot, '_chat_images', safePathSegment(input.threadId));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -644,7 +664,6 @@ export class SpaceStore {
       throw new Error('非法图片存储路径');
     }
 
-    const sha256 = createHash('sha256').update(buf).digest('hex');
     fs.writeFileSync(absPath, buf, { mode: 0o600 });
 
     const now = new Date().toISOString();

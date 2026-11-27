@@ -1,3 +1,5 @@
+import https from 'node:https';
+import { readTurnExport, runWithChatImages, type ChatImageDelivery } from '../server/drivers/chat-image-delivery.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -62,11 +64,12 @@ const OUTBOX_TTL_MS = 24 * 3600 * 1000;
 export class DuolaWorkNodeRunner {
   private readonly drivers = new Map<string, AgentDriver>();
   private readonly outbox = new Map<string, OutboxEntry>();
-  private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver }>();
-  private readonly pendingToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver; cwd: string }>();
+  private canResumeTools = false;
+  private readonly pendingToolCalls = new Map<string, { frame: Record<string, unknown>; sent: boolean; resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private readonly activeMcpAttempts = new Map<
     string,
-    { token: string; tools: DynamicToolDefinition[] }
+    { token: string; tools: DynamicToolDefinition[]; delivery?: ChatImageDelivery }
   >();
   private loopbackMcpServer: http.Server | null = null;
   private loopbackMcpPort: number | null = null;
@@ -86,14 +89,22 @@ export class DuolaWorkNodeRunner {
     this.loadOutbox();
   }
 
+  private rejectPendingStart?: (err: Error) => void;
+
   public async start(): Promise<void> {
     this.stopped = false;
     await this.ensureLoopbackMcpServer();
+    if (this.stopped) {
+      this.stop();
+      throw new Error('NODE_STOPPED');
+    }
     return new Promise<void>((resolve, reject) => {
+      this.rejectPendingStart = reject;
       let settled = false;
       this.connect((err) => {
         if (settled) return;
         settled = true;
+        this.rejectPendingStart = undefined;
         if (err) reject(err);
         else resolve();
       });
@@ -102,6 +113,8 @@ export class DuolaWorkNodeRunner {
 
   public stop(): void {
     this.stopped = true;
+    this.rejectPendingStart?.(new Error('NODE_STOPPED'));
+    this.rejectPendingStart = undefined;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -255,6 +268,7 @@ export class DuolaWorkNodeRunner {
         }
         try {
           const out = await this.invokeCloudTool(attemptId, toolName, toolArgs);
+          this.activeMcpAttempts.get(attemptId)?.delivery?.toolResult(toolName, toolArgs, out);
           return {
             jsonrpc: '2.0',
             id,
@@ -334,13 +348,14 @@ export class DuolaWorkNodeRunner {
     const connectHost = `${parsed.hostname}:${targetPort}`;
 
     return new Promise<WebSocket>((resolve, reject) => {
-      const req = http.request({
+      const req = (proxy.protocol === 'https:' ? https : http).request({
         host: proxy.hostname,
-        port: Number(proxy.port || 80),
+        port: Number(proxy.port || (proxy.protocol === 'https:' ? 443 : 80)),
         method: 'CONNECT',
         path: connectHost,
         headers: { Host: connectHost }
       });
+      req.setTimeout(15000, () => req.destroy(new Error('Proxy connection timeout')));
       req.once('error', reject);
       req.once('connect', (res, tunnelSocket) => {
         if (res.statusCode !== 200) {
@@ -348,15 +363,22 @@ export class DuolaWorkNodeRunner {
           reject(new Error(`Proxy CONNECT failed: HTTP ${res.statusCode}`));
           return;
         }
+        tunnelSocket.setTimeout(0);
         const transport =
           parsed.protocol === 'wss:'
             ? tls.connect({ socket: tunnelSocket, servername: parsed.hostname })
             : tunnelSocket;
-        const ws = new WebSocket(wsUrl, {
-          headers,
-          createConnection: () => transport
-        });
-        resolve(ws);
+        const connected = () => {
+          try {
+            const ws = new WebSocket(wsUrl, { headers, createConnection: () => transport, handshakeTimeout: 15000 });
+            resolve(ws);
+          } catch (error) { transport.destroy(); reject(error); }
+        };
+        transport.once('error', reject);
+        if (parsed.protocol === 'wss:') {
+          transport.setTimeout(15000, () => transport.destroy(new Error('TLS handshake timeout')));
+          transport.once('secureConnect', () => { transport.setTimeout(0); connected(); });
+        } else connected();
       });
       req.end();
     });
@@ -367,17 +389,14 @@ export class DuolaWorkNodeRunner {
     void this.openWsSocket(this.buildWsUrl())
       .then((ws) => {
         if (this.stopped) {
+          ws.once('error', () => {});
           ws.close();
           return;
         }
         this.bindSocket(ws, onFirstWelcome);
       })
-      .catch((err) => {
-        if (onFirstWelcome) {
-          onFirstWelcome(err instanceof Error ? err : new Error(String(err)));
-        } else if (!this.stopped) {
-          this.scheduleReconnect();
-        }
+      .catch(() => {
+        if (!this.stopped) this.scheduleReconnect(onFirstWelcome);
       });
   }
 
@@ -391,6 +410,7 @@ export class DuolaWorkNodeRunner {
       );
       this.send({
         type: 'node.hello',
+        resumesToolCalls: true,
         name: this.config.name,
         kind: this.config.kind,
         platform: process.platform,
@@ -398,6 +418,7 @@ export class DuolaWorkNodeRunner {
         drivers: [...this.drivers.keys()],
         allowWorkspaceBrowse: Boolean(this.config.allowWorkspaceBrowse),
         allowedWorkspaceRoots: this.config.allowedWorkspaceRoots ?? [],
+        activeAttempts: [...this.runningAttempts.keys()],
         members: safeMembers
       });
 
@@ -418,8 +439,16 @@ export class DuolaWorkNodeRunner {
         return;
       }
       if (msg.type === 'node.welcome') {
+        this.canResumeTools = msg.resumesToolCalls === true;
+        for (const pending of this.pendingToolCalls.values()) {
+          if (!pending.sent || this.canResumeTools) {
+            this.send(pending.frame);
+            pending.sent = true;
+          }
+        }
         this.flushOutbox();
         onFirstWelcome?.();
+        onFirstWelcome = undefined;
         return;
       }
       void this.handleServerFrame(msg).catch(() => {});
@@ -432,26 +461,21 @@ export class DuolaWorkNodeRunner {
         this.pingTimer = null;
       }
       if (!this.stopped) {
-        this.scheduleReconnect();
+        this.scheduleReconnect(onFirstWelcome);
       }
     });
 
-    ws.on('error', (err) => {
-      if (onFirstWelcome) {
-        onFirstWelcome(err instanceof Error ? err : new Error(String(err)));
-        onFirstWelcome = undefined;
-      }
-    });
+    ws.on('error', () => { /* ws emits close after transport errors; reconnect there. */ });
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(onFirstWelcome?: (err?: Error) => void): void {
     if (this.stopped || this.reconnectTimer) return;
     const delays = [1000, 2000, 5000, 10000, 15000];
     const delay = delays[Math.min(this.reconnectAttempt, delays.length - 1)];
     this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      this.connect(onFirstWelcome);
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -479,11 +503,22 @@ export class DuolaWorkNodeRunner {
       if (!pending) return;
       this.pendingToolCalls.delete(callId);
       clearTimeout(pending.timer);
+      if (this.canResumeTools) this.send({ type: 'turn.tool_ack', attemptId: pending.frame.attemptId, callId });
       if (msg.ok) pending.resolve(msg.result);
       else pending.reject(new Error(String(msg.error || '工具调用被拒绝')));
       return;
     }
 
+    if (type === 'member.models') {
+      try {
+        const member=msg.member as MemberRecord;
+        if (isExcludedClaudeVps(member)) throw new Error('此成员未开放模型设置');
+        const driver=this.resolveDriver(member.driverKind);
+        const result=await driver.listModels?.(member,msg.selectedModel) ?? {models:[]};
+        this.send({type:'rpc.result',reqId:msg.reqId,ok:true,result});
+      } catch { this.send({type:'rpc.result',reqId:msg.reqId,ok:false,error:'执行端暂时无法读取模型列表'}); }
+      return;
+    }
     if (type === 'member.check_health') {
       const reqId = String(msg.reqId || '');
       try {
@@ -527,6 +562,7 @@ export class DuolaWorkNodeRunner {
           scopeKey: String(msg.scopeKey || ''),
           cwd: String(msg.cwd || os.tmpdir()),
           existingNativeSessionId: msg.existingNativeSessionId ?? null,
+          existingBridgeMeta: msg.existingBridgeMeta ?? null,
           dynamicTools: Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [],
           mcpServers: Array.isArray(msg.mcpServers) ? (msg.mcpServers as McpHttpServerConfig[]) : []
         });
@@ -560,7 +596,7 @@ export class DuolaWorkNodeRunner {
       }
 
       const driver = this.resolveDriver(member.driverKind);
-      this.runningAttempts.set(attemptId, { member, driver });
+      this.runningAttempts.set(attemptId, { member, driver, cwd: String(msg.cwd || os.tmpdir()) });
 
       const dynamicTools: DynamicToolDefinition[] = Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [];
       const incomingMcpServers: McpHttpServerConfig[] = Array.isArray(msg.mcpServers)
@@ -627,14 +663,14 @@ export class DuolaWorkNodeRunner {
         }
       };
 
-      void driver
-        .runTurn(
+      void runWithChatImages(driver,
           {
             attemptId,
             member,
             scopeKey: String(msg.scopeKey || ''),
             cwd: String(msg.cwd || os.tmpdir()),
             nativeSessionId: String(msg.nativeSessionId || ''),
+            bridgeMeta: msg.bridgeMeta ?? null,
             prompt: promptWithImages,
             fallbackFullPrompt: fallbackWithImages,
             timeoutMs: typeof msg.timeoutMs === 'number' ? msg.timeoutMs : 900_000,
@@ -646,6 +682,10 @@ export class DuolaWorkNodeRunner {
           (ev) => {
             if (ev.kind === 'started') {
               this.send({ type: 'turn.started', attemptId });
+            } else if (ev.kind === 'progress') {
+              this.send({ type: 'turn.progress', attemptId });
+            } else if (ev.kind === 'activity' && ev.phase) {
+              this.send({ type: 'turn.activity', attemptId, phase: ev.phase });
             } else if (ev.kind === 'delta' && ev.text) {
               this.send({ type: 'turn.delta', attemptId, text: ev.text });
             } else if (ev.kind === 'tool' && ev.toolName) {
@@ -658,6 +698,10 @@ export class DuolaWorkNodeRunner {
                 status: ev.toolStatus
               });
             }
+          },
+          (delivery) => {
+            const mcp = this.activeMcpAttempts.get(attemptId);
+            if (mcp) mcp.delivery = delivery;
           }
         )
         .then((res) => {
@@ -782,9 +826,7 @@ export class DuolaWorkNodeRunner {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('云端控制面连接已断开，无法调用沙箱工具'));
-    }
+    if (this.stopped) return Promise.reject(new Error('执行节点已停止'));
     let effectiveArgs: Record<string, unknown> = args;
     if (
       (toolName === 'space_save_file' || toolName === 'chat_attach_image') &&
@@ -794,18 +836,10 @@ export class DuolaWorkNodeRunner {
       args.content === undefined
     ) {
       try {
-        const resolved = path.resolve(args.localPath.trim());
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          return Promise.reject(new Error(`执行节点上找不到指定文件: ${args.localPath}`));
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) {
-          return Promise.reject(new Error(`本地文件为空: ${args.localPath}`));
-        }
-        if (st.size > 24 * 1024 * 1024) {
-          return Promise.reject(new Error(`文件超过 24 MiB 传输上限: ${args.localPath}`));
-        }
-        const b64 = fs.readFileSync(resolved).toString('base64');
+        const cwd = this.runningAttempts.get(attemptId)?.cwd;
+        if (!cwd) throw new Error('回合工作目录不可用');
+        const resolved = path.resolve(cwd, args.localPath.trim());
+        const b64 = readTurnExport(resolved, cwd).toString('base64');
         const nextArgs: Record<string, unknown> = {
           ...args,
           name: typeof args.name === 'string' && args.name.trim() ? args.name.trim() : path.basename(resolved),
@@ -824,8 +858,10 @@ export class DuolaWorkNodeRunner {
         reject(new Error(`云端工具调用超时: ${toolName}`));
       }, 60_000);
       timer.unref?.();
-      this.pendingToolCalls.set(callId, { resolve, reject, timer });
-      this.send({ type: 'turn.tool_call', callId, attemptId, toolName, args: effectiveArgs });
+      const frame = { type: 'turn.tool_call', callId, attemptId, toolName, args: effectiveArgs };
+      const sent = this.ws?.readyState === WebSocket.OPEN;
+      this.pendingToolCalls.set(callId, { resolve, reject, timer, frame, sent });
+      if (sent) this.send(frame);
     });
   }
 

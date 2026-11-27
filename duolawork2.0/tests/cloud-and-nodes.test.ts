@@ -212,12 +212,14 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
   fs.writeFileSync(path.join(workspaceDir, 'hello.ts'), 'export const ok = true;\n');
 
   const mcpCalls: string[] = [];
+  let interruptDuringTool: (() => Promise<void>) | null = null;
   const app = new DuolaWorkApp({
     dbPath: path.join(tmpDir, 'cloud.sqlite'),
     filesDir: path.join(tmpDir, 'files'),
     autoImportAgentHub: false,
     externalMcpCaller: async (toolName) => {
       mcpCalls.push(toolName);
+      if (interruptDuringTool) await interruptDuringTool();
       return { items: [{ id: 'conn_1', name: 'Gmail' }] };
     }
   });
@@ -311,6 +313,33 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     assert.equal(turnOut.agentMessage.body, '来自跨机 Execution Node 的稳定回复！');
     assert.equal(vaultRevealBlocked, true, 'Cloud sandbox MUST block vault_reveal from remote node');
     assert.ok(mcpCalls.includes('connector_list'));
+
+    // Sever the actual runner socket after accepting a tool call but before delivering its result.
+    const startingCalls = mcpCalls.length;
+    const priorDispatches = nodeMockDriver.recordedPrompts.length;
+    const disconnect = () => (runner as unknown as { ws: { terminate(): void } }).ws.terminate();
+    interruptDuringTool = async () => {
+      interruptDuringTool = null;
+      disconnect();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(app.nodeHub.isNodeOnline(node.id), false);
+      const interrupted = app.threads.listMessages(thread.id).at(-1)!;
+      assert.equal(interrupted.turnStatus, 'running');
+      assert.equal(interrupted.activity?.phase, 'reconnecting');
+    };
+    nodeMockDriver.handlers.set('mem_remote_node_agent', async input => {
+      const original = await input.onToolCall!('duolabase:connector_list', {});
+      assert.ok(original);
+      // A second outage occurs before a different tool is submitted.
+      disconnect();
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.ok(await input.onToolCall!('duolabase:connector_list', {}));
+      return { text: '断线后两次工具回执都已收到' };
+    });
+    const resumed = await app.threads.sendUserMessage({ threadId: thread.id, body: '断线续执行', timeoutMs: 12_000 });
+    assert.equal(resumed.agentMessage.body, '断线后两次工具回执都已收到');
+    assert.equal(nodeMockDriver.recordedPrompts.length - priorDispatches, 1);
+    assert.equal(mcpCalls.length - startingCalls, 2);
 
     // 4. Remote workspace browse allowlist check + thread workspace-files node proxy
     const allowedLs = await fetch(
@@ -431,4 +460,30 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('runner retries the initial connection when a proxy drops TLS before welcome', async (t) => {
+  const http = await import('node:http');
+  const proxy = http.createServer();
+  let connections = 0;
+  proxy.on('connect', (_req, socket) => {
+    connections++;
+    socket.end('HTTP/1.1 200 Connection Established\r\n\r\n', () => socket.destroy());
+  });
+  await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
+  const proxyUrl = 'http://127.0.0.1:' + (proxy.address() as { port: number }).port;
+  const runner = new DuolaWorkNodeRunner({
+    serverUrl: 'https://fixture.invalid', nodeToken: 'fixture', name: 'retry', kind: 'local', members: []
+  });
+  t.mock.method(runner as unknown as { resolveProxyUrl: (url: URL) => string }, 'resolveProxyUrl', () => proxyUrl);
+  const started = runner.start().then(() => 'connected', (error: Error) => error.message);
+  try {
+    const deadline = Date.now() + 5000;
+    while (connections < 2 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(connections >= 2, 'proxy should see a second connection in the same process');
+  } finally {
+    runner.stop();
+    await new Promise<void>(resolve => proxy.close(() => resolve()));
+  }
+  assert.equal(await started, 'NODE_STOPPED');
 });

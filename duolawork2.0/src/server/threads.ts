@@ -1,3 +1,6 @@
+import { actionBlocks } from './action-blocks.js';
+import { outcomeSchema } from './task-outcomes.js';
+import { chatTimeoutMessage } from '../shared/turn-timeout.js';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -5,9 +8,10 @@ import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
 import type { AuthSandbox } from './auth-sandbox.js';
 import type { DuolaWorkDatabase } from './db.js';
-import type { DriverRegistry } from './drivers/registry.js';
+import { CHAT_MAX_MS, type DriverRegistry } from './drivers/registry.js';
 import {
   sanitizeToolSummary,
+  redactSecrets,
   SPACE_AND_DUOLABASE_TOOLS,
   type DynamicToolDefinition,
   type TurnImageAttachment
@@ -29,6 +33,8 @@ import {
   type ThreadMessageRecord,
   type ThreadRecord,
   type ThreeTierUsage,
+  type TurnActivity,
+  type TurnPhase,
   type ToolTraceItem
 } from '../shared/types.js';
 
@@ -59,8 +65,23 @@ export interface StructuredActionHandler {
   ) => string;
 }
 
+const previousRecipientSql = `(
+  SELECT u.target_member_id FROM v2_thread_messages u
+  WHERE u.thread_id = m.thread_id AND u.seq < m.seq AND u.author_kind = 'user'
+  ORDER BY u.seq DESC LIMIT 1
+)`;
+
+function pendingOwnerSwitch(messages: ThreadMessageRecord[], targetMemberId: string) {
+  const latest = messages.findLast((m) => m.authorKind === 'switch_notice');
+  return latest?.handoffMeta?.status === 'pending' && latest.handoffMeta.toMemberId === targetMemberId
+    ? latest
+    : null;
+}
+
 export class ThreadEngine {
   private readonly listeners = new Set<ServerEventListener>();
+  private readonly liveTurns = new Map<string, { activity: TurnActivity; tools: ToolTraceItem[] }>();
+  private activityRevision = 0;
   public space?: SpaceStore;
   private readonly inflightClientRequests = new Map<
     string,
@@ -216,9 +237,28 @@ export class ThreadEngine {
       args.push(range.toSeq);
     }
     const rows = this.db.sqlite
-      .prepare(`SELECT * FROM v2_thread_messages WHERE ${clauses.join(' AND ')} ORDER BY seq ASC`)
+      .prepare(
+        `SELECT m.*, CASE WHEN m.turn_status IN ('canceled','failed') THEN
+           (SELECT u.paired_message_id FROM v2_thread_messages u WHERE u.thread_id=m.thread_id AND u.client_request_id='continue:'||m.id) END AS continued_by,
+           CASE WHEN m.author_kind = 'switch_notice' AND m.handoff_meta_json IS NOT NULL THEN ${previousRecipientSql} END AS previous_recipient
+         FROM v2_thread_messages m WHERE ${clauses.join(' AND ')} ORDER BY seq ASC`
+      )
       .all(...args) as Record<string, unknown>[];
-    return rows.map(mapMessageRow);
+    return rows.flatMap((row) => {
+      const msg = mapMessageRow(row);
+      if (row.continued_by) msg.continuedByMessageId = String(row.continued_by);
+      const live = msg.turnStatus === 'running' && this.liveTurns.get(msg.id);
+      if (live) {
+        msg.activity = live.activity;
+        msg.toolTrace = [...live.tools];
+      }
+      // Older collapsed switches recorded the last selected member, even when they received no turn.
+      if (msg.handoffMeta && typeof row.previous_recipient === 'string') {
+        if (msg.handoffMeta.toMemberId === row.previous_recipient) return [];
+        msg.handoffMeta.fromMemberId = row.previous_recipient;
+      }
+      return [msg];
+    });
   }
 
   public appendSystemMessage(input: {
@@ -287,12 +327,12 @@ export class ThreadEngine {
 
     const latest = this.db.sqlite
       .prepare(
-        `SELECT id, author_kind, handoff_meta_json FROM v2_thread_messages
-         WHERE thread_id = ?
+        `SELECT id, author_kind, handoff_meta_json, ${previousRecipientSql} AS previous_recipient
+         FROM v2_thread_messages m WHERE thread_id = ?
          ORDER BY seq DESC LIMIT 1`
       )
       .get(threadId) as
-      | { id: string; author_kind: string; handoff_meta_json: string | null }
+      | { id: string; author_kind: string; handoff_meta_json: string | null; previous_recipient: string | null }
       | undefined;
 
     let existingMeta: HandoffNoticeMeta | null = null;
@@ -304,14 +344,15 @@ export class ThreadEngine {
       }
     }
 
-    if (latest?.author_kind === 'switch_notice' && existingMeta?.status !== 'delivered') {
-      const preservedFromId =
-        existingMeta?.fromMemberId && existingMeta.fromMemberId !== nextOwnerMemberId
-          ? existingMeta.fromMemberId
-          : previousOwnerId;
+    const originalOwnerId = latest?.previous_recipient ?? existingMeta?.fromMemberId ?? previousOwnerId;
+    if (latest?.author_kind === 'switch_notice' && existingMeta?.status === 'pending' &&
+        originalOwnerId === nextOwnerMemberId) {
+      // No turn was sent to an intermediate owner. Withdraw the outstanding handoff.
+      this.db.sqlite.prepare('DELETE FROM v2_thread_messages WHERE id = ?').run(latest.id);
+    } else if (latest?.author_kind === 'switch_notice' && existingMeta?.status !== 'delivered') {
       const pendingMeta: HandoffNoticeMeta = {
         status: 'pending',
-        fromMemberId: preservedFromId,
+        fromMemberId: originalOwnerId,
         toMemberId: nextOwnerMemberId,
         reason: 'member_switch'
       };
@@ -409,7 +450,7 @@ export class ThreadEngine {
     const attemptRow = this.db.sqlite
       .prepare(
         `SELECT * FROM v2_dispatch_attempts
-         WHERE thread_id = ? AND status IN ('prepared', 'dispatched', 'running')
+         WHERE thread_id = ? AND status IN ('prepared', 'dispatched', 'running', 'reconciling')
          ORDER BY dispatched_at DESC LIMIT 1`
       )
       .get(threadId) as Record<string, unknown> | undefined;
@@ -445,7 +486,7 @@ export class ThreadEngine {
         .prepare(
           `UPDATE v2_dispatch_attempts
            SET status = 'failed', slot_held = 0, error_message = '已由用户停止', settled_at = ?
-           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
+           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running', 'reconciling')`
         )
         .run(now, attemptId);
       this.db.sqlite
@@ -458,7 +499,7 @@ export class ThreadEngine {
         )
         .run(now, attemptId);
       this.registry.cancelDispatchedAttempt(attemptId, 'ATTEMPT_CANCELED');
-      if (attempt && member && (attempt.status === 'dispatched' || attempt.status === 'running')) {
+      if (attempt && member && (attempt.status === 'dispatched' || attempt.status === 'running' || attempt.status === 'reconciling')) {
         try {
           aborted = await this.registry.getDriver(member.driverKind).abortTurn(member, attempt);
         } catch {
@@ -500,6 +541,79 @@ export class ThreadEngine {
     return { aborted, message: null };
   }
 
+  public async continueInterruptedTurn(threadId: string, messageId: string) {
+    const source = this.getMessage(messageId);
+    if (!source || source.threadId !== threadId || source.authorKind !== 'agent') throw new Error('找不到这条执行记录');
+    const key = 'continue:' + messageId;
+    const existing = () => this.db.sqlite.prepare(
+      'SELECT paired_message_id FROM v2_thread_messages WHERE thread_id=? AND client_request_id=?'
+    ).get(threadId, key);
+    if (existing()) return { status: 'continued' };
+    if (source.turnStatus === 'completed') return { status: 'completed' };
+    if (!['failed', 'canceled'].includes(source.turnStatus)) return { status: 'waiting' };
+
+    const superseded = () => Boolean(this.db.sqlite.prepare("SELECT 1 FROM v2_thread_messages WHERE thread_id=? AND seq>? AND author_kind IN ('user','agent') LIMIT 1").get(threadId, source.seq));
+    if (superseded()) return { status: 'superseded' };
+    const attempt = source.attemptId && this.registry.getAttempt(source.attemptId);
+    const executor = this.db.getMember(source.authorId);
+    if (attempt && executor && ['remote-node', 'webhook-bot', 'remote-bridge'].includes(executor.driverKind)) {
+      const receipt = await this.registry.getDriver(executor.driverKind).reconcileAttempt(executor, attempt);
+      if (receipt.state === 'completed' && receipt.text?.trim()) {
+        this.db.inTransaction(() => {
+          // The user explicitly requested this stopped result. Passive replay still respects Stop.
+          if (source.turnStatus === 'canceled') this.db.sqlite.prepare(
+            `UPDATE v2_thread_messages SET turn_status='failed' WHERE id=? AND attempt_id=? AND turn_status='canceled'`
+          ).run(messageId, attempt.id);
+          this.registry.recoverLateThreadReply(attempt, receipt);
+          this.syncReconciledThreadTurns();
+        });
+      }
+      if (receipt.state === 'still_running') {
+        if (!receipt.errorMessage) return { status: source.turnStatus === 'canceled' ? 'stopping' : 'waiting' };
+        if (this.getThread(threadId)?.activeOwnerMemberId === source.authorId) return { status: 'unreachable' };
+      }
+    }
+    // A completion or a second click may have arrived while we were checking the original request.
+    if (existing()) return { status: 'continued' };
+    if (this.getMessage(messageId)?.turnStatus === 'completed') return { status: 'completed' };
+    if (this.db.sqlite.prepare(`SELECT 1 FROM v2_thread_messages WHERE thread_id=? AND turn_status IN ('queued','running')`).get(threadId)) {
+      return { status: 'busy' };
+    }
+
+    if (superseded()) return { status: 'superseded' };
+    // Follow earlier continuation requests to retain the user's original goal and image references.
+    let preceding = source;
+    let requestText = '';
+    let returnMember: string | undefined;
+    for (;;) {
+      const request = this.db.sqlite.prepare(
+        `SELECT body,client_request_id,author_kind,target_member_id FROM v2_thread_messages
+         WHERE thread_id=? AND (paired_message_id=? OR (paired_message_id IS NULL AND author_kind='user' AND seq<?))
+         ORDER BY (paired_message_id IS NOT NULL) DESC, seq DESC LIMIT 1`
+      ).get(threadId, preceding.id, preceding.seq) as { body: string; client_request_id: string | null; author_kind: string; target_member_id: string } | undefined;
+      if (!request) break;
+      requestText = request.body;
+      if (request.author_kind === 'task_receipt') returnMember = request.target_member_id;
+      const previous = request.client_request_id?.startsWith('continue:') && this.getMessage(request.client_request_id.slice(9));
+      if (!previous || previous.threadId !== threadId || previous.seq >= preceding.seq) break;
+      preceding = previous;
+    }
+    const ownerId = returnMember ?? this.getThread(threadId)?.activeOwnerMemberId;
+    const owner = ownerId && this.db.getMember(ownerId);
+    if (!owner || !['ready','busy'].includes(owner.status)) return { status: 'unavailable' };
+    const operations = (source.toolTrace ?? []).slice(-12).map(t => [t.name, t.summary].filter(Boolean).join(' ')).join('、');
+    const context = [
+      '用户要求继续这个中断的任务。原始请求：' + requestText,
+      '上一轮留下的记录：' + (source.body || '没有最终回复'),
+      operations && '近期工具记录（仅表示调用过）：' + operations,
+      '先核对已有文件和外部操作回执，再继续剩余工作。已完成的步骤跳过。发文、发送、支付等操作若结果不明，先查证；无法确认时告知用户，切勿重复提交。'
+    ].filter(Boolean).join('\n');
+    const execution = this.executeSendUserMessage({ threadId, body: '从上次中断处继续', receiptMemberId: returnMember, continuationContext: context }, key);
+    if (!existing()) await execution;
+    else void execution.catch(() => {}); // The normal message lifecycle persists and emits its result.
+    return { status: 'continued' };
+  }
+
   /**
    * Sends a user message EXCLUSIVELY to `thread.activeOwnerMemberId`.
    * - Mentions like `@Grok` or `@Codex` in `body` are treated strictly as plain text (0 bystander wakeups).
@@ -512,6 +626,7 @@ export class ThreadEngine {
     body: string;
     idempotencyKey?: string;
     timeoutMs?: number;
+    continuationContext?: string;
     clarifyReply?: { messageId: string; summary: string };
   }): Promise<{
     userMessage: ThreadMessageRecord;
@@ -523,6 +638,7 @@ export class ThreadEngine {
         ? input.idempotencyKey.trim()
         : null;
 
+    if (cleanClientKey?.startsWith('task-return:')) throw new Error('无效的消息请求标识');
     if (!cleanClientKey) {
       return this.executeSendUserMessage(input, null);
     }
@@ -542,12 +658,21 @@ export class ThreadEngine {
     return runPromise;
   }
 
+  // A delivery wakes the delegator without changing the user's selected conversation owner.
+  public receiveTaskResult(threadId: string, memberId: string, runId: string, context: string) {
+    return this.executeSendUserMessage({ threadId, receiptMemberId: memberId,
+      body: context, isTaskReceipt: true }, 'task-return:' + runId);
+  }
+
   private async executeSendUserMessage(
     input: {
       threadId: string;
       body: string;
+      receiptMemberId?: string;
+      isTaskReceipt?: boolean;
       idempotencyKey?: string;
       timeoutMs?: number;
+      continuationContext?: string;
       clarifyReply?: { messageId: string; summary: string };
     },
     cleanClientKey: string | null
@@ -558,7 +683,7 @@ export class ThreadEngine {
   }> {
     const thread = this.getThread(input.threadId);
     if (!thread) throw new Error(`对话不存在: ${input.threadId}`);
-    const targetMember = this.db.getMember(thread.activeOwnerMemberId);
+    const targetMember = this.db.getMember(input.receiptMemberId ?? thread.activeOwnerMemberId);
     if (!targetMember) throw new Error(`负责人不存在: ${thread.activeOwnerMemberId}`);
 
     const cleanBody = input.body.trim();
@@ -590,7 +715,9 @@ export class ThreadEngine {
         if (
           curUser &&
           curAgent &&
-          (curAgent.turnStatus === 'completed' || curAgent.turnStatus === 'canceled')
+          (curAgent.turnStatus === 'completed' || curAgent.turnStatus === 'canceled' || curAgent.turnStatus === 'running' ||
+            (curAgent.turnStatus === 'failed' && curAgent.attemptId &&
+              ['timed_out', 'late_ignored'].includes(this.registry.getAttempt(curAgent.attemptId)?.status ?? '')))
         ) {
           if (curAgent.turnStatus === 'completed') {
             const flagRow = this.db.sqlite
@@ -675,9 +802,9 @@ export class ThreadEngine {
                   id, thread_id, seq, author_kind, author_id, target_member_id, attempt_id,
                   body, artifact_refs_json, task_card_json, turn_status, usage_json,
                   client_request_id, paired_message_id, created_at, updated_at
-                ) VALUES (?, ?, ?, 'user', 'owner', ?, NULL, ?, '[]', NULL, 'completed', NULL, ?, ?, ?, ?)`
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, '[]', NULL, 'completed', NULL, ?, ?, ?, ?)`
               )
-              .run(uId, thread.id, uSeq, targetMember.id, cleanBody, cleanClientKey, aId, now, now);
+              .run(uId, thread.id, uSeq, input.isTaskReceipt ? 'task_receipt' : 'user', input.isTaskReceipt ? 'system' : 'owner', targetMember.id, cleanBody, cleanClientKey, aId, now, now);
 
             this.db.sqlite
               .prepare(
@@ -689,7 +816,7 @@ export class ThreadEngine {
               .run(aId, thread.id, aSeq, targetMember.id, targetMember.id, now, now);
 
             const isDefaultTitle = /^新(?:工作)?对话(?:\s+\d+)?$/.test(thread.title);
-            const autoTitle = isDefaultTitle ? cleanBody.replace(/\s+/g, ' ').slice(0, 22) : '';
+            const autoTitle = isDefaultTitle && !input.receiptMemberId ? cleanBody.replace(/\s+/g, ' ').slice(0, 22) : '';
             if (autoTitle) {
               this.db.sqlite
                 .prepare(`UPDATE v2_threads SET title = ?, updated_at = ? WHERE id = ?`)
@@ -764,22 +891,7 @@ export class ThreadEngine {
     const canReadHistoryTool =
       effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock';
 
-    let pendingSwitchNotice: ThreadMessageRecord | null = null;
-    let lastAgentBeforeTurn: ThreadMessageRecord | null = null;
-    for (let i = priorMessages.length - 1; i >= 0; i--) {
-      const m = priorMessages[i];
-      if (!pendingSwitchNotice && m.authorKind === 'switch_notice' && m.handoffMeta?.status !== 'delivered') {
-        if (!m.handoffMeta?.toMemberId || m.handoffMeta.toMemberId === targetMember.id) {
-          pendingSwitchNotice = m;
-        }
-      }
-      if (!lastAgentBeforeTurn && m.authorKind === 'agent' && m.authorId !== targetMember.id) {
-        lastAgentBeforeTurn = m;
-      }
-      if (pendingSwitchNotice && lastAgentBeforeTurn) break;
-    }
-    const inferredFromMemberId =
-      pendingSwitchNotice?.handoffMeta?.fromMemberId ?? lastAgentBeforeTurn?.authorId ?? null;
+    const pendingSwitchNotice = pendingOwnerSwitch(priorMessages, targetMember.id);
 
     const protocolVersion = this.getProtocolVersion();
     const cursor = this.handoff.getCursor(thread.id, targetMember.id);
@@ -790,9 +902,9 @@ export class ThreadEngine {
       this.handoff.buildPromptWithBoundedHandoff({
         threadId: thread.id,
         targetMemberId: targetMember.id,
-        fromMemberId: inferredFromMemberId,
+        fromMemberId: pendingSwitchNotice?.handoffMeta?.fromMemberId ?? null,
         currentUserSeq: userMsg.seq,
-        currentUserBody: cleanBody,
+        currentUserBody: input.continuationContext || cleanBody,
         priorMessages,
         boundArtifact,
         activeTasksSummary,
@@ -829,9 +941,9 @@ export class ThreadEngine {
             }在回复末尾附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"简明问题","options":["推荐选项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>（严格限 1～3 个关键问题，每题给 2～4 个短选项，首项放默认推荐），弹卡片让用户一键确认后再派单；` +
             `（2）若用户需求已十分明确（目标范围、执行对象、时间/频率清楚，或刚通过确认卡片回复了选择，或明确说直接执行），则无需追问，直接${
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
-                ? '调用 task_create_or_update 工具或'
+                ? '按实际成果设置 outcome（reply、material 或 external），调用 task_create_or_update 工具或'
                 : ''
-            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, startImmediately:true|false, steps 可选）。`,
+            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；文件或文档步骤的 outcome 必须包含 kind:"material"、materialKind、name 和约定的 folderPath；用户给出精确正文时填 expectedText。外部写入用 kind:"external" 并提供可用的只读核对条件。字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, steps 可选。单次任务自动启动，定时任务默认按计划执行）。`,
           targetMember.driverKind === 'remote-bridge'
             ? `- 关键禁令：严禁调用旧版 Agent Hub (1.9.6) 的频道定时任务 (schedule) 或看板任务 (board_task) 工具！该桥接频道对用户完全不可见，立项与定时任务必须通过 <duolawork_task>...</duolawork_task> 写入 DuolaWork 2.0。`
             : `- 安全规范：绝不索要或输出明文密钥，外部服务通过 DuolaBase 连接器与 Vault HTTP 代理按授权访问。`,
@@ -846,16 +958,16 @@ export class ThreadEngine {
 
     const compactBridgeGuard =
       targetMember.driverKind === 'remote-bridge'
-        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！需求尚有模糊点时先用 <duolawork_ask>...</duolawork_ask> 提 1～3 个问题确认；需求已明确或用户已确认时，在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求","startImmediately":false}</duolawork_task>（支持数组；可用成员：${memberNamesSummary || targetMember.name}）。`
+        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！需求尚有模糊点时先用 <duolawork_ask>...</duolawork_ask> 提 1～3 个问题确认；需求已明确或用户已确认时，在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求"}</duolawork_task>（支持数组；可用成员：${memberNamesSummary || targetMember.name}）。`
         : '';
 
     const driverActionHint =
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略。资料步骤填 outcome 的 kind:"material"、materialKind、name、folderPath，以及用户给定的完整正文 expectedText；外部动作填写 kind:"external"。当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
             hasNativeSpaceTools
-              ? '优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
+              ? '向外部连接器上传图片或文件时，先用 space_save_file(localPath) 保存，再用 space_upload_to_connector 传文件 ID，让工作台传输原始字节。优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
               : ''
           }可附带 <duolawork_folder path="目录/子目录" />、<duolawork_file name="任意文件.csv" folder="可选目录" encoding="utf8|base64">内容</duolawork_file>、<duolawork_artifact title="标题.md" folder="可选目录">正文</duolawork_artifact>、<duolawork_link title="标题" url="https://..." folder="可选目录">备注</duolawork_link>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
@@ -885,6 +997,7 @@ export class ThreadEngine {
       attemptId,
       threadId: thread.id,
       allowedArtifactIds: pinnedArtifactId ? [pinnedArtifactId] : [],
+      ttlMs: Math.max(30 * 60_000, input.timeoutMs ?? CHAT_MAX_MS) + 60_000,
       toolPolicy: 'duolabase_full'
     });
 
@@ -901,7 +1014,7 @@ export class ThreadEngine {
       const seenImgKeys = new Set<string>();
       const imgRefRegex = /!\[[^\]]*\]\((\/api\/v2\/(?:chat-images|space\/files)\/([^)?#\s]+))\)/g;
       let im: RegExpExecArray | null;
-      while ((im = imgRefRegex.exec(cleanBody)) !== null && turnImages.length < 6) {
+      while ((im = imgRefRegex.exec(input.continuationContext || cleanBody)) !== null && turnImages.length < 6) {
         const fullUrl = im[1];
         const rawId = decodeURIComponent(im[2]);
         if (seenImgKeys.has(fullUrl)) continue;
@@ -942,6 +1055,17 @@ export class ThreadEngine {
     }
 
     const toolTrace: ToolTraceItem[] = [];
+    const toolIndexes = new Map<string, number>();
+    const live = { activity: { phase: 'processing', revision: ++this.activityRevision } as TurnActivity, tools: toolTrace };
+    this.liveTurns.set(placeholderAgentMsg.id, live);
+    const setActivity = (phase: TurnPhase) => {
+      if (live.activity.phase === phase || this.liveTurns.get(placeholderAgentMsg.id) !== live) return;
+      live.activity = { phase, revision: ++this.activityRevision };
+      this.emit({
+        type: 'thread.activity', threadId: thread.id,
+        payload: { messageId: placeholderAgentMsg.id, activity: live.activity }
+      });
+    };
     let toolClarificationCard: ClarificationCardData | null = null;
     try {
       const beforeDispatchMsg = this.getMessage(placeholderAgentMsg.id);
@@ -1016,7 +1140,11 @@ export class ThreadEngine {
         onEvent: (ev) => {
           if (ev.kind === 'waiting_for_receipt') {
             this.markWaitingForReceipt(placeholderAgentMsg.id);
+          } else if (ev.kind === 'activity' && ev.phase) {
+            // A reasoning block can finish after a tool or text stream has already started.
+            if (ev.phase !== 'processing' || ['thinking', 'queued', 'reconnecting'].includes(live.activity.phase)) setActivity(ev.phase);
           } else if (ev.kind === 'delta' && ev.text) {
+            setActivity('writing');
             this.emit({
               type: 'thread.delta',
               threadId: thread.id,
@@ -1027,20 +1155,26 @@ export class ThreadEngine {
             const cleanSummary = ev.toolSummary ? sanitizeToolSummary(sumKind, ev.toolSummary) : undefined;
             const item: ToolTraceItem = {
               ...(ev.toolId ? { id: ev.toolId } : {}),
-              name: ev.toolName,
+              name: redactSecrets(ev.toolName, 240),
               ...(cleanSummary ? { summary: cleanSummary } : {}),
               status: ev.toolStatus ?? 'running'
             };
-            const existingIdx = item.id ? toolTrace.findIndex((t) => t.id === item.id) : -1;
-            if (existingIdx >= 0) {
+            const existingIdx = item.id ? toolIndexes.get(item.id) : undefined;
+            if (existingIdx !== undefined) {
               toolTrace[existingIdx] = { ...toolTrace[existingIdx], ...item };
-            } else if (toolTrace.length < 20) {
+            } else {
+              if (item.id) toolIndexes.set(item.id, toolTrace.length);
               toolTrace.push(item);
             }
+            if (item.status === 'running') setActivity('executing');
+            else if (live.activity.phase === 'executing' && !toolTrace.some(t => t.status === 'running')) setActivity('processing');
             this.emit({
               type: 'thread.tool',
               threadId: thread.id,
-              payload: { messageId: placeholderAgentMsg.id, toolTrace: [...toolTrace] }
+              payload: toolTrace.length <= 20
+                ? { messageId: placeholderAgentMsg.id, toolTrace: [...toolTrace] }
+                : { messageId: placeholderAgentMsg.id, index: existingIdx ?? toolTrace.length - 1,
+                    item: toolTrace[existingIdx ?? toolTrace.length - 1] }
             });
           }
         }
@@ -1109,25 +1243,19 @@ export class ThreadEngine {
             ? 'session_reset'
             : effectivePacket.lateArrivalSeqs.length > 0
               ? 'late_arrival'
-              : pendingSwitchNotice
-                ? 'member_switch'
-                : effectivePacket.meta.reason;
+              : effectivePacket.meta.reason;
 
         const deliveredMeta: HandoffNoticeMeta = {
           ...effectivePacket.meta,
           status: 'delivered',
-          fromMemberId:
-            pendingSwitchNotice?.handoffMeta?.fromMemberId ??
-            inferredFromMemberId ??
-            effectivePacket.meta.fromMemberId ??
-            null,
-          reason: deliveredReason,
+          reason: pendingSwitchNotice ? 'member_switch' : deliveredReason,
           deliveredAt: now
         };
 
         if (pendingSwitchNotice) {
           this.db.sqlite
-            .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
+            .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ?
+                      WHERE id = ? AND json_extract(handoff_meta_json, '$.status') = 'pending'`)
             .run(JSON.stringify(deliveredMeta), now, pendingSwitchNotice.id);
           const updatedNotice = this.getMessage(pendingSwitchNotice.id);
           if (updatedNotice) {
@@ -1158,6 +1286,16 @@ export class ThreadEngine {
       const now = new Date().toISOString();
       const errText = (err as Error).message || '请求未完成';
       const currentMsg = this.getMessage(placeholderAgentMsg.id);
+      if (this.registry.getAttempt(attemptId)?.status === 'reconciling' && currentMsg?.turnStatus === 'running') {
+        this.db.sqlite.prepare(`UPDATE v2_thread_messages SET body=?, tool_trace_json=?, updated_at=? WHERE id=? AND turn_status='running'`)
+          .run('正在恢复执行连接', JSON.stringify(toolTrace), now, currentMsg.id);
+        const recovering = this.getMessage(currentMsg.id)!;
+        this.emit({ type: 'thread.message_updated', threadId: thread.id, payload: recovering });
+        return { userMessage: userMsg, agentMessage: recovering, handoffBytes: activePacket.handoffBytes };
+      }
+      if (currentMsg?.turnStatus === 'completed') {
+        return { userMessage: userMsg, agentMessage: currentMsg, handoffBytes: activePacket.handoffBytes };
+      }
       if (
         currentMsg?.turnStatus === 'canceled' ||
         /ATTEMPT_CANCELED|已由用户停止|已停止本轮生成|任务已取消|回合已取消/i.test(errText)
@@ -1197,7 +1335,9 @@ export class ThreadEngine {
            WHERE id = ?`
         )
         .run(
-          `暂时未能收到回复：${errText}`,
+          errText === 'ATTEMPT_TIMED_OUT'
+            ? chatTimeoutMessage(this.registry.getAttempt(attemptId)?.errorMessage)
+            : `暂时未能收到回复：${errText}`,
           failedTrace.length > 0 ? JSON.stringify(failedTrace) : null,
           now,
           placeholderAgentMsg.id
@@ -1209,6 +1349,7 @@ export class ThreadEngine {
       }
       throw err;
     } finally {
+      if (this.liveTurns.get(placeholderAgentMsg.id) === live) this.liveTurns.delete(placeholderAgentMsg.id);
       this.sandbox.revokeToken(claims.token);
     }
   }
@@ -1313,6 +1454,12 @@ export class ThreadEngine {
         .run(cleanText, String(r.usage_json), now, msgId);
 
       const reconciledMsg = this.getMessage(msgId)!;
+      if ((this.handoff.getCursor(threadId, memberId)?.lastSeenSeq ?? 0) > seqNum) {
+        // A newer turn already established the native session and its handoff cursor.
+        this.emit({ type: 'thread.message_updated', threadId, payload: reconciledMsg });
+        updated.push(reconciledMsg);
+        continue;
+      }
       const threadMsgs = this.listMessages(threadId, { toSeq: seqNum });
       const deliveredRevisionsPatch: Record<string, string> = {};
       for (const tm of threadMsgs) {
@@ -1331,34 +1478,21 @@ export class ThreadEngine {
         deliveredRevisionsPatch,
         this.getProtocolVersion()
       );
-      const pendingNoticeRow = this.db.sqlite
-        .prepare(
-          `SELECT id, handoff_meta_json FROM v2_thread_messages
-           WHERE thread_id = ? AND seq < ? AND author_kind = 'switch_notice'
-           ORDER BY seq DESC LIMIT 1`
-        )
-        .get(threadId, seqNum) as { id: string; handoff_meta_json: string | null } | undefined;
-      if (pendingNoticeRow?.handoff_meta_json) {
-        try {
-          const prevMeta = JSON.parse(pendingNoticeRow.handoff_meta_json) as HandoffNoticeMeta;
-          if (prevMeta.status === 'pending' && prevMeta.toMemberId === memberId) {
-            const settledMeta: HandoffNoticeMeta = {
-              ...prevMeta,
-              status: 'delivered',
-              strategy: prevMeta.strategy ?? 'delta_since_target_last_seen',
-              reason: prevMeta.reason ?? 'member_switch',
-              deliveredAt: now
-            };
-            this.db.sqlite
-              .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
-              .run(JSON.stringify(settledMeta), now, pendingNoticeRow.id);
-            const updatedNotice = this.getMessage(pendingNoticeRow.id);
-            if (updatedNotice) {
-              this.emit({ type: 'thread.message_updated', threadId, payload: updatedNotice });
-            }
-          }
-        } catch {
-          // ignore malformed legacy handoff meta
+      const pendingNotice = pendingOwnerSwitch(threadMsgs, memberId);
+      if (pendingNotice?.handoffMeta) {
+        const settledMeta: HandoffNoticeMeta = {
+          ...pendingNotice.handoffMeta,
+          status: 'delivered',
+          strategy: pendingNotice.handoffMeta.strategy ?? 'delta_since_target_last_seen',
+          reason: 'member_switch',
+          deliveredAt: now
+        };
+        this.db.sqlite
+          .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
+          .run(JSON.stringify(settledMeta), now, pendingNotice.id);
+        const updatedNotice = this.getMessage(pendingNotice.id);
+        if (updatedNotice) {
+          this.emit({ type: 'thread.message_updated', threadId, payload: updatedNotice });
         }
       }
       this.emit({ type: 'thread.message_updated', threadId, payload: reconciledMsg });
@@ -1387,7 +1521,9 @@ export class ThreadEngine {
       const reason =
         r.error_message?.trim() ||
         (r.att_status === 'timed_out' ? '执行超时，请重试' : '应用重启或远端中断，未能收到回复，请重试');
-      const fallbackBody = String(r.body || '').trim() ? String(r.body) : `暂时未能收到回复：${reason}`;
+      const fallbackBody = ['timed_out', 'late_ignored'].includes(r.att_status)
+        ? chatTimeoutMessage(r.error_message)
+        : (r.body === '正在恢复执行连接' || r.body === '执行结束，等待回执' ? '' : String(r.body || '').trim()) || `暂时未能收到回复：${reason}`;
       this.db.sqlite
         .prepare(
           `UPDATE v2_thread_messages
@@ -1465,18 +1601,7 @@ export class ThreadEngine {
     const canReadHistoryTool =
       effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock';
 
-    let pendingFrom: string | null = null;
-    for (let i = priorMessages.length - 1; i >= 0; i--) {
-      const m = priorMessages[i];
-      if (!pendingFrom && m.authorKind === 'switch_notice' && m.handoffMeta?.fromMemberId) {
-        pendingFrom = m.handoffMeta.fromMemberId;
-        break;
-      }
-      if (!pendingFrom && m.authorKind === 'agent' && m.authorId !== targetMemberId) {
-        pendingFrom = m.authorId;
-        break;
-      }
-    }
+    const pendingFrom = pendingOwnerSwitch(priorMessages, targetMemberId)?.handoffMeta?.fromMemberId ?? null;
 
     const nextSeq = (priorMessages[priorMessages.length - 1]?.seq ?? 0) + 1;
     const packet = this.handoff.buildPromptWithBoundedHandoff({
@@ -1538,6 +1663,7 @@ export class ThreadEngine {
     let currentArtifactId = pinnedArtifactId;
     let currentBaseVer = pinnedArtifactVersion;
     let spaceChanged = false;
+    const unsavedDocuments: string[] = [];
     let blockIndex = 0;
     let folderIndex = 0;
     let fileIndex = 0;
@@ -1657,8 +1783,8 @@ export class ThreadEngine {
             spaceChanged = true;
           }
         });
-      } catch {
-        hadUnhandledError = true;
+      } catch (error) {
+        unsavedDocuments.push('文档「' + (title || '对话文稿') + '」未能保存：' + (error as Error).message + '\n\n' + content);
       }
     });
 
@@ -1714,7 +1840,7 @@ export class ThreadEngine {
     if (spaceChanged) {
       this.emit({ type: 'thread.space_updated', threadId: claims.threadId });
     }
-    return { cleaned, hadUnhandledError };
+    return { cleaned: [cleaned,...unsavedDocuments].filter(Boolean).join('\n\n'), hadUnhandledError };
   }
 
   private applyInlineArtifactAndActionsSync(
@@ -1934,14 +2060,12 @@ export class ThreadEngine {
     cleaned: string;
     card: ClarificationCardData | null;
   } {
-    const matches = [...text.matchAll(/<duolawork_ask>([\s\S]*?)<\/duolawork_ask>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_ask>([\s\S]*?)<\/duolawork_ask>/gi);
     if (matches.length === 0) {
       return { cleaned: text, card: null };
     }
-    let cleaned = text;
     let card: ClarificationCardData | null = null;
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       if (card) continue;
       const rawPayload = match[1]
         .trim()
@@ -1963,16 +2087,14 @@ export class ThreadEngine {
     items: Array<Record<string, unknown>>;
     errors: string[];
   } {
-    const matches = [...text.matchAll(/<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi);
     if (matches.length === 0) {
       return { cleaned: text, items: [], errors: [] };
     }
-    let cleaned = text;
     const items: Array<Record<string, unknown>> = [];
     const errors: string[] = [];
 
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       const rawPayload = match[1]
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
@@ -1999,16 +2121,14 @@ export class ThreadEngine {
     text: string,
     claims: ScopedTurnClaims
   ): Promise<{ cleaned: string; createdCount: number; errors: string[] }> {
-    const matches = [...text.matchAll(/<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi);
     if (matches.length === 0 || !this.actionHandler) {
       return { cleaned: text, createdCount: 0, errors: [] };
     }
-    let cleaned = text;
     let createdCount = 0;
     const errors: string[] = [];
 
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       const rawPayload = match[1]
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
@@ -2106,10 +2226,11 @@ export class ThreadEngine {
       },
       {
         name: 'task_create_or_update',
-        description: '在需求已明确或用户确认后，在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
+        description: '按用户需要声明 outcome。外部动作必须用 external，生成资料用 material，纯文字回复用 reply。在需求已明确或用户确认后，在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
         inputSchema: {
           type: 'object',
           properties: {
+            outcome: outcomeSchema,
             title: { type: 'string' },
             kind: { type: 'string', enum: ['once', 'scheduled'] },
             cronExpr: { type: 'string' },
@@ -2123,6 +2244,7 @@ export class ThreadEngine {
               items: {
                 type: 'object',
                 properties: {
+                  outcome: outcomeSchema,
                   stepOrder: { type: 'integer' },
                   title: { type: 'string' },
                   assigneeMemberId: { type: 'string' },
@@ -2180,6 +2302,8 @@ export class ThreadEngine {
   }
 }
 
+
+
 function parseTagAttrs(rawAttrs: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const attrRegex = /([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
@@ -2195,16 +2319,14 @@ function stripInlineArtifactBlock(
   onBlock: (title: string | undefined, content: string, folderPath?: string) => void
 ): string {
   const regex = /<duolawork_artifact(\s+[^>]*)?>([\s\S]*?)<\/duolawork_artifact>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     onBlock(
       attrs.title || undefined,
       match[2].trim(),
       attrs.folder || attrs.folderpath || attrs.dir || undefined
     );
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2215,19 +2337,17 @@ function stripInlineFolderBlocks(
 ): string {
   const selfClosing = /<duolawork_folder(\s+[^>]*)\/>/gi;
   const paired = /<duolawork_folder(\s+[^>]*)?>([\s\S]*?)<\/duolawork_folder>/gi;
-  let cleaned = text;
-  let match: RegExpExecArray | null;
-  while ((match = selfClosing.exec(text)) !== null) {
+  const singles = actionBlocks(text, selfClosing);
+  for (const match of singles.matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const p = attrs.path || attrs.title || attrs.name || '';
     if (p) onBlock(p);
-    cleaned = cleaned.replace(match[0], '').trim();
   }
-  while ((match = paired.exec(cleaned)) !== null) {
+  const { matches, cleaned } = actionBlocks(singles.cleaned, paired);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const p = attrs.path || attrs.title || attrs.name || match[2].trim();
     if (p) onBlock(p);
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2243,9 +2363,8 @@ function stripInlineFileBlocks(
   }) => void
 ): string {
   const regex = /<duolawork_file(\s+[^>]*)?>([\s\S]*?)<\/duolawork_file>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const name = attrs.name || attrs.title || attrs.filename || '';
     if (name) {
@@ -2257,7 +2376,6 @@ function stripInlineFileBlocks(
         encoding: attrs.encoding || 'utf8'
       });
     }
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2267,9 +2385,8 @@ function stripInlineLinkBlocks(
   onBlock: (spec: { title?: string; url: string; note: string; folderPath?: string }) => void
 ): string {
   const regex = /<duolawork_link(\s+[^>]*)?>([\s\S]*?)<\/duolawork_link>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const url = attrs.url || attrs.href || '';
     if (url) {
@@ -2280,7 +2397,6 @@ function stripInlineLinkBlocks(
         folderPath: attrs.folder || attrs.folderpath || attrs.dir || undefined
       });
     }
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }

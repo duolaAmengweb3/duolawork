@@ -84,7 +84,11 @@ export interface MemberCapabilities {
 
 export type MemberStatus = 'ready' | 'busy' | 'offline' | 'auth_required';
 
+export interface ModelPreference { model: string; effort: string | null }
+export interface RuntimeModel { id: string; label: string; efforts: string[]; defaultEffort?: string }
+export interface ModelCatalog { models: RuntimeModel[]; defaultModel?: string }
 export interface MemberRecord {
+  inference?: ModelPreference;
   id: string;
   name: string;
   platformId: string;
@@ -159,8 +163,16 @@ export interface ThreadRecord {
   updatedAt: string;
 }
 
-export type MessageAuthorKind = 'user' | 'agent' | 'system_task_card' | 'switch_notice';
+export type MessageAuthorKind = 'user' | 'agent' | 'system_task_card' | 'switch_notice' | 'task_receipt';
 export type TurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+
+export const turnPhases = ['processing', 'thinking', 'executing', 'writing', 'queued', 'waiting_reply', 'reconnecting'] as const;
+export type TurnPhase = typeof turnPhases[number];
+
+export interface TurnActivity {
+  phase: TurnPhase;
+  revision: number;
+}
 
 export interface ToolTraceItem {
   id?: string;
@@ -224,12 +236,16 @@ export interface ThreadMessageRecord {
   body: string;
   artifactRefs: string[];
   toolTrace?: ToolTraceItem[];
+  continuedByMessageId?: string;
+  activity?: TurnActivity;
   handoffMeta?: HandoffNoticeMeta | null;
   clarificationCard?: ClarificationCardData | null;
   taskCard: {
     taskId: string;
     runId?: string;
-    kind: 'created' | 'waiting_user' | 'delivered' | 'failed';
+    kind: 'created' | 'started' | 'waiting_user' | 'delivered' | 'failed';
+    outcomeLabel?: string;
+    material?: StepProgress['material'];
   } | null;
   turnStatus: TurnStatus;
   usage: ThreeTierUsage | null;
@@ -251,7 +267,31 @@ export interface HandoffCursorRecord {
 export type TaskKind = 'once' | 'scheduled';
 export type MisfirePolicy = 'skip_stale' | 'catch_up_once';
 
+export interface ExternalResultCheck {
+  credentialId: string;
+  url: string;
+  field: string;
+  equals: string | number | boolean;
+}
+
+export type TaskOutcome =
+  | { kind: 'reply' }
+  | { kind: 'material'; materialKind: 'file' | 'document'; name: string; folderPath?: string; expectedText?: string }
+  | { kind: 'external'; readback?: ExternalResultCheck };
+
+export interface StepProgress {
+  stepId: string;
+  canReadBack?: boolean;
+  memberId: string;
+  title: string;
+  status: TaskStepStatus;
+  result: 'reply' | 'material' | 'external';
+  confirmation?: 'checking' | 'manual' | 'verified' | 'attested';
+  material?: { kind: 'file' | 'document'; id: string; name: string };
+}
+
 export interface TaskStepTemplate {
+  outcome?: TaskOutcome;
   stepOrder: number;
   title: string;
   assigneeMemberId: string;
@@ -273,6 +313,7 @@ export interface TaskSpec {
 }
 
 export interface TaskRecord {
+  requesterMemberId?: string | null;
   id: string;
   projectId: string;
   sourceThreadId: string;
@@ -294,6 +335,7 @@ export interface TaskRecord {
 }
 
 export type TaskRunStatus =
+  | 'paused'
   | 'running'
   | 'waiting_user'
   | 'waiting_node_online'
@@ -305,6 +347,9 @@ export type TaskRunStatus =
 export type DeliveryStage = 'steps_running' | 'lead_final_review' | 'delivered';
 
 export interface TaskRunRecord {
+  progress?: StepProgress[];
+  returnMemberId?: string | null;
+  returnTurnStatus?: TurnStatus | null;
   id: string;
   taskId: string;
   runNumber: number;
@@ -425,6 +470,7 @@ export type DispatchAttemptStatus =
   | 'late_ignored';
 
 export interface DispatchAttemptRecord {
+  inference?: ModelPreference | null;
   id: string;
   targetKind: 'thread_message' | 'task_step' | 'lead_review' | 'lead_final';
   targetId: string;

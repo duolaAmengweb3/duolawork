@@ -3,7 +3,8 @@ import type {
   DriverKind,
   MemberRecord,
   MemberStatus,
-  ProviderUsageMetrics
+  ProviderUsageMetrics,
+  TurnPhase
 } from '../../shared/types.js';
 
 export interface DynamicToolDefinition {
@@ -31,6 +32,7 @@ export const SPACE_TOOL_NAMES = new Set([
   'space_read_material',
   'space_create_folder',
   'space_save_file',
+  'space_upload_to_connector',
   'space_save_document',
   'space_save_link',
   'space_move_item',
@@ -91,6 +93,19 @@ export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
     }
   },
   {
+    name: 'space_upload_to_connector',
+    description: '将本对话资料区的真实文件直接上传到已配置连接器。先通过 connector_discover 确认上传工具接收的 Base64 字段名，再传文件 ID 和其余元数据。执行机上的文件先用 space_save_file(localPath) 保存；不用读取或抄写 Base64。返回连接器原始回执。同一回合、同一文件与参数的重复上传共用幂等键。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fileId: { type: 'string' }, connectorId: { type: 'string' }, toolName: { type: 'string' },
+        base64Field: { type: 'string', description: '连接器声明的顶层文件内容字段，例如 base64' },
+        arguments: { type: 'object', description: '目标工具要求的其余参数，如 kind、filename、mime，不含文件内容' }
+      },
+      required: ['fileId', 'connectorId', 'toolName', 'base64Field']
+    }
+  },
+  {
     name: 'space_save_document',
     description: '在当前对话右侧协作空间创建或更新 Markdown 文档（支持指定 folderId 或 folderPath 自动归档到文件夹，并刷新更新时间）。',
     inputSchema: {
@@ -99,6 +114,7 @@ export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
         title: { type: 'string', description: '文档标题（如 方案评审.md）' },
         content: { type: 'string', description: '完整 Markdown 正文' },
         documentId: { type: 'string', description: '可选：更新指定已有文档 ID' },
+        expectedBaseVersion: { type: 'integer', description: '更新已有文档时传入读取到的 headVersion' },
         folderId: { type: 'string', description: '可选目标文件夹 ID' },
         folderPath: { type: 'string', description: '可选目标文件夹路径（如 "周报/2026-11"），不存在会自动创建' }
       },
@@ -231,7 +247,8 @@ export interface EnsuredSession {
 }
 
 export interface TurnStreamEvent {
-  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt';
+  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt' | 'activity' | 'progress';
+  phase?: TurnPhase;
   text?: string;
   toolId?: string;
   toolName?: string;
@@ -239,6 +256,17 @@ export interface TurnStreamEvent {
   toolStatus?: 'running' | 'done' | 'error';
   nativeTurnId?: string;
   bridgeMeta?: Record<string, unknown>;
+}
+
+// These pulses come only from provider output. Never forward private reasoning or raw tool output.
+export function progressOnOutput(onEvent?: (ev: TurnStreamEvent) => void) {
+  let lastSent = 0;
+  return () => {
+    const now = Date.now();
+    if (now - lastSent < 30_000) return;
+    lastSent = now;
+    onEvent?.({ kind: 'progress' });
+  };
 }
 
 export interface TurnDispatchInput {
@@ -257,7 +285,14 @@ export interface TurnDispatchInput {
   onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
+export interface GeneratedImage {
+  id: string;
+  dataBase64?: string;
+  localPath?: string;
+}
+
 export interface TurnExecutionResult {
+  generatedImages?: GeneratedImage[];
   text: string;
   nativeSessionId: string;
   nativeTurnId: string | null;
@@ -268,6 +303,7 @@ export interface TurnExecutionResult {
 
 export interface ReconcileResult {
   waitingForReceipt?: boolean;
+  activity?: 'executing' | 'queued' | 'waiting_reply';
   state: 'completed' | 'still_running' | 'not_found' | 'failed';
   text?: string;
   nativeSessionId?: string | null;
@@ -278,6 +314,7 @@ export interface ReconcileResult {
 
 export interface AgentDriver {
   readonly kind: DriverKind;
+  listModels?(member: MemberRecord, selectedModel?: string): Promise<import('../../shared/types.js').ModelCatalog>;
   checkHealth(member: MemberRecord): Promise<{ status: MemberStatus; message: string }>;
   ensureSession(input: SessionBindingInput): Promise<EnsuredSession>;
   runTurn(

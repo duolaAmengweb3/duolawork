@@ -8,6 +8,7 @@ import type { DuolaWorkDatabase } from './db.js';
 import { emptyUnobservableUsage, redactSecrets, type EnsuredSession, type ReconcileResult, type SessionBindingInput, type TurnDispatchInput, type TurnExecutionResult, type TurnStreamEvent } from './drivers/types.js';
 import {
   isExcludedClaudeVps,
+  turnPhases,
   type ExecutionNodeRecord,
   type MemberCapabilities,
   type MemberRecord,
@@ -22,14 +23,18 @@ interface PendingRpc {
 }
 
 interface ActiveNodeTurn {
+  nodeId: string;
   attemptId: string;
   onEvent?: (ev: TurnStreamEvent) => void;
+  disconnected?: boolean;
+  toolReceipts: Map<string, Promise<Record<string, unknown>>>;
   onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
   resolve: (res: TurnExecutionResult) => void;
   reject: (err: Error) => void;
 }
 
 interface LiveNodeSocket {
+  resumesToolCalls?: boolean;
   nodeId: string;
   ws: WebSocket;
   lastPongAt: number;
@@ -212,6 +217,11 @@ export class ExecutionNodeHub {
   }
 
   public revokeNode(nodeId: string): boolean {
+    for (const [id, turn] of this.activeTurns) {
+      if (turn.nodeId !== nodeId) continue;
+      this.activeTurns.delete(id);
+      turn.reject(new Error('执行节点已移除'));
+    }
     const live = this.liveSockets.get(nodeId);
     if (live) {
       try {
@@ -323,13 +333,10 @@ export class ExecutionNodeHub {
       // ignore if DB already closed during shutdown
     }
 
-    for (const [attemptId, turn] of this.activeTurns.entries()) {
-      const att = this.db.sqlite
-        .prepare(`SELECT m.node_id FROM v2_dispatch_attempts a JOIN v2_members m ON a.member_id = m.id WHERE a.id = ?`)
-        .get(attemptId) as { node_id?: string } | undefined;
-      if (att?.node_id === nodeId) {
-        this.activeTurns.delete(attemptId);
-        turn.reject(new Error('DISCONNECT: 执行节点连接断开，等待重连对账'));
+    for (const turn of this.activeTurns.values()) {
+      if (turn.nodeId === nodeId) {
+        turn.disconnected = true;
+        turn.onEvent?.({ kind: 'activity', phase: 'reconnecting' });
       }
     }
 
@@ -424,7 +431,34 @@ export class ExecutionNodeHub {
         });
       }
 
-      this.sendFrame(ws, { type: 'node.welcome', nodeId, serverTime: now });
+      live.resumesToolCalls = msg.resumesToolCalls === true;
+      this.sendFrame(ws, { type: 'node.welcome', nodeId, serverTime: now, resumesToolCalls: true });
+      for (const turn of this.activeTurns.values()) {
+        if (turn.nodeId !== nodeId || !turn.disconnected) continue;
+        turn.disconnected = false;
+        // A restarted runner may have lost the native process. A live one resumes its original callbacks.
+        void this.reconcileAttempt(nodeId, turn.attemptId).then(receipt => {
+          if (this.activeTurns.get(turn.attemptId) !== turn || this.liveSockets.get(nodeId)?.ws !== ws) return;
+          if (receipt.state === 'not_found' || receipt.state === 'failed') {
+            this.activeTurns.delete(turn.attemptId);
+            turn.reject(new Error(receipt.errorMessage || '执行节点重启，本轮处理已中断'));
+          } else if (receipt.state === 'still_running') {
+            turn.onEvent?.({ kind: 'activity', phase: 'processing' });
+          }
+          // Completed receipts also arrive through the runner's durable outbox.
+        }).catch(() => {});
+      }
+      if (Array.isArray(msg.activeAttempts)) {
+        for (const id of msg.activeAttempts) {
+          const stopped = this.db.sqlite.prepare(
+            `SELECT 1 FROM v2_dispatch_attempts a JOIN v2_members m ON m.id=a.member_id
+             WHERE a.id=? AND m.node_id=? AND a.status IN ('failed','timed_out','late_ignored')
+             AND (a.target_kind <> 'thread_message' OR EXISTS (SELECT 1 FROM v2_thread_messages msg
+               WHERE msg.id=a.target_id AND msg.turn_status='canceled'))`
+          ).get(String(id), nodeId);
+          if (stopped) this.sendFrame(ws, { type: 'turn.abort', attemptId: id });
+        }
+      }
       this.onNodesChanged?.(this.listNodes());
       this.onMembersChanged?.();
       return;
@@ -446,7 +480,8 @@ export class ExecutionNodeHub {
 
     if (type === 'turn.started') {
       const turn = this.activeTurns.get(String(msg.attemptId || ''));
-      turn?.onEvent?.({
+      if (turn?.nodeId !== nodeId) return;
+      turn.onEvent?.({
         kind: 'dispatched_meta',
         nativeTurnId: msg.nativeTurnId ? String(msg.nativeTurnId) : undefined
       });
@@ -454,9 +489,22 @@ export class ExecutionNodeHub {
       return;
     }
 
+    if (type === 'turn.progress') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn?.nodeId === nodeId) turn.onEvent?.({ kind: 'progress' });
+      return;
+    }
+    if (type === 'turn.activity') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn?.nodeId === nodeId && turnPhases.includes(msg.phase)) {
+        turn.onEvent?.({ kind: 'activity', phase: msg.phase });
+      }
+      return;
+    }
+
     if (type === 'turn.delta') {
       const turn = this.activeTurns.get(String(msg.attemptId || ''));
-      if (turn && typeof msg.text === 'string' && msg.text) {
+      if (turn?.nodeId === nodeId && typeof msg.text === 'string' && msg.text) {
         turn.onEvent?.({ kind: 'delta', text: msg.text });
       }
       return;
@@ -464,7 +512,7 @@ export class ExecutionNodeHub {
 
     if (type === 'turn.tool_trace') {
       const turn = this.activeTurns.get(String(msg.attemptId || ''));
-      if (turn && msg.name) {
+      if (turn?.nodeId === nodeId && msg.name) {
         turn.onEvent?.({
           kind: 'tool',
           toolId: msg.toolId ? String(msg.toolId) : undefined,
@@ -476,34 +524,38 @@ export class ExecutionNodeHub {
       return;
     }
 
+    if (type === 'turn.tool_ack') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn?.nodeId === nodeId) turn.toolReceipts.delete(String(msg.callId));
+      return;
+    }
     if (type === 'turn.tool_call') {
       const callId = String(msg.callId || '');
       const attemptId = String(msg.attemptId || '');
       const turn = this.activeTurns.get(attemptId);
-      if (!turn?.onToolCall) {
-        this.sendFrame(ws, {
-          type: 'turn.tool_result',
-          callId,
-          ok: false,
-          error: '当前回合未绑定云端沙箱工具执行器'
-        });
+      if (!callId || !turn?.onToolCall || turn.nodeId !== nodeId) {
+        this.sendFrame(ws, { type: 'turn.tool_result', callId, ok: false, error: '原执行连接已结束，请先核对已保存的进度' });
         return;
       }
-      try {
-        const result = await turn.onToolCall(
-          String(msg.toolName || ''),
-          (msg.args as Record<string, unknown>) ?? {}
-        );
-        this.sendFrame(ws, { type: 'turn.tool_result', callId, ok: true, result });
-      } catch (err) {
-        this.sendFrame(ws, {
-          type: 'turn.tool_result',
-          callId,
-          ok: false,
-          error: redactSecrets((err as Error).message || '工具执行被拒绝')
-        });
+      let receipt = turn.toolReceipts.get(callId);
+      if (!receipt) {
+        receipt = turn.onToolCall(String(msg.toolName || ''), msg.args ?? {})
+          .then(result => ({ ok: true, result }), err => ({ ok: false, error: redactSecrets(err.message || '工具执行被拒绝') }));
+        if (live.resumesToolCalls) turn.toolReceipts.set(callId, receipt);
       }
+      const result = await receipt;
+      if (this.liveSockets.get(nodeId)?.ws === ws) this.sendFrame(ws, { type: 'turn.tool_result', callId, ...result });
       return;
+    }
+
+    if (type === 'turn.completed' || type === 'turn.failed') {
+      const attemptId = String(msg.attemptId || '');
+      const turn = this.activeTurns.get(attemptId);
+      if (turn && turn.nodeId !== nodeId) return;
+      if (!turn && !this.db.sqlite.prepare(
+        `SELECT 1 FROM v2_dispatch_attempts a JOIN v2_members m ON m.id=a.member_id
+         WHERE a.id=? AND COALESCE(m.node_id, json_extract(m.config_json, '$.nodeId'))=?`
+      ).get(attemptId, nodeId)) return;
     }
 
     if (type === 'turn.completed') {
@@ -603,6 +655,18 @@ export class ExecutionNodeHub {
     });
   }
 
+  public listMemberModels(nodeId: string, member: MemberRecord, selectedModel?: string) {
+    return this.sendRpc<import('../shared/types.js').ModelCatalog>(
+      nodeId,
+      'member.models',
+      {
+        member: { ...member, driverKind: member.config.localDriverKind || 'acp-stdio', location: 'local' },
+        selectedModel
+      },
+      20000
+    );
+  }
+
   public async ensureSession(nodeId: string, input: SessionBindingInput): Promise<EnsuredSession> {
     return this.sendRpc<EnsuredSession>(
       nodeId,
@@ -612,6 +676,7 @@ export class ExecutionNodeHub {
           id: input.member.id,
           name: input.member.name,
           platformId: input.member.platformId,
+          inference: input.member.inference,
           driverKind: input.member.config.localDriverKind || 'acp-stdio',
           location: 'local',
           capabilities: input.member.capabilities,
@@ -622,6 +687,7 @@ export class ExecutionNodeHub {
         scopeKey: input.scopeKey,
         cwd: input.cwd,
         existingNativeSessionId: input.existingNativeSessionId ?? null,
+        existingBridgeMeta: input.existingBridgeMeta ?? null,
         dynamicTools: input.dynamicTools ?? [],
         mcpServers: input.mcpServers ?? []
       },
@@ -644,7 +710,9 @@ export class ExecutionNodeHub {
 
     return new Promise<TurnExecutionResult>((resolve, reject) => {
       this.activeTurns.set(input.attemptId, {
+        nodeId,
         attemptId: input.attemptId,
+        toolReceipts: new Map(),
         onEvent,
         onToolCall: input.onToolCall,
         resolve,
@@ -658,6 +726,7 @@ export class ExecutionNodeHub {
           id: input.member.id,
           name: input.member.name,
           platformId: input.member.platformId,
+          inference: input.member.inference,
           driverKind: input.member.config.localDriverKind || 'acp-stdio',
           location: 'local',
           capabilities: input.member.capabilities,
@@ -668,6 +737,7 @@ export class ExecutionNodeHub {
         scopeKey: input.scopeKey,
         cwd: input.cwd,
         nativeSessionId: input.nativeSessionId,
+        bridgeMeta: input.bridgeMeta ?? null,
         prompt: input.prompt,
         fallbackFullPrompt: input.fallbackFullPrompt ?? null,
         timeoutMs: input.timeoutMs ?? 900_000,
@@ -679,6 +749,11 @@ export class ExecutionNodeHub {
   }
 
   public async abortTurn(nodeId: string, attemptId: string): Promise<boolean> {
+    const active = this.activeTurns.get(attemptId);
+    if (active?.nodeId === nodeId) {
+      this.activeTurns.delete(attemptId);
+      active.reject(new Error('ATTEMPT_CANCELED'));
+    }
     const live = this.liveSockets.get(nodeId);
     if (!live || live.ws.readyState !== WebSocket.OPEN) return false;
     this.sendFrame(live.ws, { type: 'turn.abort', attemptId });

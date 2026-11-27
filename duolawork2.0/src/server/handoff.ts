@@ -49,7 +49,7 @@ export function computeMessageRevision(
 }
 
 export function isMessageDeliverable(m: ThreadMessageRecord): boolean {
-  if (m.authorKind === 'switch_notice') return false;
+  if (m.authorKind === 'switch_notice' || m.authorKind === 'task_receipt') return false;
   if (m.turnStatus === 'running' || m.turnStatus === 'queued') return false;
   if (!m.body || !m.body.trim()) return false;
   return true;

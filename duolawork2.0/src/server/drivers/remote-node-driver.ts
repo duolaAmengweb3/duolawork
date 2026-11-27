@@ -36,6 +36,11 @@ export class RemoteNodeDriver implements AgentDriver {
     return nodeId;
   }
 
+  public listModels(member: MemberRecord, selectedModel?: string) {
+    if (!this.nodeHub) throw new Error('执行节点暂不可用');
+    return this.nodeHub.listMemberModels(this.resolveNodeId(member),member,selectedModel);
+  }
+
   public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
     if (isExcludedClaudeVps(member)) {
       return { status: 'offline', message: '按所有者规则排除 VPS 订阅 Claude 实例' };

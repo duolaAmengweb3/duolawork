@@ -439,6 +439,8 @@ export class RemoteBridgeDriver implements AgentDriver {
     const deadline = Date.now() + timeoutMs;
     let consecutivePollErrors = 0;
     let waitingForReceipt = false;
+    let lastActivity: ReconcileResult['activity'] = 'waiting_reply';
+    onEvent?.({ kind: 'activity', phase: lastActivity });
 
     while (Date.now() < deadline) {
       if (this.abortedAttempts.has(input.attemptId)) {
@@ -460,6 +462,9 @@ export class RemoteBridgeDriver implements AgentDriver {
       if (rec.waitingForReceipt && !waitingForReceipt) {
         waitingForReceipt = true;
         onEvent?.({ kind: 'waiting_for_receipt' });
+      } else if (!waitingForReceipt && rec.activity && rec.activity !== lastActivity) {
+        lastActivity = rec.activity;
+        onEvent?.({ kind: 'activity', phase: rec.activity });
       }
       if (rec.state === 'completed') {
         return {
@@ -594,7 +599,10 @@ export class RemoteBridgeDriver implements AgentDriver {
     }
     return {
       state: 'still_running',
-      waitingForReceipt: Boolean(doneTurn)
+      waitingForReceipt: Boolean(doneTurn),
+      activity: matchingTurns.some(t => ['active', 'running', 'claimed'].includes(t.status))
+        ? 'executing'
+        : stillActive ? 'queued' : 'waiting_reply'
     };
   }
 

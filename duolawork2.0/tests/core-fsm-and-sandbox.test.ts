@@ -10,7 +10,7 @@ import { DuolaWorkApp } from '../src/server/app.js';
 import { SandboxForbiddenError } from '../src/server/auth-sandbox.js';
 import { resolveLocalCliBinary } from '../src/server/db.js';
 import { fromCodexWireToolName, toCodexWireToolName } from '../src/server/drivers/codex-driver.js';
-import { sanitizeToolSummary } from '../src/server/drivers/types.js';
+import { type TurnStreamEvent, sanitizeToolSummary } from '../src/server/drivers/types.js';
 import {
   DEFAULT_HANDOFF_BUDGET_BYTES,
   resolveHandoffBudgetBytes
@@ -807,6 +807,10 @@ const resIdx = args.indexOf('--resume');
 const sid = sidIdx >= 0 ? args[sidIdx + 1] : resIdx >= 0 ? args[resIdx + 1] : '';
 fs.appendFileSync(${JSON.stringify(logFile)}, JSON.stringify({ args, prompt, sid }) + '\\n');
 const reply = resIdx >= 0 ? '续聊回复' : '首轮回复';
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_stop', index: 0 } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't_read', name: 'Read' } } }));
+console.log(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't_read' }] } }));
 console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } } }));
 console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: reply }] } }));
 console.log(JSON.stringify({
@@ -845,7 +849,14 @@ console.log(JSON.stringify({
     assert.match(health.message, /local-dev@example\.com/);
 
     const t1 = app.threads.createThread({ title: 'Claude T3 独立对话 1', activeOwnerMemberId: claudeMember.id });
+    const phases: string[] = [];
+    const unsub = app.threads.subscribe(ev => {
+      if (ev.type === 'thread.activity') phases.push((ev.payload as { activity: { phase: string } }).activity.phase);
+    });
     const r1 = await app.threads.sendUserMessage({ threadId: t1.id, body: '第一问' });
+    unsub();
+    assert.deepEqual(phases, ['thinking', 'processing', 'executing', 'processing', 'writing']);
+    assert.equal(r1.agentMessage.toolTrace?.[0].status, 'done');
     assert.equal(r1.agentMessage.body, '首轮回复');
     assert.equal(r1.agentMessage.usage?.providerUsage.observable, true);
     assert.equal(r1.agentMessage.usage?.providerUsage.inputTokens, 160);
@@ -1029,11 +1040,15 @@ test('DW2-14: T3 Portable Handoffs (First-Prompt Anchor, tool trails, capability
     });
     app.threads.switchOwner(thread.id, grok4.id);
     app.threads.switchOwner(thread.id, gemVps.id);
-    app.threads.switchOwner(thread.id, codex.id);
     const msgsAfterSwitch = app.threads.listMessages(thread.id);
     const switchNotices = msgsAfterSwitch.filter((m) => m.authorKind === 'switch_notice');
     assert.equal(switchNotices.length, 1, 'Consecutive switches update in place to strictly 1 notice');
-    assert.match(switchNotices[0].body, /已切换至 Codex/);
+    assert.equal(switchNotices[0].handoffMeta?.fromMemberId, codex.id);
+    assert.equal(switchNotices[0].handoffMeta?.toMemberId, gemVps.id);
+    app.threads.switchOwner(thread.id, codex.id);
+    assert.equal(app.threads.listMessages(thread.id).length, 0, 'Returning before sending cancels the pending transfer');
+    assert.equal(app.threads.previewPendingHandoff(thread.id).meta.fromMemberId, null);
+    app.threads.switchOwner(thread.id, grok4.id);
 
     // 3. Seed 40 messages (> 12 KiB) where first user goal & toolTrace exist on Codex
     const sampleMsgs = [];
@@ -1174,6 +1189,7 @@ test('DW2-16: Audit #1 late-arriving conclusion after owner switch is caught up 
     });
     assert.match(capturedCodexPrompts[1], /\[#2 Gemini2VPS\] \[迟到回复补交\] Gemini迟到结论：最终定案采用 scheme_beta/);
     assert.deepEqual(turn3.agentMessage.handoffMeta?.lateArrivalSeqs, [2]);
+    assert.equal(app.threads.previewPendingHandoff(thread.id).meta.fromMemberId, null, 'A settled switch cannot become the source of a later turn');
 
     // 5. Turn 4 to Codex MUST NOT repeat seq=2!
     await app.threads.sendUserMessage({
@@ -1643,6 +1659,11 @@ test('DW2-24: invalid cron rejected 400, non-timeout step error marks run failed
       .listMessages(thread.id)
       .filter((m) => m.taskCard?.taskId === failData.task.id && m.taskCard?.kind === 'failed');
     assert.equal(failCards.length, 1, 'Posted failed task card back to thread');
+
+    const retried = app.tasks.requestManualRun(failData.task.id, settledFailRun.id);
+    assert.equal(retried.created,true);
+    assert.equal(app.tasks.requestManualRun(failData.task.id, settledFailRun.id).run.id, retried.run.id);
+    await app.tasks.cancelRun(retried.run.id);
 
     // 3. Solo single-step task owned & executed by same member uses strictly 1 LLM turn (no double self-review)
     const beforePrompts = app.registry.mockDriver.recordedPrompts.length;
@@ -2135,4 +2156,189 @@ test('DW2-29: Interrupted turns settle cleanly on restart reconcile (not_found/f
   } finally {
     await cleanup();
   }
+});
+
+test('interactive chat renews its inactivity window on real progress, bounds total time and never redispatches a timed-out request key', async (t) => {
+  const { app, cleanup } = createTestApp();
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  try {
+    const thread = app.threads.createThread({title:'长回合', activeOwnerMemberId:'mem_codex'});
+    for (const mode of ['active', 'idle', 'ceiling']) {
+      let started!: () => void;
+      let finish!: (value: { text: string }) => void;
+      const ready = new Promise<void>(resolve => { started = resolve; });
+      const result = new Promise<{ text: string }>(resolve => { finish = resolve; });
+      let report!: (event: TurnStreamEvent) => void;
+      let calls = 0;
+      app.registry.mockDriver.handlers.set('mem_codex', async (_input, onEvent) => {
+        calls++;
+        report = onEvent!;
+        started();
+        return result;
+      });
+      const input = {threadId:thread.id, body:mode, idempotencyKey:'timeout-' + mode};
+      const run = app.threads.sendUserMessage(input);
+      await ready;
+      const expected = mode === 'active' ? run : assert.rejects(run, /ATTEMPT_TIMED_OUT/);
+      const advance = (minutes: number) => t.mock.timers.tick(minutes * 60_000);
+      if (mode === 'active') {
+        for (let n = 0; n < 31; n++) {
+          advance(1);
+          report({kind:'tool', toolId:'tool-' + n, toolName:'编辑文件', toolStatus:'done'});
+        }
+        finish({ text:'完成' });
+        const settled = await run;
+        assert.equal(settled.agentMessage.toolTrace?.length, 31);
+        assert.equal(settled.agentMessage.turnStatus,'completed');
+      } else {
+        if (mode === 'idle') {
+          advance(14);
+          report({kind:'progress'});
+          advance(14);
+          assert.equal(app.threads.listMessages(thread.id).at(-1)?.turnStatus,'running');
+          advance(1);
+        } else {
+          for (let i=0; i<12; i++) { advance(10); report({kind:'progress'}); }
+        }
+        await expected;
+        const failed = app.threads.listMessages(thread.id).at(-1)!;
+        assert.match(failed.body, mode === 'idle' ? /15 分钟未收到执行进展/ : /2 小时执行上限/);
+        assert.equal((await app.threads.sendUserMessage(input)).agentMessage.id, failed.id);
+        assert.equal(calls, 1);
+        finish({ text: '迟到结果' });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const recovered = app.threads.getMessage(failed.id)!;
+        assert.equal(recovered.turnStatus, 'completed');
+        assert.equal(recovered.body, '迟到结果');
+        assert.equal((await app.threads.sendUserMessage(input)).agentMessage.id, recovered.id);
+        assert.equal(calls, 1);
+      }
+    }
+  } finally {
+    t.mock.timers.reset();
+    await cleanup();
+  }
+});
+
+test('remote timeout looks up the original receipt once and restores the paired message without a second dispatch', async () => {
+  const { app, cleanup } = createTestApp();
+  let settleNative!: () => void;
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const member = app.db.getMember('mem_gemini')!;
+    app.db.upsertMember({ ...member, driverKind: 'remote-bridge' });
+    const thread = app.threads.createThread({ title: '回执恢复', activeOwnerMemberId: member.id });
+    const mock = app.registry.mockDriver;
+    const lookups: string[] = [];
+    const dispatches: string[] = [];
+    let aborts = 0;
+    let releaseReceipt!: () => void;
+    const receiptReady = new Promise<void>(resolve => { releaseReceipt = resolve; });
+    app.registry.register({
+      kind: 'remote-bridge',
+      checkHealth: () => mock.checkHealth(),
+      ensureSession: input => mock.ensureSession(input),
+      runTurn: async (input, onEvent) => {
+        dispatches.push(input.attemptId);
+        await new Promise<void>(resolve => { settleNative = resolve; });
+        return mock.runTurn(input, onEvent);
+      },
+      reconcileAttempt: async (_member, attempt) => {
+        lookups.push(attempt.id);
+        await receiptReady;
+        return { state: 'completed', text: '已取回原请求回执', nativeSessionId: 'recovered-session' };
+      },
+      abortTurn: async () => { aborts++; return true; }
+    });
+    const input = { threadId: thread.id, body: '测试', idempotencyKey: 'recover-original', timeoutMs: 20 };
+    await assert.rejects(app.threads.sendUserMessage(input), /ATTEMPT_TIMED_OUT/);
+    const failed = app.threads.listMessages(thread.id).at(-1)!;
+    assert.deepEqual(lookups, [failed.attemptId]);
+    assert.deepEqual(dispatches, lookups);
+    assert.equal(failed.turnStatus, 'failed');
+    releaseReceipt();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const replay = await app.threads.sendUserMessage(input);
+    assert.equal(replay.agentMessage.id, failed.id);
+    assert.equal(replay.agentMessage.body, '已取回原请求回执');
+    assert.equal(replay.agentMessage.turnStatus, 'completed');
+    assert.equal(aborts, 0);
+    settleNative();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(app.threads.getMessage(failed.id)!.body, '已取回原请求回执');
+    assert.equal(dispatches.length, 1);
+  } finally {
+    clearInterval(keepAlive);
+    settleNative?.();
+    await cleanup();
+  }
+});
+
+test('delegation auto-starts, pauses at a checkpoint and returns once to the original requester after reconnect', async () => {
+  const { app, cleanup } = createTestApp();
+  try {
+    const thread = app.threads.createThread({ title: '交付回执', activeOwnerMemberId: 'mem_gemini' });
+    let calls = 0;
+    let release!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    let started!: () => void;
+    const firstStep = new Promise<void>(resolve => { started = resolve; });
+    app.registry.mockDriver.handlers.set('mem_codex', async input => {
+      if (input.scopeKey.startsWith('task_lead:')) return { text: '{"verdict":"accept","comments":"已核对产出"}' };
+      calls++;
+      if (calls === 1) { started(); await hold; }
+      return { text: '步骤实测交付 ' + calls };
+    });
+    let returned = 0;
+    app.registry.mockDriver.handlers.set('mem_gemini', async input => {
+      if (input.prompt.includes('系统交付回执')) {
+        returned++;
+        assert.match(input.prompt, /步骤实测交付 2/);
+        return { text: '已收到并核对两项交付。' };
+      }
+      const task = { title: '协作验收', kind: 'once', leadMemberId: 'mem_codex', startImmediately: false,
+        steps: [{ title: '整理', assigneeMemberId: 'mem_codex' }, { title: '核对', assigneeMemberId: 'mem_codex', dependsOnOrders: [1] }] };
+      return { text: '开始委派。<duolawork_task>' + JSON.stringify(task) + '</duolawork_task>' };
+    });
+    await app.threads.sendUserMessage({ threadId: thread.id, body: '直接委派 Codex 整理并核对' });
+    await firstStep;
+    const [task] = app.tasks.listTasks({ sourceThreadId: thread.id });
+    const [run] = app.tasks.listRuns(task.id);
+    assert.equal(task.requesterMemberId, 'mem_gemini');
+    assert.equal(app.tasks.requestManualRun(task.id).created, false);
+    app.tasks.setPaused(task.id, true);
+    assert.equal(app.tasks.getRun(run.id)?.status, 'running');
+    app.threads.switchOwner(thread.id, 'mem_grok');
+    const requester = app.db.getMember('mem_gemini')!;
+    app.db.upsertMember({ ...requester, status: 'offline' });
+    release();
+    const until = async (check: () => boolean) => {
+      for (let n=0; n<350; n++) {
+        if (check()) return;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.fail('未到达预期状态');
+    };
+    await until(() => app.tasks.getRun(run.id)?.status === 'paused');
+    assert.equal(calls, 1);
+    await app.tasks.reconcileInFlightTaskRuns();
+    assert.equal(calls, 1);
+    app.tasks.setPaused(task.id, false);
+    await until(() => app.tasks.getRun(run.id)?.status === 'completed');
+    assert.equal(calls, 2);
+    assert.equal(returned, 0);
+    assert.equal(app.tasks.requestManualRun(task.id).run.id, run.id);
+    assert.equal(app.tasks.listRuns(task.id).length, 1);
+    app.db.upsertMember(requester);
+    app.tasks.dispatchPendingReturns();
+    app.tasks.dispatchPendingReturns();
+    await until(() => app.tasks.listRuns(task.id)[0].returnTurnStatus === 'completed');
+    app.tasks.dispatchPendingReturns();
+    assert.equal(returned, 1);
+    const messages = app.threads.listMessages(thread.id);
+    assert.equal(messages.filter(m => m.authorKind === 'user').length, 1);
+    assert.equal(messages.filter(m => m.authorKind === 'task_receipt').length, 1);
+    assert.equal(messages.at(-1)?.authorId, 'mem_gemini');
+    assert.equal(app.threads.getThread(thread.id)?.activeOwnerMemberId, 'mem_grok');
+  } finally { await cleanup(); }
 });

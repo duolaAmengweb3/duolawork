@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ModelPicker } from './ModelPicker.js';
+import { outcomeStatus } from '../shared/task-progress.js';
+import { readableTurnFailure } from '../shared/turn-timeout.js';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -57,8 +60,11 @@ import {
   type TaskStepRecord,
   type ThreadMessageRecord,
   type ThreadRecord,
-  type ToolTraceItem
+  type ToolTraceItem,
+  type TurnActivity,
+  type TurnPhase
 } from '../shared/types.js';
+import { ColumnDivider, WorkbenchColumns } from './WorkbenchColumns.js';
 import { AgentAvatar, BrandLogo } from './AgentAvatar.js';
 import {
   CollaborationSpacePanel,
@@ -80,6 +86,14 @@ interface TaskWithLatestRun extends TaskRecord {
   latestRun: TaskRunRecord | null;
 }
 
+interface ThreadSpaceData {
+  folders: SpaceFolderRecord[];
+  items: SpaceItemView[];
+  trash: SpaceItemView[];
+  tasks: SpaceTaskSummary[];
+}
+const emptySpace: ThreadSpaceData = { folders: [], items: [], trash: [], tasks: [] };
+
 interface EnrichedStep extends TaskStepRecord {
   submissions: StepSubmissionRecord[];
   reviews: StepReviewRecord[];
@@ -93,50 +107,83 @@ interface DesktopBridge {
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
 }
 
-function formatToolTraceRow(item: ToolTraceItem): {
-  badge: string;
-  label: string;
-  detail: string;
-  raw: string;
-} {
-  const rawName = String(item.name || '').replace(/\s+/g, ' ').trim();
-  const rawSummary = String(item.summary || '').replace(/\s+/g, ' ').trim();
-  const raw = rawSummary && rawSummary !== rawName ? `${rawName} — ${rawSummary}` : rawName || rawSummary;
+const workspaceToolLabels: Record<string, string> = {
+  connector_list: '查看连接', connector_discover: '查找工具', connector_check: '检查连接',
+  connector_call: '调用服务', vault_list: '查看凭证', vault_http_proxy: '请求服务',
+  experience_suggest: '查找经验', memory_recall: '查找记忆', experience_read: '读取经验',
+  space_list_materials: '查看资料', space_read_material: '读取资料', space_create_folder: '新建目录',
+  space_save_file: '保存文件', space_save_document: '保存文档', space_save_link: '保存链接',
+  space_move_item: '移动资料', space_upload_to_connector: '上传文件', chat_attach_image: '添加图片'
+};
 
-  let badge = '工具';
-  let label = rawName;
-  let detail = rawSummary;
-
-  if (/\s+on Web$/i.test(rawName)) {
-    badge = '搜索';
-    label = rawName.replace(/\s+on Web$/i, '').replace(/^"+|"+$/g, '').trim();
-    detail = '';
-  } else if (/^File\s+/i.test(rawName)) {
-    badge = '文件';
-    const filePath = rawName.replace(/^File\s+/i, '').trim();
-    const parts = filePath.split('/').filter(Boolean);
-    label = parts.length > 1 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : filePath;
-    detail = '';
-  } else if (/^(grep|rg|find|fd)\b/i.test(rawName)) {
-    badge = '检索';
-    label = rawName;
-    detail = '';
-  } else if (/^(python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(rawName)) {
-    badge = '命令';
-    label = rawName;
-    detail = '';
-  } else if (rawName.startsWith('duolabase:') || rawName.startsWith('duolabase_')) {
-    badge = 'DuolaBase';
-    label = rawName.replace(/^duolabase[:_]/, '');
-  } else if (/^(read|write|edit|view|list)/i.test(rawName)) {
-    badge = '文件';
+function formatToolTraceRow(item: ToolTraceItem) {
+  const name = item.name.trim();
+  const summary = item.summary?.trim() || '';
+  const raw = summary && summary !== name ? name + ' — ' + summary : name;
+  let label = '调用工具';
+  let detail = summary || name;
+  const toolKey = name.replace(/^Run\s+/i, '').replace(/^mcp[_:]+/i, '').replace(/^(?:duolabase|duolawork-space)[_:]+/i, '');
+  if (Object.hasOwn(workspaceToolLabels, toolKey)) {
+    label = workspaceToolLabels[toolKey];
+    detail = summary;
+  } else if (/ on Web$/i.test(name) || /^(websearch|google_web_search|联网检索)$/i.test(name)) {
+    label = '搜索网页';
+    detail = summary || name.replace(/ on Web$/i, '');
+  } else if (/^(File |read(?:_file)?$|view_file$|读取文件$)/i.test(name)) {
+    label = '读取文件';
+    detail = summary || name.replace(/^File /, '');
+  } else if (/^(edit|write|replace|apply_patch|编辑文件|写入文件)/i.test(name)) {
+    label = '编辑文件';
+  } else if (/^(grep|rg|find|fd)\b/i.test(name)) {
+    label = '检索文件';
+  } else if (/^(imageGeneration|生成图片)$/i.test(name)) {
+    label = '生成图片';
+  } else if (/^(执行命令|exec_command|run_shell_command|python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(name) || name === '执行命令') {
+    label = '执行命令';
   }
-
-  if (detail && (label === detail || label.includes(detail) || detail.includes(label))) {
-    detail = '';
+  if (detail === label || (detail === name && label !== '调用工具' && !/\s/.test(name))) detail = '';
+  if (label === '调用工具' && !summary) detail = detail.replace(/^Run mcp_/, '').replace(/^duolawork-space_space_/, 'space_');
+  if ((label === '读取文件' || label === '编辑文件') && detail.length > 56 && detail.includes('/')) {
+    detail = '…/' + detail.split('/').filter(Boolean).slice(-2).join('/');
   }
+  return { label, detail, raw };
+}
 
-  return { badge, label: label || '执行操作', detail, raw };
+function ToolTraceRow({ item }: { item: ToolTraceItem }) {
+  const [open, setOpen] = useState(false);
+  const row = formatToolTraceRow(item);
+  const state = item.status === 'error' ? '未完成' : item.status === 'running' ? '进行中' : '已完成';
+  const contents = <>
+    <span className="turn-tool-mark" role="img" aria-label={state}>
+      {item.status === 'done' ? <Check size={13} /> : item.status === 'error' ? <X size={12} /> : <Clock size={12} />}
+    </span>
+    <strong className="turn-tool-label">{row.label}</strong>
+    {row.detail && <span className="turn-tool-detail">{row.detail}</span>}
+  </>;
+  return <div className={`turn-tool-item status-${item.status}`}>
+    {row.detail || row.raw !== row.label ? <>
+      <button type="button" className="turn-tool-row" aria-expanded={open} title={row.raw} onClick={() => setOpen(!open)}>
+        {contents}
+      </button>
+      {open && <div className="turn-tool-full">{row.raw}</div>}
+    </> : <div className="turn-tool-row">{contents}</div>}
+  </div>;
+}
+
+const phaseLabels: Record<TurnPhase, string> = {
+  processing: '正在处理', thinking: '正在思考', executing: '正在执行',
+  writing: '正在回复', queued: '正在排队', waiting_reply: '等待回复', reconnecting: '正在重连执行节点'
+};
+
+function executionLabel(tool?: ToolTraceItem): string {
+  switch (tool?.name.toLowerCase()) {
+    case '执行命令': case 'bash': case 'run_shell_command': return '正在执行命令';
+    case '编辑文件': case 'edit': case 'write': case 'write_file': return '正在编辑文件';
+    case 'read': case 'read_file': return '正在读取文件';
+    case '联网检索': case 'websearch': case 'google_web_search': return '正在搜索';
+    case 'imagegeneration': return '正在生成图片';
+    default: return phaseLabels.executing;
+  }
 }
 
 function getDesktopBridge(): DesktopBridge | null {
@@ -205,6 +252,7 @@ export function App(): React.JSX.Element {
   const [duolabaseStatus, setDuolabaseStatus] = useState<DuolaBasePublicStatus>(DEFAULT_DB_STATUS);
   const [archivesOpen, setArchivesOpen] = useState<boolean>(false);
   const [archives, setArchives] = useState<Array<{ id: string; name: string }>>([]);
+  const [cloudMode, setCloudMode] = useState(false);
   const [buildId, setBuildId] = useState<string>('dev');
   const [hasDesktopDialog, setHasDesktopDialog] = useState<boolean>(() => Boolean(getDesktopBridge()));
   const [refreshingMembers, setRefreshingMembers] = useState<boolean>(false);
@@ -216,6 +264,11 @@ export function App(): React.JSX.Element {
   const [messages, setMessages] = useState<ThreadMessageRecord[]>([]);
   const [streamingDeltas, setStreamingDeltas] = useState<Record<string, string>>({});
   const [streamingTools, setStreamingTools] = useState<Record<string, ToolTraceItem[]>>({});
+  const toolEventCount = useRef(0);
+  const toolSnapshots = useRef<Record<string, ToolTraceItem[]>>({});
+  const [streamingActivity, setStreamingActivity] = useState<Record<string, TurnActivity>>({});
+  const [resumingMessage, setResumingMessage] = useState<string | null>(null);
+  const [streamDisconnected, setStreamDisconnected] = useState(!navigator.onLine);
   const [expandedToolMsgIds, setExpandedToolMsgIds] = useState<Record<string, boolean>>({});
   const [expandedHandoffIds, setExpandedHandoffIds] = useState<Record<string, boolean>>({});
   const [pendingHandoffPreviews, setPendingHandoffPreviews] = useState<
@@ -246,12 +299,14 @@ export function App(): React.JSX.Element {
   } | null>(null);
 
   // Custom popover states
+  const [switchingThreads, setSwitchingThreads] = useState<Set<string>>(() => new Set());
   const [ownerMenuOpen, setOwnerMenuOpen] = useState<boolean>(false);
   const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false);
   const [leadMenuOpen, setLeadMenuOpen] = useState<boolean>(false);
   const [stepWorkerMenuIdx, setStepWorkerMenuIdx] = useState<number | null>(null);
 
   // Task detail state
+  const requestedRunRef = useRef<string | undefined>(undefined);
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [taskDetail, setTaskDetail] = useState<{
     task: TaskRecord;
@@ -265,10 +320,20 @@ export function App(): React.JSX.Element {
   const [wideSpace, setWideSpace] = useState<boolean>(false);
   const [spaceTab, setSpaceTab] = useState<'documents' | 'tasks' | 'resources'>('documents');
   const [spaceSelection, updateSpaceSelection] = useState<{ kind: SpaceItemKind; id: string } | null>(null);
-  const [spaceFolders, setSpaceFolders] = useState<SpaceFolderRecord[]>([]);
-  const [spaceItems, setSpaceItems] = useState<SpaceItemView[]>([]);
-  const [spaceTrash, setSpaceTrash] = useState<SpaceItemView[]>([]);
-  const [spaceTasks, setSpaceTasks] = useState<SpaceTaskSummary[]>([]);
+  const [spaceData, setSpaceData] = useState<{ threadId: string; data: ThreadSpaceData } | null>(null);
+  const [spaceLoadError, setSpaceLoadError] = useState('');
+  const [threadLoadError, setThreadLoadError] = useState('');
+  const spaceRequest = useRef(0);
+  const threadRequest = useRef(0);
+  const spaceThreadId = (viewMode === 'task' ? taskDetail?.task.sourceThreadId : activeThreadId) || '';
+  const requestedSpaceThread = useRef(spaceThreadId);
+  useLayoutEffect(() => {
+    requestedSpaceThread.current = spaceThreadId;
+  }, [spaceThreadId]);
+  const hasLoadedSpace = spaceData?.threadId === spaceThreadId;
+  const materialsState = hasLoadedSpace ? 'ready' : spaceThreadId && spaceLoadError === spaceThreadId ? 'error' : 'loading';
+  const { folders: spaceFolders, items: spaceItems, trash: spaceTrash, tasks: spaceTasks } =
+    (hasLoadedSpace && spaceData?.data) || emptySpace;
 
   // Active document editor state
   const [artifact, setArtifact] = useState<ArtifactRecord | null>(null);
@@ -312,7 +377,8 @@ export function App(): React.JSX.Element {
   >([
     { title: '执行调研与产出初稿', assigneeMemberId: '', brief: '产出初稿供审阅', dependsOnPrev: false }
   ]);
-  const [waitingReplyText, setWaitingReplyText] = useState<string>('');
+  const [waitingReplies, setWaitingReplies] = useState<Record<string,string>>({});
+  const updateWaitingReply = (runId: string, reply: string) => setWaitingReplies(old => ({...old,[runId]:reply}));
   const [draftImagesByThread, setDraftImagesByThread] = useState<
     Record<string, Array<{ id: string; name: string; url: string }>>
   >({});
@@ -336,6 +402,9 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
+    if (activeThreadId) {
+      try { sessionStorage.setItem('dw2-thread', activeThreadId); } catch { /* Storage is optional. */ }
+    }
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -386,14 +455,14 @@ export function App(): React.JSX.Element {
     const bridge = getDesktopBridge();
     if (bridge?.setTheme) {
       void bridge.setTheme(dark ? 'dark' : 'light').catch(() => {});
-    } else {
+    } else if (authState.checked && authState.authenticated && !cloudMode) {
       void fetch('/api/v2/desktop/theme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ theme: dark ? 'dark' : 'light' })
       }).catch(() => {});
     }
-  }, [dark]);
+  }, [dark, cloudMode, authState.checked, authState.authenticated]);
 
   const memberById = useMemo(() => {
     const map = new Map<string, MemberRecord>();
@@ -415,19 +484,24 @@ export function App(): React.JSX.Element {
     });
   }, [threads, threadSearch, memberById]);
 
+  const bootstrapRequest = useRef(0);
   const loadBootstrap = useCallback(async (preserveSelection = true) => {
+    const request = ++bootstrapRequest.current;
     const res = await fetch('/api/v2/bootstrap');
+    if (request !== bootstrapRequest.current) return;
     if (res.status === 401) {
       setAuthState({ checked: true, authRequired: true, authenticated: false });
       return;
     }
     if (!res.ok) return;
     const data = await res.json();
+    if (request !== bootstrapRequest.current) return;
     setAuthState({
       checked: true,
       authRequired: Boolean(data.auth?.authRequired),
       authenticated: data.auth?.authenticated !== false
     });
+    setCloudMode(data.cloudMode === true);
     setMembers(data.members || []);
     setNodes(data.nodes || []);
     setThreads(data.threads || []);
@@ -441,10 +515,11 @@ export function App(): React.JSX.Element {
     }
     setHasDesktopDialog(Boolean(data.hasDesktopDialog || getDesktopBridge()));
 
-    const firstId = data.threads?.[0]?.id || '';
-    if (firstId) {
-      setActiveThreadId((prev) => (preserveSelection && prev ? prev : firstId));
-    }
+    const activeThreads: ThreadRecord[] = data.threads || [];
+    let savedId: string | null = null;
+    try { savedId = sessionStorage.getItem('dw2-thread'); } catch { /* Fall back to the first conversation. */ }
+    const initialId = activeThreads.find(thread => thread.id === savedId)?.id || activeThreads[0]?.id || '';
+    setActiveThreadId(prev => preserveSelection && prev ? prev : initialId);
     if (data.members?.length > 0 && !newTaskLeadId) {
       setNewTaskLeadId(data.members[0].id);
       setNewTaskSteps((prev) =>
@@ -454,34 +529,56 @@ export function App(): React.JSX.Element {
   }, [newTaskLeadId]);
 
   const loadSpace = useCallback(async (threadId: string) => {
-    if (!threadId) {
-      setSpaceFolders([]);
-      setSpaceItems([]);
-      setSpaceTrash([]);
-      setSpaceTasks([]);
-      return;
+    if (!threadId || threadId !== requestedSpaceThread.current) return;
+    const request = ++spaceRequest.current;
+    setSpaceLoadError('');
+    const current = () => request === spaceRequest.current && threadId === requestedSpaceThread.current;
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}/space`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (!current()) return;
+      setSpaceData({
+        threadId,
+        data: { folders: data.folders || [], items: data.items || [], trash: data.trash || [], tasks: data.tasks || [] }
+      });
+    } catch {
+      if (current()) setSpaceLoadError(threadId);
     }
-    const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}/space`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setSpaceFolders(data.folders || []);
-    setSpaceItems(data.items || []);
-    setSpaceTrash(data.trash || []);
-    setSpaceTasks(data.tasks || []);
   }, []);
+
+  useEffect(() => {
+    if (spaceThreadId && (viewMode === 'thread' || viewMode === 'task')) void loadSpace(spaceThreadId);
+  }, [spaceThreadId, viewMode, loadSpace]);
 
   const loadThread = useCallback(
     async (threadId: string) => {
       if (!threadId) return;
-      const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (activeThreadIdRef.current && activeThreadIdRef.current !== threadId) {
+      const request = ++threadRequest.current;
+      const toolsAtRequest = toolEventCount.current;
+      setThreadLoadError('');
+      const current = () => request === threadRequest.current && activeThreadIdRef.current === threadId;
+      let data;
+      try {
+        const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`, { signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) throw new Error(String(res.status));
+        data = await res.json();
+      } catch {
+        if (current()) setThreadLoadError(threadId);
         return;
       }
+      if (!current()) return;
       const nextMsgs: ThreadMessageRecord[] = data.messages || [];
       setMessagesThreadId(threadId);
       setMessages(nextMsgs);
+      setStreamingActivity((prev) => {
+        const next: Record<string, TurnActivity> = {};
+        for (const msg of nextMsgs) {
+          const recent = prev[msg.id];
+          if (msg.turnStatus === 'running' && recent && recent.revision > (msg.activity?.revision ?? 0)) next[msg.id] = recent;
+        }
+        return next;
+      });
       setPendingHandoffPreviews({});
       setStreamingDeltas((prev) => {
         const next: Record<string, string> = {};
@@ -492,24 +589,78 @@ export function App(): React.JSX.Element {
         }
         return next;
       });
-      setStreamingTools((prev) => {
-        const next: Record<string, ToolTraceItem[]> = {};
-        for (const msg of nextMsgs) {
-          if (msg.turnStatus === 'running' && prev[msg.id]) {
-            next[msg.id] = prev[msg.id];
-          }
+      const snapshots: Record<string, ToolTraceItem[]> = {};
+      for (const msg of nextMsgs) {
+        if (msg.turnStatus === 'running') {
+          snapshots[msg.id] = (toolsAtRequest !== toolEventCount.current && toolSnapshots.current[msg.id]) || msg.toolTrace || [];
         }
-        return next;
-      });
-      await loadSpace(threadId);
+      }
+      toolSnapshots.current = snapshots;
+      setStreamingTools(snapshots);
     },
-    [loadSpace]
+    []
   );
 
   const visibleMessages = useMemo(
-    () => (messagesThreadId === activeThreadId ? messages : []),
-    [messagesThreadId, activeThreadId, messages]
+    () => {
+      if (messagesThreadId !== activeThreadId) return [];
+      const anchors = new Map<string, number>();
+      const timeline: ThreadMessageRecord[] = [];
+      const scheduled = new Set(tasks.filter(t => t.kind === 'scheduled').map(t => t.id));
+      for (const message of messages) {
+        if (message.authorKind==='task_receipt') continue;
+        const card=message.taskCard;
+        if (!card) { timeline.push(message); continue; }
+        const key=scheduled.has(card.taskId) ? card.taskId+'/'+(card.runId ?? 'schedule') : card.taskId;
+        const index=anchors.get(key);
+        if (index===undefined) { anchors.set(key,timeline.length); timeline.push(message); }
+        else {
+          const anchor=timeline[index];
+          timeline[index]={...anchor,taskCard:card,artifactRefs:message.artifactRefs,body:message.body};
+        }
+      }
+      return timeline;
+    },
+    [messagesThreadId, activeThreadId, messages, tasks]
   );
+
+  const lastConversationTurn = visibleMessages.findLast(m => m.authorKind === 'user' || m.authorKind === 'agent');
+  const waitingForTurn = visibleMessages.some(message => message.turnStatus === 'running');
+  useEffect(() => {
+    if (!streamDisconnected || !waitingForTurn || viewMode !== 'thread' || !activeThreadId) return;
+    // A proxy can block SSE while ordinary HTTP is already available.
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (pending || !navigator.onLine || document.hidden) return;
+      pending = true;
+      try { await loadThread(activeThreadId); } finally { pending = false; }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [streamDisconnected, waitingForTurn, viewMode, activeThreadId, loadThread]);
+
+  // Historical replies can contain internal sync diagnostics with a guessed sender.
+  // Only attribute a supplemental delivery to the authors of replies actually included.
+  const crossAgentLateReplies = useMemo(() => {
+    const bySeq = new Map(visibleMessages.map((m) => [m.seq, m]));
+    const deliveries = new Map<string, ThreadMessageRecord[]>();
+    for (const reply of visibleMessages) {
+      const meta = reply.handoffMeta;
+      if (reply.authorKind !== 'agent' || reply.authorId !== meta?.toMemberId ||
+          meta.status !== 'delivered' || meta.reason !== 'late_arrival') {
+        continue;
+      }
+      const included: ThreadMessageRecord[] = [];
+      for (const seq of meta.lateArrivalSeqs ?? []) {
+        const source = bySeq.get(seq);
+        if (seq >= (meta.includedFromSeq ?? Infinity) && seq <= (meta.includedToSeq ?? -Infinity) &&
+            source?.authorKind === 'agent' && source.authorId !== reply.authorId) {
+          included.push(source);
+        }
+      }
+      if (included.length) deliveries.set(reply.id, included);
+    }
+    return deliveries;
+  }, [visibleMessages]);
 
   useEffect(() => {
     if (viewMode !== 'thread' || !messagesScrollRef.current) return;
@@ -587,7 +738,23 @@ export function App(): React.JSX.Element {
   }, [viewMode, activeTaskId, taskDetail?.task.id, taskArtifactId, setSpaceSelection]);
 
   useEffect(() => {
-    void loadBootstrap(false);
+    let disposed = false;
+    let retry: number;
+    const initialize = async () => {
+      try {
+        const response = await fetch('/api/v2/auth/status');
+        if (!response.ok) throw new Error();
+        const status = await response.json();
+        if (disposed) return;
+        if (status.authRequired && !status.authenticated) {
+          setAuthState({checked:true, authRequired:true, authenticated:false});
+        } else await loadBootstrap(false);
+      } catch {
+        if (!disposed) retry = window.setTimeout(initialize, 2500);
+      }
+    };
+    void initialize();
+    return () => { disposed = true; window.clearTimeout(retry); };
   }, []);
 
   useEffect(() => {
@@ -598,7 +765,8 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     if (viewMode === 'task' && activeTaskId) {
-      void loadTaskDetail(activeTaskId);
+      void loadTaskDetail(activeTaskId, requestedRunRef.current);
+      requestedRunRef.current = undefined;
     }
   }, [viewMode, activeTaskId, loadTaskDetail]);
 
@@ -654,13 +822,14 @@ export function App(): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    if (authState.authRequired && !authState.authenticated) return;
+    if (!authState.checked || (authState.authRequired && !authState.authenticated)) return;
 
     const syncAllActiveViews = () => {
       const cur = liveViewRef.current;
       void cur.loadBootstrap(true);
       if (cur.viewMode === 'thread' && cur.activeThreadId) {
         void cur.loadThread(cur.activeThreadId);
+        void cur.loadSpace(cur.activeThreadId);
       } else if (cur.viewMode === 'task' && cur.activeTaskId) {
         void cur.loadTaskDetail(cur.activeTaskId, cur.activeRunId);
       }
@@ -688,6 +857,7 @@ export function App(): React.JSX.Element {
           return;
         }
         if (parsed.type === 'connected') {
+          setStreamDisconnected(false);
           const nextBootId = typeof parsed.bootId === 'string' ? parsed.bootId : null;
           const nextBuildId = typeof parsed.buildId === 'string' ? parsed.buildId : null;
           if (
@@ -705,6 +875,7 @@ export function App(): React.JSX.Element {
           const bootChanged = Boolean(
             sseBootIdRef.current && nextBootId && sseBootIdRef.current !== nextBootId
           );
+          if (bootChanged) setStreamingActivity({});
           if (bootChanged || sseHadDisconnectRef.current) {
             syncAllActiveViews();
           }
@@ -732,13 +903,32 @@ export function App(): React.JSX.Element {
           }
           return;
         }
+        if (parsed.type === 'thread.activity') {
+          const { messageId, activity } = parsed.payload ?? {};
+          if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId && messageId && activity) {
+            setStreamingActivity(prev => ({ ...prev, [messageId]: activity }));
+          }
+          return;
+        }
         if (parsed.type === 'thread.tool') {
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId && parsed.payload?.messageId) {
             const msgId = String(parsed.payload.messageId);
-            const trace = Array.isArray(parsed.payload.toolTrace)
-              ? (parsed.payload.toolTrace as ToolTraceItem[])
-              : [];
-            setStreamingTools((prev) => ({ ...prev, [msgId]: trace }));
+            let trace: ToolTraceItem[];
+            if (Array.isArray(parsed.payload.toolTrace)) {
+              trace = parsed.payload.toolTrace;
+            } else {
+              const { index, item } = parsed.payload;
+              const prior = toolSnapshots.current[msgId];
+              if (!prior || !Number.isInteger(index) || index < 0 || index > prior.length || !item) {
+                void cur.loadThread(cur.activeThreadId);
+                return;
+              }
+              trace = prior.slice();
+              trace[index] = item;
+            }
+            toolEventCount.current++;
+            toolSnapshots.current = { ...toolSnapshots.current, [msgId]: trace };
+            setStreamingTools(toolSnapshots.current);
           }
           return;
         }
@@ -749,6 +939,10 @@ export function App(): React.JSX.Element {
           return;
         }
         if (parsed.type?.startsWith('thread.')) {
+          if (parsed.type === 'thread.message_updated' && parsed.payload?.turnStatus === 'failed' &&
+              parsed.threadId === cur.activeThreadId && cur.viewMode === 'thread') {
+            showChatNotice(readableTurnFailure(parsed.payload.body || '暂时未能收到回复'));
+          }
           void cur.loadBootstrap(true);
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId) {
             void cur.loadThread(cur.activeThreadId);
@@ -784,6 +978,7 @@ export function App(): React.JSX.Element {
     };
 
     es.onerror = () => {
+      setStreamDisconnected(true);
       sseHadDisconnectRef.current = true;
       void fetch('/api/v2/auth/status')
         .then((r) => (r.ok ? r.json() : null))
@@ -802,17 +997,21 @@ export function App(): React.JSX.Element {
       }
     };
     const handleOnline = () => {
+      setStreamDisconnected(es.readyState !== EventSource.OPEN);
       syncAllActiveViews();
     };
+    const handleOffline = () => setStreamDisconnected(true);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       es.close();
     };
-  }, [authState.authRequired, authState.authenticated]);
+  }, [authState.checked, authState.authRequired, authState.authenticated]);
 
   const handleCloudLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -925,25 +1124,33 @@ export function App(): React.JSX.Element {
   const handleSwitchOwner = async (memberId: string) => {
     setOwnerMenuOpen(false);
     setEditingWorkspace(false);
-    if (!activeThreadId || activeThread?.activeOwnerMemberId === memberId) return;
+    if (!activeThreadId || switchingThreads.has(activeThreadId) || activeThread?.activeOwnerMemberId === memberId) return;
     const targetThreadId = activeThreadId;
-    const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/owner`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || '切换对接成员失败');
-      return;
+    setSwitchingThreads(prev => new Set(prev).add(targetThreadId));
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/owner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId })
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setThreads(prev => prev.map(t => t.id === targetThreadId ? data.thread : t));
+      if (activeThreadIdRef.current === targetThreadId) {
+        setPendingHandoffPreviews({});
+        setMessagesThreadId(targetThreadId);
+        setMessages(data.messages || []);
+      }
+      await loadBootstrap(true);
+    } catch {
+      showChatNotice('暂时无法确认对接成员，请稍后重试');
+    } finally {
+      setSwitchingThreads(prev => {
+        const next = new Set(prev);
+        next.delete(targetThreadId);
+        return next;
+      });
     }
-    const data = await res.json();
-    if (activeThreadIdRef.current === targetThreadId) {
-      setPendingHandoffPreviews({});
-      setMessagesThreadId(targetThreadId);
-      setMessages(data.messages || []);
-    }
-    await loadBootstrap(true);
   };
 
   const submitMessageToThread = async (
@@ -966,7 +1173,7 @@ export function App(): React.JSX.Element {
     try {
       const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Prefer: 'respond-async' },
         body: JSON.stringify({
           body: text,
           idempotencyKey,
@@ -977,7 +1184,7 @@ export function App(): React.JSX.Element {
       if (!res.ok) {
         if (data?.persistedUserMessageId) {
           delete pendingClientReqByThreadRef.current[targetThreadId];
-          showChatNotice(data.message || data.error || '发送失败，请检查成员状态后重试');
+          showChatNotice(readableTurnFailure(data.message || data.error || '发送失败，请检查成员状态后重试'));
           if (activeThreadIdRef.current === targetThreadId) {
             await loadThread(targetThreadId);
           }
@@ -989,6 +1196,7 @@ export function App(): React.JSX.Element {
       }
       delete pendingClientReqByThreadRef.current[targetThreadId];
       if (activeThreadIdRef.current === targetThreadId) {
+        if (res.status === 202) await loadThread(targetThreadId);
         if (data.messages) {
           setMessagesThreadId(targetThreadId);
           setMessages(data.messages);
@@ -1010,7 +1218,7 @@ export function App(): React.JSX.Element {
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const targetThreadId = activeThreadId;
-    if (!targetThreadId || sendingByThread[targetThreadId]) return;
+    if (!targetThreadId || switchingThreads.has(targetThreadId) || sendingByThread[targetThreadId] || visibleMessages.some(m => m.turnStatus === 'running')) return;
     const rawDraftValue = inputDrafts[targetThreadId] || '';
     const rawText = rawDraftValue.trim();
     const savedRefs = draftRefsByThread[targetThreadId] || [];
@@ -1132,6 +1340,29 @@ export function App(): React.JSX.Element {
         summary: shortSummary
       }
     });
+  };
+
+  const continueTurn = async (message: ThreadMessageRecord) => {
+    if (resumingMessage) return;
+    setResumingMessage(message.id);
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}/continue`, { method: 'POST', signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      if (activeThreadIdRef.current !== message.threadId) return;
+      await loadThread(message.threadId);
+      const notices: Record<string, string> = {
+        completed: '已找回原回复', waiting: '原任务仍在执行，收到回复后会自动显示',
+        stopping: '执行节点正在停止原任务，结束后可以继续',
+        unreachable: '暂时连不上原执行节点。可以等待重连，也可以切换在线成员后继续',
+        unavailable: '当前成员离线，恢复后可继续，也可以切换成员',
+        superseded: '这段对话已经有了新的处理记录',
+        busy: '这段对话还有任务正在执行'
+      };
+      if (notices[result.status]) showChatNotice(notices[result.status]);
+    } catch {
+      showChatNotice('暂时连不上工作台。恢复连接后可以再次点继续。');
+    } finally { setResumingMessage(null); }
   };
 
   const handleAbortTurn = async () => {
@@ -1605,6 +1836,19 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const handlePauseTask = async (taskId: string, paused: boolean) => {
+    try {
+      const response = await fetch('/api/v2/tasks/' + encodeURIComponent(taskId) + '/pause', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+      });
+      if (!response.ok) throw new Error();
+      await loadBootstrap(true);
+      if (viewMode === 'task') await loadTaskDetail(taskId);
+    } catch {
+      showChatNotice('未能更新任务状态，请稍后再试');
+    }
+  };
+
   const handleToggleScheduleById = async (taskId: string, enabled: boolean) => {
     const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/schedule`, {
       method: 'POST',
@@ -1621,8 +1865,8 @@ export function App(): React.JSX.Element {
     await loadBootstrap(true);
   };
 
-  const handleRunTaskNowById = async (taskId: string) => {
-    const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/run`, {
+  const handleRunTaskNowById = async (taskId: string, retryFromRunId?: string) => {
+    const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/run` + (retryFromRunId ? '?retryFromRunId=' + encodeURIComponent(retryFromRunId) : ''), {
       method: 'POST'
     });
     const data = await res.json().catch(() => ({}));
@@ -1702,7 +1946,26 @@ export function App(): React.JSX.Element {
     return { version: String(data.version || ''), memberCount: Number(data.memberCount || members.length) };
   };
 
+  const renderOutcomeQuestion = (run: TaskRunRecord) => {
+    const step=run.progress?.find(s=>s.confirmation==='manual');
+    if (!step) return null;
+    const verify=async(confirmedByUser:boolean) => {
+      try {
+        const res=await fetch('/api/v2/runs/'+encodeURIComponent(run.id)+'/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stepId:step.stepId,confirmedByUser})});
+        if (!res.ok) throw new Error();
+        await loadBootstrap(true);
+        if (viewMode==='task' && activeTaskId) await loadTaskDetail(activeTaskId,run.id);
+      } catch { showChatNotice('核对状态暂未更新，请稍后再试'); }
+    };
+    return <div className="task-outcome-question">
+      <span>{run.waitingQuestion}</span>
+      {step.canReadBack && <button type="button" onClick={()=>void verify(false)}>重新核对</button>}
+      <button type="button" onClick={()=>void verify(true)}>我已核实结果</button>
+    </div>;
+  };
+
   const handleReplyWaitingRun = async (runId: string) => {
+    const waitingReplyText = waitingReplies[runId] ?? '';
     if (!waitingReplyText.trim()) return;
     const res = await fetch(`/api/v2/runs/${encodeURIComponent(runId)}/reply`, {
       method: 'POST',
@@ -1710,7 +1973,7 @@ export function App(): React.JSX.Element {
       body: JSON.stringify({ reply: waitingReplyText.trim() })
     });
     if (!res.ok) return;
-    setWaitingReplyText('');
+    updateWaitingReply(runId, '');
     if (viewMode === 'task' && activeTaskId) {
       await loadTaskDetail(activeTaskId, runId);
     }
@@ -1733,7 +1996,7 @@ export function App(): React.JSX.Element {
   const sending = Boolean(activeThreadId && sendingByThread[activeThreadId]);
   const currentOwner = activeThread ? memberById.get(activeThread.activeOwnerMemberId) : null;
   const showWorkspaceBinding = isLocalCodingMember(currentOwner) || Boolean(activeThread?.workspacePath);
-  const hasRunningTurn = sending || visibleMessages.some((m) => m.turnStatus === 'running');
+  const hasRunningTurn = sending || waitingForTurn;
   const ownerStatus = currentOwner?.status ?? 'ready';
   const ownerStatusClass =
     ownerStatus === 'ready'
@@ -1751,9 +2014,7 @@ export function App(): React.JSX.Element {
         : ownerStatus === 'auth_required'
           ? '待授权'
           : '离线';
-  const spaceThread =
-    activeThread ??
-    (taskDetail ? threads.find((t) => t.id === taskDetail.task.sourceThreadId) ?? null : null);
+  const spaceThread = threads.find((t) => t.id === spaceThreadId) ?? null;
   const showRightSpace = spaceOpen && (viewMode === 'thread' || viewMode === 'task');
   const activeRefs = activeThread ? draftRefsByThread[activeThread.id] || [] : [];
   const activeDraft = activeThread ? inputDrafts[activeThread.id] || '' : '';
@@ -1762,6 +2023,7 @@ export function App(): React.JSX.Element {
     showRightSpace ? (
       <CollaborationSpacePanel
         thread={spaceThread}
+        materialsState={materialsState}
         members={members}
         duolabaseStatus={duolabaseStatus}
         hasDesktopDialog={hasDesktopDialog}
@@ -1864,11 +2126,14 @@ export function App(): React.JSX.Element {
     setTimeout(() => setCopiedHandoffId((cur) => (cur === keyId ? null : cur)), 2000);
   }, []);
 
-  const renderHandoffDivider = (keyId: string, meta: HandoffNoticeMeta) => {
+  const renderHandoffDivider = (keyId: string, meta: HandoffNoticeMeta, lateReplies?: ThreadMessageRecord[]) => {
     const isPending = meta.status === 'pending';
     const loadedPending = isPending ? pendingHandoffPreviews[keyId] : undefined;
     const detailMeta = loadedPending?.meta ?? meta;
-    const fromMember = detailMeta.fromMemberId ? memberById.get(detailMeta.fromMemberId) : undefined;
+    const sourceIds = lateReplies
+      ? [...new Set(lateReplies.map((reply) => reply.authorId))]
+      : meta.fromMemberId ? [meta.fromMemberId] : [];
+    const lateSeqs = lateReplies?.map((reply) => reply.seq) ?? detailMeta.lateArrivalSeqs ?? [];
     const toMember = memberById.get(detailMeta.toMemberId);
     const expanded = Boolean(expandedHandoffIds[keyId]);
 
@@ -1880,14 +2145,10 @@ export function App(): React.JSX.Element {
 
     const statusLabel = isPending
       ? '上下文交接待处理'
-      : detailMeta.reason === 'session_reset'
-        ? '会话重建已补传上下文'
-        : detailMeta.reason === 'late_arrival'
-          ? '已补交迟到回复上下文'
-          : '上下文已交接';
+      : lateReplies ? '已补交跨成员回复' : '上下文已交接';
 
-    const statsSummary =
-      detailMeta.handoffBytes !== undefined
+    const statsSummary = lateReplies ? `· ${lateReplies.length} 条`
+      : detailMeta.handoffBytes !== undefined
         ? `· ${detailMeta.strategy === 'full_thread_summary' ? '完整' : '增量'} · ${detailMeta.includedCount ?? 0} 条 · ${fmtSize(detailMeta.handoffBytes)}`
         : isPending
           ? '· 点击预览'
@@ -1910,20 +2171,16 @@ export function App(): React.JSX.Element {
           >
             <ArrowLeftRight size={13} className="handoff-icon" />
             <span className="handoff-status-text">{statusLabel}</span>
-            {fromMember && (
-              <>
-                <span className="handoff-member-chip">
-                  <AgentAvatar
-                    small
-                    id={fromMember.id}
-                    name={fromMember.name}
-                    platformId={fromMember.platformId}
-                  />
-                  <span>{fromMember.name}</span>
+            {sourceIds.map((id) => {
+              const member = memberById.get(id);
+              return (
+                <span key={id} className="handoff-member-chip">
+                  <AgentAvatar small id={id} name={member?.name ?? id} platformId={member?.platformId} />
+                  <span>{member?.name ?? id}</span>
                 </span>
-                <span className="handoff-arrow" aria-hidden="true">→</span>
-              </>
-            )}
+              );
+            })}
+            {sourceIds.length > 0 && <span className="handoff-arrow" aria-hidden="true">→</span>}
             <span className="handoff-member-chip handoff-member-target">
               <AgentAvatar
                 small
@@ -1953,13 +2210,7 @@ export function App(): React.JSX.Element {
                       {detailMeta.strategy === 'full_thread_summary' ? '完整上下文模式' : '增量同步模式'}
                     </span>
                     <span className="handoff-badge is-subtle">
-                      {detailMeta.reason === 'session_reset'
-                        ? '原生会话重置兜底'
-                        : detailMeta.reason === 'late_arrival'
-                          ? '并发迟到回复补交'
-                          : detailMeta.reason === 'first_contact'
-                            ? '首次接入交接'
-                            : '成员切换交接'}
+                      {lateReplies ? '跨成员补交' : '成员切换交接'}
                     </span>
                     {isPending && <span className="handoff-badge is-pending">待发送下条消息时触发</span>}
                   </div>
@@ -2008,9 +2259,9 @@ export function App(): React.JSX.Element {
                       超长保留首尾 (#{detailMeta.truncatedSeqs!.join(', #')})
                     </span>
                   )}
-                  {(detailMeta.lateArrivalSeqs?.length ?? 0) > 0 && (
+                  {lateSeqs.length > 0 && (
                     <span className="handoff-chip is-accent">
-                      补交迟到回复 (#{detailMeta.lateArrivalSeqs!.join(', #')})
+                      补交迟到回复 (#{lateSeqs.join(', #')})
                     </span>
                   )}
                 </div>
@@ -2115,8 +2366,24 @@ export function App(): React.JSX.Element {
     );
   }
 
+  const mobileNavigation = (
+    <button
+      type="button"
+      onClick={() => setMobileSidebarOpen(true)}
+      className="dw-btn dw-btn-ghost dw-btn-icon mobile-nav-trigger"
+      aria-label="打开侧边导航"
+      aria-controls="workbench-sidebar"
+      aria-expanded={mobileSidebarOpen}
+    >
+      <Menu size={18} />
+    </button>
+  );
+
   return (
-    <div
+    <WorkbenchColumns
+      spaceVisible={showRightSpace && (viewMode === 'thread' ? Boolean(activeThread) : Boolean(taskDetail))}
+      wideSpace={wideSpace}
+      leaveWideSpace={() => setWideSpace(false)}
       data-build-id={buildId}
       className={`communication${mobileSidebarOpen ? ' mobile-sidebar-open' : ''}`}
       onClick={() => {
@@ -2126,7 +2393,7 @@ export function App(): React.JSX.Element {
       }}
     >
       {/* Left Sidebar: Exact 1.9.6 DuolaWork Brand + Nav + Spacious Conversations */}
-      <aside className="comm-sidebar">
+      <aside id="workbench-sidebar" className="comm-sidebar">
         <div className="comm-brand">
           <div className="comm-brand-id">
             <BrandLogo size={38} loop />
@@ -2313,10 +2580,11 @@ export function App(): React.JSX.Element {
             </div>
           )}
           <div>
-            <i />本机工作区<span title={buildId}>本地版</span>
+            <i />{cloudMode ? '云端工作区' : '本机工作区'}<span title={buildId}>{cloudMode ? '云端版' : '本地版'}</span>
           </div>
         </div>
       </aside>
+      <ColumnDivider side="sidebar" />
       {mobileSidebarOpen && (
         <div
           className="mobile-sidebar-backdrop"
@@ -2348,6 +2616,9 @@ export function App(): React.JSX.Element {
           }
         }}
       >
+        {(viewMode !== 'thread' || !activeThread) && (
+          <div className="mobile-nav-bar">{mobileNavigation}</div>
+        )}
         {chatNotice && (
           <div className="comm-toast" role="status">
             <Check size={15} />
@@ -2403,7 +2674,7 @@ export function App(): React.JSX.Element {
               setViewMode('thread');
             }}
             onToggleSchedule={(tid, enabled) => handleToggleScheduleById(tid, enabled)}
-            onRunTaskNow={(tid) => handleRunTaskNowById(tid)}
+            onRunTaskNow={handleRunTaskNowById}
             onCancelRun={(rid) => handleCancelRun(rid)}
             onDeleteTask={(tid) => handleDeleteTask(tid)}
             onRefresh={() => loadBootstrap(true)}
@@ -2412,18 +2683,7 @@ export function App(): React.JSX.Element {
           <>
             <header className="comm-header">
               <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMobileSidebarOpen((v) => !v);
-                  }}
-                  className="dw-btn dw-btn-ghost dw-btn-icon mobile-nav-trigger"
-                  aria-label="打开侧边导航"
-                  title="导航菜单"
-                >
-                  <Menu size={18} />
-                </button>
+                {mobileNavigation}
                 <AgentAvatar
                   small
                   name={currentOwner?.name || activeThread.activeOwnerMemberId}
@@ -2721,7 +2981,13 @@ export function App(): React.JSX.Element {
                 )}
 
                 <div ref={messagesScrollRef} className="messages-scroll">
-                  {visibleMessages.length === 0 ? (
+                  {messagesThreadId !== activeThread.id ? (
+                    <div className="channel-intro" role="status">
+                      {threadLoadError === activeThread.id ? (
+                        <><p>对话加载失败</p><button className="dw-btn" onClick={() => void loadThread(activeThread.id)}>重新加载对话</button></>
+                      ) : <p>正在加载对话…</p>}
+                    </div>
+                  ) : visibleMessages.length === 0 ? (
                     <div className="channel-intro">
                       <AgentAvatar
                         name={currentOwner?.name || '负责人'}
@@ -2736,7 +3002,8 @@ export function App(): React.JSX.Element {
                     visibleMessages.map((m) => {
                       if (m.authorKind === 'switch_notice') {
                         if (m.handoffMeta) {
-                          return renderHandoffDivider(m.id, m.handoffMeta);
+                          return m.handoffMeta.fromMemberId === m.handoffMeta.toMemberId
+                            ? null : renderHandoffDivider(m.id, m.handoffMeta);
                         }
                         const legacyTargetName = m.body.replace(/^已切换至\s*/, '').trim();
                         const legacyMember = members.find((mem) => mem.name === legacyTargetName);
@@ -2765,97 +3032,88 @@ export function App(): React.JSX.Element {
                       }
 
                       if (m.authorKind === 'system_task_card' && m.taskCard) {
-                        const isFailedCard = m.taskCard.kind === 'failed';
-                        const cardArtifactId = m.artifactRefs?.[0];
+                        const task = tasks.find(task => task.id === m.taskCard!.taskId);
+                        if (!task) return null;
+                        const run = task.latestRun;
+                        const paused = task.status === 'paused';
+                        const canPause = task.kind === 'scheduled' || run?.status === 'running' || run?.status === 'paused';
+                        const event=m.taskCard;
+                        const scheduleEntry=task.kind==='scheduled' && !event.runId;
+                        const pastRun=Boolean(event.runId && event.runId!==run?.id);
+                        const current=!pastRun && !scheduleEntry ? run : null;
+                        const requesterId=current?.returnMemberId ?? task.requesterMemberId;
+                        const memberName=(id:string)=>memberById.get(id)?.name ?? '执行成员';
+                        const active=current?.progress?.filter(s=>['running','submitted'].includes(s.status)) ?? [];
+                        const workers=[...new Set((active.length?active.map(s=>s.memberId):current?.spec?.steps.map(s=>s.assigneeMemberId) ?? task.spec.steps.map(s=>s.assigneeMemberId)).map(memberName))].join('、');
+                        const delegated=requesterId && (current?.returnMemberId || task.spec.steps.some(s=>s.assigneeMemberId!==requesterId));
+                        const routing=!pastRun && delegated ? memberName(requesterId)+' 委派给 '+workers : '';
+                        const phase=current?.returnTurnStatus;
+                        const back=current?.returnMemberId && ['completed','failed','timed_out'].includes(current.status)
+                          ? memberName(current.returnMemberId)+(phase==='completed'?' 已跟进':phase==='failed'||phase==='canceled'?' 跟进中断':phase==='running'?' 正在跟进':' 等待接手') : '';
+                        const status=pastRun ? event.outcomeLabel || (event.kind==='delivered'?'本期已交付':event.kind==='failed'?'执行中断':'查看本期记录')
+                          : paused && (!current || current.status!=='completed') ? (current?.status==='running'?'当前步骤结束后暂停':'已暂停')
+                          : scheduleEntry ? '按计划执行'
+                          : outcomeStatus(current) ?? (current?.status==='running' ? (active.length ? workers+' 正在执行':'执行中')
+                          : current?.status==='waiting_user'?'等你回复':current?.status==='waiting_node_online'?'等待成员上线'
+                          : current?.status==='failed'||current?.status==='timed_out'?'执行中断':current?.status==='canceled'?'已停止':'待启动');
+                        const selection=event.material || (m.artifactRefs[0] ? {kind:'document' as const,id:m.artifactRefs[0]} : null);
                         return (
-                          <div key={m.id} className={`task-intent-card ${isFailedCard ? 'is-failed' : ''}`}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveTaskId(m.taskCard!.taskId);
+                          <div key={m.id} className="chat-message chat-task-row">
+                            <span aria-hidden="true" className="chat-face agent-avatar chat-card-spacer" />
+                            <div className="message-content chat-task-status">
+                              <button type="button" className="chat-task-title" onClick={() => {
+                                setActiveTaskId(task.id);
                                 setViewMode('task');
-                              }}
-                            >
-                              <div>
-                                <small>
-                                  <CheckCircle2 size={12} className="inline mr-1" />
-                                  {m.taskCard.kind === 'waiting_user'
-                                    ? '需要你确认'
-                                    : isFailedCard
-                                      ? '执行失败'
-                                      : m.taskCard.kind === 'delivered'
-                                        ? '任务已完成交付'
-                                        : '协作任务状态'}
-                                </small>
-                                <strong>{m.body}</strong>
-                              </div>
-                              <span className="dw-btn dw-btn-outline dw-btn-sm">查看任务详情 →</span>
-                            </button>
-
-                            {m.taskCard.kind === 'created' && tasks.some((t) => t.id === m.taskCard!.taskId) && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleRunTaskNowById(m.taskCard!.taskId)}
-                                  className="dw-btn dw-btn-outline dw-btn-sm"
-                                >
-                                  <Play size={12} />
-                                  <span>立即执行一次</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {m.taskCard.kind === 'delivered' && cardArtifactId && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDocEditing(false);
-                                    setSpaceSelection({ kind: 'document', id: cardArtifactId });
-                                    setSpaceTab('documents');
-                                    setSpaceOpen(true);
-                                  }}
-                                  className="dw-btn dw-btn-outline dw-btn-sm"
-                                >
-                                  <FileText size={12} />
-                                  <span>查看交付文档</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {m.taskCard.kind === 'waiting_user' && m.taskCard.runId && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={waitingReplyText}
-                                  onChange={(e) => setWaitingReplyText(e.target.value)}
-                                  placeholder="直接在此回复任务负责人以继续执行…"
-                                  className="dw-input"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => void handleReplyWaitingRun(m.taskCard!.runId!)}
-                                  className="dw-btn dw-btn-primary dw-btn-sm"
-                                >
-                                  答复并继续
-                                </button>
-                              </div>
-                            )}
+                                requestedRunRef.current = event.runId;
+                              }}>{event.runId && task.kind === 'scheduled' ? m.body : task.title}</button>
+                              {routing && <span className="chat-task-route">{routing}</span>}
+                              {current?.status==='waiting_user' && (renderOutcomeQuestion(current) || (
+                                <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(current.id); }}>
+                                  <label>{current.waitingQuestion}<input className="dw-input" value={waitingReplies[current.id] ?? ''} onChange={e=>updateWaitingReply(current.id,e.target.value)} placeholder="回复任务负责人" /></label>
+                                  <button type="submit" disabled={!waitingReplies[current.id]?.trim()}>答复并继续</button>
+                                </form>
+                              ))}
+                               {event.kind === 'delivered' && selection ? (
+                                <button className="chat-task-delivery" type="button" title="打开本期交付文档" onClick={() => {
+                                  setDocEditing(false);
+                                  setSpaceTab('documents');
+                                  setSpaceSelection({kind:selection.kind,id:selection.id});
+                                  setSpaceOpen(true);
+                                }}>{status}</button>
+                              ) : <span className="chat-task-state" role="status">{status}</span>}
+                              {back && <span className="chat-task-state" role="status">{back}</span>}
+                              {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
+                                aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
+                                onClick={() => void handlePauseTask(task.id, !paused)}>
+                                {paused ? <Play size={14} /> : <Pause size={14} />}
+                              </button>}
+                            </div>
                           </div>
                         );
                       }
 
+                      const lateReplies = crossAgentLateReplies.get(m.id);
                       const isUser = m.authorKind === 'user';
                       const authorMember = !isUser ? memberById.get(m.authorId) : undefined;
                       const senderName = isUser ? '你' : authorMember?.name || m.authorId;
-                      const displayBody =
-                        m.turnStatus === 'running'
-                          ? streamingDeltas[m.id] || m.body || '正在处理…'
-                          : m.body;
+                      const running = !isUser && m.turnStatus === 'running';
+                      const trace = (running && streamingTools[m.id]) || m.toolTrace || [];
+                      const activeTool = trace.findLast(t => t.status === 'running');
+                      const recent = streamingActivity[m.id];
+                      const activity = recent && recent.revision > (m.activity?.revision ?? 0) ? recent : m.activity;
+                      const phase = activity?.phase ?? (activeTool ? 'executing' : streamingDeltas[m.id] ? 'writing' : 'processing');
+                      const waitingReceipt = running && m.body === '执行结束，等待回执';
+                      const reconnecting = running && m.body === '正在恢复执行连接';
+                      const statusText = streamDisconnected ? '正在重新连接' : reconnecting ? '正在找回执行进度'
+                        : waitingReceipt ? '执行结束，等待回执'
+                        : phase === 'executing' ? executionLabel(activeTool) : phaseLabels[phase];
+                      const displayBody = running
+                        ? streamingDeltas[m.id] || (waitingReceipt || reconnecting || m.body === '正在处理…' ? '' : m.body)
+                        : m.turnStatus === 'failed' ? readableTurnFailure(m.body) : m.body;
 
                       return (
                         <React.Fragment key={m.id}>
-                          {!isUser && m.handoffMeta && renderHandoffDivider(`${m.id}-handoff`, m.handoffMeta)}
+                          {lateReplies && m.handoffMeta && renderHandoffDivider(`${m.id}-handoff`, m.handoffMeta, lateReplies)}
                           <article
                             className={`chat-message ${isUser ? 'owner-message' : ''}`}
                           >
@@ -2867,29 +3125,22 @@ export function App(): React.JSX.Element {
                           <div className="message-content">
                             <header>
                               <strong>{senderName}</strong>
-                              <time>
-                                {m.turnStatus === 'running'
-                                  ? '正在处理…'
-                                  : m.turnStatus === 'canceled'
-                                    ? '已停止'
-                                    : new Date(m.createdAt).toLocaleTimeString('zh-CN', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                              </time>
+                              {running ? (
+                                <span className="turn-activity" role="status">
+                                  {statusText}<span className="turn-activity-dots" aria-hidden="true"><i /><i /><i /></span>
+                                </span>
+                              ) : (
+                                <time>{m.turnStatus === 'canceled' ? '已停止' : new Date(m.createdAt).toLocaleTimeString('zh-CN', {
+                                  hour: '2-digit', minute: '2-digit'
+                                })}</time>
+                              )}
                             </header>
                             {!isUser &&
                               (() => {
-                                const trace =
-                                  m.turnStatus === 'running'
-                                    ? streamingTools[m.id] ?? m.toolTrace ?? []
-                                    : m.toolTrace ?? [];
                                 if (trace.length === 0) return null;
                                 const isRunningTurn = m.turnStatus === 'running';
                                 const userExpanded = expandedToolMsgIds[m.id];
-                                const activeItem =
-                                  [...trace].reverse().find((t) => t.status === 'running') ??
-                                  trace[trace.length - 1];
+                                const activeItem = activeTool ?? trace[trace.length - 1];
                                 const activeRow = formatToolTraceRow(activeItem);
                                 const showFullList = userExpanded === true;
                                 const showCompactLive = isRunningTurn && userExpanded === undefined;
@@ -2908,6 +3159,7 @@ export function App(): React.JSX.Element {
                                     <button
                                       type="button"
                                       className="turn-tool-summary"
+                                      aria-expanded={showFullList}
                                       title={activeRow.raw}
                                       onClick={() =>
                                         setExpandedToolMsgIds((prev) => ({
@@ -2919,18 +3171,14 @@ export function App(): React.JSX.Element {
                                       <span className="turn-tool-chevron">
                                         {showFullList ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                                       </span>
-                                      <i
-                                        className={`turn-tool-head-dot ${isRunningTurn ? 'is-running' : 'is-done'}`}
-                                        aria-hidden="true"
-                                      />
                                       <span className="turn-tool-summary-text">
                                         {isRunningTurn
-                                          ? `${activeRow.badge}：${activeRow.label}`
-                                          : `已执行 ${trace.length} 项操作`}
+                                          ? '操作记录'
+                                          : `${m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? '已记录' : '已执行'} ${trace.length} 项操作`}
                                       </span>
-                                      <span className="turn-tool-counter">
-                                        {isRunningTurn ? `${doneCount}/${trace.length}` : `${trace.length} 步`}
-                                      </span>
+                                      {isRunningTurn && (
+                                        <span className="turn-tool-counter">{doneCount}/{trace.length}</span>
+                                      )}
                                     </button>
                                     {showList && visibleItems.length > 0 && (
                                       <div className="turn-tool-list">
@@ -2945,35 +3193,34 @@ export function App(): React.JSX.Element {
                                             展开前面已完成的 {hiddenLiveCount} 步…
                                           </button>
                                         )}
-                                        {visibleItems.map((t, idx) => {
-                                          const row = formatToolTraceRow(t);
-                                          return (
-                                            <div
-                                              key={`${t.id || t.name}-${idx}`}
-                                              className={`turn-tool-item status-${t.status}`}
-                                              title={row.raw}
-                                            >
-                                              <i aria-hidden="true" />
-                                              <em className="turn-tool-badge">{row.badge}</em>
-                                              <strong className="turn-tool-label">{row.label}</strong>
-                                              {row.detail && (
-                                                <span className="turn-tool-detail">{row.detail}</span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                        {visibleItems.map((item, idx) =>
+                                          <ToolTraceRow key={item.id || `${item.name}-${idx}`} item={item} />
+                                        )}
                                       </div>
                                     )}
                                   </div>
                                 );
                               })()}
-                            <div className="message-markdown">
-                              <MarkdownView
-                                text={displayBody}
-                                imageActions={chatImageActions}
-                                spaceResolver={chatSpaceResolver}
-                              />
-                            </div>
+                            {displayBody && (
+                              <div className="message-markdown">
+                                <MarkdownView text={displayBody} imageActions={chatImageActions} spaceResolver={chatSpaceResolver} />
+                              </div>
+                            )}
+                            {['failed', 'canceled'].includes(m.turnStatus) && m.id === lastConversationTurn?.id && !isUser && !m.continuedByMessageId && !hasRunningTurn && (
+                              <button type="button" className="turn-materials-link turn-resume" disabled={Boolean(resumingMessage)}
+                                onClick={() => void continueTurn(m)}>
+                                <Play size={13} />{resumingMessage === m.id ? '正在核对进度…' : '继续处理'}
+                              </button>
+                            )}
+                            {m.turnStatus === 'failed' && spaceItems.length > 0 && (
+                              <button type="button" className="turn-materials-link" onClick={() => {
+                                setSpaceSelection(null);
+                                setSpaceTab('documents');
+                                setSpaceOpen(true);
+                              }}>
+                                <FolderOpen size={14} />查看对话资料
+                              </button>
+                            )}
                             {!isUser && m.clarificationCard && (() => {
                               const card = m.clarificationCard;
                               const targetMem = card.targetMemberName
@@ -3152,6 +3399,7 @@ export function App(): React.JSX.Element {
                             <button
                               key={m.id}
                               type="button"
+                              disabled={switchingThreads.has(activeThread.id)}
                               aria-pressed={m.id === activeThread.activeOwnerMemberId}
                               onClick={() => void handleSwitchOwner(m.id)}
                               title={`由 ${m.name} 接手当前对话`}
@@ -3302,6 +3550,8 @@ export function App(): React.JSX.Element {
                           ))}
                         </div>
                       )}
+                      {switchingThreads.has(activeThread.id) ? <small role="status">正在切换成员…</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
+                        <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id}/>}
                       <small>Enter 发送 · Shift + Enter 换行</small>
                     </div>
 
@@ -3316,7 +3566,7 @@ export function App(): React.JSX.Element {
                         type="submit"
                         aria-label="发送消息"
                         disabled={
-                          sending ||
+                          switchingThreads.has(activeThread.id) || hasRunningTurn ||
                           (!activeDraft.trim() &&
                             activeRefs.length === 0 &&
                             (draftImagesByThread[activeThread.id] || []).length === 0)
@@ -3330,11 +3580,12 @@ export function App(): React.JSX.Element {
                 </form>
 
                 <footer className="chat-bottom-note">
-                  <span>本机工作区已同步</span>
+                  <span>{streamDisconnected ? '正在重新连接' : cloudMode ? '云端工作区已同步' : '本机工作区已同步'}</span>
                   <span>原生 Agent 协同执行</span>
                 </footer>
               </section>
 
+              {showRightSpace && <ColumnDivider side="space" />}
               {renderRightSpace()}
             </div>
           </>
@@ -3433,22 +3684,22 @@ export function App(): React.JSX.Element {
                     <span>停止执行</span>
                   </button>
                 )}
-                <button
+                {taskDetail.task.status === 'active' && (!taskDetail.runs.length || (taskDetail.task.kind === 'once' && ['failed','timed_out'].includes(taskDetail.runs[0].status)) || (taskDetail.task.kind === 'scheduled' && !taskDetail.runs.some(run => ['running','waiting_user','waiting_node_online','paused'].includes(run.status)))) && <button
                   type="button"
-                  onClick={() => void handleRunTaskNowById(taskDetail.task.id)}
+                  onClick={() => void handleRunTaskNowById(taskDetail.task.id, taskDetail.task.kind === 'once' ? taskDetail.runs[0]?.id : undefined)}
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <Play size={12} />
-                  <span>立即执行一次</span>
-                </button>
-                {taskDetail.task.kind === 'scheduled' && (
+                  <span>{taskDetail.task.kind === 'once' && taskDetail.runs.length ? '重新运行整项任务' : '立即执行一次'}</span>
+                </button>}
+                {(taskDetail.task.kind === 'scheduled' || taskDetail.activeRun?.status === 'running' || taskDetail.task.status === 'paused') && (
                   <button
                     type="button"
-                    onClick={() => void handleToggleScheduleById(taskDetail.task.id, !taskDetail.task.scheduleEnabled)}
+                    onClick={() => void handlePauseTask(taskDetail.task.id, taskDetail.task.status !== 'paused')}
                     className="dw-btn dw-btn-outline dw-btn-sm"
                   >
                     {taskDetail.task.scheduleEnabled ? <Pause size={12} /> : <Play size={12} />}
-                    <span>{taskDetail.task.scheduleEnabled ? '运行中 · 点击暂停' : '已暂停 · 点击启用'}</span>
+                    <span>{taskDetail.task.status === 'paused' ? '继续任务' : '暂停任务'}</span>
                   </button>
                 )}
                 <button
@@ -3494,14 +3745,14 @@ export function App(): React.JSX.Element {
                       >
                         第 {r.runNumber} 期 (
                         {r.status === 'completed'
-                          ? '已完成'
+                          ? outcomeStatus(r)
                           : r.status === 'failed'
                             ? '失败'
                             : r.status === 'timed_out'
                               ? '超时'
                               : r.status === 'canceled'
                                 ? '已取消'
-                                : r.status === 'waiting_user'
+                                : r.status === 'paused' ? '已暂停' : r.status === 'waiting_user'
                                   ? '待确认'
                                   : '进行中'}
                         )
@@ -3510,6 +3761,17 @@ export function App(): React.JSX.Element {
                   </div>
                 )}
 
+                {taskDetail.activeRun?.status === 'waiting_user' && (renderOutcomeQuestion(taskDetail.activeRun) || (
+                  <form className="mx-7 mt-4" onSubmit={e => {
+                    e.preventDefault();
+                    void handleReplyWaitingRun(taskDetail.activeRun!.id);
+                  }}>
+                    <label>{taskDetail.activeRun.waitingQuestion}
+                      <input className="dw-input" value={waitingReplies[taskDetail.activeRun.id] ?? ''} onChange={e => updateWaitingReply(taskDetail.activeRun!.id,e.target.value)} placeholder="回复任务负责人" />
+                    </label>
+                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplies[taskDetail.activeRun.id]?.trim()}>答复并继续</button>
+                  </form>)
+                )}
                 {taskDetail.activeRun?.summary &&
                   (taskDetail.activeRun.status === 'failed' ||
                     taskDetail.activeRun.status === 'timed_out' ||
@@ -3571,11 +3833,12 @@ export function App(): React.JSX.Element {
                 </div>
               </section>
 
+              {showRightSpace && <ColumnDivider side="space" />}
               {renderRightSpace()}
             </div>
           </>
         ) : null}
       </main>
-    </div>
+    </WorkbenchColumns>
   );
 }

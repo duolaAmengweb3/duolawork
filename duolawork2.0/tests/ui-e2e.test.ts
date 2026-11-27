@@ -5,6 +5,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import type { HandoffNoticeMeta } from '../src/shared/types.js';
+import type { TurnStreamEvent } from '../src/server/drivers/types.js';
 import { DuolaWorkApp } from '../src/server/app.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -137,6 +139,79 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     assert.ok(loadedLogos.some((i) => i.alt === 'Codex' && i.complete && i.naturalWidth > 0), 'Codex agent logo must load');
     assert.ok(loadedLogos.some((i) => i.alt === 'Antigravity' && i.complete && i.naturalWidth > 0), 'Antigravity agent logo must load');
 
+    const leftDivider = page.getByRole('separator', { name: '对话列表宽度' });
+    const rightDivider = page.getByRole('separator', { name: '协作空间宽度' });
+    const widths = () => page.evaluate(() =>
+      ['.comm-sidebar', '.conversation-column', '.collaboration-space'].map((selector) =>
+        Math.round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0)));
+    const dragBy = async (divider: typeof leftDivider, dx: number) => {
+      const box = await divider.boundingBox();
+      assert.ok(box);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + dx, y, { steps: 5 });
+      await page.mouse.up();
+    };
+    const [left, center, right] = await widths();
+    await dragBy(leftDivider, 60);
+    assert.deepEqual(await widths(), [left + 60, center - 60, right]);
+    // A quick native drag may release at a new coordinate without a final mousemove.
+    const rightHit = await rightDivider.boundingBox();
+    assert.ok(rightHit);
+    const input = await context.newCDPSession(page);
+    const hit = { x: rightHit.x + rightHit.width / 2, y: rightHit.y + 14, button: 'left' as const, clickCount: 1 };
+    await input.send('Input.dispatchMouseEvent', { ...hit, type: 'mousePressed', buttons: 1 });
+    await input.send('Input.dispatchMouseEvent', { ...hit, type: 'mouseReleased', x: hit.x - 24, buttons: 0 });
+    await input.detach();
+    assert.equal((await widths())[2], right + 24);
+    await dragBy(rightDivider, -24);
+    const custom = [left + 60, center - 108, right + 48];
+    assert.deepEqual(await widths(), custom);
+    for (const thread of [threadA, threadB]) {
+      await page.locator('.channel-open-btn').filter({ hasText: thread.title }).click();
+      await page.getByRole('heading', { name: thread.title, exact: true }).waitFor();
+      assert.deepEqual(await widths(), custom);
+    }
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.deepEqual(await widths(), custom);
+    await page.getByRole('button', { name: '隐藏协作空间' }).click();
+    assert.deepEqual(await widths(), [custom[0], custom[1] + custom[2], 0]);
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    assert.deepEqual(await widths(), custom);
+    await page.getByRole('button', { name: '展开协作空间宽度' }).click();
+    assert.ok((await widths())[2] > custom[2]);
+    await page.getByRole('button', { name: '标准协作空间宽度' }).click();
+    assert.deepEqual(await widths(), custom);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await rightDivider.press('End');
+    const constrained = await widths();
+    assert.equal(constrained.reduce((sum, n) => sum + n, 0), 900, 'All three panes fit the window');
+    assert.equal(constrained[1], 360, 'The composer keeps usable room even at the drag limit');
+    await rightDivider.press('Home');
+    await rightDivider.press('ArrowLeft');
+    assert.equal((await widths())[2], Number(await rightDivider.getAttribute('aria-valuemin')) + 16);
+    await page.setViewportSize({ width: 390, height: 800 });
+    assert.equal(await leftDivider.isVisible(), false);
+    assert.equal(await rightDivider.isVisible(), false);
+    await page.getByRole('button', { name: '打开侧边导航' }).click();
+    const mobileThread = page.locator('.comm-sidebar .channel-copy').first();
+    await mobileThread.waitFor({ state: 'visible', timeout: 2500 });
+    await page.getByRole('button', { name: '成员与用量' }).click();
+    await page.getByRole('heading', { name: '成员与用量统计' }).waitFor();
+    await page.getByRole('button', { name: '打开侧边导航' }).click();
+    await mobileThread.click();
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    const mobilePanel = await page.locator('.collaboration-space').boundingBox();
+    assert.ok(mobilePanel && mobilePanel.x >= 0 && mobilePanel.x + mobilePanel.width <= 391);
+    await page.getByRole('button', { name: '收起协作空间' }).click();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    await leftDivider.dblclick();
+    await rightDivider.dblclick();
+    assert.deepEqual(await widths(), [left, center, right]);
+
     // 1. Verify unified 4 compact nav entries & clean navigation across Management Views
     for (const [navLabel, expectedHeading] of [
       ['成员与用量', '成员与用量统计'],
@@ -254,6 +329,10 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     await page.waitForSelector('h1:has-text("每日 AI 与链上早晚报")');
     await page.waitForSelector('text=(第2期).md');
     assert.ok(await page.locator('text=(第2期).md').isVisible(), 'Run #2 artifact shown initially');
+    const taskWidths = await widths();
+    await dragBy(rightDivider, 28);
+    assert.deepEqual(await widths(), [taskWidths[0], taskWidths[1] + 28, taskWidths[2] - 28]);
+    await rightDivider.dblclick();
 
     await page.getByRole('button', { name: /第 1 期/ }).click();
     await page.waitForSelector('text=(第1期).md');
@@ -289,6 +368,34 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     const scheme = await page.evaluate(() => document.documentElement.style.colorScheme);
     assert.equal(scheme, 'dark', 'Dark mode sets root colorScheme=dark');
     await page.screenshot({ path: path.join(evidenceDir, 'workbench-dark.png') });
+
+    // Previously saved diagnostics may claim an unrelated sender. Check persisted rows as the UI sees them.
+    const historyReply = (authorId: string, body: string, handoffMeta?: HandoffNoticeMeta) =>
+      app.threads.appendSystemMessage({ threadId: threadB.id, authorKind: 'agent', authorId, body, handoffMeta });
+    const oldMeta = { status: 'delivered' as const, fromMemberId: 'mem_gemini', toMemberId: 'mem_codex' };
+    const own = historyReply('mem_codex', '同成员会话已恢复', { ...oldMeta, reason: 'session_reset' });
+    historyReply('mem_codex', '已读回自己的历史', {
+      ...oldMeta, reason: 'late_arrival', lateArrivalSeqs: [own.seq], includedFromSeq: own.seq, includedToSeq: own.seq
+    });
+    const foreign = historyReply('mem_gemini', '前一位成员返回了补充结果');
+    historyReply('mem_codex', '已收到另一位成员的补充', {
+      ...oldMeta, fromMemberId: 'unrelated-member', reason: 'late_arrival',
+      lateArrivalSeqs: [own.seq, foreign.seq], includedFromSeq: own.seq, includedToSeq: foreign.seq
+    });
+    const staleSwitch = app.threads.appendSystemMessage({
+      threadId: threadB.id, authorKind: 'switch_notice', authorId: 'system', body: '已切换至 Codex',
+      handoffMeta: { ...oldMeta, status: 'pending', reason: 'member_switch' }
+    });
+    assert.equal(app.threads.listMessages(threadB.id, { fromSeq: staleSwitch.seq }).length, 0);
+    assert.equal(app.threads.previewPendingHandoff(threadB.id).meta.fromMemberId, null);
+    await page.getByText('已收到另一位成员的补充', { exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: /每日早晚报选题/ }).first().click();
+    await page.getByText('已读回自己的历史', { exact: true }).waitFor();
+    const dividers = page.locator('.messages-scroll .handoff-divider-pill');
+    assert.equal(await dividers.count(), 2, 'Only the owner switch and the real cross-agent late result are shown');
+    assert.match(await dividers.nth(0).innerText(), /上下文已交接[\s\S]*Gemini2VPS[\s\S]*Codex/);
+    assert.match(await dividers.nth(1).innerText(), /已补交跨成员回复[\s\S]*Gemini2VPS[\s\S]*Codex[\s\S]*1 条/);
 
     assert.ok(threadA.id !== threadB.id);
     await context.close();
@@ -677,5 +784,114 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     await browser.close();
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('chat shows one animated status for the current turn, restores live phases on refresh and stops on completion', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dw-activity-'));
+  const app = new DuolaWorkApp({
+    dbPath: path.join(dir, 'ui.sqlite'), worktreesRoot: dir,
+    staticWebDir: path.join(projectRoot, 'dist/web'), autoImportAgentHub: false
+  });
+  const member = app.db.upsertMember({
+    id: 'progress-test', name: '测试成员', platformId: 'codex', driverKind: 'mock', location: 'local',
+    capabilities: { supportsIsolatedSessions: true, supportsSessionResume: true, supportsCancel: true, maxConcurrentRuns: 1 },
+    status: 'ready', statusMessage: '', config: {}
+  });
+  const thread = app.threads.createThread({ title: '进度验收', activeOwnerMemberId: member.id });
+  let emit!: (ev: TurnStreamEvent) => void;
+  let finish!: () => void;
+  const ready = new Promise<void>(resolve => {
+    app.registry.mockDriver.handlers.set(member.id, async (_, onEvent) => {
+      emit = onEvent!;
+      resolve();
+      await new Promise<void>(r => { finish = r; });
+      return { text: '已完成测试' };
+    });
+  });
+  const { url } = await app.listen(0, '127.0.0.1');
+  const browser = await chromium.launch({ channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ reducedMotion: 'no-preference' });
+    await page.goto(url);
+    await page.locator('.channel-open-btn').filter({hasText:thread.title}).click();
+    const turn = app.threads.sendUserMessage({threadId: thread.id, body: '测试状态'});
+    await ready;
+    const status = page.getByRole('status').and(page.locator('.turn-activity'));
+    const shows = (label: string) => status.filter({ hasText: label }).waitFor();
+    await shows('正在处理');
+    assert.equal(await page.getByText('正在处理', {exact: true}).count(), 1);
+    const dot = status.locator('i').first();
+    assert.equal(await dot.evaluate(el => el.getAnimations()[0]?.playState), 'running');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await dot.evaluate(el => el.getAnimations().length), 0);
+    emit({kind:'activity', phase:'thinking'});
+    await shows('正在思考');
+    const other = app.threads.createThread({ title: '另一个置顶对话', activeOwnerMemberId: member.id });
+    app.db.sqlite.prepare('UPDATE v2_threads SET pinned_at=? WHERE id=?').run(new Date().toISOString(), other.id);
+    assert.equal(app.threads.listThreads()[0]?.id, other.id);
+    await page.reload();
+    await shows('正在思考');
+    emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'running'});
+    await shows('正在读取文件');
+    emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'done'});
+    await shows('正在处理');
+    for (let index = 0; index < 22; index++) {
+      emit({kind:'tool', toolId:'edit-' + index, toolName:'Edit', toolStatus:'done'});
+    }
+    await page.locator('.turn-tool-counter').filter({ hasText: '23/23' }).waitFor();
+    await page.reload();
+    await page.locator('.turn-tool-counter').filter({ hasText: '23/23' }).waitFor();
+    await page.locator('.turn-tool-summary').click();
+    assert.equal(await page.locator('.turn-tool-item').count(), 23);
+    emit({kind:'delta', text:'回复正文'});
+    await shows('正在回复');
+    await page.getByText('回复正文', {exact:true}).waitFor();
+    emit({kind:'activity', phase:'waiting_reply'});
+    await shows('等待回复');
+    emit({kind:'waiting_for_receipt'});
+    await shows('执行结束，等待回执');
+    finish();
+    await turn;
+    await page.getByText('已完成测试', {exact:true}).waitFor();
+    await page.getByText('已执行 23 项操作', {exact:true}).waitFor();
+    assert.equal(await status.count(), 0);
+
+    // A dropped upstream request remains in recovery; the manual action checks its terminal state.
+    app.registry.mockDriver.handlers.set(member.id, async () => { throw new Error('DISCONNECT'); });
+    const lost = await app.threads.sendUserMessage({threadId: thread.id, body:'核验目标 3472'});
+    assert.equal(lost.agentMessage.turnStatus, 'running');
+    await shows('正在找回执行进度');
+    await app.registry.reconcileInFlightAttempts();
+    app.threads.syncReconciledThreadTurns();
+    const resume = page.getByRole('button', {name:'继续处理',exact:true});
+    await resume.waitFor();
+    let resumes = 0;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    app.registry.mockDriver.handlers.set(member.id, async input => {
+      assert.ok(input.prompt.includes('原始请求：核验目标 3472'));
+      assert.ok(input.prompt.includes('回执'));
+      resumes++;
+      await gate;
+      return {text:'已接续 3472'};
+    });
+    const endpoint = '/api/v2/threads/' + thread.id + '/messages/' + lost.agentMessage.id + '/continue';
+    await resume.click();
+    await page.getByText('从上次中断处继续', {exact:true}).waitFor();
+    const duplicate = await page.evaluate(url => fetch(url, {method:'POST'}).then(r => r.status), endpoint);
+    assert.equal(duplicate, 202);
+    release();
+    await page.getByText('已接续 3472', {exact:true}).waitFor();
+    await page.reload();
+    await page.getByText('已接续 3472', {exact:true}).waitFor();
+    assert.equal(await resume.count(), 0);
+    assert.equal(resumes, 1);
+
+  } finally {
+    finish?.();
+    await browser.close();
+    await app.close();
+    fs.rmSync(dir, { recursive:true, force:true });
   }
 });

@@ -1,3 +1,4 @@
+import { runWithChatImages } from './chat-image-delivery.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DuolaWorkDatabase } from '../db.js';
 import {
@@ -5,6 +6,8 @@ import {
   type DispatchAttemptRecord,
   type DriverKind,
   type MemberRecord,
+  type ModelCatalog,
+  type ModelPreference,
   ThreeTierUsage
 } from '../../shared/types.js';
 import { AcpStdioDriver } from './acp-driver.js';
@@ -19,11 +22,16 @@ import {
   type AgentDriver,
   type DynamicToolDefinition,
   type EnsuredSession,
+  type ReconcileResult,
   type McpHttpServerConfig,
   type TurnExecutionResult,
   type TurnStreamEvent
 } from './types.js';
 import { WebhookBotDriver } from './webhook-bot-driver.js';
+
+// Interactive chat gets a renewable inactivity window. Explicit task deadlines stay absolute.
+export const CHAT_IDLE_MS = 15 * 60_000;
+export const CHAT_MAX_MS = 2 * 60 * 60_000;
 
 interface SlotWaiter {
   attemptId: string;
@@ -39,6 +47,9 @@ interface SlotWaiter {
  * - Persists every dispatch attempt BEFORE invoking the underlying driver and supports crash/disconnect `reconcileInFlightAttempts`.
  */
 export class DriverRegistry {
+  private readonly turnDirectories = new Map<string, string>();
+  public localTurnDirectory(attemptId: string) { return this.turnDirectories.get(attemptId); }
+
   private readonly drivers = new Map<DriverKind, AgentDriver>();
   public readonly webhookDriver: WebhookBotDriver;
   public readonly mockDriver: MockDriver;
@@ -48,6 +59,7 @@ export class DriverRegistry {
   private readonly waitQueues = new Map<string, SlotWaiter[]>();
   private readonly liveDispatches = new Set<string>();
   private readonly activeAttemptCancels = new Map<string, (reason: string) => void>();
+  public onLateThreadReceipt?: () => void;
   public mcpServersProvider?: (toolPolicy?: string) => McpHttpServerConfig[];
 
   constructor(private readonly db: DuolaWorkDatabase) {
@@ -73,7 +85,35 @@ export class DriverRegistry {
     return d;
   }
 
-  private async acquireSlot(member: MemberRecord, attemptId: string): Promise<void> {
+  private readonly catalogs = new Map<string, { expires: number; catalog: ModelCatalog }>();
+
+  public async modelCatalog(member: MemberRecord, selectedModel?: string) {
+    if (isExcludedClaudeVps(member)) throw new Error('此成员未开放模型设置');
+    const key = JSON.stringify([member.id, member.nodeId, member.driverKind, selectedModel]);
+    const cached = this.catalogs.get(key);
+    if (cached && cached.expires > Date.now()) return cached.catalog;
+    const driver = this.getDriver(member.driverKind);
+    const catalog = (await driver.listModels?.(member, selectedModel)) ?? { models: [] };
+    for (const [k, entry] of this.catalogs) if (entry.expires <= Date.now()) this.catalogs.delete(k);
+    this.catalogs.set(key, { expires: Date.now() + 300000, catalog });
+    return catalog;
+  }
+
+  public getPreference(threadId: string, memberId: string) {
+    return this.db.getSetting<ModelPreference | null>('inference:' + JSON.stringify([threadId, memberId]), null);
+  }
+
+  public async savePreference(threadId: string, member: MemberRecord, model: string, effort: string | null) {
+    const catalog = await this.modelCatalog(member, model);
+    const selected = catalog.models.find((m) => m.id === model);
+    if (!selected || (effort && !selected.efforts.includes(effort)))
+      throw Object.assign(new Error('执行端不支持所选模型或推理强度'), { statusCode: 400 });
+    const pref = { model, effort: effort || selected.defaultEffort || null };
+    this.db.setSetting('inference:' + JSON.stringify([threadId, member.id]), pref);
+    return pref;
+  }
+
+  private async acquireSlot(member: MemberRecord, attemptId: string, onEvent?: (ev: TurnStreamEvent) => void): Promise<void> {
     const maxSlots = Math.max(1, member.capabilities.maxConcurrentRuns || 1);
     let set = this.activeSlots.get(member.id);
     if (!set) {
@@ -84,11 +124,13 @@ export class DriverRegistry {
       set.add(attemptId);
       return;
     }
+    onEvent?.({ kind: 'activity', phase: 'queued' });
     await new Promise<void>((resolve, reject) => {
       const q = this.waitQueues.get(member.id) ?? [];
       q.push({ attemptId, grant: resolve, reject });
       this.waitQueues.set(member.id, q);
     });
+    onEvent?.({ kind: 'activity', phase: 'processing' });
   }
 
   private abortQueuedWaiter(memberId: string, attemptId: string, reason: string): boolean {
@@ -156,6 +198,24 @@ export class DriverRegistry {
     for (const [, cancel] of entries) {
       cancel(reason);
     }
+  }
+
+  public recoverLateThreadReply(attempt: DispatchAttemptRecord, receipt: {
+    text?: string; nativeSessionId?: string | null; nativeTurnId?: string | null;
+    providerUsage?: TurnExecutionResult['providerUsage'];
+  }): boolean {
+    if (attempt.targetKind !== 'thread_message' || !receipt.text?.trim()) return false;
+    const usage = { ...attempt.usage, nativeTurns: 1, providerUsage: receipt.providerUsage ?? attempt.usage.providerUsage };
+    const saved = this.db.sqlite.prepare(
+      `UPDATE v2_dispatch_attempts SET status='succeeded', response_text=?, usage_json=?, error_message=NULL,
+         native_session_id=COALESCE(?,native_session_id), native_turn_id=COALESCE(?,native_turn_id), settled_at=?
+       WHERE id=? AND status IN ('failed','timed_out','late_ignored') AND EXISTS (
+         SELECT 1 FROM v2_thread_messages m WHERE m.id=v2_dispatch_attempts.target_id
+           AND m.attempt_id=v2_dispatch_attempts.id AND m.turn_status IN ('failed','running'))`
+    ).run(receipt.text, JSON.stringify(usage), receipt.nativeSessionId ?? null, receipt.nativeTurnId ?? null,
+      new Date().toISOString(), attempt.id);
+    if (saved.changes) this.onLateThreadReceipt?.();
+    return Boolean(saved.changes);
   }
 
   public getAttempt(id: string): DispatchAttemptRecord | null {
@@ -277,6 +337,8 @@ export class DriverRegistry {
     }
 
     const existing = this.getAttemptByIdempotencyKey(input.idempotencyKey);
+    const inference = existing ? existing.inference : this.getPreference(input.threadId, input.member.id);
+    input = {...input, member: {...input.member, inference: inference ?? undefined}};
     if (existing && existing.status === 'succeeded' && existing.responseText !== null) {
       return {
         attempt: existing,
@@ -308,8 +370,8 @@ export class DriverRegistry {
             member_id, idempotency_key, scope_key, native_session_id, native_turn_id,
             bridge_meta_json, status, slot_held, base_artifact_id, base_artifact_version,
             prompt_digest, prompt_bytes, handoff_bytes, response_text, usage_json,
-            error_message, dispatched_at, settled_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'prepared', 1, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL)`
+            error_message, dispatched_at, settled_at, inference_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'prepared', 1, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL, ?)`
         )
         .run(
           attemptId,
@@ -330,7 +392,8 @@ export class DriverRegistry {
           promptBytes,
           input.handoffBytes ?? 0,
           JSON.stringify(initialUsage),
-          new Date().toISOString()
+          new Date().toISOString(),
+          inference ? JSON.stringify(inference) : null
         );
     }
 
@@ -339,7 +402,11 @@ export class DriverRegistry {
 
     let timedOutReleased = false;
     let cancelReason: string | null = null;
-    const timeoutMs = input.timeoutMs ?? 900_000;
+    const interactive = input.targetKind === 'thread_message' && input.timeoutMs === undefined;
+    const timeoutMs = input.timeoutMs ?? (interactive ? CHAT_MAX_MS : CHAT_IDLE_MS);
+    let idleHandle: NodeJS.Timeout | undefined;
+    let lastProgressAt = 0;
+    const noteProgress = () => { lastProgressAt = Date.now(); };
     let timeoutHandle: NodeJS.Timeout | null = null;
 
     let rejectCancelRace!: (err: Error) => void;
@@ -363,7 +430,7 @@ export class DriverRegistry {
         throw new Error('ATTEMPT_CANCELED');
       }
 
-      await Promise.race([this.acquireSlot(input.member, attemptId), cancelRace]);
+      await Promise.race([this.acquireSlot(input.member, attemptId, input.onEvent), cancelRace]);
       if (cancelReason) throw new Error(cancelReason);
 
       const effectiveMcpServers =
@@ -426,7 +493,8 @@ export class DriverRegistry {
       }
 
       const timeoutRace = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
+        const expire = (reason: string) => {
+          if (timedOutReleased || cancelReason) return;
           timedOutReleased = true;
           this.db.sqlite
             .prepare(
@@ -434,16 +502,35 @@ export class DriverRegistry {
                SET status = 'timed_out', slot_held = 0, error_message = ?, settled_at = ?
                WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
             )
-            .run('执行超时，已释放该成员并发执行名额', new Date().toISOString(), attemptId);
+            .run(reason, new Date().toISOString(), attemptId);
           // Immediately free the slot so the same member can execute the next Run!
           this.releaseMemberSlot(input.member.id, attemptId);
-          void driver.abortTurn(input.member, this.getAttempt(attemptId)!).catch(() => {});
+          const attempt = this.getAttempt(attemptId)!;
+          if (attempt.targetKind === 'thread_message' && ['remote-node', 'remote-bridge', 'webhook-bot'].includes(driver.kind)) {
+            // Read the existing receipt once. Looking it up must never post the original prompt again.
+            void driver.reconcileAttempt(input.member, attempt).then(receipt => {
+              if (receipt.state === 'completed') this.recoverLateThreadReply(attempt, receipt);
+            }).catch(() => {});
+          } else {
+            void driver.abortTurn(input.member, attempt).catch(() => {});
+          }
           reject(new Error('ATTEMPT_TIMED_OUT'));
-        }, timeoutMs);
+        };
+        timeoutHandle = setTimeout(() => expire(interactive ? '本轮已达到 2 小时执行上限' : '本轮已达到设定的执行时限'), timeoutMs);
+        if (interactive) {
+          noteProgress();
+          const checkIdle = () => {
+            const remaining = CHAT_IDLE_MS - (Date.now() - lastProgressAt);
+            if (remaining <= 0) expire('连续 15 分钟未收到执行进展');
+            else idleHandle = setTimeout(checkIdle, Math.min(remaining, CHAT_IDLE_MS)).unref();
+          };
+          idleHandle = setTimeout(checkIdle, CHAT_IDLE_MS).unref();
+        }
         timeoutHandle.unref?.();
       });
 
-      const execPromise = driver.runTurn(
+      this.turnDirectories.set(attemptId, input.cwd);
+      const execPromise = runWithChatImages(driver,
         {
           attemptId,
           member: input.member,
@@ -458,10 +545,20 @@ export class DriverRegistry {
           ...(effectiveMcpServers.length > 0 ? { mcpServers: effectiveMcpServers } : {}),
           ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
           onToolCall: input.onToolCall
-            ? (name, args) => input.onToolCall!(name, args, attemptId)
+            ? async (name, args) => {
+                if (timedOutReleased || cancelReason) throw new Error('ATTEMPT_CANCELED');
+                noteProgress();
+                try {
+                  return await input.onToolCall!(name, args, attemptId);
+                } finally {
+                  noteProgress();
+                }
+              }
             : undefined
         },
         (ev) => {
+          if (timedOutReleased || cancelReason) return;
+          if (ev.kind !== 'dispatched_meta' && (ev.kind !== 'delta' || ev.text)) noteProgress();
           if (ev.kind === 'started') {
             this.db.sqlite
               .prepare(`UPDATE v2_dispatch_attempts SET status = 'running' WHERE id = ? AND status = 'dispatched'`)
@@ -490,7 +587,12 @@ export class DriverRegistry {
       execPromise
         .then((lateRes) => {
           if (!timedOutReleased) return;
-          // Late arrival after timeout: archive receipt as `late_ignored` without double delivery!
+          if (input.targetKind === 'thread_message') {
+            const attempt = this.getAttempt(attemptId);
+            if (attempt) this.recoverLateThreadReply(attempt, lateRes);
+            return;
+          }
+          // Task steps retain their original terminal decision.
           const lateUsage: ThreeTierUsage = {
             workbenchDispatches: 1,
             nativeTurns: 1,
@@ -569,13 +671,13 @@ export class DriverRegistry {
 
       return {
         attempt: this.getAttempt(attemptId)!,
-        result: res,
+        result: { ...res, bridgeMeta: res.bridgeMeta ?? currentBridgeMeta },
         deduplicated: false
       };
     } catch (err) {
       const msg = redactSecrets((err as Error).message);
       if (!timedOutReleased) {
-        const isExplicitCancel = Boolean(cancelReason) || msg === 'ATTEMPT_CANCELED';
+        const isExplicitCancel = (Boolean(cancelReason) && cancelReason !== 'SHUTDOWN') || msg === 'ATTEMPT_CANCELED';
         const isDisconnect =
           !isExplicitCancel &&
           (msg.includes('DISCONNECT') ||
@@ -602,8 +704,11 @@ export class DriverRegistry {
       }
       throw err;
     } finally {
+      this.turnDirectories.delete(attemptId);
       this.liveDispatches.delete(attemptId);
       this.activeAttemptCancels.delete(attemptId);
+      clearTimeout(idleHandle);
+      idleHandle = undefined;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (!timedOutReleased) {
         this.releaseMemberSlot(input.member.id, attemptId);
@@ -671,12 +776,16 @@ export class DriverRegistry {
       const driver = this.getDriver(member.driverKind);
 
       const deadline = Date.now() + waitTimeoutMs;
-      let rec = await driver.reconcileAttempt(member, att);
+      const lookup = () => driver.reconcileAttempt(member, att).catch(() => ({
+        state: 'still_running' as const, errorMessage: '执行节点暂不可达'
+      }));
+      let rec: ReconcileResult = await lookup();
       while (rec.state === 'still_running' && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, pollIntervalMs));
-        rec = await driver.reconcileAttempt(member, att);
+        rec = await lookup();
       }
 
+      if (!['prepared', 'dispatched', 'running', 'reconciling'].includes(this.getAttempt(att.id)?.status ?? '')) continue;
       if (rec.state === 'completed' && rec.text !== undefined) {
         const usage: ThreeTierUsage = {
           workbenchDispatches: att.usage.workbenchDispatches || 1,
@@ -724,14 +833,15 @@ export class DriverRegistry {
         });
       } else {
         const ageMs = Date.now() - Date.parse(att.dispatchedAt);
-        if (Number.isFinite(ageMs) && ageMs > 30 * 60_000) {
+        const recoveryLimit = att.targetKind === 'thread_message' && !rec.errorMessage ? CHAT_MAX_MS : 30 * 60_000;
+        if (Number.isFinite(ageMs) && ageMs > recoveryLimit) {
           this.db.sqlite
             .prepare(
               `UPDATE v2_dispatch_attempts
                SET status = 'timed_out', slot_held = 0, error_message = ?, settled_at = ?
                WHERE id = ?`
             )
-            .run('远端超过 30 分钟未返回结果，已自动结束等待', new Date().toISOString(), att.id);
+            .run(`远端超过 ${Math.round(recoveryLimit / 60_000)} 分钟未返回结果，已自动结束等待`, new Date().toISOString(), att.id);
           results.push({ attempt: this.getAttempt(att.id)!, outcome: 'reconciled_timed_out' });
         } else {
           this.db.sqlite
@@ -748,6 +858,7 @@ export class DriverRegistry {
 function mapAttemptRow(row: Record<string, unknown>): DispatchAttemptRecord {
   return {
     id: String(row.id),
+    inference: row.inference_json ? JSON.parse(String(row.inference_json)) as ModelPreference : null,
     targetKind: row.target_kind as DispatchAttemptRecord['targetKind'],
     targetId: String(row.target_id),
     threadId: String(row.thread_id),

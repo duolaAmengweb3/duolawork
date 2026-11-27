@@ -1,3 +1,4 @@
+import { outcomeStatus } from '../shared/task-progress.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -81,6 +82,7 @@ export type WorkbenchNavPage = 'connectors' | 'vault' | 'members' | 'schedules';
 
 export interface CollaborationSpacePanelProps {
   thread: ThreadRecord | null;
+  materialsState: 'ready' | 'loading' | 'error';
   members: MemberRecord[];
   duolabaseStatus: DuolaBasePublicStatus;
   hasDesktopDialog: boolean;
@@ -1224,6 +1226,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         }
       }}
       onDrop={(e) => void handleDropFiles(e)}
+      id="workbench-space"
       className={`collaboration-space space-redesign ${wideSpace ? 'space-expanded' : ''}`}
     >
       {dragging && (
@@ -1896,7 +1899,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </div>
             )}
 
-            {searching ? (
+            {props.materialsState !== 'ready' && thread ? (
+              <div className="space-blank my-auto" role="status">
+                {props.materialsState === 'error' ? (
+                  <><strong>资料加载失败</strong><button className="dw-btn" onClick={() => void onRefreshSpace()}>重新加载资料</button></>
+                ) : <strong>正在加载资料…</strong>}
+              </div>
+            ) : searching ? (
               <div>
                 <div className="material-section-heading">
                   <h4>搜索结果 ({filteredItems.length})</h4>
@@ -2114,7 +2123,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
                         ? ''
                         : 'working';
-                const statusLabel = !runStatus
+                const statusLabel = outcomeStatus(t.latestRun) ?? (t.status === 'paused' ? (runStatus === 'running' ? '当前步骤结束后暂停' : '已暂停') : !runStatus
                   ? t.kind === 'scheduled'
                     ? t.scheduleEnabled
                       ? '等待定时触发'
@@ -2132,7 +2141,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           ? '超时未完成'
                           : runStatus === 'canceled'
                             ? '已取消'
-                            : '进行中';
+                            : '进行中');
                 return (
                   <div key={t.id} className="task-group">
                     <div className="task-group-heading">

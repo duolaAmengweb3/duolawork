@@ -1,3 +1,4 @@
+import { outcomeStatus } from '../shared/task-progress.js';
 import React, { useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarClock, Clock, Pause, Play, RefreshCw, Square, Trash2 } from 'lucide-react';
 import type { MemberRecord, TaskRecord, TaskRunRecord, ThreadRecord } from '../shared/types.js';
@@ -24,19 +25,23 @@ export function SchedulesPage({
   onOpenTask: (taskId: string) => void;
   onOpenThread: (threadId: string) => void;
   onToggleSchedule: (taskId: string, enabled: boolean) => Promise<void>;
-  onRunTaskNow: (taskId: string) => Promise<void>;
+  onRunTaskNow: (taskId: string, retryFromRunId?: string) => Promise<void>;
   onCancelRun?: (runId: string) => Promise<void>;
   onDeleteTask?: (taskId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
 }): React.JSX.Element {
-  const [filter, setFilter] = useState<'all' | 'scheduled' | 'once'>('all');
+  const [filter, setFilter] = useState<'all' | 'scheduled' | 'once' | 'archive'>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    if (filter === 'all') return tasks;
-    return tasks.filter((t) => t.kind === filter);
-  }, [tasks, filter]);
+  const archived = useMemo(() => {
+    const activeThreads = new Set(threads.map(t => t.id));
+    return new Set(tasks.filter(t => t.kind === 'once' && t.latestRun && ['completed','failed','timed_out','canceled'].includes(t.latestRun.status)
+      && !activeThreads.has(t.sourceThreadId)).map(t => t.id));
+  }, [tasks, threads]);
+  const current = tasks.filter(t => !archived.has(t.id));
+  const filtered = filter === 'archive' ? tasks.filter(t => archived.has(t.id))
+    : current.filter(t => filter === 'all' || t.kind === filter);
 
   return (
     <section className="scheduled-workspace">
@@ -62,9 +67,10 @@ export function SchedulesPage({
       <div className="schedule-toolbar">
         <div className="connector-categories">
           {([
-            ['all', `全部任务 (${tasks.length})`],
-            ['scheduled', `定时长期 (${tasks.filter((t) => t.kind === 'scheduled').length})`],
-            ['once', `单次任务 (${tasks.filter((t) => t.kind === 'once').length})`]
+            ['all', `当前任务 (${current.length})`],
+            ['scheduled', `定时长期 (${current.filter((t) => t.kind === 'scheduled').length})`],
+            ['once', `单次任务 (${current.filter((t) => t.kind === 'once').length})`],
+            ['archive', '已归档 (' + archived.size + ')']
           ] as const).map(([key, label]) => (
             <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>
               {label}
@@ -85,7 +91,7 @@ export function SchedulesPage({
             const leadName = members.find((m) => m.id === task.leadMemberId)?.name || task.leadMemberId;
             const originThread = threads.find((t) => t.id === task.sourceThreadId);
             const latest = task.latestRun;
-            const statusText = !latest
+            const statusText = outcomeStatus(latest) ?? (task.status === 'paused' ? (latest?.status === 'running' ? '当前步骤结束后暂停' : '已暂停') : !latest
               ? task.kind === 'scheduled'
                 ? task.scheduleEnabled
                   ? '等待定时触发'
@@ -103,7 +109,7 @@ export function SchedulesPage({
                       ? '最近一期超时'
                       : latest.status === 'canceled'
                         ? '已取消'
-                        : '进行中';
+                        : '进行中');
 
             const pillClass =
               latest?.status === 'completed'
@@ -180,6 +186,7 @@ export function SchedulesPage({
                         <span>停止</span>
                       </button>
                     )}
+                    {task.status === 'active' && (!latest || (task.kind === 'once' && !latest.progress?.some(s=>s.result==='external') && ['failed','timed_out'].includes(latest.status)) || (task.kind === 'scheduled' && !['running','waiting_user','waiting_node_online','paused'].includes(latest.status))) && (
                     <button
                       type="button"
                       disabled={busyId === task.id}
@@ -187,7 +194,7 @@ export function SchedulesPage({
                         setBusyId(task.id);
                         setConfirmDeleteId(null);
                         try {
-                          await onRunTaskNow(task.id);
+                          await onRunTaskNow(task.id, task.kind === 'once' ? latest?.id : undefined);
                         } finally {
                           setBusyId(null);
                         }
@@ -195,8 +202,9 @@ export function SchedulesPage({
                       className="dw-btn dw-btn-outline dw-btn-sm"
                     >
                       <Play size={12} />
-                      <span>立即执行</span>
+                      <span>{task.kind === 'once' && latest ? '重新运行整项任务' : '立即执行'}</span>
                     </button>
+                    )}
                     {task.kind === 'scheduled' && (
                       <button
                         type="button"

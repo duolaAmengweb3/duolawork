@@ -130,6 +130,7 @@ export class WebhookBotDriver implements AgentDriver {
         ).catch((err) => rejectFn(err as Error));
       }
 
+      onEvent?.({ kind: 'activity', phase: 'waiting_reply' });
       const text = await waitPromise;
       return {
         text,
