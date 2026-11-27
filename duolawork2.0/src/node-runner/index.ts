@@ -649,6 +649,8 @@ export class DuolaWorkNodeRunner {
           (ev) => {
             if (ev.kind === 'started') {
               this.send({ type: 'turn.started', attemptId });
+            } else if (ev.kind === 'activity' && ev.phase) {
+              this.send({ type: 'turn.activity', attemptId, phase: ev.phase });
             } else if (ev.kind === 'delta' && ev.text) {
               this.send({ type: 'turn.delta', attemptId, text: ev.text });
             } else if (ev.kind === 'tool' && ev.toolName) {

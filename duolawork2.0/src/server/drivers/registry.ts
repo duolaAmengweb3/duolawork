@@ -74,7 +74,7 @@ export class DriverRegistry {
     return d;
   }
 
-  private async acquireSlot(member: MemberRecord, attemptId: string): Promise<void> {
+  private async acquireSlot(member: MemberRecord, attemptId: string, onEvent?: (ev: TurnStreamEvent) => void): Promise<void> {
     const maxSlots = Math.max(1, member.capabilities.maxConcurrentRuns || 1);
     let set = this.activeSlots.get(member.id);
     if (!set) {
@@ -85,11 +85,13 @@ export class DriverRegistry {
       set.add(attemptId);
       return;
     }
+    onEvent?.({ kind: 'activity', phase: 'queued' });
     await new Promise<void>((resolve, reject) => {
       const q = this.waitQueues.get(member.id) ?? [];
       q.push({ attemptId, grant: resolve, reject });
       this.waitQueues.set(member.id, q);
     });
+    onEvent?.({ kind: 'activity', phase: 'processing' });
   }
 
   private abortQueuedWaiter(memberId: string, attemptId: string, reason: string): boolean {
@@ -364,7 +366,7 @@ export class DriverRegistry {
         throw new Error('ATTEMPT_CANCELED');
       }
 
-      await Promise.race([this.acquireSlot(input.member, attemptId), cancelRace]);
+      await Promise.race([this.acquireSlot(input.member, attemptId, input.onEvent), cancelRace]);
       if (cancelReason) throw new Error(cancelReason);
 
       const effectiveMcpServers =

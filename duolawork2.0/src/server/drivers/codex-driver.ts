@@ -366,6 +366,9 @@ export class CodexAppServerDriver implements AgentDriver {
           streamedDeltaText += params.delta;
           onEvent?.({ kind: 'delta', text: params.delta });
         }
+        if (params.item?.type === 'reasoning' && (method === 'item/started' || method === 'item/completed')) {
+          onEvent?.({ kind: 'activity', phase: method === 'item/started' ? 'thinking' : 'processing' });
+        }
         if (method === 'item/started' && params.item && params.item.type !== 'agentMessage' && params.item.type !== 'reasoning' && params.item.type !== 'userMessage') {
           const trace = extractCodexItemTrace(params.item, 'running');
           if (trace) onEvent?.(trace);

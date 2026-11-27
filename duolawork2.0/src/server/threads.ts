@@ -29,6 +29,8 @@ import {
   type ThreadMessageRecord,
   type ThreadRecord,
   type ThreeTierUsage,
+  type TurnActivity,
+  type TurnPhase,
   type ToolTraceItem
 } from '../shared/types.js';
 
@@ -74,6 +76,8 @@ function pendingOwnerSwitch(messages: ThreadMessageRecord[], targetMemberId: str
 
 export class ThreadEngine {
   private readonly listeners = new Set<ServerEventListener>();
+  private readonly liveTurns = new Map<string, { activity: TurnActivity; tools: ToolTraceItem[] }>();
+  private activityRevision = 0;
   public space?: SpaceStore;
   private readonly inflightClientRequests = new Map<
     string,
@@ -236,6 +240,11 @@ export class ThreadEngine {
       .all(...args) as Record<string, unknown>[];
     return rows.flatMap((row) => {
       const msg = mapMessageRow(row);
+      const live = msg.turnStatus === 'running' && this.liveTurns.get(msg.id);
+      if (live) {
+        msg.activity = live.activity;
+        msg.toolTrace = [...live.tools];
+      }
       // Older collapsed switches recorded the last selected member, even when they received no turn.
       if (msg.handoffMeta && typeof row.previous_recipient === 'string') {
         if (msg.handoffMeta.toMemberId === row.previous_recipient) return [];
@@ -952,6 +961,16 @@ export class ThreadEngine {
     }
 
     const toolTrace: ToolTraceItem[] = [];
+    const live = { activity: { phase: 'processing', revision: ++this.activityRevision } as TurnActivity, tools: toolTrace };
+    this.liveTurns.set(placeholderAgentMsg.id, live);
+    const setActivity = (phase: TurnPhase) => {
+      if (live.activity.phase === phase || this.liveTurns.get(placeholderAgentMsg.id) !== live) return;
+      live.activity = { phase, revision: ++this.activityRevision };
+      this.emit({
+        type: 'thread.activity', threadId: thread.id,
+        payload: { messageId: placeholderAgentMsg.id, activity: live.activity }
+      });
+    };
     let toolClarificationCard: ClarificationCardData | null = null;
     try {
       const beforeDispatchMsg = this.getMessage(placeholderAgentMsg.id);
@@ -1026,7 +1045,11 @@ export class ThreadEngine {
         onEvent: (ev) => {
           if (ev.kind === 'waiting_for_receipt') {
             this.markWaitingForReceipt(placeholderAgentMsg.id);
+          } else if (ev.kind === 'activity' && ev.phase) {
+            // A reasoning block can finish after a tool or text stream has already started.
+            if (ev.phase !== 'processing' || ['thinking', 'queued'].includes(live.activity.phase)) setActivity(ev.phase);
           } else if (ev.kind === 'delta' && ev.text) {
+            setActivity('writing');
             this.emit({
               type: 'thread.delta',
               threadId: thread.id,
@@ -1047,6 +1070,8 @@ export class ThreadEngine {
             } else if (toolTrace.length < 20) {
               toolTrace.push(item);
             }
+            if (item.status === 'running') setActivity('executing');
+            else if (live.activity.phase === 'executing' && !toolTrace.some(t => t.status === 'running')) setActivity('processing');
             this.emit({
               type: 'thread.tool',
               threadId: thread.id,
@@ -1213,6 +1238,7 @@ export class ThreadEngine {
       }
       throw err;
     } finally {
+      if (this.liveTurns.get(placeholderAgentMsg.id) === live) this.liveTurns.delete(placeholderAgentMsg.id);
       this.sandbox.revokeToken(claims.token);
     }
   }

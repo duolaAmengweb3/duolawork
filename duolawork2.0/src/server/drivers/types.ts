@@ -3,7 +3,8 @@ import type {
   DriverKind,
   MemberRecord,
   MemberStatus,
-  ProviderUsageMetrics
+  ProviderUsageMetrics,
+  TurnPhase
 } from '../../shared/types.js';
 
 export interface DynamicToolDefinition {
@@ -231,7 +232,8 @@ export interface EnsuredSession {
 }
 
 export interface TurnStreamEvent {
-  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt';
+  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt' | 'activity';
+  phase?: TurnPhase;
   text?: string;
   toolId?: string;
   toolName?: string;
@@ -275,6 +277,7 @@ export interface TurnExecutionResult {
 
 export interface ReconcileResult {
   waitingForReceipt?: boolean;
+  activity?: 'executing' | 'queued' | 'waiting_reply';
   state: 'completed' | 'still_running' | 'not_found' | 'failed';
   text?: string;
   nativeSessionId?: string | null;

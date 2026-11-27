@@ -8,6 +8,7 @@ import type { DuolaWorkDatabase } from './db.js';
 import { emptyUnobservableUsage, redactSecrets, type EnsuredSession, type ReconcileResult, type SessionBindingInput, type TurnDispatchInput, type TurnExecutionResult, type TurnStreamEvent } from './drivers/types.js';
 import {
   isExcludedClaudeVps,
+  turnPhases,
   type ExecutionNodeRecord,
   type MemberCapabilities,
   type MemberRecord,
@@ -22,6 +23,7 @@ interface PendingRpc {
 }
 
 interface ActiveNodeTurn {
+  nodeId: string;
   attemptId: string;
   onEvent?: (ev: TurnStreamEvent) => void;
   onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -454,6 +456,14 @@ export class ExecutionNodeHub {
       return;
     }
 
+    if (type === 'turn.activity') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn?.nodeId === nodeId && turnPhases.includes(msg.phase)) {
+        turn.onEvent?.({ kind: 'activity', phase: msg.phase });
+      }
+      return;
+    }
+
     if (type === 'turn.delta') {
       const turn = this.activeTurns.get(String(msg.attemptId || ''));
       if (turn && typeof msg.text === 'string' && msg.text) {
@@ -645,6 +655,7 @@ export class ExecutionNodeHub {
 
     return new Promise<TurnExecutionResult>((resolve, reject) => {
       this.activeTurns.set(input.attemptId, {
+        nodeId,
         attemptId: input.attemptId,
         onEvent,
         onToolCall: input.onToolCall,

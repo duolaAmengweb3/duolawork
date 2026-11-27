@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { HandoffNoticeMeta } from '../src/shared/types.js';
+import type { TurnStreamEvent } from '../src/server/drivers/types.js';
 import { DuolaWorkApp } from '../src/server/app.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -783,5 +784,70 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     await browser.close();
     await app.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('chat shows one animated status for the current turn, restores live phases on refresh and stops on completion', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dw-activity-'));
+  const app = new DuolaWorkApp({
+    dbPath: path.join(dir, 'ui.sqlite'), worktreesRoot: dir,
+    staticWebDir: path.join(projectRoot, 'dist/web'), autoImportAgentHub: false
+  });
+  const member = app.db.upsertMember({
+    id: 'progress-test', name: '测试成员', platformId: 'codex', driverKind: 'mock', location: 'local',
+    capabilities: { supportsIsolatedSessions: true, supportsSessionResume: true, supportsCancel: true, maxConcurrentRuns: 1 },
+    status: 'ready', statusMessage: '', config: {}
+  });
+  const thread = app.threads.createThread({ title: '进度验收', activeOwnerMemberId: member.id });
+  let emit!: (ev: TurnStreamEvent) => void;
+  let finish!: () => void;
+  const ready = new Promise<void>(resolve => {
+    app.registry.mockDriver.handlers.set(member.id, async (_, onEvent) => {
+      emit = onEvent!;
+      resolve();
+      await new Promise<void>(r => { finish = r; });
+      return { text: '已完成测试' };
+    });
+  });
+  const { url } = await app.listen(0, '127.0.0.1');
+  const browser = await chromium.launch({ channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ reducedMotion: 'no-preference' });
+    await page.goto(url);
+    await page.locator('.channel-open-btn').filter({hasText:thread.title}).click();
+    const turn = app.threads.sendUserMessage({threadId: thread.id, body: '测试状态'});
+    await ready;
+    const status = page.getByRole('status').and(page.locator('.turn-activity'));
+    const shows = (label: string) => status.filter({ hasText: label }).waitFor();
+    await shows('正在处理');
+    assert.equal(await page.getByText('正在处理', {exact: true}).count(), 1);
+    const dot = status.locator('i').first();
+    assert.equal(await dot.evaluate(el => el.getAnimations()[0]?.playState), 'running');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await dot.evaluate(el => el.getAnimations().length), 0);
+    emit({kind:'activity', phase:'thinking'});
+    await shows('正在思考');
+    await page.reload();
+    await shows('正在思考');
+    emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'running'});
+    await shows('正在读取文件');
+    emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'done'});
+    await shows('正在处理');
+    emit({kind:'delta', text:'回复正文'});
+    await shows('正在回复');
+    await page.getByText('回复正文', {exact:true}).waitFor();
+    emit({kind:'activity', phase:'waiting_reply'});
+    await shows('等待回复');
+    emit({kind:'waiting_for_receipt'});
+    await shows('执行结束，等待回执');
+    finish();
+    await turn;
+    await page.getByText('已完成测试', {exact:true}).waitFor();
+    assert.equal(await status.count(), 0);
+  } finally {
+    finish?.();
+    await browser.close();
+    await app.close();
+    fs.rmSync(dir, { recursive:true, force:true });
   }
 });

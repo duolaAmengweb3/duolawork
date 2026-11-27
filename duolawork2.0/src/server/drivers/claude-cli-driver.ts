@@ -311,6 +311,8 @@ export class ClaudeCliDriver implements AgentDriver {
     let stderr = '';
     let timedOut = false;
 
+    const pendingTools = new Map<string, string>();
+    let thinkingBlock: number | undefined;
     const rl = readline.createInterface({ input: child.stdout });
     rl.on('line', (line) => {
       const trimmed = line.trim();
@@ -324,13 +326,33 @@ export class ClaudeCliDriver implements AgentDriver {
 
       if (msg.type === 'stream_event') {
         const ev = msg.event;
-        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') {
+        if (ev?.type === 'content_block_start' && ev.content_block?.type === 'thinking') {
+          thinkingBlock = ev.index;
+          onEvent?.({ kind: 'activity', phase: 'thinking' });
+        } else if (ev?.type === 'content_block_stop' && thinkingBlock !== undefined && ev.index === thinkingBlock) {
+          thinkingBlock = undefined;
+          onEvent?.({ kind: 'activity', phase: 'processing' });
+        } else if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use' && ev.content_block.id && ev.content_block.name) {
+          const { id, name } = ev.content_block;
+          pendingTools.set(id, name);
+          onEvent?.({ kind: 'tool', toolId: id, toolName: name, toolStatus: 'running' });
+        } else if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') {
           streamedText += ev.delta.text;
           onEvent?.({ kind: 'delta', text: ev.delta.text });
         }
         return;
       }
 
+      if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+        for (const block of msg.message.content) {
+          const name = pendingTools.get(block?.tool_use_id);
+          if (block?.type === 'tool_result' && name) {
+            pendingTools.delete(block.tool_use_id);
+            onEvent?.({ kind: 'tool', toolId: block.tool_use_id, toolName: name, toolStatus: block.is_error ? 'error' : 'done' });
+          }
+        }
+        return;
+      }
       if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
         const parts: string[] = [];
         for (const item of msg.message.content) {
@@ -339,6 +361,7 @@ export class ClaudeCliDriver implements AgentDriver {
           } else if (item?.type === 'tool_use' && item.name) {
             const inp = item.input && typeof item.input === 'object' ? (item.input as Record<string, unknown>) : {};
             const toolName = String(item.name);
+            if (item.id) pendingTools.set(String(item.id), toolName);
             const summary =
               inp.command !== undefined
                 ? sanitizeToolSummary('command', inp.command)

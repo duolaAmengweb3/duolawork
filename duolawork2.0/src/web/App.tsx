@@ -57,7 +57,9 @@ import {
   type TaskStepRecord,
   type ThreadMessageRecord,
   type ThreadRecord,
-  type ToolTraceItem
+  type ToolTraceItem,
+  type TurnActivity,
+  type TurnPhase
 } from '../shared/types.js';
 import { ColumnDivider, WorkbenchColumns } from './WorkbenchColumns.js';
 import { AgentAvatar, BrandLogo } from './AgentAvatar.js';
@@ -148,6 +150,22 @@ function formatToolTraceRow(item: ToolTraceItem): {
   return { badge, label: label || '执行操作', detail, raw };
 }
 
+const phaseLabels: Record<TurnPhase, string> = {
+  processing: '正在处理', thinking: '正在思考', executing: '正在执行',
+  writing: '正在回复', queued: '正在排队', waiting_reply: '等待回复'
+};
+
+function executionLabel(tool?: ToolTraceItem): string {
+  switch (tool?.name.toLowerCase()) {
+    case '执行命令': case 'bash': case 'run_shell_command': return '正在执行命令';
+    case '编辑文件': case 'edit': case 'write': case 'write_file': return '正在编辑文件';
+    case 'read': case 'read_file': return '正在读取文件';
+    case '联网检索': case 'websearch': case 'google_web_search': return '正在搜索';
+    case 'imagegeneration': return '正在生成图片';
+    default: return phaseLabels.executing;
+  }
+}
+
 function getDesktopBridge(): DesktopBridge | null {
   if (typeof window === 'undefined') return null;
   const b = (window as unknown as { duolaworkDesktop?: DesktopBridge }).duolaworkDesktop;
@@ -225,6 +243,9 @@ export function App(): React.JSX.Element {
   const [messages, setMessages] = useState<ThreadMessageRecord[]>([]);
   const [streamingDeltas, setStreamingDeltas] = useState<Record<string, string>>({});
   const [streamingTools, setStreamingTools] = useState<Record<string, ToolTraceItem[]>>({});
+  const toolEventCount = useRef(0);
+  const [streamingActivity, setStreamingActivity] = useState<Record<string, TurnActivity>>({});
+  const [streamDisconnected, setStreamDisconnected] = useState(false);
   const [expandedToolMsgIds, setExpandedToolMsgIds] = useState<Record<string, boolean>>({});
   const [expandedHandoffIds, setExpandedHandoffIds] = useState<Record<string, boolean>>({});
   const [pendingHandoffPreviews, setPendingHandoffPreviews] = useState<
@@ -499,6 +520,7 @@ export function App(): React.JSX.Element {
     async (threadId: string) => {
       if (!threadId) return;
       const request = ++threadRequest.current;
+      const toolsAtRequest = toolEventCount.current;
       setThreadLoadError('');
       const current = () => request === threadRequest.current && activeThreadIdRef.current === threadId;
       let data;
@@ -514,6 +536,14 @@ export function App(): React.JSX.Element {
       const nextMsgs: ThreadMessageRecord[] = data.messages || [];
       setMessagesThreadId(threadId);
       setMessages(nextMsgs);
+      setStreamingActivity((prev) => {
+        const next: Record<string, TurnActivity> = {};
+        for (const msg of nextMsgs) {
+          const recent = prev[msg.id];
+          if (msg.turnStatus === 'running' && recent && recent.revision > (msg.activity?.revision ?? 0)) next[msg.id] = recent;
+        }
+        return next;
+      });
       setPendingHandoffPreviews({});
       setStreamingDeltas((prev) => {
         const next: Record<string, string> = {};
@@ -525,6 +555,8 @@ export function App(): React.JSX.Element {
         return next;
       });
       setStreamingTools((prev) => {
+        // If a tool event arrived during the fetch, its trace is newer than the snapshot.
+        if (toolsAtRequest === toolEventCount.current) return {};
         const next: Record<string, ToolTraceItem[]> = {};
         for (const msg of nextMsgs) {
           if (msg.turnStatus === 'running' && prev[msg.id]) {
@@ -744,6 +776,7 @@ export function App(): React.JSX.Element {
           return;
         }
         if (parsed.type === 'connected') {
+          setStreamDisconnected(false);
           const nextBootId = typeof parsed.bootId === 'string' ? parsed.bootId : null;
           const nextBuildId = typeof parsed.buildId === 'string' ? parsed.buildId : null;
           if (
@@ -761,6 +794,7 @@ export function App(): React.JSX.Element {
           const bootChanged = Boolean(
             sseBootIdRef.current && nextBootId && sseBootIdRef.current !== nextBootId
           );
+          if (bootChanged) setStreamingActivity({});
           if (bootChanged || sseHadDisconnectRef.current) {
             syncAllActiveViews();
           }
@@ -788,12 +822,20 @@ export function App(): React.JSX.Element {
           }
           return;
         }
+        if (parsed.type === 'thread.activity') {
+          const { messageId, activity } = parsed.payload ?? {};
+          if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId && messageId && activity) {
+            setStreamingActivity(prev => ({ ...prev, [messageId]: activity }));
+          }
+          return;
+        }
         if (parsed.type === 'thread.tool') {
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId && parsed.payload?.messageId) {
             const msgId = String(parsed.payload.messageId);
             const trace = Array.isArray(parsed.payload.toolTrace)
               ? (parsed.payload.toolTrace as ToolTraceItem[])
               : [];
+            toolEventCount.current++;
             setStreamingTools((prev) => ({ ...prev, [msgId]: trace }));
           }
           return;
@@ -840,6 +882,7 @@ export function App(): React.JSX.Element {
     };
 
     es.onerror = () => {
+      setStreamDisconnected(true);
       sseHadDisconnectRef.current = true;
       void fetch('/api/v2/auth/status')
         .then((r) => (r.ok ? r.json() : null))
@@ -2909,10 +2952,19 @@ export function App(): React.JSX.Element {
                       const isUser = m.authorKind === 'user';
                       const authorMember = !isUser ? memberById.get(m.authorId) : undefined;
                       const senderName = isUser ? '你' : authorMember?.name || m.authorId;
-                      const displayBody =
-                        m.turnStatus === 'running'
-                          ? streamingDeltas[m.id] || m.body || '正在处理…'
-                          : m.body;
+                      const running = !isUser && m.turnStatus === 'running';
+                      const trace = (running && streamingTools[m.id]) || m.toolTrace || [];
+                      const activeTool = trace.findLast(t => t.status === 'running');
+                      const recent = streamingActivity[m.id];
+                      const activity = recent && recent.revision > (m.activity?.revision ?? 0) ? recent : m.activity;
+                      const phase = activity?.phase ?? (activeTool ? 'executing' : streamingDeltas[m.id] ? 'writing' : 'processing');
+                      const waitingReceipt = running && m.body === '执行结束，等待回执';
+                      const statusText = streamDisconnected ? '正在重新连接'
+                        : waitingReceipt ? '执行结束，等待回执'
+                        : phase === 'executing' ? executionLabel(activeTool) : phaseLabels[phase];
+                      const displayBody = running
+                        ? streamingDeltas[m.id] || (waitingReceipt || m.body === '正在处理…' ? '' : m.body)
+                        : m.body;
 
                       return (
                         <React.Fragment key={m.id}>
@@ -2928,29 +2980,22 @@ export function App(): React.JSX.Element {
                           <div className="message-content">
                             <header>
                               <strong>{senderName}</strong>
-                              <time>
-                                {m.turnStatus === 'running'
-                                  ? '正在处理…'
-                                  : m.turnStatus === 'canceled'
-                                    ? '已停止'
-                                    : new Date(m.createdAt).toLocaleTimeString('zh-CN', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                              </time>
+                              {running ? (
+                                <span className="turn-activity" role="status">
+                                  {statusText}<span className="turn-activity-dots" aria-hidden="true"><i /><i /><i /></span>
+                                </span>
+                              ) : (
+                                <time>{m.turnStatus === 'canceled' ? '已停止' : new Date(m.createdAt).toLocaleTimeString('zh-CN', {
+                                  hour: '2-digit', minute: '2-digit'
+                                })}</time>
+                              )}
                             </header>
                             {!isUser &&
                               (() => {
-                                const trace =
-                                  m.turnStatus === 'running'
-                                    ? streamingTools[m.id] ?? m.toolTrace ?? []
-                                    : m.toolTrace ?? [];
                                 if (trace.length === 0) return null;
                                 const isRunningTurn = m.turnStatus === 'running';
                                 const userExpanded = expandedToolMsgIds[m.id];
-                                const activeItem =
-                                  [...trace].reverse().find((t) => t.status === 'running') ??
-                                  trace[trace.length - 1];
+                                const activeItem = activeTool ?? trace[trace.length - 1];
                                 const activeRow = formatToolTraceRow(activeItem);
                                 const showFullList = userExpanded === true;
                                 const showCompactLive = isRunningTurn && userExpanded === undefined;
@@ -2987,7 +3032,7 @@ export function App(): React.JSX.Element {
                                       />
                                       <span className="turn-tool-summary-text">
                                         {isRunningTurn
-                                          ? `${activeRow.badge}：${activeRow.label}`
+                                          ? '操作记录'
                                           : `已执行 ${trace.length} 项操作`}
                                       </span>
                                       {isRunningTurn && (
@@ -3029,13 +3074,11 @@ export function App(): React.JSX.Element {
                                   </div>
                                 );
                               })()}
-                            <div className="message-markdown">
-                              <MarkdownView
-                                text={displayBody}
-                                imageActions={chatImageActions}
-                                spaceResolver={chatSpaceResolver}
-                              />
-                            </div>
+                            {displayBody && (
+                              <div className="message-markdown">
+                                <MarkdownView text={displayBody} imageActions={chatImageActions} spaceResolver={chatSpaceResolver} />
+                              </div>
+                            )}
                             {!isUser && m.clarificationCard && (() => {
                               const card = m.clarificationCard;
                               const targetMem = card.targetMemberName

@@ -807,6 +807,10 @@ const resIdx = args.indexOf('--resume');
 const sid = sidIdx >= 0 ? args[sidIdx + 1] : resIdx >= 0 ? args[resIdx + 1] : '';
 fs.appendFileSync(${JSON.stringify(logFile)}, JSON.stringify({ args, prompt, sid }) + '\\n');
 const reply = resIdx >= 0 ? '续聊回复' : '首轮回复';
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_stop', index: 0 } }));
+console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't_read', name: 'Read' } } }));
+console.log(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't_read' }] } }));
 console.log(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } } }));
 console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: reply }] } }));
 console.log(JSON.stringify({
@@ -845,7 +849,14 @@ console.log(JSON.stringify({
     assert.match(health.message, /local-dev@example\.com/);
 
     const t1 = app.threads.createThread({ title: 'Claude T3 独立对话 1', activeOwnerMemberId: claudeMember.id });
+    const phases: string[] = [];
+    const unsub = app.threads.subscribe(ev => {
+      if (ev.type === 'thread.activity') phases.push((ev.payload as { activity: { phase: string } }).activity.phase);
+    });
     const r1 = await app.threads.sendUserMessage({ threadId: t1.id, body: '第一问' });
+    unsub();
+    assert.deepEqual(phases, ['thinking', 'processing', 'executing', 'processing', 'writing']);
+    assert.equal(r1.agentMessage.toolTrace?.[0].status, 'done');
     assert.equal(r1.agentMessage.body, '首轮回复');
     assert.equal(r1.agentMessage.usage?.providerUsage.observable, true);
     assert.equal(r1.agentMessage.usage?.providerUsage.inputTokens, 160);

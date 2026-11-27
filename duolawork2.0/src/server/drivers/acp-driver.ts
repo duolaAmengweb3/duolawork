@@ -182,9 +182,18 @@ export class AcpStdioDriver implements AgentDriver {
 
       this.activeClients.set(input.attemptId, { rpc, sessionId });
 
+      let receivingThought = false;
       const onNotif = (method: string, params: Record<string, any>) => {
         if (method !== 'session/update' || params.sessionId !== sessionId) return;
         const upd = params.update;
+        if (upd?.sessionUpdate === 'agent_thought_chunk') {
+          if (!receivingThought) onEvent?.({ kind: 'activity', phase: 'thinking' });
+          receivingThought = true;
+          return;
+        }
+        if (upd?.sessionUpdate === 'agent_message_chunk' || upd?.sessionUpdate === 'tool_call' || upd?.sessionUpdate === 'tool_call_update') {
+          receivingThought = false;
+        }
         if (upd?.sessionUpdate === 'agent_message_chunk' && upd.content?.type === 'text') {
           const chunk = String(upd.content.text || '');
           text += chunk;

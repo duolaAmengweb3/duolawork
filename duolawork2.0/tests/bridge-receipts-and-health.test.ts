@@ -63,7 +63,14 @@ test('reconciliation in a shared channel attributes interleaved and paged replie
       page = { activity: turns, messages: [request, foreignReply, { id: 'a', authorId: 'receiver', body: 'response A', ...correlation }] };
       assert.equal((await reconcile('A')).text, 'response A');
     }
-    olderPage = page;
+    const replyPage = page;
+    for (const [status, expected] of [['queued', 'queued'], ['running', 'executing'], ['claimed', 'executing']]) {
+      page = { messages: [request], activity: [{ ...turns[0], status }, turns[1]] };
+      assert.equal((await reconcile('A')).activity, expected);
+    }
+    page = { messages: [request], activity: [turns[1]] };
+    assert.equal((await reconcile('A')).activity, 'waiting_reply');
+    olderPage = replyPage;
     page = { before: 20, messages: [foreignReply], activity: turns };
     assert.equal((await reconcile('A')).text, 'response A');
     page = { activity: [{...turns[0], status:'failed'}], messages: [request, foreignReply] };
