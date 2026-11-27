@@ -1029,11 +1029,15 @@ test('DW2-14: T3 Portable Handoffs (First-Prompt Anchor, tool trails, capability
     });
     app.threads.switchOwner(thread.id, grok4.id);
     app.threads.switchOwner(thread.id, gemVps.id);
-    app.threads.switchOwner(thread.id, codex.id);
     const msgsAfterSwitch = app.threads.listMessages(thread.id);
     const switchNotices = msgsAfterSwitch.filter((m) => m.authorKind === 'switch_notice');
     assert.equal(switchNotices.length, 1, 'Consecutive switches update in place to strictly 1 notice');
-    assert.match(switchNotices[0].body, /已切换至 Codex/);
+    assert.equal(switchNotices[0].handoffMeta?.fromMemberId, codex.id);
+    assert.equal(switchNotices[0].handoffMeta?.toMemberId, gemVps.id);
+    app.threads.switchOwner(thread.id, codex.id);
+    assert.equal(app.threads.listMessages(thread.id).length, 0, 'Returning before sending cancels the pending transfer');
+    assert.equal(app.threads.previewPendingHandoff(thread.id).meta.fromMemberId, null);
+    app.threads.switchOwner(thread.id, grok4.id);
 
     // 3. Seed 40 messages (> 12 KiB) where first user goal & toolTrace exist on Codex
     const sampleMsgs = [];
@@ -1174,6 +1178,7 @@ test('DW2-16: Audit #1 late-arriving conclusion after owner switch is caught up 
     });
     assert.match(capturedCodexPrompts[1], /\[#2 Gemini2VPS\] \[迟到回复补交\] Gemini迟到结论：最终定案采用 scheme_beta/);
     assert.deepEqual(turn3.agentMessage.handoffMeta?.lateArrivalSeqs, [2]);
+    assert.equal(app.threads.previewPendingHandoff(thread.id).meta.fromMemberId, null, 'A settled switch cannot become the source of a later turn');
 
     // 5. Turn 4 to Codex MUST NOT repeat seq=2!
     await app.threads.sendUserMessage({

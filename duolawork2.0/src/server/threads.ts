@@ -59,6 +59,13 @@ export interface StructuredActionHandler {
   ) => string;
 }
 
+function pendingOwnerSwitch(messages: ThreadMessageRecord[], targetMemberId: string) {
+  const latest = messages.findLast((m) => m.authorKind === 'switch_notice');
+  return latest?.handoffMeta?.status === 'pending' && latest.handoffMeta.toMemberId === targetMemberId
+    ? latest
+    : null;
+}
+
 export class ThreadEngine {
   private readonly listeners = new Set<ServerEventListener>();
   public space?: SpaceStore;
@@ -304,11 +311,12 @@ export class ThreadEngine {
       }
     }
 
-    if (latest?.author_kind === 'switch_notice' && existingMeta?.status !== 'delivered') {
-      const preservedFromId =
-        existingMeta?.fromMemberId && existingMeta.fromMemberId !== nextOwnerMemberId
-          ? existingMeta.fromMemberId
-          : previousOwnerId;
+    if (latest?.author_kind === 'switch_notice' && existingMeta?.status === 'pending' &&
+        existingMeta.fromMemberId === nextOwnerMemberId) {
+      // No turn was sent to an intermediate owner. Withdraw the outstanding handoff.
+      this.db.sqlite.prepare('DELETE FROM v2_thread_messages WHERE id = ?').run(latest.id);
+    } else if (latest?.author_kind === 'switch_notice' && existingMeta?.status !== 'delivered') {
+      const preservedFromId = existingMeta?.fromMemberId ?? previousOwnerId;
       const pendingMeta: HandoffNoticeMeta = {
         status: 'pending',
         fromMemberId: preservedFromId,
@@ -764,22 +772,7 @@ export class ThreadEngine {
     const canReadHistoryTool =
       effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock';
 
-    let pendingSwitchNotice: ThreadMessageRecord | null = null;
-    let lastAgentBeforeTurn: ThreadMessageRecord | null = null;
-    for (let i = priorMessages.length - 1; i >= 0; i--) {
-      const m = priorMessages[i];
-      if (!pendingSwitchNotice && m.authorKind === 'switch_notice' && m.handoffMeta?.status !== 'delivered') {
-        if (!m.handoffMeta?.toMemberId || m.handoffMeta.toMemberId === targetMember.id) {
-          pendingSwitchNotice = m;
-        }
-      }
-      if (!lastAgentBeforeTurn && m.authorKind === 'agent' && m.authorId !== targetMember.id) {
-        lastAgentBeforeTurn = m;
-      }
-      if (pendingSwitchNotice && lastAgentBeforeTurn) break;
-    }
-    const inferredFromMemberId =
-      pendingSwitchNotice?.handoffMeta?.fromMemberId ?? lastAgentBeforeTurn?.authorId ?? null;
+    const pendingSwitchNotice = pendingOwnerSwitch(priorMessages, targetMember.id);
 
     const protocolVersion = this.getProtocolVersion();
     const cursor = this.handoff.getCursor(thread.id, targetMember.id);
@@ -790,7 +783,7 @@ export class ThreadEngine {
       this.handoff.buildPromptWithBoundedHandoff({
         threadId: thread.id,
         targetMemberId: targetMember.id,
-        fromMemberId: inferredFromMemberId,
+        fromMemberId: pendingSwitchNotice?.handoffMeta?.fromMemberId ?? null,
         currentUserSeq: userMsg.seq,
         currentUserBody: cleanBody,
         priorMessages,
@@ -1109,25 +1102,19 @@ export class ThreadEngine {
             ? 'session_reset'
             : effectivePacket.lateArrivalSeqs.length > 0
               ? 'late_arrival'
-              : pendingSwitchNotice
-                ? 'member_switch'
-                : effectivePacket.meta.reason;
+              : effectivePacket.meta.reason;
 
         const deliveredMeta: HandoffNoticeMeta = {
           ...effectivePacket.meta,
           status: 'delivered',
-          fromMemberId:
-            pendingSwitchNotice?.handoffMeta?.fromMemberId ??
-            inferredFromMemberId ??
-            effectivePacket.meta.fromMemberId ??
-            null,
-          reason: deliveredReason,
+          reason: pendingSwitchNotice ? 'member_switch' : deliveredReason,
           deliveredAt: now
         };
 
         if (pendingSwitchNotice) {
           this.db.sqlite
-            .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
+            .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ?
+                      WHERE id = ? AND json_extract(handoff_meta_json, '$.status') = 'pending'`)
             .run(JSON.stringify(deliveredMeta), now, pendingSwitchNotice.id);
           const updatedNotice = this.getMessage(pendingSwitchNotice.id);
           if (updatedNotice) {
@@ -1465,18 +1452,7 @@ export class ThreadEngine {
     const canReadHistoryTool =
       effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock';
 
-    let pendingFrom: string | null = null;
-    for (let i = priorMessages.length - 1; i >= 0; i--) {
-      const m = priorMessages[i];
-      if (!pendingFrom && m.authorKind === 'switch_notice' && m.handoffMeta?.fromMemberId) {
-        pendingFrom = m.handoffMeta.fromMemberId;
-        break;
-      }
-      if (!pendingFrom && m.authorKind === 'agent' && m.authorId !== targetMemberId) {
-        pendingFrom = m.authorId;
-        break;
-      }
-    }
+    const pendingFrom = pendingOwnerSwitch(priorMessages, targetMemberId)?.handoffMeta?.fromMemberId ?? null;
 
     const nextSeq = (priorMessages[priorMessages.length - 1]?.seq ?? 0) + 1;
     const packet = this.handoff.buildPromptWithBoundedHandoff({

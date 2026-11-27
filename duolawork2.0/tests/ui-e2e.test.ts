@@ -5,6 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import type { HandoffNoticeMeta } from '../src/shared/types.js';
 import { DuolaWorkApp } from '../src/server/app.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -289,6 +290,28 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     const scheme = await page.evaluate(() => document.documentElement.style.colorScheme);
     assert.equal(scheme, 'dark', 'Dark mode sets root colorScheme=dark');
     await page.screenshot({ path: path.join(evidenceDir, 'workbench-dark.png') });
+
+    // Previously saved diagnostics may claim an unrelated sender. Check persisted rows as the UI sees them.
+    const historyReply = (authorId: string, body: string, handoffMeta?: HandoffNoticeMeta) =>
+      app.threads.appendSystemMessage({ threadId: threadB.id, authorKind: 'agent', authorId, body, handoffMeta });
+    const oldMeta = { status: 'delivered' as const, fromMemberId: 'mem_gemini', toMemberId: 'mem_codex' };
+    const own = historyReply('mem_codex', '同成员会话已恢复', { ...oldMeta, reason: 'session_reset' });
+    historyReply('mem_codex', '已读回自己的历史', {
+      ...oldMeta, reason: 'late_arrival', lateArrivalSeqs: [own.seq], includedFromSeq: own.seq, includedToSeq: own.seq
+    });
+    const foreign = historyReply('mem_gemini', '前一位成员返回了补充结果');
+    historyReply('mem_codex', '已收到另一位成员的补充', {
+      ...oldMeta, fromMemberId: 'unrelated-member', reason: 'late_arrival',
+      lateArrivalSeqs: [own.seq, foreign.seq], includedFromSeq: own.seq, includedToSeq: foreign.seq
+    });
+    await page.getByText('已收到另一位成员的补充', { exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: /每日早晚报选题/ }).first().click();
+    await page.getByText('已读回自己的历史', { exact: true }).waitFor();
+    const dividers = page.locator('.messages-scroll .handoff-divider-pill');
+    assert.equal(await dividers.count(), 2, 'Only the owner switch and the real cross-agent late result are shown');
+    assert.match(await dividers.nth(0).innerText(), /上下文已交接[\s\S]*Gemini2VPS[\s\S]*Codex/);
+    assert.match(await dividers.nth(1).innerText(), /已补交跨成员回复[\s\S]*Gemini2VPS[\s\S]*Codex[\s\S]*1 条/);
 
     assert.ok(threadA.id !== threadB.id);
     await context.close();

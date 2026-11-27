@@ -541,6 +541,30 @@ export function App(): React.JSX.Element {
     [messagesThreadId, activeThreadId, messages]
   );
 
+  // Historical replies can contain internal sync diagnostics with a guessed sender.
+  // Only attribute a supplemental delivery to the authors of replies actually included.
+  const crossAgentLateReplies = useMemo(() => {
+    const bySeq = new Map(visibleMessages.map((m) => [m.seq, m]));
+    const deliveries = new Map<string, ThreadMessageRecord[]>();
+    for (const reply of visibleMessages) {
+      const meta = reply.handoffMeta;
+      if (reply.authorKind !== 'agent' || reply.authorId !== meta?.toMemberId ||
+          meta.status !== 'delivered' || meta.reason !== 'late_arrival') {
+        continue;
+      }
+      const included: ThreadMessageRecord[] = [];
+      for (const seq of meta.lateArrivalSeqs ?? []) {
+        const source = bySeq.get(seq);
+        if (seq >= (meta.includedFromSeq ?? Infinity) && seq <= (meta.includedToSeq ?? -Infinity) &&
+            source?.authorKind === 'agent' && source.authorId !== reply.authorId) {
+          included.push(source);
+        }
+      }
+      if (included.length) deliveries.set(reply.id, included);
+    }
+    return deliveries;
+  }, [visibleMessages]);
+
   useEffect(() => {
     if (viewMode !== 'thread' || !messagesScrollRef.current) return;
     const el = messagesScrollRef.current;
@@ -1894,11 +1918,14 @@ export function App(): React.JSX.Element {
     setTimeout(() => setCopiedHandoffId((cur) => (cur === keyId ? null : cur)), 2000);
   }, []);
 
-  const renderHandoffDivider = (keyId: string, meta: HandoffNoticeMeta) => {
+  const renderHandoffDivider = (keyId: string, meta: HandoffNoticeMeta, lateReplies?: ThreadMessageRecord[]) => {
     const isPending = meta.status === 'pending';
     const loadedPending = isPending ? pendingHandoffPreviews[keyId] : undefined;
     const detailMeta = loadedPending?.meta ?? meta;
-    const fromMember = detailMeta.fromMemberId ? memberById.get(detailMeta.fromMemberId) : undefined;
+    const sourceIds = lateReplies
+      ? [...new Set(lateReplies.map((reply) => reply.authorId))]
+      : meta.fromMemberId ? [meta.fromMemberId] : [];
+    const lateSeqs = lateReplies?.map((reply) => reply.seq) ?? detailMeta.lateArrivalSeqs ?? [];
     const toMember = memberById.get(detailMeta.toMemberId);
     const expanded = Boolean(expandedHandoffIds[keyId]);
 
@@ -1910,14 +1937,10 @@ export function App(): React.JSX.Element {
 
     const statusLabel = isPending
       ? '上下文交接待处理'
-      : detailMeta.reason === 'session_reset'
-        ? '会话重建已补传上下文'
-        : detailMeta.reason === 'late_arrival'
-          ? '已补交迟到回复上下文'
-          : '上下文已交接';
+      : lateReplies ? '已补交跨成员回复' : '上下文已交接';
 
-    const statsSummary =
-      detailMeta.handoffBytes !== undefined
+    const statsSummary = lateReplies ? `· ${lateReplies.length} 条`
+      : detailMeta.handoffBytes !== undefined
         ? `· ${detailMeta.strategy === 'full_thread_summary' ? '完整' : '增量'} · ${detailMeta.includedCount ?? 0} 条 · ${fmtSize(detailMeta.handoffBytes)}`
         : isPending
           ? '· 点击预览'
@@ -1940,20 +1963,16 @@ export function App(): React.JSX.Element {
           >
             <ArrowLeftRight size={13} className="handoff-icon" />
             <span className="handoff-status-text">{statusLabel}</span>
-            {fromMember && (
-              <>
-                <span className="handoff-member-chip">
-                  <AgentAvatar
-                    small
-                    id={fromMember.id}
-                    name={fromMember.name}
-                    platformId={fromMember.platformId}
-                  />
-                  <span>{fromMember.name}</span>
+            {sourceIds.map((id) => {
+              const member = memberById.get(id);
+              return (
+                <span key={id} className="handoff-member-chip">
+                  <AgentAvatar small id={id} name={member?.name ?? id} platformId={member?.platformId} />
+                  <span>{member?.name ?? id}</span>
                 </span>
-                <span className="handoff-arrow" aria-hidden="true">→</span>
-              </>
-            )}
+              );
+            })}
+            {sourceIds.length > 0 && <span className="handoff-arrow" aria-hidden="true">→</span>}
             <span className="handoff-member-chip handoff-member-target">
               <AgentAvatar
                 small
@@ -1983,13 +2002,7 @@ export function App(): React.JSX.Element {
                       {detailMeta.strategy === 'full_thread_summary' ? '完整上下文模式' : '增量同步模式'}
                     </span>
                     <span className="handoff-badge is-subtle">
-                      {detailMeta.reason === 'session_reset'
-                        ? '原生会话重置兜底'
-                        : detailMeta.reason === 'late_arrival'
-                          ? '并发迟到回复补交'
-                          : detailMeta.reason === 'first_contact'
-                            ? '首次接入交接'
-                            : '成员切换交接'}
+                      {lateReplies ? '跨成员补交' : '成员切换交接'}
                     </span>
                     {isPending && <span className="handoff-badge is-pending">待发送下条消息时触发</span>}
                   </div>
@@ -2038,9 +2051,9 @@ export function App(): React.JSX.Element {
                       超长保留首尾 (#{detailMeta.truncatedSeqs!.join(', #')})
                     </span>
                   )}
-                  {(detailMeta.lateArrivalSeqs?.length ?? 0) > 0 && (
+                  {lateSeqs.length > 0 && (
                     <span className="handoff-chip is-accent">
-                      补交迟到回复 (#{detailMeta.lateArrivalSeqs!.join(', #')})
+                      补交迟到回复 (#{lateSeqs.join(', #')})
                     </span>
                   )}
                 </div>
@@ -2772,7 +2785,8 @@ export function App(): React.JSX.Element {
                     visibleMessages.map((m) => {
                       if (m.authorKind === 'switch_notice') {
                         if (m.handoffMeta) {
-                          return renderHandoffDivider(m.id, m.handoffMeta);
+                          return m.handoffMeta.fromMemberId === m.handoffMeta.toMemberId
+                            ? null : renderHandoffDivider(m.id, m.handoffMeta);
                         }
                         const legacyTargetName = m.body.replace(/^已切换至\s*/, '').trim();
                         const legacyMember = members.find((mem) => mem.name === legacyTargetName);
@@ -2881,6 +2895,7 @@ export function App(): React.JSX.Element {
                         );
                       }
 
+                      const lateReplies = crossAgentLateReplies.get(m.id);
                       const isUser = m.authorKind === 'user';
                       const authorMember = !isUser ? memberById.get(m.authorId) : undefined;
                       const senderName = isUser ? '你' : authorMember?.name || m.authorId;
@@ -2891,7 +2906,7 @@ export function App(): React.JSX.Element {
 
                       return (
                         <React.Fragment key={m.id}>
-                          {!isUser && m.handoffMeta && renderHandoffDivider(`${m.id}-handoff`, m.handoffMeta)}
+                          {lateReplies && m.handoffMeta && renderHandoffDivider(`${m.id}-handoff`, m.handoffMeta, lateReplies)}
                           <article
                             className={`chat-message ${isUser ? 'owner-message' : ''}`}
                           >
