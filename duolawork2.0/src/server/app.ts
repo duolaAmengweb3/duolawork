@@ -83,6 +83,8 @@ export class DuolaWorkApp {
     updatedAt: null
   };
   private legacySyncStarted = false;
+  private legacyHealthTimer: NodeJS.Timeout | null = null;
+  private legacySyncInFlight: Promise<number> | null = null;
   private legacyMembersSyncPromise: Promise<number> | null = null;
   private externalMcpCaller?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
   private httpServer: http.Server | null = null;
@@ -340,26 +342,52 @@ export class DuolaWorkApp {
    * Read-only sync of ALL non-ClaudeVPS members from the remote 1.9.6 Hub `/v2/workspace`,
    * preserving local T3-style Coding Agents (`Codex`, `Claude`, `Gemini (本机)`) and `Gemini2VPS` `native-runtime`.
    */
-  public async syncLegacyWorkspaceMembersReadOnly(): Promise<number> {
+  public async syncLegacyWorkspaceMembersReadOnly(healthOnly = false): Promise<number> {
+    if (this.legacySyncInFlight) {
+      if (healthOnly) return this.legacySyncInFlight;
+      await this.legacySyncInFlight;
+      return this.syncLegacyWorkspaceMembersReadOnly();
+    }
+    this.legacySyncInFlight = this.readLegacyWorkspace(healthOnly);
+    try {
+      return await this.legacySyncInFlight;
+    } finally {
+      this.legacySyncInFlight = null;
+    }
+  }
+
+  private markUnavailableHubMembers(ids: Set<string>, message: string): number {
+    let changed = 0;
+    for (const member of this.db.listMembers()) {
+      if (member.driverKind !== 'remote-bridge' || member.config.remoteMode !== 'hub-channel' || ids.has(member.id)) continue;
+      if (member.status === 'offline' && member.statusMessage === message) continue;
+      this.db.upsertMember({ ...member, status: 'offline', statusMessage: message, updatedAt: new Date().toISOString() });
+      changed++;
+    }
+    return changed;
+  }
+
+  private async readLegacyWorkspace(healthOnly: boolean): Promise<number> {
     if (!this.autoImportAgentHub) return 0;
     const creds = this.loadHubCredentialsReadOnly();
-    if (!creds) return 0;
+
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
+      if (!creds) throw new Error('缺少 Hub 连接配置');
       const res = await fetch(`${creds.endpoint}/v2/workspace`, {
         headers: { Authorization: `Bearer ${creds.adminKey}` },
         signal: controller.signal
       });
-      if (!res.ok) return 0;
+      if (!res.ok) throw new Error('Hub 状态读取失败');
       const ws = (await res.json()) as {
         members?: Array<Record<string, any>>;
         connections?: Array<Record<string, any>>;
         accounts?: Array<Record<string, any>>;
       };
       const remoteMembers = Array.isArray(ws.members) ? ws.members : [];
-      if (remoteMembers.length === 0) return 0;
+      if (!Array.isArray(ws.members) || !Array.isArray(ws.connections)) throw new Error('Hub 状态不完整');
 
       const connById = new Map<string, Record<string, any>>();
       for (const c of ws.connections ?? []) {
@@ -410,6 +438,7 @@ export class DuolaWorkApp {
           }
 
           const existing = this.db.getMember(id);
+          if (healthOnly && (existing?.driverKind !== 'remote-bridge' || existing.config.remoteMode !== 'hub-channel')) continue;
           // Preserve remote-node Execution Node runners & pure local T3-style Coding Agents without overwriting their drivers!
           if (
             existing &&
@@ -457,6 +486,14 @@ export class DuolaWorkApp {
           const status = evaluated.status === 'busy' ? 'ready' : evaluated.status;
           const statusMessage = evaluated.message;
 
+          if (healthOnly && existing) {
+            if (existing.status !== status || existing.statusMessage !== statusMessage) {
+              this.db.upsertMember({ ...existing, status, statusMessage, updatedAt: new Date().toISOString() });
+              synced++;
+            }
+            continue;
+          }
+
           this.db.upsertMember({
             id,
             name,
@@ -482,11 +519,14 @@ export class DuolaWorkApp {
         }
       });
 
+      synced += this.markUnavailableHubMembers(new Set(remoteMembers.map((m) => m.id)), 'Hub 已无该成员');
       if (synced > 0) {
         this.threads.emit({ type: 'thread.members_refreshed', payload: this.db.listMembers() });
       }
       return synced;
     } catch {
+      const changed = this.markUnavailableHubMembers(new Set(), '暂时无法从 Hub 确认接收状态');
+      if (changed) this.threads.emit({ type: 'thread.members_refreshed', payload: this.db.listMembers() });
       return 0;
     } finally {
       clearTimeout(timer);
@@ -745,7 +785,10 @@ export class DuolaWorkApp {
       this.reconcileInProgress = true;
       void this.registry
         .reconcileInFlightAttempts({ waitTimeoutMs: 0 })
-        .then(async () => {
+        .then(async (results) => {
+          for (const { attempt, outcome } of results) {
+            if (outcome === 'waiting_for_receipt' && attempt.targetKind === 'thread_message') this.threads.markWaitingForReceipt(attempt.targetId);
+          }
           this.threads.syncReconciledThreadTurns();
           await this.tasks.reconcileInFlightTaskRuns();
         })
@@ -762,6 +805,10 @@ export class DuolaWorkApp {
     if (this.autoImportAgentHub && !this.legacySyncStarted) {
       this.legacySyncStarted = true;
       this.legacyMembersSyncPromise = this.syncLegacyWorkspaceMembersReadOnly();
+      this.legacyHealthTimer = setInterval(() => {
+        void this.syncLegacyWorkspaceMembersReadOnly(true);
+      }, 15000);
+      this.legacyHealthTimer.unref();
       void this.syncLegacyArchivesReadOnly();
     }
     const addr = server.address();
@@ -770,6 +817,8 @@ export class DuolaWorkApp {
   }
 
   public async close(): Promise<void> {
+    if (this.legacyHealthTimer) clearInterval(this.legacyHealthTimer);
+    await this.legacySyncInFlight;
     if (this.reconcileTimer) {
       clearInterval(this.reconcileTimer);
       this.reconcileTimer = null;
@@ -1355,7 +1404,11 @@ export class DuolaWorkApp {
           .all() as Record<string, unknown>[];
 
         const summaryMap = new Map<string, MemberUsageSummary>();
+        const latestDispatch = this.db.sqlite.prepare(
+          `SELECT status, dispatched_at FROM v2_dispatch_attempts WHERE member_id = ? ORDER BY dispatched_at DESC, rowid DESC LIMIT 1`
+        );
         for (const m of members) {
+          const latest = latestDispatch.get(m.id) as { status: MemberUsageSummary['lastDispatchStatus']; dispatched_at: string } | undefined;
           summaryMap.set(m.id, {
             memberId: m.id,
             workbenchDispatches: 0,
@@ -1364,7 +1417,8 @@ export class DuolaWorkApp {
             cachedInputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
-            lastActiveAt: null
+            lastDispatchStatus: latest?.status ?? null,
+            lastActiveAt: latest?.dispatched_at ?? null
           });
         }
 

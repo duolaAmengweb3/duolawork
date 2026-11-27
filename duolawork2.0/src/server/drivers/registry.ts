@@ -735,7 +735,7 @@ export class DriverRegistry {
           this.db.sqlite
             .prepare(`UPDATE v2_dispatch_attempts SET status = 'reconciling', slot_held = 0 WHERE id = ?`)
             .run(att.id);
-          results.push({ attempt: this.getAttempt(att.id)!, outcome: rec.state });
+          results.push({ attempt: this.getAttempt(att.id)!, outcome: rec.waitingForReceipt ? 'waiting_for_receipt' : rec.state });
         }
       }
     }

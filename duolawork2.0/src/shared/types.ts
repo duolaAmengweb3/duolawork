@@ -564,6 +564,7 @@ export interface MaterialContextResult {
 }
 
 export interface MemberUsageSummary {
+  lastDispatchStatus: DispatchAttemptStatus | null;
   memberId: string;
   workbenchDispatches: number;
   nativeTurns: number;

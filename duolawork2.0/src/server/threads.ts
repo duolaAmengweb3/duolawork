@@ -953,7 +953,9 @@ export class ThreadEngine {
           return this.actionHandler.executeTool(claims, toolName, args);
         },
         onEvent: (ev) => {
-          if (ev.kind === 'delta' && ev.text) {
+          if (ev.kind === 'waiting_for_receipt') {
+            this.markWaitingForReceipt(placeholderAgentMsg.id);
+          } else if (ev.kind === 'delta' && ev.text) {
             this.emit({
               type: 'thread.delta',
               threadId: thread.id,
@@ -1147,6 +1149,17 @@ export class ThreadEngine {
       throw err;
     } finally {
       this.sandbox.revokeToken(claims.token);
+    }
+  }
+
+  public markWaitingForReceipt(messageId: string): void {
+    const changed = this.db.sqlite.prepare(
+      `UPDATE v2_thread_messages SET body = '执行结束，等待回执', updated_at = ?
+       WHERE id = ? AND turn_status = 'running' AND body = ''`
+    ).run(new Date().toISOString(), messageId);
+    if (changed.changes) {
+      const message = this.getMessage(messageId)!;
+      this.emit({ type: 'thread.message_updated', threadId: message.threadId, payload: message });
     }
   }
 

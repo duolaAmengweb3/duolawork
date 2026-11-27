@@ -120,7 +120,7 @@ export interface EnsuredSession {
 }
 
 export interface TurnStreamEvent {
-  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta';
+  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt';
   text?: string;
   toolId?: string;
   toolName?: string;
@@ -155,6 +155,7 @@ export interface TurnExecutionResult {
 }
 
 export interface ReconcileResult {
+  waitingForReceipt?: boolean;
   state: 'completed' | 'still_running' | 'not_found' | 'failed';
   text?: string;
   nativeSessionId?: string | null;
