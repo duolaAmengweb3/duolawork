@@ -258,6 +258,7 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
       outboxPath,
       mockDriver: nodeMockDriver,
       members: [
+        { id: 'member_waiting_for_auth', name: 'Awaiting login', platformId: 'fixture', localDriverKind: 'mock', status: 'ready' },
         {
           id: 'mem_remote_node_agent',
           name: 'RemotePersonalAgent',
@@ -350,6 +351,7 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     const settledRun = app.tasks.getRun(runs[0].id)!;
     assert.equal(settledRun.status, 'completed');
 
+    app.db.upsertMember({ ...app.db.getMember('member_waiting_for_auth')!, status: 'auth_required', statusMessage: '需要重新登录' });
     // 6. Offline node guard + Outbox reconnect replay (zero lost reply, zero duplicate LLM call!)
     runner.stop();
     await new Promise((r) => setTimeout(r, 80));
@@ -407,6 +409,7 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
       outboxPath,
       mockDriver: nodeMockDriver,
       members: [
+        { id: 'member_waiting_for_auth', name: 'Awaiting login', platformId: 'fixture', localDriverKind: 'mock', status: 'ready' },
         {
           id: 'mem_remote_node_agent',
           name: 'RemotePersonalAgent',
@@ -418,6 +421,8 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     await runner.start();
     await new Promise((r) => setTimeout(r, 120));
 
+    assert.equal(app.db.getMember('member_waiting_for_auth')?.status, 'auth_required');
+    assert.equal(app.db.getMember('member_waiting_for_auth')?.statusMessage, '需要重新登录');
     const recoveredMsg = app.threads.getMessage(replayMsgId)!;
     assert.equal(recoveredMsg.turnStatus, 'completed');
     assert.equal(recoveredMsg.body, '断线重连后由本地 Outbox 自动补交的完整答复');
