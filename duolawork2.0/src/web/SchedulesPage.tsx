@@ -16,8 +16,9 @@ import { AgentAvatar } from './AgentAvatar.js';
 import { Badge } from './components/ui/badge.js';
 import { Button } from './components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
-import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
+import { Frame, FrameFooter, FrameHeader, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
+import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 import { Tracker, type TrackerBlockProps } from './components/ui/tremor.js';
 import { formatCronHuman } from './lib/format.js';
@@ -343,6 +344,9 @@ export function SchedulesPage({
 
   const scheduledGroup = filtered.filter((t) => t.kind === 'scheduled');
   const onceGroup = filtered.filter((t) => t.kind !== 'scheduled');
+  const scheduledPager = usePagination(scheduledGroup, 6, `${filter}:${query}`);
+  const oncePager = usePagination(onceGroup, 6, `${filter}:${query}`);
+  const filteredPager = usePagination(filtered, 10, `${filter}:${query}`);
 
   return (
     <section className="h-full w-full overflow-y-auto bg-background text-foreground">
@@ -431,9 +435,21 @@ export function SchedulesPage({
                   {scheduledGroup.length} 项
                 </span>
               </FrameHeader>
-              <FramePanel className="overflow-hidden p-0">
-                <div className="divide-y divide-border">{scheduledGroup.map(renderTaskRow)}</div>
+              <FramePanel className="max-h-[440px] overflow-y-auto p-0 coss-scroll">
+                <div className="divide-y divide-border">{scheduledPager.pageItems.map(renderTaskRow)}</div>
               </FramePanel>
+              {scheduledPager.totalPages > 1 && (
+                <FrameFooter>
+                  <PaginationBar
+                    page={scheduledPager.page}
+                    totalPages={scheduledPager.totalPages}
+                    startIndex={scheduledPager.startIndex}
+                    endIndex={scheduledPager.endIndex}
+                    total={scheduledPager.total}
+                    onPageChange={scheduledPager.setPage}
+                  />
+                </FrameFooter>
+              )}
             </Frame>
 
             <Frame>
@@ -445,16 +461,40 @@ export function SchedulesPage({
                   {onceGroup.length} 项
                 </span>
               </FrameHeader>
-              <FramePanel className="overflow-hidden p-0">
-                <div className="divide-y divide-border">{onceGroup.map(renderTaskRow)}</div>
+              <FramePanel className="max-h-[440px] overflow-y-auto p-0 coss-scroll">
+                <div className="divide-y divide-border">{oncePager.pageItems.map(renderTaskRow)}</div>
               </FramePanel>
+              {oncePager.totalPages > 1 && (
+                <FrameFooter>
+                  <PaginationBar
+                    page={oncePager.page}
+                    totalPages={oncePager.totalPages}
+                    startIndex={oncePager.startIndex}
+                    endIndex={oncePager.endIndex}
+                    total={oncePager.total}
+                    onPageChange={oncePager.setPage}
+                  />
+                </FrameFooter>
+              )}
             </Frame>
           </div>
         ) : (
           <Frame>
-            <FramePanel className="overflow-hidden p-0">
-              <div className="divide-y divide-border">{filtered.map(renderTaskRow)}</div>
+            <FramePanel className="max-h-[560px] overflow-y-auto p-0 coss-scroll">
+              <div className="divide-y divide-border">{filteredPager.pageItems.map(renderTaskRow)}</div>
             </FramePanel>
+            {filteredPager.totalPages > 1 && (
+              <FrameFooter>
+                <PaginationBar
+                  page={filteredPager.page}
+                  totalPages={filteredPager.totalPages}
+                  startIndex={filteredPager.startIndex}
+                  endIndex={filteredPager.endIndex}
+                  total={filteredPager.total}
+                  onPageChange={filteredPager.setPage}
+                />
+              </FrameFooter>
+            )}
           </Frame>
         )}
       </div>

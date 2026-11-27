@@ -29,8 +29,9 @@ import { AgentAvatar } from './AgentAvatar.js';
 import { Badge } from './components/ui/badge.js';
 import { Button } from './components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
-import { Frame, FrameDescription, FrameHeader, FramePanel, FrameTitle } from './components/ui/frame.js';
+import { Frame, FrameDescription, FrameFooter, FrameHeader, FramePanel, FrameTitle } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
+import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 import { CategoryBar, UsageProportionBar } from './components/ui/tremor.js';
 import { formatCompactTokens } from './lib/format.js';
@@ -332,6 +333,8 @@ export function MembersUsagePage({
   });
 
   const attentionCount = members.length - readyCount;
+  const membersPager = usePagination(visibleMembers, 6, `${statusFilter}:${query}`);
+  const recentPager = usePagination(recent, 8);
 
   return (
     <section className="h-full w-full overflow-y-auto bg-background text-foreground">
@@ -649,7 +652,7 @@ export function MembersUsagePage({
                   <span className="text-right">操作</span>
                 </div>
 
-                {visibleMembers.map((m, idx) => {
+                {membersPager.pageItems.map((m, idx) => {
                   const sum = summaries[m.id];
                   const isReady = m.status === 'ready';
                   const isAuth = m.status === 'auth_required';
@@ -754,6 +757,18 @@ export function MembersUsagePage({
               </div>
             )}
           </FramePanel>
+          {membersPager.totalPages > 1 && (
+            <FrameFooter>
+              <PaginationBar
+                page={membersPager.page}
+                totalPages={membersPager.totalPages}
+                startIndex={membersPager.startIndex}
+                endIndex={membersPager.endIndex}
+                total={membersPager.total}
+                onPageChange={membersPager.setPage}
+              />
+            </FrameFooter>
+          )}
         </Frame>
 
         {/* Execution Nodes & Cross-Device Sessions */}
@@ -817,7 +832,7 @@ export function MembersUsagePage({
                   暂无已配对的执行节点，点击右上角按钮生成配对码即可接入。
                 </div>
               ) : (
-                <div className="divide-y divide-border">
+                <div className="max-h-[260px] divide-y divide-border overflow-y-auto coss-scroll">
                   {nodes.map((n) => (
                     <div key={n.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
@@ -899,7 +914,7 @@ export function MembersUsagePage({
                     暂无其他活跃设备会话。
                   </div>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="max-h-[260px] divide-y divide-border overflow-y-auto coss-scroll">
                     {sessions.map((s) => (
                       <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                         <div className="min-w-0">
@@ -950,14 +965,14 @@ export function MembersUsagePage({
             </Badge>
           </FrameHeader>
 
-          <FramePanel className="overflow-x-auto p-0">
+          <FramePanel className="max-h-[420px] overflow-auto p-0 coss-scroll">
             {recent.length === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-muted-foreground">
                 暂无调用流水，发送一条对话或执行任务后此处将记录实时调度耗费。
               </div>
             ) : (
               <table className="members-table w-full border-collapse text-left text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
                   <tr className="border-b border-border bg-muted/40 text-[11px] font-medium text-muted-foreground">
                     <th className="px-4 py-2.5 font-medium">执行成员</th>
                     <th className="px-4 py-2.5 font-medium">调用类型</th>
@@ -967,7 +982,7 @@ export function MembersUsagePage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {recent.map((r) => {
+                  {recentPager.pageItems.map((r) => {
                     const memName = members.find((m) => m.id === r.memberId)?.name || r.memberId;
                     const kindText = ATTEMPT_KIND_LABELS[r.targetKind] || r.targetKind;
                     const statusText = ATTEMPT_STATUS_LABELS[r.status] || r.status;
@@ -1014,6 +1029,18 @@ export function MembersUsagePage({
               </table>
             )}
           </FramePanel>
+          {recentPager.totalPages > 1 && (
+            <FrameFooter>
+              <PaginationBar
+                page={recentPager.page}
+                totalPages={recentPager.totalPages}
+                startIndex={recentPager.startIndex}
+                endIndex={recentPager.endIndex}
+                total={recentPager.total}
+                onPageChange={recentPager.setPage}
+              />
+            </FrameFooter>
+          )}
         </Frame>
       </div>
     </section>

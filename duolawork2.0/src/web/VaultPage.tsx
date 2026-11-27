@@ -22,9 +22,10 @@ import { hasServiceIcon, ServiceIcon } from './ServiceIcon.js';
 import { Badge } from './components/ui/badge.js';
 import { Button } from './components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
-import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
+import { Frame, FrameFooter, FrameHeader, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from './components/ui/menu.js';
+import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 
 interface VaultItem {
@@ -112,6 +113,7 @@ export function VaultPage({
   const url = '/api/v2/duolabase/vault?' + qs.toString();
   const { data, read } = useViewData<{ items?: VaultItem[] } | VaultItem[]>(url, 30000, enabled);
   const items = Array.isArray(data) ? data : data?.items ?? [];
+  const vaultPager = usePagination(items, 7, `${statusFilter}:${query}:${projectFilter}`);
 
   const loadVault = async () => {
     views.expire('/api/v2/duolabase/vault');
@@ -584,7 +586,7 @@ export function VaultPage({
                   <span className="text-right">生命周期</span>
                 </div>
 
-                {items.map((item) => {
+                {vaultPager.pageItems.map((item) => {
                   const normalizedFields = normalizeVaultFields(item);
                   const firstRef = normalizedFields[0]?.reference || `vault://${item.id}`;
                   const useServiceLogo = hasServiceIcon(item.service);
@@ -750,6 +752,18 @@ export function VaultPage({
               </div>
             )}
           </FramePanel>
+          {vaultPager.totalPages > 1 && (
+            <FrameFooter>
+              <PaginationBar
+                page={vaultPager.page}
+                totalPages={vaultPager.totalPages}
+                startIndex={vaultPager.startIndex}
+                endIndex={vaultPager.endIndex}
+                total={vaultPager.total}
+                onPageChange={vaultPager.setPage}
+              />
+            </FrameFooter>
+          )}
         </Frame>
       </div>
     </section>
