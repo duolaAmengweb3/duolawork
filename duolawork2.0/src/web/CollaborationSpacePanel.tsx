@@ -92,6 +92,7 @@ export interface CollaborationSpacePanelProps {
   onTabChange: (tab: 'documents' | 'tasks' | 'resources') => void;
   selection: { kind: SpaceItemKind; id: string } | null;
   onSelectItem: (sel: { kind: SpaceItemKind; id: string } | null) => void;
+  focusFolderRequest?: { folderId: string | null; seq: number } | null;
   folders: SpaceFolderRecord[];
   items: SpaceItemView[];
   trash: SpaceItemView[];
@@ -167,6 +168,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     onTabChange,
     selection,
     onSelectItem,
+    focusFolderRequest,
     folders,
     items,
     trash,
@@ -262,6 +264,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     if (!selection) return null;
     return items.find((i) => i.kind === selection.kind && i.id === selection.id) ?? null;
   }, [items, selection]);
+
+  useEffect(() => {
+    if (focusFolderRequest) {
+      setShowTrash(false);
+      setActiveFolderId(focusFolderRequest.folderId);
+    }
+  }, [focusFolderRequest]);
 
   useEffect(() => {
     setShowTrash(false);

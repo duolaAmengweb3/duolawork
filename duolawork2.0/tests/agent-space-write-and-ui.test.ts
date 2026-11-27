@@ -529,3 +529,103 @@ test('SPACE-IMG-05: Bidirectional chat images (user send -> agent multimodal rec
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('SPACE-REF-06: Clickable file, folder, and bare URL references in chat jump straight to the target in Collaboration Space', async () => {
+  const { chromium } = await import('playwright');
+  const tmpDir = createTempDir('dw2-space-refs-');
+  const staticWebDir = path.resolve(process.cwd(), 'dist', 'web');
+  const app = new DuolaWorkApp({
+    dbPath: path.join(tmpDir, 'refs.sqlite'),
+    filesDir: path.join(tmpDir, 'files'),
+    lockFilePath: path.join(tmpDir, 'server.lock'),
+    staticWebDir,
+    autoImportAgentHub: false
+  });
+
+  const chromeCandidates = [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium'
+  ];
+  const executablePath = chromeCandidates.find((p) => fs.existsSync(p));
+  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+
+  try {
+    app.db.upsertMember({
+      id: 'mem_ref_agent',
+      name: 'Gemini2VPS',
+      platformId: 'gemini',
+      driverKind: 'mock',
+      location: 'local',
+      capabilities: {
+        supportsIsolatedSessions: true,
+        supportsSessionResume: true,
+        supportsCancel: true,
+        maxConcurrentRuns: 2
+      },
+      status: 'ready',
+      statusMessage: '就绪',
+      config: {}
+    });
+
+    const thread = app.threads.createThread({
+      title: '对话文件直达验证',
+      activeOwnerMemberId: 'mem_ref_agent'
+    });
+    const fParent = app.space.ensureFolderPath(thread.id, '研究归档');
+    const fChild = app.space.ensureFolderPath(thread.id, '研究归档/图表');
+    const doc = app.space.createDocument({
+      threadId: thread.id,
+      title: '执行方案.md',
+      content: '# 执行方案正文内容',
+      folderId: fParent.id
+    });
+    const png = app.space.saveOrUpdateFileForAgent({
+      threadId: thread.id,
+      name: 'trend.png',
+      dataBase64: TINY_PNG_BASE64,
+      folderId: fChild.id
+    }).file;
+
+    app.registry.mockDriver.handlers.set('mem_ref_agent', async () => ({
+      text: [
+        '已整理完成，点击下面任意条目可直接打开：',
+        '- 目录：**`研究归档/`**',
+        '- 文档：《执行方案.md》',
+        '- 配图：`研究归档/图表/trend.png`',
+        '- 命令保持普通样式：`python3`',
+        '- 原始网页：https://example.com/report。'
+      ].join('\n')
+    }));
+
+    await app.threads.sendUserMessage({ threadId: thread.id, body: '发一下归档清单' });
+    const { url } = await app.listen(0, '127.0.0.1');
+
+    const page = await browser.newPage({ viewport: { width: 1360, height: 840 } });
+    await page.goto(url, { waitUntil: 'networkidle' });
+
+    // 1. Bare URL is a real clickable <a> without trailing Chinese punctuation
+    const bareLink = page.locator('a.dw-bare-link', { hasText: 'https://example.com/report' });
+    await bareLink.waitFor();
+    assert.equal(await bareLink.getAttribute('href'), 'https://example.com/report');
+
+    // 2. Plain code `python3` stays normal <code>, NOT a space ref chip
+    assert.equal(await page.locator('.message-markdown code', { hasText: 'python3' }).count(), 1);
+
+    // 3. Clicking `研究归档/图表/trend.png` opens the image directly in Space detail view
+    await page.locator(`[data-space-ref-item="file:${png.id}"]`).click();
+    await page.locator('.space-detail-heading h2', { hasText: 'trend.png' }).waitFor();
+
+    // 4. Clicking 《执行方案.md》 opens the document directly in Space detail view
+    await page.locator(`[data-space-ref-item="document:${doc.id}"]`).click();
+    await page.locator('.space-detail-heading h2', { hasText: '执行方案.md' }).waitFor();
+
+    // 5. Clicking **`研究归档/`** jumps straight into that folder in the bottom Document Manager
+    await page.locator(`[data-space-ref-folder="${fParent.id}"]`).click();
+    await page.getByTestId('space-folder-nav').waitFor();
+    await page.getByTestId('space-manager-section').locator('.material-folder-open', { hasText: '图表' }).waitFor();
+  } finally {
+    await browser.close();
+    await app.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

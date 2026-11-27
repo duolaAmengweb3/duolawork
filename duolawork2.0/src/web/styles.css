@@ -700,6 +700,78 @@ html.dark {
   background: #1b202c;
   color: #e4ebf7;
 }
+
+/* Clickable inline Space file/folder/link reference chips in chat */
+.dw-space-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px;
+  margin: 0 2px;
+  border-radius: 6px;
+  border: 1px solid #d5e2fb;
+  background: #eef4ff;
+  color: #2952ba;
+  font-size: 0.92em;
+  font-weight: 500;
+  line-height: 1.5;
+  vertical-align: baseline;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+}
+.dw-space-ref-chip > svg {
+  flex-shrink: 0;
+  color: #4670d6;
+}
+.dw-space-ref-chip > span {
+  overflow-wrap: anywhere;
+}
+.dw-space-ref-chip:hover {
+  background: #dfeafe;
+  border-color: #a9c4f8;
+  color: #1c3f99;
+}
+.dw-space-ref-chip.is-folder {
+  background: #f2f5fb;
+  border-color: #d8e0ee;
+  color: #36507d;
+}
+.dw-space-ref-chip.is-folder > svg {
+  color: #5b7bb5;
+}
+.dw-space-ref-chip.is-folder:hover {
+  background: #e5ecf9;
+  border-color: #b7c8e6;
+}
+.dw-bare-link {
+  color: #2f5cc8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.dark .dw-space-ref-chip {
+  background: #1c2740;
+  border-color: #2f426b;
+  color: #96b8ff;
+}
+.dark .dw-space-ref-chip > svg {
+  color: #7ea6ff;
+}
+.dark .dw-space-ref-chip:hover {
+  background: #243354;
+  border-color: #4867a8;
+  color: #c2d7ff;
+}
+.dark .dw-space-ref-chip.is-folder {
+  background: #1d2331;
+  border-color: #303a4f;
+  color: #b5c5e0;
+}
+.dark .dw-bare-link {
+  color: #84abff;
+}
 .dark .material-item-title,
 .dark .material-folder-open,
 .dark .task-overview .task-group-title strong,
