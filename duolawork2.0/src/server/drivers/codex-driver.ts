@@ -16,6 +16,7 @@ import {
   type SessionBindingInput,
   type TurnDispatchInput,
   type TurnExecutionResult,
+  progressOnOutput,
   type TurnStreamEvent
 } from './types.js';
 
@@ -279,6 +280,7 @@ export class CodexAppServerDriver implements AgentDriver {
 
     let turnId: string | null = null;
     const finalChunks = new Map<string, string>();
+    const progress = progressOnOutput(onEvent);
     let streamedDeltaText = '';
     let latestAgentText = '';
     let modelRequests = 0;
@@ -356,6 +358,7 @@ export class CodexAppServerDriver implements AgentDriver {
         if (params.turnId && params.turnId !== turnId) return;
         if (params.turn?.id && params.turn.id !== turnId) return;
 
+        if (method.startsWith('item/reasoning/') || method === 'item/commandExecution/outputDelta' || method === 'item/fileChange/outputDelta') progress();
         if (method === 'turn/started') {
           onEvent?.({ kind: 'started', nativeTurnId: turnId });
         }

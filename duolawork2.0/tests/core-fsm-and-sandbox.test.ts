@@ -10,7 +10,7 @@ import { DuolaWorkApp } from '../src/server/app.js';
 import { SandboxForbiddenError } from '../src/server/auth-sandbox.js';
 import { resolveLocalCliBinary } from '../src/server/db.js';
 import { fromCodexWireToolName, toCodexWireToolName } from '../src/server/drivers/codex-driver.js';
-import { sanitizeToolSummary } from '../src/server/drivers/types.js';
+import { type TurnStreamEvent, sanitizeToolSummary } from '../src/server/drivers/types.js';
 import {
   DEFAULT_HANDOFF_BUDGET_BYTES,
   resolveHandoffBudgetBytes
@@ -2149,6 +2149,122 @@ test('DW2-29: Interrupted turns settle cleanly on restart reconcile (not_found/f
     assert.equal(mOrphan.turnStatus, 'failed');
     assert.match(mOrphan.body, /应用重启导致本轮执行中断/);
   } finally {
+    await cleanup();
+  }
+});
+
+test('interactive chat renews its inactivity window on real progress, bounds total time and never redispatches a timed-out request key', async (t) => {
+  const { app, cleanup } = createTestApp();
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  try {
+    const thread = app.threads.createThread({title:'长回合', activeOwnerMemberId:'mem_codex'});
+    for (const mode of ['active', 'idle', 'ceiling']) {
+      let started!: () => void;
+      let finish!: (value: { text: string }) => void;
+      const ready = new Promise<void>(resolve => { started = resolve; });
+      const result = new Promise<{ text: string }>(resolve => { finish = resolve; });
+      let report!: (event: TurnStreamEvent) => void;
+      let calls = 0;
+      app.registry.mockDriver.handlers.set('mem_codex', async (_input, onEvent) => {
+        calls++;
+        report = onEvent!;
+        started();
+        return result;
+      });
+      const input = {threadId:thread.id, body:mode, idempotencyKey:'timeout-' + mode};
+      const run = app.threads.sendUserMessage(input);
+      await ready;
+      const expected = mode === 'active' ? run : assert.rejects(run, /ATTEMPT_TIMED_OUT/);
+      const advance = (minutes: number) => t.mock.timers.tick(minutes * 60_000);
+      if (mode === 'active') {
+        for (let n = 0; n < 31; n++) {
+          advance(1);
+          report({kind:'tool', toolId:'tool-' + n, toolName:'编辑文件', toolStatus:'done'});
+        }
+        finish({ text:'完成' });
+        const settled = await run;
+        assert.equal(settled.agentMessage.toolTrace?.length, 31);
+        assert.equal(settled.agentMessage.turnStatus,'completed');
+      } else {
+        if (mode === 'idle') {
+          advance(14);
+          report({kind:'progress'});
+          advance(14);
+          assert.equal(app.threads.listMessages(thread.id).at(-1)?.turnStatus,'running');
+          advance(1);
+        } else {
+          for (let i=0; i<12; i++) { advance(10); report({kind:'progress'}); }
+        }
+        await expected;
+        const failed = app.threads.listMessages(thread.id).at(-1)!;
+        assert.match(failed.body, mode === 'idle' ? /15 分钟未收到执行进展/ : /2 小时执行上限/);
+        assert.equal((await app.threads.sendUserMessage(input)).agentMessage.id, failed.id);
+        assert.equal(calls, 1);
+        finish({ text: '迟到结果' });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const recovered = app.threads.getMessage(failed.id)!;
+        assert.equal(recovered.turnStatus, 'completed');
+        assert.equal(recovered.body, '迟到结果');
+        assert.equal((await app.threads.sendUserMessage(input)).agentMessage.id, recovered.id);
+        assert.equal(calls, 1);
+      }
+    }
+  } finally {
+    t.mock.timers.reset();
+    await cleanup();
+  }
+});
+
+test('remote timeout looks up the original receipt once and restores the paired message without a second dispatch', async () => {
+  const { app, cleanup } = createTestApp();
+  let settleNative!: () => void;
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const member = app.db.getMember('mem_gemini')!;
+    app.db.upsertMember({ ...member, driverKind: 'remote-bridge' });
+    const thread = app.threads.createThread({ title: '回执恢复', activeOwnerMemberId: member.id });
+    const mock = app.registry.mockDriver;
+    const lookups: string[] = [];
+    const dispatches: string[] = [];
+    let aborts = 0;
+    let releaseReceipt!: () => void;
+    const receiptReady = new Promise<void>(resolve => { releaseReceipt = resolve; });
+    app.registry.register({
+      kind: 'remote-bridge',
+      checkHealth: () => mock.checkHealth(),
+      ensureSession: input => mock.ensureSession(input),
+      runTurn: async (input, onEvent) => {
+        dispatches.push(input.attemptId);
+        await new Promise<void>(resolve => { settleNative = resolve; });
+        return mock.runTurn(input, onEvent);
+      },
+      reconcileAttempt: async (_member, attempt) => {
+        lookups.push(attempt.id);
+        await receiptReady;
+        return { state: 'completed', text: '已取回原请求回执', nativeSessionId: 'recovered-session' };
+      },
+      abortTurn: async () => { aborts++; return true; }
+    });
+    const input = { threadId: thread.id, body: '测试', idempotencyKey: 'recover-original', timeoutMs: 20 };
+    await assert.rejects(app.threads.sendUserMessage(input), /ATTEMPT_TIMED_OUT/);
+    const failed = app.threads.listMessages(thread.id).at(-1)!;
+    assert.deepEqual(lookups, [failed.attemptId]);
+    assert.deepEqual(dispatches, lookups);
+    assert.equal(failed.turnStatus, 'failed');
+    releaseReceipt();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const replay = await app.threads.sendUserMessage(input);
+    assert.equal(replay.agentMessage.id, failed.id);
+    assert.equal(replay.agentMessage.body, '已取回原请求回执');
+    assert.equal(replay.agentMessage.turnStatus, 'completed');
+    assert.equal(aborts, 0);
+    settleNative();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(app.threads.getMessage(failed.id)!.body, '已取回原请求回执');
+    assert.equal(dispatches.length, 1);
+  } finally {
+    clearInterval(keepAlive);
+    settleNative?.();
     await cleanup();
   }
 });

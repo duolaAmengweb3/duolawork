@@ -32,6 +32,7 @@ export const SPACE_TOOL_NAMES = new Set([
   'space_read_material',
   'space_create_folder',
   'space_save_file',
+  'space_upload_to_connector',
   'space_save_document',
   'space_save_link',
   'space_move_item',
@@ -89,6 +90,19 @@ export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
         replaceExisting: { type: 'boolean', description: '同目录下存在同名文件时是否覆盖更新并刷新更新时间，默认 true' }
       },
       required: ['name']
+    }
+  },
+  {
+    name: 'space_upload_to_connector',
+    description: '将本对话资料区的真实文件直接上传到已配置连接器。先通过 connector_discover 确认上传工具接收的 Base64 字段名，再传文件 ID 和其余元数据。执行机上的文件先用 space_save_file(localPath) 保存；不用读取或抄写 Base64。返回连接器原始回执。同一回合、同一文件与参数的重复上传共用幂等键。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fileId: { type: 'string' }, connectorId: { type: 'string' }, toolName: { type: 'string' },
+        base64Field: { type: 'string', description: '连接器声明的顶层文件内容字段，例如 base64' },
+        arguments: { type: 'object', description: '目标工具要求的其余参数，如 kind、filename、mime，不含文件内容' }
+      },
+      required: ['fileId', 'connectorId', 'toolName', 'base64Field']
     }
   },
   {
@@ -232,7 +246,7 @@ export interface EnsuredSession {
 }
 
 export interface TurnStreamEvent {
-  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt' | 'activity';
+  kind: 'started' | 'delta' | 'tool' | 'dispatched_meta' | 'waiting_for_receipt' | 'activity' | 'progress';
   phase?: TurnPhase;
   text?: string;
   toolId?: string;
@@ -241,6 +255,17 @@ export interface TurnStreamEvent {
   toolStatus?: 'running' | 'done' | 'error';
   nativeTurnId?: string;
   bridgeMeta?: Record<string, unknown>;
+}
+
+// These pulses come only from provider output. Never forward private reasoning or raw tool output.
+export function progressOnOutput(onEvent?: (ev: TurnStreamEvent) => void) {
+  let lastSent = 0;
+  return () => {
+    const now = Date.now();
+    if (now - lastSent < 30_000) return;
+    lastSent = now;
+    onEvent?.({ kind: 'progress' });
+  };
 }
 
 export interface TurnDispatchInput {

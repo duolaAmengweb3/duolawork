@@ -456,6 +456,11 @@ export class ExecutionNodeHub {
       return;
     }
 
+    if (type === 'turn.progress') {
+      const turn = this.activeTurns.get(String(msg.attemptId || ''));
+      if (turn?.nodeId === nodeId) turn.onEvent?.({ kind: 'progress' });
+      return;
+    }
     if (type === 'turn.activity') {
       const turn = this.activeTurns.get(String(msg.attemptId || ''));
       if (turn?.nodeId === nodeId && turnPhases.includes(msg.phase)) {
@@ -519,6 +524,11 @@ export class ExecutionNodeHub {
     if (type === 'turn.completed') {
       const attemptId = String(msg.attemptId || '');
       const turn = this.activeTurns.get(attemptId);
+      if (turn && turn.nodeId !== nodeId) return;
+      if (!turn && !this.db.sqlite.prepare(
+        `SELECT 1 FROM v2_dispatch_attempts a JOIN v2_members m ON m.id=a.member_id
+         WHERE a.id=? AND COALESCE(m.node_id, json_extract(m.config_json, '$.nodeId'))=?`
+      ).get(attemptId, nodeId)) return;
       const usage: ProviderUsageMetrics = msg.providerUsage ?? emptyUnobservableUsage();
       if (turn) {
         const recovered = this.db.sqlite.prepare(

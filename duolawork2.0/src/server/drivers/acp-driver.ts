@@ -15,6 +15,7 @@ import {
   type SessionBindingInput,
   type TurnDispatchInput,
   type TurnExecutionResult,
+  progressOnOutput,
   type TurnStreamEvent
 } from './types.js';
 
@@ -167,6 +168,7 @@ export class AcpStdioDriver implements AgentDriver {
     const timeoutMs = input.timeoutMs ?? 10 * 60_000;
     let sessionId = input.nativeSessionId;
     let sessionReset = false;
+    const progress = progressOnOutput(onEvent);
     let text = '';
 
     rpc.onRequest = async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } });
@@ -187,6 +189,7 @@ export class AcpStdioDriver implements AgentDriver {
         if (method !== 'session/update' || params.sessionId !== sessionId) return;
         const upd = params.update;
         if (upd?.sessionUpdate === 'agent_thought_chunk') {
+          if (receivingThought) progress();
           if (!receivingThought) onEvent?.({ kind: 'activity', phase: 'thinking' });
           receivingThought = true;
           return;

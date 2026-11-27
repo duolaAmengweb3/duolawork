@@ -833,6 +833,14 @@ test('chat shows one animated status for the current turn, restores live phases 
     await shows('正在读取文件');
     emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'done'});
     await shows('正在处理');
+    for (let index = 0; index < 22; index++) {
+      emit({kind:'tool', toolId:'edit-' + index, toolName:'Edit', toolStatus:'done'});
+    }
+    await page.locator('.turn-tool-counter').filter({ hasText: '23/23' }).waitFor();
+    await page.reload();
+    await page.locator('.turn-tool-counter').filter({ hasText: '23/23' }).waitFor();
+    await page.locator('.turn-tool-summary').click();
+    assert.equal(await page.locator('.turn-tool-item').count(), 23);
     emit({kind:'delta', text:'回复正文'});
     await shows('正在回复');
     await page.getByText('回复正文', {exact:true}).waitFor();
@@ -843,6 +851,7 @@ test('chat shows one animated status for the current turn, restores live phases 
     finish();
     await turn;
     await page.getByText('已完成测试', {exact:true}).waitFor();
+    await page.getByText('已执行 23 项操作', {exact:true}).waitFor();
     assert.equal(await status.count(), 0);
   } finally {
     finish?.();

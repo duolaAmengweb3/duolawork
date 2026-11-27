@@ -951,6 +951,7 @@ html.dark {
   flex-shrink: 0;
   background: #4ea98c;
 }
+.turn-tool-head-dot.is-interrupted { background: #b18143; }
 .turn-tool-head-dot.is-running {
   background: #416ee6;
 }
@@ -968,6 +969,15 @@ html.dark {
   color: #7b8ba5;
   font-variant-numeric: tabular-nums;
 }
+.turn-materials-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: inherit;
+}
+.turn-materials-link:hover { text-decoration: underline; }
 .turn-tool-list {
   display: flex;
   flex-direction: column;

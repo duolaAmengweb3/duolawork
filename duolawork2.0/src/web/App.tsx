@@ -1,3 +1,4 @@
+import { readableTurnFailure } from '../shared/turn-timeout.js';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -244,6 +245,7 @@ export function App(): React.JSX.Element {
   const [streamingDeltas, setStreamingDeltas] = useState<Record<string, string>>({});
   const [streamingTools, setStreamingTools] = useState<Record<string, ToolTraceItem[]>>({});
   const toolEventCount = useRef(0);
+  const toolSnapshots = useRef<Record<string, ToolTraceItem[]>>({});
   const [streamingActivity, setStreamingActivity] = useState<Record<string, TurnActivity>>({});
   const [streamDisconnected, setStreamDisconnected] = useState(!navigator.onLine);
   const [expandedToolMsgIds, setExpandedToolMsgIds] = useState<Record<string, boolean>>({});
@@ -554,17 +556,14 @@ export function App(): React.JSX.Element {
         }
         return next;
       });
-      setStreamingTools((prev) => {
-        // If a tool event arrived during the fetch, its trace is newer than the snapshot.
-        if (toolsAtRequest === toolEventCount.current) return {};
-        const next: Record<string, ToolTraceItem[]> = {};
-        for (const msg of nextMsgs) {
-          if (msg.turnStatus === 'running' && prev[msg.id]) {
-            next[msg.id] = prev[msg.id];
-          }
+      const snapshots: Record<string, ToolTraceItem[]> = {};
+      for (const msg of nextMsgs) {
+        if (msg.turnStatus === 'running') {
+          snapshots[msg.id] = (toolsAtRequest !== toolEventCount.current && toolSnapshots.current[msg.id]) || msg.toolTrace || [];
         }
-        return next;
-      });
+      }
+      toolSnapshots.current = snapshots;
+      setStreamingTools(snapshots);
     },
     []
   );
@@ -832,11 +831,22 @@ export function App(): React.JSX.Element {
         if (parsed.type === 'thread.tool') {
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId && parsed.payload?.messageId) {
             const msgId = String(parsed.payload.messageId);
-            const trace = Array.isArray(parsed.payload.toolTrace)
-              ? (parsed.payload.toolTrace as ToolTraceItem[])
-              : [];
+            let trace: ToolTraceItem[];
+            if (Array.isArray(parsed.payload.toolTrace)) {
+              trace = parsed.payload.toolTrace;
+            } else {
+              const { index, item } = parsed.payload;
+              const prior = toolSnapshots.current[msgId];
+              if (!prior || !Number.isInteger(index) || index < 0 || index > prior.length || !item) {
+                void cur.loadThread(cur.activeThreadId);
+                return;
+              }
+              trace = prior.slice();
+              trace[index] = item;
+            }
             toolEventCount.current++;
-            setStreamingTools((prev) => ({ ...prev, [msgId]: trace }));
+            toolSnapshots.current = { ...toolSnapshots.current, [msgId]: trace };
+            setStreamingTools(toolSnapshots.current);
           }
           return;
         }
@@ -847,6 +857,10 @@ export function App(): React.JSX.Element {
           return;
         }
         if (parsed.type?.startsWith('thread.')) {
+          if (parsed.type === 'thread.message_updated' && parsed.payload?.turnStatus === 'failed' &&
+              parsed.threadId === cur.activeThreadId && cur.viewMode === 'thread') {
+            showChatNotice(readableTurnFailure(parsed.payload.body || '暂时未能收到回复'));
+          }
           void cur.loadBootstrap(true);
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId) {
             void cur.loadThread(cur.activeThreadId);
@@ -1069,7 +1083,7 @@ export function App(): React.JSX.Element {
     try {
       const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Prefer: 'respond-async' },
         body: JSON.stringify({
           body: text,
           idempotencyKey,
@@ -1080,7 +1094,7 @@ export function App(): React.JSX.Element {
       if (!res.ok) {
         if (data?.persistedUserMessageId) {
           delete pendingClientReqByThreadRef.current[targetThreadId];
-          showChatNotice(data.message || data.error || '发送失败，请检查成员状态后重试');
+          showChatNotice(readableTurnFailure(data.message || data.error || '发送失败，请检查成员状态后重试'));
           if (activeThreadIdRef.current === targetThreadId) {
             await loadThread(targetThreadId);
           }
@@ -1092,6 +1106,7 @@ export function App(): React.JSX.Element {
       }
       delete pendingClientReqByThreadRef.current[targetThreadId];
       if (activeThreadIdRef.current === targetThreadId) {
+        if (res.status === 202) await loadThread(targetThreadId);
         if (data.messages) {
           setMessagesThreadId(targetThreadId);
           setMessages(data.messages);
@@ -1113,7 +1128,7 @@ export function App(): React.JSX.Element {
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const targetThreadId = activeThreadId;
-    if (!targetThreadId || sendingByThread[targetThreadId]) return;
+    if (!targetThreadId || sendingByThread[targetThreadId] || visibleMessages.some(m => m.turnStatus === 'running')) return;
     const rawDraftValue = inputDrafts[targetThreadId] || '';
     const rawText = rawDraftValue.trim();
     const savedRefs = draftRefsByThread[targetThreadId] || [];
@@ -2968,7 +2983,7 @@ export function App(): React.JSX.Element {
                         : phase === 'executing' ? executionLabel(activeTool) : phaseLabels[phase];
                       const displayBody = running
                         ? streamingDeltas[m.id] || (waitingReceipt || m.body === '正在处理…' ? '' : m.body)
-                        : m.body;
+                        : m.turnStatus === 'failed' ? readableTurnFailure(m.body) : m.body;
 
                       return (
                         <React.Fragment key={m.id}>
@@ -3031,13 +3046,13 @@ export function App(): React.JSX.Element {
                                         {showFullList ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                                       </span>
                                       <i
-                                        className={`turn-tool-head-dot ${isRunningTurn ? 'is-running' : 'is-done'}`}
+                                        className={`turn-tool-head-dot ${isRunningTurn ? 'is-running' : m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? 'is-interrupted' : 'is-done'}`}
                                         aria-hidden="true"
                                       />
                                       <span className="turn-tool-summary-text">
                                         {isRunningTurn
                                           ? '操作记录'
-                                          : `已执行 ${trace.length} 项操作`}
+                                          : `${m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? '已记录' : '已执行'} ${trace.length} 项操作`}
                                       </span>
                                       {isRunningTurn && (
                                         <span className="turn-tool-counter">{doneCount}/{trace.length}</span>
@@ -3082,6 +3097,15 @@ export function App(): React.JSX.Element {
                               <div className="message-markdown">
                                 <MarkdownView text={displayBody} imageActions={chatImageActions} spaceResolver={chatSpaceResolver} />
                               </div>
+                            )}
+                            {m.turnStatus === 'failed' && spaceItems.length > 0 && (
+                              <button type="button" className="turn-materials-link" onClick={() => {
+                                setSpaceSelection(null);
+                                setSpaceTab('documents');
+                                setSpaceOpen(true);
+                              }}>
+                                <FolderOpen size={14} />查看对话资料
+                              </button>
                             )}
                             {!isUser && m.clarificationCard && (() => {
                               const card = m.clarificationCard;
@@ -3425,7 +3449,7 @@ export function App(): React.JSX.Element {
                         type="submit"
                         aria-label="发送消息"
                         disabled={
-                          sending ||
+                          hasRunningTurn ||
                           (!activeDraft.trim() &&
                             activeRefs.length === 0 &&
                             (draftImagesByThread[activeThread.id] || []).length === 0)

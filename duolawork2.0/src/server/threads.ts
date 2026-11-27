@@ -1,3 +1,4 @@
+import { chatTimeoutMessage } from '../shared/turn-timeout.js';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -5,9 +6,10 @@ import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
 import type { AuthSandbox } from './auth-sandbox.js';
 import type { DuolaWorkDatabase } from './db.js';
-import type { DriverRegistry } from './drivers/registry.js';
+import { CHAT_MAX_MS, type DriverRegistry } from './drivers/registry.js';
 import {
   sanitizeToolSummary,
+  redactSecrets,
   SPACE_AND_DUOLABASE_TOOLS,
   type DynamicToolDefinition,
   type TurnImageAttachment
@@ -624,7 +626,9 @@ export class ThreadEngine {
         if (
           curUser &&
           curAgent &&
-          (curAgent.turnStatus === 'completed' || curAgent.turnStatus === 'canceled')
+          (curAgent.turnStatus === 'completed' || curAgent.turnStatus === 'canceled' || curAgent.turnStatus === 'running' ||
+            (curAgent.turnStatus === 'failed' && curAgent.attemptId &&
+              ['timed_out', 'late_ignored'].includes(this.registry.getAttempt(curAgent.attemptId)?.status ?? '')))
         ) {
           if (curAgent.turnStatus === 'completed') {
             const flagRow = this.db.sqlite
@@ -874,7 +878,7 @@ export class ThreadEngine {
       effectiveDriverKind === 'claude-cli'
         ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
             hasNativeSpaceTools
-              ? '优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
+              ? '向外部连接器上传图片或文件时，先用 space_save_file(localPath) 保存，再用 space_upload_to_connector 传文件 ID，让工作台传输原始字节。优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
               : ''
           }可附带 <duolawork_folder path="目录/子目录" />、<duolawork_file name="任意文件.csv" folder="可选目录" encoding="utf8|base64">内容</duolawork_file>、<duolawork_artifact title="标题.md" folder="可选目录">正文</duolawork_artifact>、<duolawork_link title="标题" url="https://..." folder="可选目录">备注</duolawork_link>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
@@ -904,6 +908,7 @@ export class ThreadEngine {
       attemptId,
       threadId: thread.id,
       allowedArtifactIds: pinnedArtifactId ? [pinnedArtifactId] : [],
+      ttlMs: Math.max(30 * 60_000, input.timeoutMs ?? CHAT_MAX_MS) + 60_000,
       toolPolicy: 'duolabase_full'
     });
 
@@ -961,6 +966,7 @@ export class ThreadEngine {
     }
 
     const toolTrace: ToolTraceItem[] = [];
+    const toolIndexes = new Map<string, number>();
     const live = { activity: { phase: 'processing', revision: ++this.activityRevision } as TurnActivity, tools: toolTrace };
     this.liveTurns.set(placeholderAgentMsg.id, live);
     const setActivity = (phase: TurnPhase) => {
@@ -1060,14 +1066,15 @@ export class ThreadEngine {
             const cleanSummary = ev.toolSummary ? sanitizeToolSummary(sumKind, ev.toolSummary) : undefined;
             const item: ToolTraceItem = {
               ...(ev.toolId ? { id: ev.toolId } : {}),
-              name: ev.toolName,
+              name: redactSecrets(ev.toolName, 240),
               ...(cleanSummary ? { summary: cleanSummary } : {}),
               status: ev.toolStatus ?? 'running'
             };
-            const existingIdx = item.id ? toolTrace.findIndex((t) => t.id === item.id) : -1;
-            if (existingIdx >= 0) {
+            const existingIdx = item.id ? toolIndexes.get(item.id) : undefined;
+            if (existingIdx !== undefined) {
               toolTrace[existingIdx] = { ...toolTrace[existingIdx], ...item };
-            } else if (toolTrace.length < 20) {
+            } else {
+              if (item.id) toolIndexes.set(item.id, toolTrace.length);
               toolTrace.push(item);
             }
             if (item.status === 'running') setActivity('executing');
@@ -1075,7 +1082,10 @@ export class ThreadEngine {
             this.emit({
               type: 'thread.tool',
               threadId: thread.id,
-              payload: { messageId: placeholderAgentMsg.id, toolTrace: [...toolTrace] }
+              payload: toolTrace.length <= 20
+                ? { messageId: placeholderAgentMsg.id, toolTrace: [...toolTrace] }
+                : { messageId: placeholderAgentMsg.id, index: existingIdx ?? toolTrace.length - 1,
+                    item: toolTrace[existingIdx ?? toolTrace.length - 1] }
             });
           }
         }
@@ -1187,6 +1197,9 @@ export class ThreadEngine {
       const now = new Date().toISOString();
       const errText = (err as Error).message || '请求未完成';
       const currentMsg = this.getMessage(placeholderAgentMsg.id);
+      if (errText === 'ATTEMPT_TIMED_OUT' && currentMsg?.turnStatus === 'completed') {
+        return { userMessage: userMsg, agentMessage: currentMsg, handoffBytes: activePacket.handoffBytes };
+      }
       if (
         currentMsg?.turnStatus === 'canceled' ||
         /ATTEMPT_CANCELED|已由用户停止|已停止本轮生成|任务已取消|回合已取消/i.test(errText)
@@ -1226,7 +1239,9 @@ export class ThreadEngine {
            WHERE id = ?`
         )
         .run(
-          `暂时未能收到回复：${errText}`,
+          errText === 'ATTEMPT_TIMED_OUT'
+            ? chatTimeoutMessage(this.registry.getAttempt(attemptId)?.errorMessage)
+            : `暂时未能收到回复：${errText}`,
           failedTrace.length > 0 ? JSON.stringify(failedTrace) : null,
           now,
           placeholderAgentMsg.id
@@ -1343,6 +1358,12 @@ export class ThreadEngine {
         .run(cleanText, String(r.usage_json), now, msgId);
 
       const reconciledMsg = this.getMessage(msgId)!;
+      if ((this.handoff.getCursor(threadId, memberId)?.lastSeenSeq ?? 0) > seqNum) {
+        // A newer turn already established the native session and its handoff cursor.
+        this.emit({ type: 'thread.message_updated', threadId, payload: reconciledMsg });
+        updated.push(reconciledMsg);
+        continue;
+      }
       const threadMsgs = this.listMessages(threadId, { toSeq: seqNum });
       const deliveredRevisionsPatch: Record<string, string> = {};
       for (const tm of threadMsgs) {
@@ -1404,7 +1425,9 @@ export class ThreadEngine {
       const reason =
         r.error_message?.trim() ||
         (r.att_status === 'timed_out' ? '执行超时，请重试' : '应用重启或远端中断，未能收到回复，请重试');
-      const fallbackBody = String(r.body || '').trim() ? String(r.body) : `暂时未能收到回复：${reason}`;
+      const fallbackBody = ['timed_out', 'late_ignored'].includes(r.att_status)
+        ? chatTimeoutMessage(r.error_message)
+        : String(r.body || '').trim() || `暂时未能收到回复：${reason}`;
       this.db.sqlite
         .prepare(
           `UPDATE v2_thread_messages

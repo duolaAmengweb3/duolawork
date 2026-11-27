@@ -26,6 +26,10 @@ import {
 } from './types.js';
 import { WebhookBotDriver } from './webhook-bot-driver.js';
 
+// Interactive chat gets a renewable inactivity window. Explicit task deadlines stay absolute.
+export const CHAT_IDLE_MS = 15 * 60_000;
+export const CHAT_MAX_MS = 2 * 60 * 60_000;
+
 interface SlotWaiter {
   attemptId: string;
   grant: () => void;
@@ -49,6 +53,7 @@ export class DriverRegistry {
   private readonly waitQueues = new Map<string, SlotWaiter[]>();
   private readonly liveDispatches = new Set<string>();
   private readonly activeAttemptCancels = new Map<string, (reason: string) => void>();
+  public onLateThreadReceipt?: () => void;
   public mcpServersProvider?: (toolPolicy?: string) => McpHttpServerConfig[];
 
   constructor(private readonly db: DuolaWorkDatabase) {
@@ -159,6 +164,24 @@ export class DriverRegistry {
     for (const [, cancel] of entries) {
       cancel(reason);
     }
+  }
+
+  public recoverLateThreadReply(attempt: DispatchAttemptRecord, receipt: {
+    text?: string; nativeSessionId?: string | null; nativeTurnId?: string | null;
+    providerUsage?: TurnExecutionResult['providerUsage'];
+  }): boolean {
+    if (attempt.targetKind !== 'thread_message' || !receipt.text?.trim()) return false;
+    const usage = { ...attempt.usage, nativeTurns: 1, providerUsage: receipt.providerUsage ?? attempt.usage.providerUsage };
+    const saved = this.db.sqlite.prepare(
+      `UPDATE v2_dispatch_attempts SET status='succeeded', response_text=?, usage_json=?, error_message=NULL,
+         native_session_id=COALESCE(?,native_session_id), native_turn_id=COALESCE(?,native_turn_id), settled_at=?
+       WHERE id=? AND status IN ('timed_out','late_ignored') AND EXISTS (
+         SELECT 1 FROM v2_thread_messages m WHERE m.id=v2_dispatch_attempts.target_id
+           AND m.attempt_id=v2_dispatch_attempts.id AND m.turn_status IN ('failed','running'))`
+    ).run(receipt.text, JSON.stringify(usage), receipt.nativeSessionId ?? null, receipt.nativeTurnId ?? null,
+      new Date().toISOString(), attempt.id);
+    if (saved.changes) this.onLateThreadReceipt?.();
+    return Boolean(saved.changes);
   }
 
   public getAttempt(id: string): DispatchAttemptRecord | null {
@@ -342,7 +365,11 @@ export class DriverRegistry {
 
     let timedOutReleased = false;
     let cancelReason: string | null = null;
-    const timeoutMs = input.timeoutMs ?? 900_000;
+    const interactive = input.targetKind === 'thread_message' && input.timeoutMs === undefined;
+    const timeoutMs = input.timeoutMs ?? (interactive ? CHAT_MAX_MS : CHAT_IDLE_MS);
+    let idleHandle: NodeJS.Timeout | undefined;
+    let lastProgressAt = 0;
+    const noteProgress = () => { lastProgressAt = Date.now(); };
     let timeoutHandle: NodeJS.Timeout | null = null;
 
     let rejectCancelRace!: (err: Error) => void;
@@ -429,7 +456,8 @@ export class DriverRegistry {
       }
 
       const timeoutRace = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
+        const expire = (reason: string) => {
+          if (timedOutReleased || cancelReason) return;
           timedOutReleased = true;
           this.db.sqlite
             .prepare(
@@ -437,12 +465,32 @@ export class DriverRegistry {
                SET status = 'timed_out', slot_held = 0, error_message = ?, settled_at = ?
                WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
             )
-            .run('执行超时，已释放该成员并发执行名额', new Date().toISOString(), attemptId);
+            .run(reason, new Date().toISOString(), attemptId);
           // Immediately free the slot so the same member can execute the next Run!
           this.releaseMemberSlot(input.member.id, attemptId);
-          void driver.abortTurn(input.member, this.getAttempt(attemptId)!).catch(() => {});
+          const attempt = this.getAttempt(attemptId)!;
+          if (attempt.targetKind === 'thread_message' && ['remote-node', 'remote-bridge', 'webhook-bot'].includes(driver.kind)) {
+            // Read the existing receipt once. Looking it up must never post the original prompt again.
+            void driver.reconcileAttempt(input.member, attempt).then(receipt => {
+              if (receipt.state === 'completed') this.recoverLateThreadReply(attempt, receipt);
+            }).catch(() => {}).finally(() => {
+              if (this.getAttempt(attemptId)?.status === 'timed_out') void driver.abortTurn(input.member, attempt).catch(() => {});
+            }).catch(() => {});
+          } else {
+            void driver.abortTurn(input.member, attempt).catch(() => {});
+          }
           reject(new Error('ATTEMPT_TIMED_OUT'));
-        }, timeoutMs);
+        };
+        timeoutHandle = setTimeout(() => expire(interactive ? '本轮已达到 2 小时执行上限' : '本轮已达到设定的执行时限'), timeoutMs);
+        if (interactive) {
+          noteProgress();
+          const checkIdle = () => {
+            const remaining = CHAT_IDLE_MS - (Date.now() - lastProgressAt);
+            if (remaining <= 0) expire('连续 15 分钟未收到执行进展');
+            else idleHandle = setTimeout(checkIdle, Math.min(remaining, CHAT_IDLE_MS)).unref();
+          };
+          idleHandle = setTimeout(checkIdle, CHAT_IDLE_MS).unref();
+        }
         timeoutHandle.unref?.();
       });
 
@@ -461,10 +509,20 @@ export class DriverRegistry {
           ...(effectiveMcpServers.length > 0 ? { mcpServers: effectiveMcpServers } : {}),
           ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
           onToolCall: input.onToolCall
-            ? (name, args) => input.onToolCall!(name, args, attemptId)
+            ? async (name, args) => {
+                if (timedOutReleased || cancelReason) throw new Error('ATTEMPT_CANCELED');
+                noteProgress();
+                try {
+                  return await input.onToolCall!(name, args, attemptId);
+                } finally {
+                  noteProgress();
+                }
+              }
             : undefined
         },
         (ev) => {
+          if (timedOutReleased || cancelReason) return;
+          if (ev.kind !== 'dispatched_meta' && (ev.kind !== 'delta' || ev.text)) noteProgress();
           if (ev.kind === 'started') {
             this.db.sqlite
               .prepare(`UPDATE v2_dispatch_attempts SET status = 'running' WHERE id = ? AND status = 'dispatched'`)
@@ -493,7 +551,12 @@ export class DriverRegistry {
       execPromise
         .then((lateRes) => {
           if (!timedOutReleased) return;
-          // Late arrival after timeout: archive receipt as `late_ignored` without double delivery!
+          if (input.targetKind === 'thread_message') {
+            const attempt = this.getAttempt(attemptId);
+            if (attempt) this.recoverLateThreadReply(attempt, lateRes);
+            return;
+          }
+          // Task steps retain their original terminal decision.
           const lateUsage: ThreeTierUsage = {
             workbenchDispatches: 1,
             nativeTurns: 1,
@@ -607,6 +670,8 @@ export class DriverRegistry {
     } finally {
       this.liveDispatches.delete(attemptId);
       this.activeAttemptCancels.delete(attemptId);
+      clearTimeout(idleHandle);
+      idleHandle = undefined;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (!timedOutReleased) {
         this.releaseMemberSlot(input.member.id, attemptId);
@@ -727,14 +792,15 @@ export class DriverRegistry {
         });
       } else {
         const ageMs = Date.now() - Date.parse(att.dispatchedAt);
-        if (Number.isFinite(ageMs) && ageMs > 30 * 60_000) {
+        const recoveryLimit = att.targetKind === 'thread_message' && !rec.errorMessage ? CHAT_MAX_MS : 30 * 60_000;
+        if (Number.isFinite(ageMs) && ageMs > recoveryLimit) {
           this.db.sqlite
             .prepare(
               `UPDATE v2_dispatch_attempts
                SET status = 'timed_out', slot_held = 0, error_message = ?, settled_at = ?
                WHERE id = ?`
             )
-            .run('远端超过 30 分钟未返回结果，已自动结束等待', new Date().toISOString(), att.id);
+            .run(`远端超过 ${Math.round(recoveryLimit / 60_000)} 分钟未返回结果，已自动结束等待`, new Date().toISOString(), att.id);
           results.push({ attempt: this.getAttempt(att.id)!, outcome: 'reconciled_timed_out' });
         } else {
           this.db.sqlite

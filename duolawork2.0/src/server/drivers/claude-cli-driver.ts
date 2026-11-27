@@ -21,6 +21,7 @@ import {
   type SessionBindingInput,
   type TurnDispatchInput,
   type TurnExecutionResult,
+  progressOnOutput,
   type TurnStreamEvent
 } from './types.js';
 
@@ -300,6 +301,7 @@ export class ClaudeCliDriver implements AgentDriver {
       });
       this.activeProcesses.set(input.attemptId, child);
 
+    const progress = progressOnOutput(onEvent);
     let streamedText = '';
     let assistantText = '';
     let resultText = '';
@@ -326,6 +328,7 @@ export class ClaudeCliDriver implements AgentDriver {
 
       if (msg.type === 'stream_event') {
         const ev = msg.event;
+        if (ev?.type === 'content_block_delta' && (ev.delta?.type === 'thinking_delta' || ev.delta?.type === 'input_json_delta')) progress();
         if (ev?.type === 'content_block_start' && ev.content_block?.type === 'thinking') {
           thinkingBlock = ev.index;
           onEvent?.({ kind: 'activity', phase: 'thinking' });

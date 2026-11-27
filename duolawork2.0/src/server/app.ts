@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -191,8 +191,13 @@ export class DuolaWorkApp {
     this.nodeHub.onMembersChanged = () => {
       this.threads.emit({ type: 'thread.members_refreshed', payload: this.db.listMembers() });
     };
+    this.registry.onLateThreadReceipt = () => { this.threads.syncReconciledThreadTurns(); };
     this.nodeHub.onReplayedAttemptResult = (payload) => {
       const att = this.registry.getAttempt(payload.attemptId);
+      if (att && payload.ok && ['timed_out', 'late_ignored'].includes(att.status)) {
+        this.registry.recoverLateThreadReply(att, payload);
+        return;
+      }
       if (!att || !['prepared', 'dispatched', 'running', 'reconciling'].includes(att.status)) {
         return;
       }
@@ -715,6 +720,36 @@ export class DuolaWorkApp {
         folder,
         path: this.space.getFolderPath(claims.threadId, folder.id)
       };
+    }
+
+    if (toolName === 'space_upload_to_connector') {
+      const { fileId, connectorId, toolName: target, base64Field: field } = args;
+      if (typeof fileId !== 'string' || typeof connectorId !== 'string' || !connectorId ||
+          typeof target !== 'string' || !target || typeof field !== 'string' ||
+          !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(field) || field in Object.prototype) {
+        throw new Error('请指定资料文件、连接器、上传工具和有效的 Base64 字段名');
+      }
+      this.sandbox.assertExternalToolAllowed(claims, 'connector_call', { toolName: target });
+      const metadata = args.arguments ?? {};
+      if (typeof metadata !== 'object' || Array.isArray(metadata) || Object.hasOwn(metadata, field)) {
+        throw new Error('上传参数只需填写元数据，文件内容由资料区提供');
+      }
+      const active = this.space.listSpace(claims.threadId).items.some(it => it.kind === 'file' && it.id === fileId);
+      const found = active && this.space.getFileWithPath(fileId);
+      if (!found || found.file.threadId !== claims.threadId) throw new Error('当前对话中没有这个可用文件');
+      // DuolaBase MCP accepts a 2 MiB JSON request, including the Base64 and envelope.
+      const maxBody = 2 * 1024 * 1024;
+      if (4 * Math.ceil(found.file.sizeBytes / 3) > maxBody) throw new Error('文件超过连接器单次内联上传大小');
+      const bytes = await fs.promises.readFile(found.absPath);
+      const payload = {
+        connectorId, toolName: target,
+        arguments: { ...metadata, [field]: bytes.toString('base64') },
+        requestId: createHash('sha256').update(JSON.stringify([
+          claims.attemptId, connectorId, target, field, Object.entries(metadata).sort(([a], [b]) => a.localeCompare(b))
+        ])).update(bytes).digest('hex')
+      };
+      if (Buffer.byteLength(JSON.stringify(payload)) + 256 > maxBody) throw new Error('文件及元数据超过连接器单次请求大小');
+      return this.duolabase.callTool('connector_call', payload, 60_000);
     }
 
     if (toolName === 'space_save_file') {
@@ -1851,12 +1886,27 @@ export class DuolaWorkApp {
                 summary: String(rawClarify.summary || '').trim()
               }
             : undefined;
-        const out = await this.threads.sendUserMessage({
+        const execution = this.threads.sendUserMessage({
           threadId,
           body: String(body.body || ''),
           idempotencyKey: typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined,
           clarifyReply
         });
+        // Browsers follow the running message over SSE. A durable acknowledgement keeps
+        // long turns independent of proxy timeouts while other API clients can await the result.
+        if (req.headers.prefer === 'respond-async' && typeof body.idempotencyKey === 'string') {
+          const accepted = this.db.sqlite.prepare(
+            `SELECT m.id FROM v2_thread_messages u JOIN v2_thread_messages m ON m.id = u.paired_message_id
+             WHERE u.thread_id = ? AND u.client_request_id = ? AND m.turn_status = 'running'`
+          ).get(threadId, body.idempotencyKey.trim());
+          if (accepted) {
+            void execution.catch(() => {}); // ThreadEngine records and emits the terminal outcome.
+            res.setHeader('Preference-Applied', 'respond-async');
+            sendJson(res, 202, { messageId: accepted.id });
+            return;
+          }
+        }
+        const out = await execution;
         const thread = this.threads.getThread(threadId)!;
         const artifact = thread.boundArtifactId
           ? this.artifacts.getArtifact(thread.boundArtifactId)

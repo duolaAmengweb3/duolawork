@@ -252,6 +252,16 @@ test('SPACE-AGENT-03: Remote ExecutionNodeRunner hydrates localPath and transfer
       })
     }).then((r) => r.json() as Promise<{ nodeToken: string }>);
 
+    const uploads: string[] = [];
+    app.setExternalMcpCaller(async (tool, payload) => {
+      assert.equal(tool, 'connector_call');
+      assert.equal(payload.toolName, 'upload');
+      const params = payload.arguments as { base64: string; filename: string };
+      assert.equal(params.filename, 'vps-output.csv');
+      assert.deepEqual(Buffer.from(params.base64, 'base64'), fs.readFileSync(remoteFilePath));
+      uploads.push(String(payload.requestId));
+      return { status: 'succeeded', id: 'file-receipt' };
+    });
     const nodeMock = new MockDriver();
     nodeMock.handlers.set('mem_remote_space', async (input) => {
       const folderOut = (await input.onToolCall!('space_create_folder', {
@@ -267,6 +277,13 @@ test('SPACE-AGENT-03: Remote ExecutionNodeRunner hydrates localPath and transfer
       assert.equal(fileOut.ok, true);
       assert.equal(fileOut.folderPath, '远端产物/日报');
 
+      const args = { connectorId:'test-connector', toolName:'upload', fileId:fileOut.id, base64Field:'base64', arguments:{ filename:'vps-output.csv' } };
+      for (let i=0; i<2; i++) {
+        assert.deepEqual(await input.onToolCall!('space_upload_to_connector', args), {status:'succeeded', id:'file-receipt'});
+      }
+      assert.equal(uploads.length, 2);
+      assert.equal(uploads[0], uploads[1]);
+      await assert.rejects(input.onToolCall!('space_upload_to_connector', { ...args, fileId:'missing' }), /可用文件/);
       return { text: '远端节点文件已上传到协作空间' };
     });
 
