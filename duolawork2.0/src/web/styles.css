@@ -1739,10 +1739,16 @@ button.turn-tool-row { cursor: pointer; }
 .members-table:has(.member-identity) td:last-child > div { flex-wrap: wrap; justify-content: flex-end; }
 .dark .material-library .space-search input::placeholder { color: #a8b5c9; opacity: 1; }
 .composer-toolbar small { white-space: nowrap; }
-@media (min-width: 761px) and (max-width: 1000px) {
-  .comm-brand { gap: 4px; }
+.comm-sidebar { container: workbench-sidebar / inline-size; }
+@container workbench-sidebar (max-width: 195px) {
+  .comm-brand { gap: 4px; padding-inline: 0; }
+  .comm-brand-id { gap: 6px; }
+  .comm-brand-id .brand-mark { width: 28px; height: 28px; }
   .comm-brand-id strong { font-size: 14px; }
-  .comm-brand-id small, .composer-toolbar small { display: none; }
+  .comm-brand-id small { display: none; }
+}
+@media (min-width: 761px) and (max-width: 1000px) {
+  .composer-toolbar small { display: none; }
 }
 
 .chat-task-delivery { color: inherit; font-size: 12px; padding: 0; background: transparent; border: 0; text-decoration: underline; text-underline-offset: 3px; }
