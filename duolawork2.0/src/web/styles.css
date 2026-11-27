@@ -1759,15 +1759,13 @@ html.dark {
     touch-action: none;
   }
 
-  .workbench-divider::after {
+  .workbench-divider:focus-visible:not(:hover):not([data-dragging])::after {
     content: '';
     position: absolute;
-    inset: 0 4px;
-    background: transparent;
-  }
-
-  .workbench-divider:is(:hover, :focus-visible, [data-dragging])::after {
-    background: #6889dd;
+    inset: calc(50% - 6px) 2px;
+    border: 1px dotted GrayText;
+    border-radius: 3px;
+    pointer-events: none;
   }
 
   .communication:has(.workbench-divider[data-dragging]) {
