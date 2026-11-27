@@ -236,6 +236,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
   const [uploading, setUploading] = useState<boolean>(false);
   const [fileTextPreview, setFileTextPreview] = useState<string>('');
   const [fileTextState, setFileTextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [htmlPreviewMode, setHtmlPreviewMode] = useState<'render' | 'source'>('render');
 
   const [wsSubpath, setWsSubpath] = useState<string>('');
   const [wsEntries, setWsEntries] = useState<WorkspaceFileEntry[]>([]);
@@ -286,10 +287,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
 
   useEffect(() => {
     setFileTextPreview('');
+    setHtmlPreviewMode('render');
     if (!selection || selection.kind !== 'file' || selectedItem?.previewKind !== 'text') {
       setFileTextState('idle');
       return;
     }
+    const isHtml = /\.html?$/i.test(selectedItem.title || '') || (selectedItem.mimeType || '').includes('text/html');
+    const maxChars = isHtml ? 4_000_000 : 64_000;
     let alive = true;
     setFileTextState('loading');
     fetch(`/api/v2/space/files/${encodeURIComponent(selection.id)}`)
@@ -299,7 +303,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       })
       .then((txt) => {
         if (!alive) return;
-        setFileTextPreview(txt.slice(0, 48_000));
+        setFileTextPreview(txt.slice(0, maxChars));
         setFileTextState('ready');
       })
       .catch(() => {
@@ -308,7 +312,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     return () => {
       alive = false;
     };
-  }, [selection, selectedItem?.previewKind]);
+  }, [selection, selectedItem?.previewKind, selectedItem?.title, selectedItem?.mimeType]);
 
   const loadMaterialContext = useCallback(async () => {
     if (!thread?.id || !selection) {
@@ -1469,7 +1473,22 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               />
             ) : (
               <div className="space-prose flex-1 min-h-[200px] overflow-y-auto pr-1">
-                <MarkdownView text={docDraft} />
+                <MarkdownView
+                  text={docDraft}
+                  imageActions={{
+                    onDownloadLocal: (src, alt) => {
+                      const href = src.startsWith('/api/v2/')
+                        ? `${src}${src.includes('?') ? '&' : '?'}download=1`
+                        : `/api/v2/media/download?url=${encodeURIComponent(src)}${alt ? `&name=${encodeURIComponent(alt)}` : ''}`;
+                      const a = document.createElement('a');
+                      a.href = href;
+                      a.download = alt || 'image';
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                    }
+                  }}
+                />
               </div>
             )}
 
@@ -1503,15 +1522,58 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="material-pdf-frame"
               />
             )}
-            {selectedItem.previewKind === 'text' && (
-              <pre className="material-file-text">
-                {fileTextState === 'loading'
-                  ? '正在读取文件内容…'
-                  : fileTextState === 'error'
-                    ? '读取文件内容失败'
-                    : fileTextPreview || '(空文件)'}
-              </pre>
-            )}
+            {selectedItem.previewKind === 'text' && (() => {
+              const isHtmlFile =
+                /\.html?$/i.test(selectedItem.title || '') ||
+                (selectedItem.mimeType || '').includes('text/html');
+              if (isHtmlFile) {
+                return (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setHtmlPreviewMode('render')}
+                        className={htmlPreviewMode === 'render' ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
+                        style={{ height: 24, padding: '0 9px', fontSize: 11 }}
+                      >
+                        网页预览
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHtmlPreviewMode('source')}
+                        className={htmlPreviewMode === 'source' ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
+                        style={{ height: 24, padding: '0 9px', fontSize: 11 }}
+                      >
+                        源码
+                      </button>
+                    </div>
+                    {fileTextState === 'loading' ? (
+                      <pre className="material-file-text">正在读取网页内容…</pre>
+                    ) : fileTextState === 'error' ? (
+                      <pre className="material-file-text">读取网页内容失败</pre>
+                    ) : htmlPreviewMode === 'render' ? (
+                      <iframe
+                        sandbox=""
+                        srcDoc={fileTextPreview}
+                        title={selectedItem.title}
+                        className="material-pdf-frame"
+                      />
+                    ) : (
+                      <pre className="material-file-text">{fileTextPreview || '(空文件)'}</pre>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <pre className="material-file-text">
+                  {fileTextState === 'loading'
+                    ? '正在读取文件内容…'
+                    : fileTextState === 'error'
+                      ? '读取文件内容失败'
+                      : fileTextPreview || '(空文件)'}
+                </pre>
+              );
+            })()}
             {selectedItem.previewKind === 'binary' && (
               <div className="shared-file-meta">
                 <File size={22} />
