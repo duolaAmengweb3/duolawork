@@ -459,7 +459,15 @@ export class DuolaWorkDatabase {
       WHERE client_request_id IS NOT NULL;
     `);
 
+    const taskCols = this.sqlite.prepare('PRAGMA table_info(v2_tasks)').all() as Array<{ name: string }>;
+    if (!taskCols.some(c => c.name === 'requester_member_id')) {
+      this.sqlite.exec('ALTER TABLE v2_tasks ADD COLUMN requester_member_id TEXT REFERENCES v2_members(id)');
+    }
     const runCols = this.sqlite.prepare(`PRAGMA table_info(v2_task_runs)`).all() as Array<{ name: string }>;
+    if (!runCols.some(c => c.name === 'return_member_id')) {
+      this.sqlite.exec('ALTER TABLE v2_task_runs ADD COLUMN return_member_id TEXT REFERENCES v2_members(id)');
+    }
+    this.sqlite.exec('CREATE INDEX IF NOT EXISTS idx_v2_pending_task_returns ON v2_task_runs(status) WHERE return_member_id IS NOT NULL');
     if (!runCols.some((c) => c.name === 'lead_member_id')) {
       this.sqlite.exec(`ALTER TABLE v2_task_runs ADD COLUMN lead_member_id TEXT`);
     }

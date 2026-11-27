@@ -591,7 +591,17 @@ export function App(): React.JSX.Element {
   );
 
   const visibleMessages = useMemo(
-    () => (messagesThreadId === activeThreadId ? messages : []),
+    () => {
+      if (messagesThreadId !== activeThreadId) return [];
+      const seenTasks = new Set<string>();
+      return messages.filter(message => {
+        if (message.authorKind === 'task_receipt') return false;
+        if (message.authorKind !== 'system_task_card' || !message.taskCard) return true;
+        if (seenTasks.has(message.taskCard.taskId)) return false;
+        seenTasks.add(message.taskCard.taskId);
+        return true;
+      });
+    },
     [messagesThreadId, activeThreadId, messages]
   );
 
@@ -1780,6 +1790,19 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const handlePauseTask = async (taskId: string, paused: boolean) => {
+    try {
+      const response = await fetch('/api/v2/tasks/' + encodeURIComponent(taskId) + '/pause', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+      });
+      if (!response.ok) throw new Error();
+      await loadBootstrap(true);
+      if (viewMode === 'task') await loadTaskDetail(taskId);
+    } catch {
+      showChatNotice('未能更新任务状态，请稍后再试');
+    }
+  };
+
   const handleToggleScheduleById = async (taskId: string, enabled: boolean) => {
     const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/schedule`, {
       method: 'POST',
@@ -2944,82 +2967,41 @@ export function App(): React.JSX.Element {
                       }
 
                       if (m.authorKind === 'system_task_card' && m.taskCard) {
-                        const isFailedCard = m.taskCard.kind === 'failed';
-                        const cardArtifactId = m.artifactRefs?.[0];
+                        const task = tasks.find(task => task.id === m.taskCard!.taskId);
+                        if (!task) return null;
+                        const run = task.latestRun;
+                        const paused = task.status === 'paused';
+                        const canPause = task.kind === 'scheduled' || run?.status === 'running' || run?.status === 'paused';
+                        const requester = run?.returnMemberId && memberById.get(run.returnMemberId);
+                        const returnStatus = requester && run?.status === 'completed' && (
+                          run.returnTurnStatus === 'completed' ? requester.name + ' 已跟进'
+                          : run.returnTurnStatus === 'failed' || run.returnTurnStatus === 'canceled' ? requester.name + ' 跟进中断'
+                          : run.returnTurnStatus ? requester.name + ' 正在接手' : '等待 ' + requester.name + ' 接手'
+                        );
+                        const status = paused
+                          ? run?.status === 'running' ? '当前步骤结束后暂停' : '已暂停'
+                          : run?.status === 'running' ? '执行中'
+                          : run?.status === 'waiting_user' ? '等你回复'
+                          : run?.status === 'waiting_node_online' ? '等待成员上线'
+                          : run?.status === 'failed' || run?.status === 'timed_out' ? '执行中断'
+                          : run?.status === 'canceled' ? '已停止'
+                          : task.kind === 'scheduled' ? '按计划执行'
+                          : run?.status === 'completed' ? (returnStatus || '已交付') : '待启动';
                         return (
-                          <div key={m.id} className={`task-intent-card ${isFailedCard ? 'is-failed' : ''}`}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveTaskId(m.taskCard!.taskId);
+                          <div key={m.id} className="chat-message chat-task-row">
+                            <span aria-hidden="true" className="chat-face agent-avatar chat-card-spacer" />
+                            <div className="message-content chat-task-status">
+                              <button type="button" className="chat-task-title" onClick={() => {
+                                setActiveTaskId(task.id);
                                 setViewMode('task');
-                              }}
-                            >
-                              <div>
-                                <small>
-                                  <CheckCircle2 size={12} className="inline mr-1" />
-                                  {m.taskCard.kind === 'waiting_user'
-                                    ? '需要你确认'
-                                    : isFailedCard
-                                      ? '执行失败'
-                                      : m.taskCard.kind === 'delivered'
-                                        ? '任务已完成交付'
-                                        : '协作任务状态'}
-                                </small>
-                                <strong>{m.body}</strong>
-                              </div>
-                              <span className="dw-btn dw-btn-outline dw-btn-sm">查看任务详情 →</span>
-                            </button>
-
-                            {m.taskCard.kind === 'created' && tasks.some((t) => t.id === m.taskCard!.taskId) && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleRunTaskNowById(m.taskCard!.taskId)}
-                                  className="dw-btn dw-btn-outline dw-btn-sm"
-                                >
-                                  <Play size={12} />
-                                  <span>立即执行一次</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {m.taskCard.kind === 'delivered' && cardArtifactId && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDocEditing(false);
-                                    setSpaceSelection({ kind: 'document', id: cardArtifactId });
-                                    setSpaceTab('documents');
-                                    setSpaceOpen(true);
-                                  }}
-                                  className="dw-btn dw-btn-outline dw-btn-sm"
-                                >
-                                  <FileText size={12} />
-                                  <span>查看交付文档</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {m.taskCard.kind === 'waiting_user' && m.taskCard.runId && (
-                              <div className="px-3 pb-3 flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={waitingReplyText}
-                                  onChange={(e) => setWaitingReplyText(e.target.value)}
-                                  placeholder="直接在此回复任务负责人以继续执行…"
-                                  className="dw-input"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => void handleReplyWaitingRun(m.taskCard!.runId!)}
-                                  className="dw-btn dw-btn-primary dw-btn-sm"
-                                >
-                                  答复并继续
-                                </button>
-                              </div>
-                            )}
+                              }}>{task.title}</button>
+                              <span className="chat-task-state" role="status">{status}</span>
+                              {canPause && <button type="button" className="chat-task-control"
+                                aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
+                                onClick={() => void handlePauseTask(task.id, !paused)}>
+                                {paused ? <Play size={14} /> : <Pause size={14} />}
+                              </button>}
+                            </div>
                           </div>
                         );
                       }
@@ -3613,22 +3595,22 @@ export function App(): React.JSX.Element {
                     <span>停止执行</span>
                   </button>
                 )}
-                <button
+                {taskDetail.task.status === 'active' && (!taskDetail.runs.length || (taskDetail.task.kind === 'scheduled' && !taskDetail.runs.some(run => ['running','waiting_user','waiting_node_online','paused'].includes(run.status)))) && <button
                   type="button"
                   onClick={() => void handleRunTaskNowById(taskDetail.task.id)}
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <Play size={12} />
                   <span>立即执行一次</span>
-                </button>
-                {taskDetail.task.kind === 'scheduled' && (
+                </button>}
+                {(taskDetail.task.kind === 'scheduled' || taskDetail.activeRun?.status === 'running' || taskDetail.task.status === 'paused') && (
                   <button
                     type="button"
-                    onClick={() => void handleToggleScheduleById(taskDetail.task.id, !taskDetail.task.scheduleEnabled)}
+                    onClick={() => void handlePauseTask(taskDetail.task.id, taskDetail.task.status !== 'paused')}
                     className="dw-btn dw-btn-outline dw-btn-sm"
                   >
                     {taskDetail.task.scheduleEnabled ? <Pause size={12} /> : <Play size={12} />}
-                    <span>{taskDetail.task.scheduleEnabled ? '运行中 · 点击暂停' : '已暂停 · 点击启用'}</span>
+                    <span>{taskDetail.task.status === 'paused' ? '继续任务' : '暂停任务'}</span>
                   </button>
                 )}
                 <button
@@ -3681,7 +3663,7 @@ export function App(): React.JSX.Element {
                               ? '超时'
                               : r.status === 'canceled'
                                 ? '已取消'
-                                : r.status === 'waiting_user'
+                                : r.status === 'paused' ? '已暂停' : r.status === 'waiting_user'
                                   ? '待确认'
                                   : '进行中'}
                         )
@@ -3690,6 +3672,17 @@ export function App(): React.JSX.Element {
                   </div>
                 )}
 
+                {taskDetail.activeRun?.status === 'waiting_user' && (
+                  <form className="mx-7 mt-4" onSubmit={e => {
+                    e.preventDefault();
+                    void handleReplyWaitingRun(taskDetail.activeRun!.id);
+                  }}>
+                    <label>{taskDetail.activeRun.waitingQuestion}
+                      <input className="dw-input" value={waitingReplyText} onChange={e => setWaitingReplyText(e.target.value)} placeholder="回复任务负责人" />
+                    </label>
+                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplyText.trim()}>答复并继续</button>
+                  </form>
+                )}
                 {taskDetail.activeRun?.summary &&
                   (taskDetail.activeRun.status === 'failed' ||
                     taskDetail.activeRun.status === 'timed_out' ||

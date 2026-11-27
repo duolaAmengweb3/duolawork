@@ -159,7 +159,7 @@ export interface ThreadRecord {
   updatedAt: string;
 }
 
-export type MessageAuthorKind = 'user' | 'agent' | 'system_task_card' | 'switch_notice';
+export type MessageAuthorKind = 'user' | 'agent' | 'system_task_card' | 'switch_notice' | 'task_receipt';
 export type TurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
 export const turnPhases = ['processing', 'thinking', 'executing', 'writing', 'queued', 'waiting_reply', 'reconnecting'] as const;
@@ -283,6 +283,7 @@ export interface TaskSpec {
 }
 
 export interface TaskRecord {
+  requesterMemberId?: string | null;
   id: string;
   projectId: string;
   sourceThreadId: string;
@@ -304,6 +305,7 @@ export interface TaskRecord {
 }
 
 export type TaskRunStatus =
+  | 'paused'
   | 'running'
   | 'waiting_user'
   | 'waiting_node_online'
@@ -315,6 +317,8 @@ export type TaskRunStatus =
 export type DeliveryStage = 'steps_running' | 'lead_final_review' | 'delivered';
 
 export interface TaskRunRecord {
+  returnMemberId?: string | null;
+  returnTurnStatus?: TurnStatus | null;
   id: string;
   taskId: string;
   runNumber: number;

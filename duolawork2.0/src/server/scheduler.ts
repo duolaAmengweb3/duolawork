@@ -82,11 +82,7 @@ export class TaskScheduler {
   public toggleTaskSchedule(taskId: string, enabled: boolean): TaskRecord {
     const task = this.tasks.getTask(taskId);
     if (!task) throw new Error(`任务不存在: ${taskId}`);
-    const now = new Date().toISOString();
-    this.db.sqlite
-      .prepare(`UPDATE v2_tasks SET schedule_enabled = ?, status = ?, updated_at = ? WHERE id = ?`)
-      .run(enabled ? 1 : 0, enabled ? 'active' : 'paused', now, taskId);
-    return this.tasks.getTask(taskId)!;
+    return this.tasks.setPaused(taskId, !enabled);
   }
 
   private resolveDueSlots(task: TaskRecord, now: Date, lastCheckedAt?: Date): string[] {

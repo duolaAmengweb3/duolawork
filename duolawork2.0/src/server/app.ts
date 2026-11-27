@@ -557,13 +557,11 @@ export class DuolaWorkApp {
     this.sandbox.assertLeadPermission(claims);
     const rawLead = typeof args.leadMemberId === 'string' ? args.leadMemberId.trim() : '';
     const kind = args.kind === 'scheduled' ? 'scheduled' : 'once';
-    const startImmediately =
-      args.startImmediately !== undefined
-        ? Boolean(args.startImmediately)
-        : kind !== 'scheduled';
+    const startImmediately = kind === 'once' || args.startImmediately === true;
     const created = this.tasks.createOrUpdateTask({
       ...(typeof args.taskId === 'string' && args.taskId.trim() ? { taskId: args.taskId.trim() } : {}),
       sourceThreadId: claims.threadId,
+      requesterMemberId: claims.memberId,
       title: String(args.title || '未命名任务'),
       kind,
       cronExpr: typeof args.cronExpr === 'string' ? args.cronExpr : null,
@@ -1039,6 +1037,7 @@ export class DuolaWorkApp {
     this.scheduler.start(15_000);
     const runBackgroundReconcile = () => {
       if (this.reconcileInProgress) return;
+      this.tasks.dispatchPendingReturns();
       const hasRunningMsgs = Boolean(
         this.db.sqlite
           .prepare(`SELECT 1 FROM v2_thread_messages WHERE turn_status = 'running' LIMIT 1`)
@@ -2432,10 +2431,7 @@ export class DuolaWorkApp {
       if (pathname === '/api/v2/tasks' && method === 'POST') {
         const body = await readJsonBody(req);
         const kind = body.kind === 'scheduled' ? 'scheduled' : 'once';
-        const startImmediately =
-          body.startImmediately !== undefined
-            ? Boolean(body.startImmediately)
-            : kind !== 'scheduled';
+        const startImmediately = kind === 'once' || body.startImmediately === true;
         const created = this.tasks.createOrUpdateTask({
           taskId: typeof body.taskId === 'string' ? body.taskId : undefined,
           sourceThreadId: String(body.sourceThreadId || ''),
@@ -2489,6 +2485,13 @@ export class DuolaWorkApp {
         return;
       }
 
+      const pauseMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/pause$/);
+      if (pauseMatch && method === 'POST') {
+        const body = await readJsonBody(req);
+        if (typeof body.paused !== 'boolean') return sendJson(res, 400, { error: '需要指定暂停状态' });
+        const task = this.tasks.setPaused(decodeURIComponent(pauseMatch[1]), body.paused);
+        return sendJson(res, 200, { task });
+      }
       const toggleMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/schedule$/);
       if (toggleMatch && method === 'POST') {
         const taskId = decodeURIComponent(toggleMatch[1]);
@@ -2501,13 +2504,9 @@ export class DuolaWorkApp {
       const runNowMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/run$/);
       if (runNowMatch && method === 'POST') {
         const taskId = decodeURIComponent(runNowMatch[1]);
-        const { run } = this.tasks.instantiateRun({
-          taskId,
-          plannedSlotAt: `manual:${Date.now()}`,
-          triggerType: 'manual'
-        });
-        void this.tasks.driveRun(run.id).catch(() => {});
-        sendJson(res, 201, { run });
+        const { run, created } = this.tasks.requestManualRun(taskId);
+        if (created) void this.tasks.driveRun(run.id).catch(() => {});
+        sendJson(res, created ? 201 : 200, { run });
         return;
       }
 

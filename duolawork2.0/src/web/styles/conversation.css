@@ -1443,3 +1443,13 @@ html[lang="en"] .space-filters{flex-wrap:wrap}
 html[lang="en"] .space-title > strong{min-width:0;font-size:15px}
 @media(max-width:600px){.sidebar-locale{padding:4px}.locale-switch{justify-content:center;gap:3px;flex-direction:column}.locale-switch>span{display:none}.locale-switch>small{font-size:9px}}
 @media(max-width:600px){html[lang="en"] .comm-sidebar .nav-home{font-size:0;gap:0;justify-content:center}}
+
+.chat-task-row { align-items: center; }
+.chat-task-row .chat-card-spacer { visibility: hidden; height: 0; }
+.chat-task-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chat-task-title { text-align: left; min-width: 0; padding: 0; background: transparent; border: 0; color: inherit; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.chat-task-title:hover { text-decoration: underline; }
+.chat-task-state { color: var(--text-muted, #66758a); font-size: 12px; }
+.chat-task-control { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; color: inherit; background: transparent; }
+.chat-task-control:hover { background: #8899aa1a; }
+.chat-task-title:focus-visible, .chat-task-control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

@@ -60,6 +60,7 @@ export class TaskEngine {
 
   public createOrUpdateTask(input: {
     taskId?: string;
+    requesterMemberId?: string;
     sourceThreadId: string;
     projectId?: string;
     title: string;
@@ -224,72 +225,75 @@ export class TaskEngine {
       return { task: updated, initialRun: null };
     }
 
-    const taskId = input.taskId ?? 'task_' + randomUUID().slice(0, 10);
-    const leadSessionKey = `task_lead:${taskId}`;
+    return this.db.inTransaction(() => {
+      const taskId = input.taskId ?? 'task_' + randomUUID().slice(0, 10);
+      const leadSessionKey = `task_lead:${taskId}`;
 
-    this.db.sqlite
-      .prepare(
-        `INSERT INTO v2_tasks (
-          id, project_id, source_thread_id, title, kind, cron_expr, interval_seconds,
-          timezone, misfire_policy, schedule_enabled, template_version,
-          lead_member_id, lead_session_key, tool_policy, spec_json, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'active', ?, ?)`
-      )
-      .run(
-        taskId,
-        input.projectId ?? thread.projectId,
-        input.sourceThreadId,
-        cleanTitle,
-        kind,
-        cleanCron,
-        cleanInterval,
-        timezone,
-        input.misfirePolicy ?? (kind === 'scheduled' ? 'catch_up_once' : 'skip_stale'),
-        input.scheduleEnabled === false ? 0 : 1,
-        lead.id,
-        leadSessionKey,
-        input.toolPolicy ?? 'duolabase_full',
-        JSON.stringify(normalizedSpec),
-        now,
-        now
-      );
+      this.db.sqlite
+        .prepare(
+          `INSERT INTO v2_tasks (
+            id, project_id, source_thread_id, title, kind, cron_expr, interval_seconds,
+            timezone, misfire_policy, schedule_enabled, template_version,
+            requester_member_id, lead_member_id, lead_session_key, tool_policy, spec_json, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?)`
+        )
+        .run(
+          taskId,
+          input.projectId ?? thread.projectId,
+          input.sourceThreadId,
+          cleanTitle,
+          kind,
+          cleanCron,
+          cleanInterval,
+          timezone,
+          input.misfirePolicy ?? (kind === 'scheduled' ? 'catch_up_once' : 'skip_stale'),
+          input.scheduleEnabled === false ? 0 : 1,
+          input.requesterMemberId ?? null,
+          lead.id,
+          leadSessionKey,
+          input.toolPolicy ?? 'duolabase_full',
+          JSON.stringify(normalizedSpec),
+          now,
+          now
+        );
 
-    const task = this.getTask(taskId)!;
+      const task = this.getTask(taskId)!;
 
-    const assigneesNames = [
-      ...new Set(
-        normalizedSpec.steps.map((s) => this.db.getMember(s.assigneeMemberId)?.name || s.assigneeMemberId)
-      )
-    ].join('、');
+      const assigneesNames = [
+        ...new Set(
+          normalizedSpec.steps.map((s) => this.db.getMember(s.assigneeMemberId)?.name || s.assigneeMemberId)
+        )
+      ].join('、');
 
-    const scheduleHint =
-      task.kind === 'scheduled' && task.cronExpr
-        ? `（定时：${task.cronExpr}，负责人：${lead.name}，执行：${assigneesNames}）`
-        : `（负责人：${lead.name}，执行：${assigneesNames}）`;
+      const scheduleHint =
+        task.kind === 'scheduled' && task.cronExpr
+          ? `（定时：${task.cronExpr}，负责人：${lead.name}，执行：${assigneesNames}）`
+          : `（负责人：${lead.name}，执行：${assigneesNames}）`;
 
-    this.threads.appendSystemMessage({
-      threadId: task.sourceThreadId,
-      authorKind: 'system_task_card',
-      authorId: lead.id,
-      body: `已立项任务《${task.title}》${scheduleHint}`,
-      taskCard: { taskId: task.id, kind: 'created' }
-    });
-
-    let initialRun: TaskRunRecord | null = null;
-    const shouldStartImmediately =
-      input.startImmediately !== undefined ? input.startImmediately : kind === 'once';
-    if (shouldStartImmediately) {
-      const started = this.instantiateRun({
-        taskId: task.id,
-        plannedSlotAt: kind === 'once' ? `once:${task.id}:1` : `immediate:${task.id}:${Date.now()}`,
-        triggerType: 'immediate'
+      this.threads.appendSystemMessage({
+        threadId: task.sourceThreadId,
+        authorKind: 'system_task_card',
+        authorId: lead.id,
+        body: `已立项任务《${task.title}》${scheduleHint}`,
+        taskCard: { taskId: task.id, kind: 'created' }
       });
-      initialRun = started.run;
-    }
 
-    this.threads.emit({ type: 'task.created', taskId: task.id, threadId: task.sourceThreadId, payload: task });
-    this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
-    return { task, initialRun };
+      let initialRun: TaskRunRecord | null = null;
+      const shouldStartImmediately =
+        input.startImmediately !== undefined ? input.startImmediately : kind === 'once';
+      if (shouldStartImmediately) {
+        const started = this.instantiateRun({
+          taskId: task.id,
+          plannedSlotAt: kind === 'once' ? `once:${task.id}:1` : `immediate:${task.id}:${Date.now()}`,
+          triggerType: 'immediate'
+        });
+        initialRun = started.run;
+      }
+
+      this.threads.emit({ type: 'task.created', taskId: task.id, threadId: task.sourceThreadId, payload: task });
+      this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
+      return { task, initialRun };
+    });
   }
 
   /**
@@ -332,6 +336,8 @@ export class TaskEngine {
         writerId: task.leadMemberId
       });
 
+      const requester = task.requesterMemberId;
+      const delegated = requester && (requester !== task.leadMemberId || task.spec.steps.some(step => step.assigneeMemberId !== requester));
       const runLeadSessionKey = `task_lead:${task.id}:${runId}`;
 
       this.db.sqlite
@@ -340,9 +346,9 @@ export class TaskEngine {
             id, task_id, run_number, planned_slot_at, template_version, trigger_type,
             status, delivery_stage, waiting_question, integration_worktree_path,
             integration_branch, final_artifact_id, summary,
-            lead_member_id, lead_session_key, tool_policy, spec_json,
+            return_member_id, lead_member_id, lead_session_key, tool_policy, spec_json,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 'running', 'steps_running', NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, 'running', 'steps_running', NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           runId,
@@ -352,6 +358,7 @@ export class TaskEngine {
           task.templateVersion,
           input.triggerType,
           runArtifact.id,
+          delegated ? requester : null,
           task.leadMemberId,
           runLeadSessionKey,
           task.toolPolicy,
@@ -419,6 +426,66 @@ export class TaskEngine {
     };
   }
 
+  public requestManualRun(taskId: string) {
+    return this.db.inTransaction(() => {
+      const task = this.getTask(taskId);
+      if (!task) throw badRequest('任务不存在');
+      const runs = this.listRuns(taskId);
+      const existing = task.kind === 'once' ? runs[0] : runs.find(r =>
+        ['running', 'paused', 'waiting_user', 'waiting_node_online'].includes(r.status));
+      if (existing) return { run: existing, created: false };
+      if (task.status === 'paused') throw badRequest('任务已暂停');
+      return this.instantiateRun({ taskId, plannedSlotAt: 'manual:' + randomUUID(), triggerType: 'manual' });
+    });
+  }
+
+  public setPaused(taskId: string, paused: boolean): TaskRecord {
+    const task = this.getTask(taskId);
+    if (!task) throw badRequest('任务不存在');
+    if (task.status === 'completed' || task.status === 'canceled') return task;
+    const runs = this.listRuns(taskId);
+    const now = new Date().toISOString();
+    this.db.inTransaction(() => {
+      this.db.sqlite.prepare("UPDATE v2_tasks SET status=?, schedule_enabled=?, updated_at=? WHERE id=?")
+        .run(paused ? 'paused' : 'active', paused ? 0 : 1, now, taskId);
+      if (!paused) this.db.sqlite.prepare("UPDATE v2_task_runs SET status='running', updated_at=? WHERE task_id=? AND status='paused'").run(now, taskId);
+    });
+    for (const run of runs) {
+      if (paused ? run.status === 'running' : run.status === 'paused') void this.driveRun(run.id).catch(() => {});
+    }
+    this.threads.emit({ type: 'task.updated', taskId, threadId: task.sourceThreadId });
+    this.threads.emit({ type: 'thread.space_updated', threadId: task.sourceThreadId });
+    return this.getTask(taskId)!;
+  }
+
+  // Terminal runs are their own durable delivery queue. A paired thread message is the receipt.
+  public dispatchPendingReturns(): void {
+    const pending = this.db.sqlite.prepare(`SELECT r.id, r.return_member_id, t.requester_member_id, t.title, t.source_thread_id
+      FROM v2_task_runs r JOIN v2_tasks t ON t.id=r.task_id JOIN v2_threads th ON th.id=t.source_thread_id
+      JOIN v2_members m ON m.id=r.return_member_id
+      WHERE r.return_member_id IS NOT NULL AND r.status IN ('completed','failed','timed_out')
+        AND th.status='active' AND m.status IN ('ready','busy')
+        AND NOT EXISTS (SELECT 1 FROM v2_thread_messages WHERE thread_id=th.id AND client_request_id='task-return:' || r.id)
+        AND NOT EXISTS (SELECT 1 FROM v2_thread_messages WHERE thread_id=th.id AND turn_status IN ('running','queued'))
+      ORDER BY r.updated_at`).all() as Array<{ id: string; return_member_id: string; requester_member_id: string | null; title: string; source_thread_id: string }>;
+    const startedThreads = new Set<string>();
+    for (const row of pending) {
+      if (startedThreads.has(row.source_thread_id)) continue;
+      startedThreads.add(row.source_thread_id);
+      const run = this.getRun(row.id)!;
+      const artifact = run.finalArtifactId && this.artifacts.getArtifact(run.finalArtifactId);
+      const context = [
+        '系统交付回执：你是这项任务的发起成员。请在原对话接手，核对交付并完成用户原先授权的剩余工作。',
+        '按发起本次委派时的用户请求判断范围。已完成的操作不要重复执行或重新派单。没有剩余授权工作就向用户简短汇报。回执不授权新的发布、发送等外部操作。',
+        !row.requester_member_id && '这是补送的历史交付，只核对并回复本次交付结果。不要改动、上传、发布或群发任何内容。',
+        '任务：' + row.title, '结果：' + run.summary,
+        artifact && run.status === 'completed' && '交付文档 ' + artifact.id + '\n' + artifact.content.slice(0, 18000)
+      ].filter(Boolean).join('\n');
+      void this.threads.receiveTaskResult(row.source_thread_id, row.return_member_id, run.id, context)
+        .catch(error => console.warn('Task return dispatch failed', run.id, (error as Error).name));
+    }
+  }
+
   /**
    * Drives a `TaskRun` to completion or `waiting_user` / `timed_out` deterministically.
    */
@@ -431,6 +498,14 @@ export class TaskEngine {
       }
 
       const steps = this.listSteps(runId);
+      if (this.getTask(run.taskId)?.status === 'paused' && run.deliveryStage === 'steps_running') {
+        // Allow acknowledged in-flight work and its review to land before entering the checkpoint.
+        if (!steps.some(step => this.activeStepRuns.has(step.id) || step.status === 'running' || step.status === 'submitted')) {
+          this.db.sqlite.prepare("UPDATE v2_task_runs SET status='paused', updated_at=? WHERE id=? AND status='running'").run(new Date().toISOString(), run.id);
+          this.threads.emit({ type: 'thread.space_updated', threadId: this.getTask(run.taskId)!.sourceThreadId });
+        }
+        return this.getRun(runId)!;
+      }
       const acceptedIds = new Set(steps.filter((s) => s.status === 'accepted').map((s) => s.id));
 
       // Check if all steps are accepted -> trigger atomic single finalization!
@@ -1164,6 +1239,7 @@ export class TaskEngine {
         type: 'thread.space_updated',
         threadId: task.sourceThreadId
       });
+      this.dispatchPendingReturns();
       this.disposeStepScopesForRun(steps, task.leadSessionKey, task.leadMemberId);
     } catch (err) {
       if (this.getRun(run.id)?.status === 'canceled') {
@@ -1336,7 +1412,11 @@ export class TaskEngine {
 
   public listRuns(taskId: string): TaskRunRecord[] {
     const rows = this.db.sqlite
-      .prepare(`SELECT * FROM v2_task_runs WHERE task_id = ? ORDER BY run_number DESC`)
+      .prepare(`SELECT r.*, reply.turn_status AS return_turn_status FROM v2_task_runs r
+        JOIN v2_tasks t ON t.id=r.task_id
+        LEFT JOIN v2_thread_messages receipt ON receipt.thread_id=t.source_thread_id AND receipt.client_request_id='task-return:'||r.id
+        LEFT JOIN v2_thread_messages reply ON reply.id=receipt.paired_message_id
+        WHERE r.task_id = ? ORDER BY r.run_number DESC`)
       .all(taskId) as Record<string, unknown>[];
     return rows.map(mapRunRow);
   }
@@ -1402,7 +1482,7 @@ export class TaskEngine {
         .prepare(
           `UPDATE v2_task_runs
            SET status = 'canceled', waiting_question = NULL, summary = '已手动停止本轮执行', updated_at = ?
-           WHERE id = ? AND status IN ('running', 'waiting_user')`
+           WHERE id = ? AND status IN ('running', 'waiting_user', 'paused')`
         )
         .run(now, runId);
       this.db.sqlite
@@ -1468,7 +1548,7 @@ export class TaskEngine {
 
     const runs = this.listRuns(taskId);
     for (const r of runs) {
-      if (r.status === 'running' || r.status === 'waiting_user') {
+      if (r.status === 'running' || r.status === 'paused' || r.status === 'waiting_user') {
         await this.cancelRun(r.id);
       }
     }
@@ -1940,6 +2020,7 @@ function mapTaskRow(row: Record<string, unknown>): TaskRecord {
     misfirePolicy: row.misfire_policy as TaskRecord['misfirePolicy'],
     scheduleEnabled: Number(row.schedule_enabled) !== 0,
     templateVersion: Number(row.template_version),
+    requesterMemberId: row.requester_member_id ? String(row.requester_member_id) : null,
     leadMemberId: String(row.lead_member_id),
     leadSessionKey: String(row.lead_session_key),
     toolPolicy: row.tool_policy as TaskRecord['toolPolicy'],
@@ -1965,6 +2046,8 @@ function mapRunRow(row: Record<string, unknown>): TaskRunRecord {
     runNumber: Number(row.run_number),
     plannedSlotAt: String(row.planned_slot_at),
     templateVersion: Number(row.template_version),
+    returnMemberId: row.return_member_id ? String(row.return_member_id) : null,
+    returnTurnStatus: (row.return_turn_status as TaskRunRecord['returnTurnStatus']) ?? null,
     triggerType: row.trigger_type as TaskRunRecord['triggerType'],
     status: row.status as TaskRunRecord['status'],
     deliveryStage: row.delivery_stage as TaskRunRecord['deliveryStage'],

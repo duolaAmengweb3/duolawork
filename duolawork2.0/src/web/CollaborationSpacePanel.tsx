@@ -2122,7 +2122,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
                         ? ''
                         : 'working';
-                const statusLabel = !runStatus
+                const statusLabel = t.status === 'paused' ? (runStatus === 'running' ? '当前步骤结束后暂停' : '已暂停') : !runStatus
                   ? t.kind === 'scheduled'
                     ? t.scheduleEnabled
                       ? '等待定时触发'

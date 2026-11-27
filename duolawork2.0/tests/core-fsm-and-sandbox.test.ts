@@ -2268,3 +2268,72 @@ test('remote timeout looks up the original receipt once and restores the paired 
     await cleanup();
   }
 });
+
+test('delegation auto-starts, pauses at a checkpoint and returns once to the original requester after reconnect', async () => {
+  const { app, cleanup } = createTestApp();
+  try {
+    const thread = app.threads.createThread({ title: '交付回执', activeOwnerMemberId: 'mem_gemini' });
+    let calls = 0;
+    let release!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    let started!: () => void;
+    const firstStep = new Promise<void>(resolve => { started = resolve; });
+    app.registry.mockDriver.handlers.set('mem_codex', async input => {
+      if (input.scopeKey.startsWith('task_lead:')) return { text: '{"verdict":"accept","comments":"已核对产出"}' };
+      calls++;
+      if (calls === 1) { started(); await hold; }
+      return { text: '步骤实测交付 ' + calls };
+    });
+    let returned = 0;
+    app.registry.mockDriver.handlers.set('mem_gemini', async input => {
+      if (input.prompt.includes('系统交付回执')) {
+        returned++;
+        assert.match(input.prompt, /步骤实测交付 2/);
+        return { text: '已收到并核对两项交付。' };
+      }
+      const task = { title: '协作验收', kind: 'once', leadMemberId: 'mem_codex', startImmediately: false,
+        steps: [{ title: '整理', assigneeMemberId: 'mem_codex' }, { title: '核对', assigneeMemberId: 'mem_codex', dependsOnOrders: [1] }] };
+      return { text: '开始委派。<duolawork_task>' + JSON.stringify(task) + '</duolawork_task>' };
+    });
+    await app.threads.sendUserMessage({ threadId: thread.id, body: '直接委派 Codex 整理并核对' });
+    await firstStep;
+    const [task] = app.tasks.listTasks({ sourceThreadId: thread.id });
+    const [run] = app.tasks.listRuns(task.id);
+    assert.equal(task.requesterMemberId, 'mem_gemini');
+    assert.equal(app.tasks.requestManualRun(task.id).created, false);
+    app.tasks.setPaused(task.id, true);
+    assert.equal(app.tasks.getRun(run.id)?.status, 'running');
+    app.threads.switchOwner(thread.id, 'mem_grok');
+    const requester = app.db.getMember('mem_gemini')!;
+    app.db.upsertMember({ ...requester, status: 'offline' });
+    release();
+    const until = async (check: () => boolean) => {
+      for (let n=0; n<350; n++) {
+        if (check()) return;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      assert.fail('未到达预期状态');
+    };
+    await until(() => app.tasks.getRun(run.id)?.status === 'paused');
+    assert.equal(calls, 1);
+    await app.tasks.reconcileInFlightTaskRuns();
+    assert.equal(calls, 1);
+    app.tasks.setPaused(task.id, false);
+    await until(() => app.tasks.getRun(run.id)?.status === 'completed');
+    assert.equal(calls, 2);
+    assert.equal(returned, 0);
+    assert.equal(app.tasks.requestManualRun(task.id).run.id, run.id);
+    assert.equal(app.tasks.listRuns(task.id).length, 1);
+    app.db.upsertMember(requester);
+    app.tasks.dispatchPendingReturns();
+    app.tasks.dispatchPendingReturns();
+    await until(() => app.tasks.listRuns(task.id)[0].returnTurnStatus === 'completed');
+    app.tasks.dispatchPendingReturns();
+    assert.equal(returned, 1);
+    const messages = app.threads.listMessages(thread.id);
+    assert.equal(messages.filter(m => m.authorKind === 'user').length, 1);
+    assert.equal(messages.filter(m => m.authorKind === 'task_receipt').length, 1);
+    assert.equal(messages.at(-1)?.authorId, 'mem_gemini');
+    assert.equal(app.threads.getThread(thread.id)?.activeOwnerMemberId, 'mem_grok');
+  } finally { await cleanup(); }
+});

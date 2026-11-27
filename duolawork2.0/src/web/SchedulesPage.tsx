@@ -85,7 +85,7 @@ export function SchedulesPage({
             const leadName = members.find((m) => m.id === task.leadMemberId)?.name || task.leadMemberId;
             const originThread = threads.find((t) => t.id === task.sourceThreadId);
             const latest = task.latestRun;
-            const statusText = !latest
+            const statusText = task.status === 'paused' ? (latest?.status === 'running' ? '当前步骤结束后暂停' : '已暂停') : !latest
               ? task.kind === 'scheduled'
                 ? task.scheduleEnabled
                   ? '等待定时触发'
@@ -180,6 +180,7 @@ export function SchedulesPage({
                         <span>停止</span>
                       </button>
                     )}
+                    {task.status === 'active' && (!latest || (task.kind === 'scheduled' && !['running','waiting_user','waiting_node_online','paused'].includes(latest.status))) && (
                     <button
                       type="button"
                       disabled={busyId === task.id}
@@ -197,6 +198,7 @@ export function SchedulesPage({
                       <Play size={12} />
                       <span>立即执行</span>
                     </button>
+                    )}
                     {task.kind === 'scheduled' && (
                       <button
                         type="button"

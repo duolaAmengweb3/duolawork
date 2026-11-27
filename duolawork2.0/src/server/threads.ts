@@ -575,24 +575,27 @@ export class ThreadEngine {
     if (this.db.sqlite.prepare(`SELECT 1 FROM v2_thread_messages WHERE thread_id=? AND turn_status IN ('queued','running')`).get(threadId)) {
       return { status: 'busy' };
     }
-    const ownerId = this.getThread(threadId)?.activeOwnerMemberId;
-    const owner = ownerId && this.db.getMember(ownerId);
-    if (!owner || !['ready','busy'].includes(owner.status)) return { status: 'unavailable' };
 
     // Follow earlier continuation requests to retain the user's original goal and image references.
     let preceding = source;
     let requestText = '';
+    let returnMember: string | undefined;
     for (;;) {
       const request = this.db.sqlite.prepare(
-        `SELECT body,client_request_id FROM v2_thread_messages
-         WHERE thread_id=? AND author_kind='user' AND seq<? ORDER BY seq DESC LIMIT 1`
-      ).get(threadId, preceding.seq) as { body: string; client_request_id: string | null } | undefined;
+        `SELECT body,client_request_id,author_kind,target_member_id FROM v2_thread_messages
+         WHERE thread_id=? AND (paired_message_id=? OR (paired_message_id IS NULL AND author_kind='user' AND seq<?))
+         ORDER BY (paired_message_id IS NOT NULL) DESC, seq DESC LIMIT 1`
+      ).get(threadId, preceding.id, preceding.seq) as { body: string; client_request_id: string | null; author_kind: string; target_member_id: string } | undefined;
       if (!request) break;
       requestText = request.body;
+      if (request.author_kind === 'task_receipt') returnMember = request.target_member_id;
       const previous = request.client_request_id?.startsWith('continue:') && this.getMessage(request.client_request_id.slice(9));
       if (!previous || previous.threadId !== threadId || previous.seq >= preceding.seq) break;
       preceding = previous;
     }
+    const ownerId = returnMember ?? this.getThread(threadId)?.activeOwnerMemberId;
+    const owner = ownerId && this.db.getMember(ownerId);
+    if (!owner || !['ready','busy'].includes(owner.status)) return { status: 'unavailable' };
     const operations = (source.toolTrace ?? []).slice(-12).map(t => [t.name, t.summary].filter(Boolean).join(' ')).join('、');
     const context = [
       '用户要求继续这个中断的任务。原始请求：' + requestText,
@@ -600,7 +603,7 @@ export class ThreadEngine {
       operations && '近期工具记录（仅表示调用过）：' + operations,
       '先核对已有文件和外部操作回执，再继续剩余工作。已完成的步骤跳过。发文、发送、支付等操作若结果不明，先查证；无法确认时告知用户，切勿重复提交。'
     ].filter(Boolean).join('\n');
-    const execution = this.sendUserMessage({ threadId, body: '从上次中断处继续', idempotencyKey: key, continuationContext: context });
+    const execution = this.executeSendUserMessage({ threadId, body: '从上次中断处继续', receiptMemberId: returnMember, continuationContext: context }, key);
     if (!existing()) await execution;
     else void execution.catch(() => {}); // The normal message lifecycle persists and emits its result.
     return { status: 'continued' };
@@ -630,6 +633,7 @@ export class ThreadEngine {
         ? input.idempotencyKey.trim()
         : null;
 
+    if (cleanClientKey?.startsWith('task-return:')) throw new Error('无效的消息请求标识');
     if (!cleanClientKey) {
       return this.executeSendUserMessage(input, null);
     }
@@ -649,10 +653,18 @@ export class ThreadEngine {
     return runPromise;
   }
 
+  // A delivery wakes the delegator without changing the user's selected conversation owner.
+  public receiveTaskResult(threadId: string, memberId: string, runId: string, context: string) {
+    return this.executeSendUserMessage({ threadId, receiptMemberId: memberId,
+      body: context, isTaskReceipt: true }, 'task-return:' + runId);
+  }
+
   private async executeSendUserMessage(
     input: {
       threadId: string;
       body: string;
+      receiptMemberId?: string;
+      isTaskReceipt?: boolean;
       idempotencyKey?: string;
       timeoutMs?: number;
       continuationContext?: string;
@@ -666,7 +678,7 @@ export class ThreadEngine {
   }> {
     const thread = this.getThread(input.threadId);
     if (!thread) throw new Error(`对话不存在: ${input.threadId}`);
-    const targetMember = this.db.getMember(thread.activeOwnerMemberId);
+    const targetMember = this.db.getMember(input.receiptMemberId ?? thread.activeOwnerMemberId);
     if (!targetMember) throw new Error(`负责人不存在: ${thread.activeOwnerMemberId}`);
 
     const cleanBody = input.body.trim();
@@ -785,9 +797,9 @@ export class ThreadEngine {
                   id, thread_id, seq, author_kind, author_id, target_member_id, attempt_id,
                   body, artifact_refs_json, task_card_json, turn_status, usage_json,
                   client_request_id, paired_message_id, created_at, updated_at
-                ) VALUES (?, ?, ?, 'user', 'owner', ?, NULL, ?, '[]', NULL, 'completed', NULL, ?, ?, ?, ?)`
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, '[]', NULL, 'completed', NULL, ?, ?, ?, ?)`
               )
-              .run(uId, thread.id, uSeq, targetMember.id, cleanBody, cleanClientKey, aId, now, now);
+              .run(uId, thread.id, uSeq, input.isTaskReceipt ? 'task_receipt' : 'user', input.isTaskReceipt ? 'system' : 'owner', targetMember.id, cleanBody, cleanClientKey, aId, now, now);
 
             this.db.sqlite
               .prepare(
@@ -799,7 +811,7 @@ export class ThreadEngine {
               .run(aId, thread.id, aSeq, targetMember.id, targetMember.id, now, now);
 
             const isDefaultTitle = /^新(?:工作)?对话(?:\s+\d+)?$/.test(thread.title);
-            const autoTitle = isDefaultTitle ? cleanBody.replace(/\s+/g, ' ').slice(0, 22) : '';
+            const autoTitle = isDefaultTitle && !input.receiptMemberId ? cleanBody.replace(/\s+/g, ' ').slice(0, 22) : '';
             if (autoTitle) {
               this.db.sqlite
                 .prepare(`UPDATE v2_threads SET title = ?, updated_at = ? WHERE id = ?`)
@@ -926,7 +938,7 @@ export class ThreadEngine {
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
                 ? '调用 task_create_or_update 工具或'
                 : ''
-            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, startImmediately:true|false, steps 可选）。`,
+            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, steps 可选。单次任务自动启动，定时任务默认按计划执行）。`,
           targetMember.driverKind === 'remote-bridge'
             ? `- 关键禁令：严禁调用旧版 Agent Hub (1.9.6) 的频道定时任务 (schedule) 或看板任务 (board_task) 工具！该桥接频道对用户完全不可见，立项与定时任务必须通过 <duolawork_task>...</duolawork_task> 写入 DuolaWork 2.0。`
             : `- 安全规范：绝不索要或输出明文密钥，外部服务通过 DuolaBase 连接器与 Vault HTTP 代理按授权访问。`,
@@ -941,14 +953,14 @@ export class ThreadEngine {
 
     const compactBridgeGuard =
       targetMember.driverKind === 'remote-bridge'
-        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！需求尚有模糊点时先用 <duolawork_ask>...</duolawork_ask> 提 1～3 个问题确认；需求已明确或用户已确认时，在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求","startImmediately":false}</duolawork_task>（支持数组；可用成员：${memberNamesSummary || targetMember.name}）。`
+        ? `\n重要环境提醒：你在 DuolaWork 2.0 桥接会话中，严禁调用旧版 Hub 的 schedule / board_task 工具（用户完全看不到）！需求尚有模糊点时先用 <duolawork_ask>...</duolawork_ask> 提 1～3 个问题确认；需求已明确或用户已确认时，在回复中输出一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"完整执行要求"}</duolawork_task>（支持数组；可用成员：${memberNamesSummary || targetMember.name}）。`
         : '';
 
     const driverActionHint =
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
             hasNativeSpaceTools
               ? '向外部连接器上传图片或文件时，先用 space_save_file(localPath) 保存，再用 space_upload_to_connector 传文件 ID，让工作台传输原始字节。优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
               : ''
