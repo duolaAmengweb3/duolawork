@@ -19,6 +19,7 @@ const app = new DuolaWorkApp({
   filesDir,
   lockFilePath,
   autoImportAgentHub,
+  refreshRegisteredHubHealth: autoImportAgentHub || cloudMode,
   staticWebDir: path.join(rootDir, 'dist/web')
 });
 
