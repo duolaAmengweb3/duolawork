@@ -105,13 +105,26 @@ interface DesktopBridge {
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
 }
 
+const workspaceToolLabels: Record<string, string> = {
+  connector_list: '查看连接', connector_discover: '查找工具', connector_check: '检查连接',
+  connector_call: '调用服务', vault_list: '查看凭证', vault_http_proxy: '请求服务',
+  experience_suggest: '查找经验', memory_recall: '查找记忆', experience_read: '读取经验',
+  space_list_materials: '查看资料', space_read_material: '读取资料', space_create_folder: '新建目录',
+  space_save_file: '保存文件', space_save_document: '保存文档', space_save_link: '保存链接',
+  space_move_item: '移动资料', space_upload_to_connector: '上传文件', chat_attach_image: '添加图片'
+};
+
 function formatToolTraceRow(item: ToolTraceItem) {
   const name = item.name.trim();
   const summary = item.summary?.trim() || '';
   const raw = summary && summary !== name ? name + ' — ' + summary : name;
   let label = '调用工具';
   let detail = summary || name;
-  if (/ on Web$/i.test(name) || /^(websearch|google_web_search|联网检索)$/i.test(name)) {
+  const toolKey = name.replace(/^Run\s+/i, '').replace(/^mcp[_:]+/i, '').replace(/^(?:duolabase|duolawork-space)[_:]+/i, '');
+  if (Object.hasOwn(workspaceToolLabels, toolKey)) {
+    label = workspaceToolLabels[toolKey];
+    detail = summary;
+  } else if (/ on Web$/i.test(name) || /^(websearch|google_web_search|联网检索)$/i.test(name)) {
     label = '搜索网页';
     detail = summary || name.replace(/ on Web$/i, '');
   } else if (/^(File |read(?:_file)?$|view_file$|读取文件$)/i.test(name)) {
@@ -128,6 +141,9 @@ function formatToolTraceRow(item: ToolTraceItem) {
   }
   if (detail === label || (detail === name && label !== '调用工具' && !/\s/.test(name))) detail = '';
   if (label === '调用工具' && !summary) detail = detail.replace(/^Run mcp_/, '').replace(/^duolawork-space_space_/, 'space_');
+  if ((label === '读取文件' || label === '编辑文件') && detail.length > 56 && detail.includes('/')) {
+    detail = '…/' + detail.split('/').filter(Boolean).slice(-2).join('/');
+  }
   return { label, detail, raw };
 }
 
@@ -143,7 +159,7 @@ function ToolTraceRow({ item }: { item: ToolTraceItem }) {
     {row.detail && <span className="turn-tool-detail">{row.detail}</span>}
   </>;
   return <div className={`turn-tool-item status-${item.status}`}>
-    {row.detail ? <>
+    {row.detail || row.raw !== row.label ? <>
       <button type="button" className="turn-tool-row" aria-expanded={open} title={row.raw} onClick={() => setOpen(!open)}>
         {contents}
       </button>
