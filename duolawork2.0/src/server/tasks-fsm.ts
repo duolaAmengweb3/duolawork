@@ -6,7 +6,7 @@ import type { ArtifactStore } from './artifacts.js';
 import type { AuthSandbox } from './auth-sandbox.js';
 import type { DuolaWorkDatabase } from './db.js';
 import type { DriverRegistry } from './drivers/registry.js';
-import { SPACE_AND_DUOLABASE_TOOLS, type DynamicToolDefinition } from './drivers/types.js';
+import { SPACE_AND_DUOLABASE_TOOLS, SPACE_TOOL_NAMES, type DynamicToolDefinition } from './drivers/types.js';
 import { validateCronExpr } from './scheduler.js';
 import type { SpaceStore } from './space.js';
 import type { ThreadEngine } from './threads.js';
@@ -670,9 +670,7 @@ export class TaskEngine {
           }
           if (
             this.scopedToolExecutor &&
-            (toolName === 'space_list_materials' ||
-              toolName === 'space_read_material' ||
-              toolName.startsWith('duolabase:'))
+            (SPACE_TOOL_NAMES.has(toolName) || toolName.startsWith('duolabase:'))
           ) {
             return this.scopedToolExecutor(workerClaims, toolName, args);
           }
@@ -1764,8 +1762,12 @@ export class TaskEngine {
 
 function cleanDeliverableText(raw: string): string {
   return String(raw || '')
-    .replace(/<duolawork_artifact(?:\s+title="[^"]*")?>/g, '')
+    .replace(/<duolawork_artifact(?:\s+[^>]*)?>/g, '')
     .replace(/<\/duolawork_artifact>/g, '')
+    .replace(/<duolawork_folder(?:\s+[^>]*)?\/>/g, '')
+    .replace(/<duolawork_folder(?:\s+[^>]*)?>[\s\S]*?<\/duolawork_folder>/g, '')
+    .replace(/<duolawork_file(?:\s+[^>]*)?>[\s\S]*?<\/duolawork_file>/g, '')
+    .replace(/<duolawork_link(?:\s+[^>]*)?>[\s\S]*?<\/duolawork_link>/g, '')
     .trim();
 }
 

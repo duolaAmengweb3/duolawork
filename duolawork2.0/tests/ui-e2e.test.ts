@@ -163,11 +163,11 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     await page.getByRole('button', { name: '确认' }).click();
     await page.waitForSelector('text=参考文档');
 
-    await page.getByRole('button', { name: '操作资料 参考文档' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 参考文档' }).click();
     await page.getByRole('button', { name: '引用到对话' }).click();
     await page.waitForSelector('button[aria-label="移除引用 参考文档"]');
 
-    await page.getByRole('button', { name: '操作资料 参考文档' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 参考文档' }).click();
     await page.getByRole('button', { name: '移到回收站' }).click();
     await page.waitForSelector('button:has-text("撤销")');
     await page.getByRole('button', { name: '撤销' }).click();
@@ -182,7 +182,12 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     await page.getByRole('button', { name: /连接器架构整理/ }).click();
     await page.waitForSelector('h1:has-text("连接器架构整理")');
     await page.waitForSelector('text=连接器改造说明.md');
-    assert.ok(await page.locator('.material-item-title:has-text("连接器改造说明.md")').isVisible());
+    assert.ok(
+      await page
+        .getByTestId('space-recent-section')
+        .locator('.material-item-title:has-text("连接器改造说明.md")')
+        .isVisible()
+    );
     assert.equal(await page.getByRole('button', { name: /绑定工作目录/ }).count(), 1, 'Coding Agent thread shows 绑定工作目录');
 
     // Hold the second document response so the previous editor cannot receive a quick save.
@@ -193,7 +198,9 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('button', { name: /连接器架构整理/ }).first().click();
-    const openOriginal = page.locator('.material-item-title', { hasText: original.title });
+    const openOriginal = page
+      .getByTestId('space-recent-section')
+      .locator('.material-item-title', { hasText: original.title });
     await openOriginal.click();
     await page.locator('.space-detail-heading h2', { hasText: original.title }).waitFor();
     await page.getByRole('button', { name: '返回列表' }).click();
@@ -208,7 +215,10 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
       }
       await route.continue();
     });
-    await page.locator('.material-item-title', { hasText: second.title }).click();
+    await page
+      .getByTestId('space-recent-section')
+      .locator('.material-item-title', { hasText: second.title })
+      .click();
     await entered;
     try {
       assert.equal(await page.getByRole('button', { name: '保存修改' }).count(), 0);
@@ -221,7 +231,10 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     }
     await page.unrouteAll({ behavior: 'wait' });
     await page.getByRole('button', { name: '返回列表' }).click();
-    await page.locator('.material-item-title', { hasText: second.title }).click();
+    await page
+      .getByTestId('space-recent-section')
+      .locator('.material-item-title', { hasText: second.title })
+      .click();
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     await page.getByRole('textbox', { name: '文稿编辑器' }).fill('仅修改第二份');
     await page.getByRole('button', { name: '保存修改' }).click();
@@ -492,11 +505,11 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByRole('button', { name: /已重命名对话/ }).click();
-    await page.locator('.material-item-title:has-text("preview-notes.txt")').click();
+    await page.getByTestId('space-recent-section').locator('.material-item-title:has-text("preview-notes.txt")').click();
     await page.waitForSelector('.material-file-text:has-text("文本预览测试内容_12345")');
     await page.getByRole('button', { name: '返回列表' }).click();
 
-    // Create document -> edit v2 -> version history -> quote to chat -> pin/rename/move/trash/restore/permanent delete!
+    // Create document -> edit v2 -> version history -> quote to chat -> pin/rename/move/open folder/back/trash/restore/permanent delete!
     await page.getByRole('button', { name: '添加资料' }).click();
     await page.getByRole('button', { name: '新建文档' }).click();
     await page.getByPlaceholder('文档名称（如：产品方案.md）').fill('初稿文档.md');
@@ -514,30 +527,34 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     await page.getByRole('button', { name: '返回列表' }).click();
 
     await page.getByRole('button', { name: '添加资料' }).click();
-    await page.getByRole('button', { name: '新建文件夹' }).click();
+    await page.getByRole('button', { name: '新建文件夹', exact: true }).click();
     await page.getByPlaceholder('文件夹名称').fill('分类夹');
     await page.getByRole('button', { name: '确认' }).click();
     await page.waitForSelector('.material-folder-open:has-text("分类夹")');
 
-    await page.getByRole('button', { name: '操作资料 初稿文档.md' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 初稿文档.md' }).click();
     await page.locator('.chat-context-menu button:has-text("置顶")').click();
     await page.waitForSelector('.material-shortcuts:has-text("初稿文档.md")');
 
-    await page.getByRole('button', { name: '操作资料 初稿文档.md' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 初稿文档.md' }).click();
     await page.locator('.chat-context-menu button:has-text("重命名")').click();
     await page.locator('.dw-inline-panel input.dw-input').fill('终稿文档.md');
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await page.waitForSelector('.material-item-title:has-text("终稿文档.md")');
+    await page.getByTestId('space-recent-section').locator('.material-item-title:has-text("终稿文档.md")').waitFor();
 
-    await page.getByRole('button', { name: '操作资料 终稿文档.md' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 终稿文档.md' }).click();
     await page.locator('.chat-context-menu button:has-text("取消置顶")').click();
-    await page.getByRole('button', { name: '操作资料 终稿文档.md' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 终稿文档.md' }).click();
     await page.locator('.chat-context-menu button:has-text("移动到文件夹")').click();
     await page.locator('.dw-inline-panel button:has-text("/ 分类夹")').click();
-    await page.getByRole('button', { name: '展开文件夹 分类夹' }).click();
-    await page.waitForSelector('.material-folder-children .material-item-title:has-text("终稿文档.md")');
+    // Drill into folder in Document Manager section, verify item & back navigation!
+    await page.getByTestId('space-manager-section').locator('.material-folder-open:has-text("分类夹")').click();
+    await page.getByTestId('space-folder-nav').waitFor();
+    await page.getByTestId('space-manager-section').locator('.material-item-title:has-text("终稿文档.md")').waitFor();
+    await page.getByRole('button', { name: '返回上一级文件夹' }).click();
+    await page.getByTestId('space-manager-section').locator('.material-folder-open:has-text("分类夹")').waitFor();
 
-    await page.getByRole('button', { name: '操作资料 终稿文档.md' }).click();
+    await page.getByTestId('space-recent-section').getByRole('button', { name: '操作资料 终稿文档.md' }).click();
     await page.locator('.chat-context-menu button:has-text("移到回收站")').click();
     await page.waitForSelector('.space-undo:has-text("已移入回收站：终稿文档.md")');
     await page.locator('.material-trash').click();

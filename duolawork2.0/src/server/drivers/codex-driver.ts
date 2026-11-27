@@ -392,9 +392,17 @@ export class CodexAppServerDriver implements AgentDriver {
       try {
         const effectivePrompt =
           sessionReset && input.fallbackFullPrompt ? input.fallbackFullPrompt : input.prompt;
+        const turnInputs: Array<Record<string, unknown>> = [{ type: 'text', text: effectivePrompt }];
+        for (const img of input.images ?? []) {
+          if (img.localPath) {
+            turnInputs.push({ type: 'localImage', path: img.localPath });
+          } else if (img.dataBase64 && img.mimeType) {
+            turnInputs.push({ type: 'image', url: `data:${img.mimeType};base64,${img.dataBase64}` });
+          }
+        }
         const started = await rpc.call('turn/start', {
           threadId: sessionId,
-          input: [{ type: 'text', text: effectivePrompt }]
+          input: turnInputs
         });
         turnId = String(started?.turn?.id || '');
         if (!turnId) throw new Error('Codex turn/start 未返回 turn.id');

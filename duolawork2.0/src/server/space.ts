@@ -179,6 +179,282 @@ export class SpaceStore {
     return row ? mapFolderRow(row) : null;
   }
 
+  public getFolderPath(threadId: string, folderId: string | null): string {
+    if (!folderId) return '';
+    const rows = this.db.sqlite
+      .prepare(`SELECT id, parent_folder_id, title FROM v2_space_folders WHERE thread_id = ?`)
+      .all(threadId) as Array<{ id: string; parent_folder_id: string | null; title: string }>;
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    let cur: string | null = folderId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const node = byId.get(cur);
+      if (!node) break;
+      parts.unshift(String(node.title));
+      cur = node.parent_folder_id ? String(node.parent_folder_id) : null;
+    }
+    return parts.join('/');
+  }
+
+  public ensureFolderPath(
+    threadId: string,
+    folderPath: string,
+    parentFolderId?: string | null
+  ): SpaceFolderRecord {
+    const segments = String(folderPath || '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s !== '.' && s !== '..');
+    if (segments.length === 0) {
+      throw new Error('文件夹名称或路径不能为空');
+    }
+    if (segments.length > 10) {
+      throw new Error('文件夹层级最多支持 10 层');
+    }
+    let currentParent: string | null = parentFolderId || null;
+    if (currentParent) {
+      const parent = this.getFolder(currentParent);
+      if (!parent || parent.threadId !== threadId) {
+        throw new Error('父文件夹不存在');
+      }
+    }
+    let leaf: SpaceFolderRecord | null = null;
+    for (const seg of segments) {
+      const cleanSeg = seg.slice(0, 80);
+      const existingRow = (
+        currentParent
+          ? this.db.sqlite
+              .prepare(
+                `SELECT * FROM v2_space_folders
+                 WHERE thread_id = ? AND parent_folder_id = ? AND title = ? COLLATE NOCASE
+                 LIMIT 1`
+              )
+              .get(threadId, currentParent, cleanSeg)
+          : this.db.sqlite
+              .prepare(
+                `SELECT * FROM v2_space_folders
+                 WHERE thread_id = ? AND parent_folder_id IS NULL AND title = ? COLLATE NOCASE
+                 LIMIT 1`
+              )
+              .get(threadId, cleanSeg)
+      ) as Record<string, unknown> | undefined;
+      if (existingRow) {
+        leaf = mapFolderRow(existingRow);
+      } else {
+        leaf = this.createFolder({ threadId, title: cleanSeg, parentFolderId: currentParent });
+      }
+      currentParent = leaf.id;
+    }
+    return leaf!;
+  }
+
+  public resolveTargetFolderId(
+    threadId: string,
+    input: { folderId?: string | null; folderPath?: string | null }
+  ): string | null {
+    if (typeof input.folderId === 'string' && input.folderId.trim()) {
+      const fld = this.getFolder(input.folderId.trim());
+      if (!fld || fld.threadId !== threadId) {
+        throw new Error(`目标文件夹不存在: ${input.folderId}`);
+      }
+      return fld.id;
+    }
+    if (typeof input.folderPath === 'string') {
+      const trimmed = input.folderPath.trim().replace(/^\/+|\/+$/g, '');
+      if (trimmed && trimmed !== '.') {
+        return this.ensureFolderPath(threadId, trimmed).id;
+      }
+    }
+    return null;
+  }
+
+  public saveOrUpdateDocumentForAgent(input: {
+    threadId: string;
+    title: string;
+    content: string;
+    documentId?: string | null;
+    folderId?: string | null;
+    folderPath?: string | null;
+    writerId: string;
+    attemptId?: string | null;
+  }): {
+    artifact: ReturnType<ArtifactStore['createArtifact']>;
+    folderId: string | null;
+    folderPath: string;
+    created: boolean;
+  } {
+    const cleanTitle = String(input.title || '').trim() || '未命名文档.md';
+    const hasExplicitFolder =
+      (typeof input.folderId === 'string' && input.folderId.trim().length > 0) ||
+      (typeof input.folderPath === 'string' && input.folderPath.trim().length > 0);
+    const targetFolderId = hasExplicitFolder
+      ? this.resolveTargetFolderId(input.threadId, {
+          folderId: input.folderId,
+          folderPath: input.folderPath
+        })
+      : input.folderId === null
+        ? null
+        : undefined;
+
+    let existingId = typeof input.documentId === 'string' && input.documentId.trim() ? input.documentId.trim() : null;
+    if (existingId) {
+      const found = this.artifacts.getArtifact(existingId);
+      if (!found || found.sourceThreadId !== input.threadId) {
+        throw new Error(`文档不存在或不属于当前对话: ${existingId}`);
+      }
+    } else {
+      const space = this.listSpace(input.threadId);
+      const desiredFolder = targetFolderId ?? null;
+      const matched = space.items.find(
+        (it) =>
+          it.kind === 'document' &&
+          it.title.toLowerCase() === cleanTitle.toLowerCase() &&
+          (it.folderId ?? null) === desiredFolder
+      );
+      if (matched) existingId = matched.id;
+    }
+
+    if (existingId) {
+      const existing = this.artifacts.getArtifact(existingId)!;
+      const written = this.artifacts.writeArtifact({
+        artifactId: existing.id,
+        expectedBaseVersion: existing.headVersion,
+        title: cleanTitle,
+        content: input.content,
+        writerKind: 'agent',
+        writerId: input.writerId,
+        attemptId: input.attemptId ?? null
+      });
+      if (targetFolderId !== undefined) {
+        this.upsertItemMeta('document', written.artifact.id, input.threadId, { folderId: targetFolderId });
+      }
+      const finalFolderId =
+        targetFolderId !== undefined
+          ? targetFolderId
+          : (this.listSpace(input.threadId).items.find((it) => it.kind === 'document' && it.id === written.artifact.id)
+              ?.folderId ?? null);
+      return {
+        artifact: written.artifact,
+        folderId: finalFolderId,
+        folderPath: this.getFolderPath(input.threadId, finalFolderId),
+        created: false
+      };
+    }
+
+    const created = this.artifacts.createArtifact({
+      sourceThreadId: input.threadId,
+      title: cleanTitle,
+      content: input.content,
+      writerKind: 'agent',
+      writerId: input.writerId,
+      attemptId: input.attemptId ?? null
+    });
+    const finalFolderId = targetFolderId ?? null;
+    this.upsertItemMeta('document', created.id, input.threadId, { folderId: finalFolderId });
+    this.db.sqlite
+      .prepare(`UPDATE v2_threads SET bound_artifact_id = COALESCE(bound_artifact_id, ?) WHERE id = ?`)
+      .run(created.id, input.threadId);
+    return {
+      artifact: created,
+      folderId: finalFolderId,
+      folderPath: this.getFolderPath(input.threadId, finalFolderId),
+      created: true
+    };
+  }
+
+  public saveOrUpdateFileForAgent(input: {
+    threadId: string;
+    name: string;
+    content?: string;
+    dataBase64?: string;
+    mimeType?: string;
+    folderId?: string | null;
+    folderPath?: string | null;
+    uploaderId?: string;
+    replaceExisting?: boolean;
+  }): {
+    file: SpaceFileRecord;
+    folderId: string | null;
+    folderPath: string;
+    replaced: boolean;
+  } {
+    const rawName = path.basename(String(input.name || '')).trim();
+    if (!rawName) throw new Error('文件名不能为空');
+    let buf: Buffer;
+    if (typeof input.dataBase64 === 'string' && input.dataBase64.length > 0) {
+      const cleanedB64 = input.dataBase64.replace(/^data:[^;]+;base64,/i, '').replace(/\s+/g, '');
+      buf = Buffer.from(cleanedB64, 'base64');
+    } else if (typeof input.content === 'string') {
+      buf = Buffer.from(input.content, 'utf8');
+    } else {
+      throw new Error('请提供文件内容 (content / dataBase64 / localPath)');
+    }
+    if (buf.length === 0) throw new Error('文件内容为空');
+    if (buf.length > MAX_UPLOAD_BYTES) throw new Error('单个文件不能超过 50 MiB');
+
+    const folderId = this.resolveTargetFolderId(input.threadId, {
+      folderId: input.folderId,
+      folderPath: input.folderPath
+    });
+    const replaceExisting = input.replaceExisting !== false;
+
+    if (replaceExisting) {
+      const existing = this.listSpace(input.threadId).items.find(
+        (it) =>
+          it.kind === 'file' &&
+          it.title.toLowerCase() === rawName.toLowerCase() &&
+          (it.folderId ?? null) === folderId
+      );
+      if (existing) {
+        const found = this.getFile(existing.id);
+        if (found) {
+          const absPath = path.resolve(this.filesRoot, found.storageRelPath);
+          if (!absPath.startsWith(path.resolve(this.filesRoot) + path.sep)) {
+            throw new Error('非法文件存储路径');
+          }
+          fs.mkdirSync(path.dirname(absPath), { recursive: true, mode: 0o700 });
+          fs.writeFileSync(absPath, buf, { mode: 0o600 });
+          const sha256 = createHash('sha256').update(buf).digest('hex');
+          const mimeType =
+            (typeof input.mimeType === 'string' && input.mimeType.trim()) ||
+            guessMimeByExt(rawName);
+          const now = new Date().toISOString();
+          this.db.sqlite
+            .prepare(
+              `UPDATE v2_space_files
+               SET name = ?, mime_type = ?, size_bytes = ?, sha256 = ?, uploader_id = ?, updated_at = ?
+               WHERE id = ?`
+            )
+            .run(rawName.slice(0, 160), mimeType, buf.length, sha256, input.uploaderId ?? 'agent', now, found.id);
+          return {
+            file: this.getFile(found.id)!,
+            folderId,
+            folderPath: this.getFolderPath(input.threadId, folderId),
+            replaced: true
+          };
+        }
+      }
+    }
+
+    const file = this.saveFileBuffer({
+      threadId: input.threadId,
+      name: rawName,
+      mimeType: input.mimeType,
+      buffer: buf,
+      folderId,
+      uploaderId: input.uploaderId ?? 'agent'
+    });
+    return {
+      file,
+      folderId,
+      folderPath: this.getFolderPath(input.threadId, folderId),
+      replaced: false
+    };
+  }
+
   public renameFolder(folderId: string, title: string): SpaceFolderRecord {
     const clean = title.trim();
     if (!clean) throw new Error('文件夹名称不能为空');
@@ -333,6 +609,107 @@ export class SpaceStore {
       return null;
     }
     return { file, absPath };
+  }
+
+  public saveChatImageBuffer(input: {
+    threadId: string;
+    name: string;
+    mimeType?: string;
+    buffer: Buffer;
+    uploaderId?: string;
+  }): {
+    id: string;
+    threadId: string;
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    url: string;
+    absPath: string;
+    createdAt: string;
+  } {
+    const rawName = path.basename(String(input.name || 'image.png')).trim() || 'image.png';
+    const safeBase = rawName.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_').slice(0, 120);
+    const buf = input.buffer;
+    if (!buf || buf.length === 0) throw new Error('图片内容为空');
+    if (buf.length > 24 * 1024 * 1024) throw new Error('单张图片不能超过 24 MiB');
+
+    const id = 'img_' + randomUUID().slice(0, 12);
+    const dir = path.join(this.filesRoot, '_chat_images', safePathSegment(input.threadId));
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const fileNameOnDisk = `${id}-${safeBase}`;
+    const relPath = path.join('_chat_images', safePathSegment(input.threadId), fileNameOnDisk);
+    const absPath = path.resolve(this.filesRoot, relPath);
+    if (!absPath.startsWith(path.resolve(this.filesRoot) + path.sep)) {
+      throw new Error('非法图片存储路径');
+    }
+
+    const sha256 = createHash('sha256').update(buf).digest('hex');
+    fs.writeFileSync(absPath, buf, { mode: 0o600 });
+
+    const now = new Date().toISOString();
+    const guessed = guessMimeByExt(rawName);
+    const mimeType =
+      (typeof input.mimeType === 'string' && input.mimeType.trim()) ||
+      (guessed !== 'application/octet-stream' ? guessed : 'image/png');
+
+    this.db.sqlite
+      .prepare(
+        `INSERT INTO v2_chat_images (
+          id, thread_id, name, mime_type, size_bytes, storage_rel_path, sha256, uploader_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, input.threadId, rawName.slice(0, 160), mimeType, buf.length, relPath, sha256, input.uploaderId ?? 'owner', now);
+
+    return {
+      id,
+      threadId: input.threadId,
+      name: rawName.slice(0, 160),
+      mimeType,
+      sizeBytes: buf.length,
+      sha256,
+      url: `/api/v2/chat-images/${encodeURIComponent(id)}`,
+      absPath,
+      createdAt: now
+    };
+  }
+
+  public getChatImageWithPath(id: string): {
+    image: {
+      id: string;
+      threadId: string;
+      name: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      uploaderId: string;
+      createdAt: string;
+    };
+    absPath: string;
+  } | null {
+    const row = this.db.sqlite
+      .prepare(`SELECT * FROM v2_chat_images WHERE id = ?`)
+      .get(id) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    const relPath = String(row.storage_rel_path || '');
+    const absPath = path.resolve(this.filesRoot, relPath);
+    const rootResolved = path.resolve(this.filesRoot);
+    if (!absPath.startsWith(rootResolved + path.sep) || !fs.existsSync(absPath)) {
+      return null;
+    }
+    return {
+      image: {
+        id: String(row.id),
+        threadId: String(row.thread_id),
+        name: String(row.name),
+        mimeType: String(row.mime_type || 'image/png'),
+        sizeBytes: Number(row.size_bytes ?? 0),
+        sha256: String(row.sha256 || ''),
+        uploaderId: String(row.uploader_id || 'owner'),
+        createdAt: String(row.created_at)
+      },
+      absPath
+    };
   }
 
   public createLink(input: {
@@ -527,13 +904,27 @@ export class SpaceStore {
     threadId: string,
     options?: { includeLocalPaths?: boolean }
   ): string {
-    const { items } = this.listSpace(threadId);
-    if (items.length === 0) return '';
-    return this.formatDigestLines(
-      items.map((item) => ({ item })),
+    const { folders, items } = this.listSpace(threadId);
+    if (items.length === 0 && folders.length === 0) return '';
+    const headerLines: string[] = [];
+    if (folders.length > 0) {
+      const paths = folders
+        .map((f) => `${this.getFolderPath(threadId, f.id)}(id=${f.id})`)
+        .slice(0, 20);
+      headerLines.push(`现有文件夹: ${paths.join('、')}${folders.length > 20 ? ` …共 ${folders.length} 个` : ''}`);
+    }
+    if (items.length === 0) {
+      return headerLines.join('\n');
+    }
+    const itemsDigest = this.formatDigestLines(
+      items.map((item) => {
+        const fPath = item.folderId ? this.getFolderPath(threadId, item.folderId) : '';
+        return { item, prefix: fPath ? `[目录:${fPath}]` : undefined };
+      }),
       Boolean(options?.includeLocalPaths),
       2200
     );
+    return [...headerLines, itemsDigest].filter(Boolean).join('\n');
   }
 
   public getTaskLinkedMaterialsDigest(
@@ -945,6 +1336,20 @@ function guessMimeByExt(name: string): string {
     '.txt': 'text/plain; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
     '.csv': 'text/csv; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.htm': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.xml': 'application/xml; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.jsx': 'text/javascript; charset=utf-8',
+    '.ts': 'text/typescript; charset=utf-8',
+    '.tsx': 'text/typescript; charset=utf-8',
+    '.py': 'text/x-python; charset=utf-8',
+    '.sh': 'text/x-shellscript; charset=utf-8',
+    '.sql': 'application/sql; charset=utf-8',
+    '.yml': 'text/yaml; charset=utf-8',
+    '.yaml': 'text/yaml; charset=utf-8',
+    '.toml': 'text/plain; charset=utf-8',
     '.log': 'text/plain; charset=utf-8',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
@@ -953,6 +1358,11 @@ function guessMimeByExt(name: string): string {
     '.gif': 'image/gif',
     '.svg': 'image/svg+xml',
     '.pdf': 'application/pdf',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls': 'application/vnd.ms-excel',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.zip': 'application/zip',
     '.mp4': 'video/mp4',
     '.mp3': 'audio/mpeg',
     '.wav': 'audio/wav'
@@ -965,14 +1375,16 @@ function detectPreviewKind(
   mimeType: string
 ): SpaceItemView['previewKind'] {
   const lower = name.toLowerCase();
-  if (mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(lower)) return 'image';
+  if (mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(lower)) return 'image';
   if (mimeType.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(lower)) return 'video';
   if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(lower)) return 'audio';
   if (mimeType === 'application/pdf' || /\.pdf$/i.test(lower)) return 'pdf';
   if (
     mimeType.startsWith('text/') ||
     mimeType.includes('json') ||
-    /\.(txt|md|csv|json|log|ts|tsx|js|jsx|py|yml|yaml)$/i.test(lower)
+    mimeType.includes('xml') ||
+    mimeType.includes('sql') ||
+    /\.(txt|md|csv|json|log|html?|css|xml|sql|sh|toml|ts|tsx|js|jsx|py|yml|yaml)$/i.test(lower)
   ) {
     return 'text';
   }
