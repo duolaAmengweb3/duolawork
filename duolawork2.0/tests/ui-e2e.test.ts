@@ -465,6 +465,22 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     if (inp.scopeKey.startsWith('step:') && inp.prompt.includes('HOLD_STEP')) {
       return new Promise(() => {}); // stays pending until user clicks Stop
     }
+    if (inp.prompt.includes('【循环定时任务') && inp.prompt.includes('追踪链上新项目动态')) {
+      return {
+        text: [
+          '明白！你还没指定具体的执行频率，请先确认一下：',
+          '<duolawork_ask>{"title":"确认定时频率","targetMemberName":"Codex","questions":[{"question":"请问希望多久自动执行一次？","options":["每天 08:00","工作日 09:00","每周一 10:00"],"multiSelect":false}]}</duolawork_ask>'
+        ].join('\n')
+      };
+    }
+    if (inp.prompt.includes('【一次性任务') && inp.prompt.includes('HOLD_STEP')) {
+      return {
+        text: [
+          '已理解需求并为你立项启动执行：',
+          '<duolawork_task>{"title":"测试派单校验","kind":"once","leadMemberId":"Codex","goal":"测试派单校验","steps":[{"stepOrder":1,"title":"HOLD_STEP","assigneeMemberId":"Codex","brief":"HOLD_STEP"}]}</duolawork_task>'
+        ].join('\n')
+      };
+    }
     return { text: 'Codex 正常回复完成' };
   });
   app.registry.mockDriver.handlers.set('m_gemini', async (inp) => {
@@ -708,22 +724,19 @@ test('DW2-26: Real-human full Chrome click-through across Chat, Archive/Undo, Ta
     await page.waitForSelector('small:has-text("已连通")');
     await page.waitForSelector('.channel-resources button:has-text("GitHub 仓库")');
 
-    // 6. Task Creation modal: invalid Cron toast, add & remove step, create running task, Stop & Delete two-click!
-    await page.getByRole('button', { name: '指派任务' }).click();
-    await page.getByPlaceholder(/任务名称与目标/).fill('测试派单校验');
-    await page.locator('.dw-inline-panel').getByRole('button', { name: '定时任务', exact: true }).click();
-    await page.getByPlaceholder(/Cron 表达式/).fill('not-a-cron');
-    await page.getByRole('button', { name: '确认立项' }).click();
-    await page.waitForSelector('.comm-toast:has-text("Cron 表达式需要 5 个字段")');
+    // 6. AI-native Task Assignment: 1-input demand + once/scheduled toggle + Agent clarification when frequency missing + structured task creation -> Stop & Delete!
+    await page.getByRole('button', { name: '指派任务' }).first().click();
+    await page.locator('.dw-inline-panel').getByRole('button', { name: '循环定时', exact: true }).click();
+    await page.locator('.dw-inline-panel textarea').fill('追踪链上新项目动态');
+    await page.getByRole('button', { name: '交给 Agent 立项' }).click();
+    await page.waitForSelector('text=请问希望多久自动执行一次？');
 
-    await page.getByPlaceholder(/Cron 表达式/).fill('0 9 * * *');
-    await page.getByRole('button', { name: '+ 添加下一步分工' }).click();
-    assert.equal(await page.getByRole('button', { name: '移除该步骤' }).count(), 2);
-    await page.getByRole('button', { name: '移除该步骤' }).last().click();
-    assert.equal(await page.getByRole('button', { name: '移除该步骤' }).count(), 0);
-    await page.locator('.dw-inline-panel').getByRole('button', { name: '单次任务', exact: true }).click();
-    await page.locator('.dw-inline-panel input[placeholder="分工项说明"]').fill('HOLD_STEP');
-    await page.getByRole('button', { name: '确认立项' }).click();
+    await page.getByRole('button', { name: '指派任务' }).first().click();
+    await page.locator('.dw-inline-panel').getByRole('button', { name: '一次性', exact: true }).click();
+    await page.locator('.dw-inline-panel textarea').fill('HOLD_STEP 测试派单校验');
+    await page.getByRole('button', { name: '交给 Agent 立项' }).click();
+    await page.locator('.space-tabs button:has-text("任务")').click();
+    await page.locator('.task-overview button:has-text("测试派单校验")').first().click();
     await page.waitForSelector('h1:has-text("测试派单校验")');
     await page.waitForSelector('button:has-text("停止执行")');
     await page.getByRole('button', { name: '停止执行' }).click();

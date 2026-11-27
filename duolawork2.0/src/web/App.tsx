@@ -83,6 +83,8 @@ import {
 import { MembersUsagePage } from './MembersUsagePage.js';
 import { SchedulesPage } from './SchedulesPage.js';
 import { VaultPage } from './VaultPage.js';
+import { Button } from './components/ui/button.js';
+import { Frame, FramePanel } from './components/ui/frame.js';
 
 interface TaskWithLatestRun extends TaskRecord {
   latestRun: TaskRunRecord | null;
@@ -323,7 +325,6 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   const [ownerMenuOpen, setOwnerMenuOpen] = useState<boolean>(false);
   const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false);
   const [leadMenuOpen, setLeadMenuOpen] = useState<boolean>(false);
-  const [stepWorkerMenuIdx, setStepWorkerMenuIdx] = useState<number | null>(null);
 
   // Task detail state
   const requestedRunRef = useRef<string | undefined>(undefined);
@@ -388,17 +389,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setDocEditing(false);
   }, []);
 
-  // Inline create-task state inside conversation
+  // Inline AI-native task assignment state inside conversation
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [newTaskKind, setNewTaskKind] = useState<'once' | 'scheduled'>('once');
-  const [newTaskCron, setNewTaskCron] = useState<string>('0 8,20 * * *');
-  const [newTaskStartNow, setNewTaskStartNow] = useState<boolean>(false);
   const [newTaskLeadId, setNewTaskLeadId] = useState<string>('');
-  const [newTaskSteps, setNewTaskSteps] = useState<
-    Array<{ title: string; assigneeMemberId: string; brief: string; dependsOnPrev: boolean }>
-  >([
-    { title: '执行调研与产出初稿', assigneeMemberId: '', brief: '产出初稿供审阅', dependsOnPrev: false }
-  ]);
   const [waitingReplies, setWaitingReplies] = useState<Record<string,string>>({});
   const updateWaitingReply = (runId: string, reply: string) => setWaitingReplies(old => ({...old,[runId]:reply}));
   const [draftImagesByThread, setDraftImagesByThread] = useState<
@@ -462,7 +456,6 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setEditingWorkspace(false);
     setOwnerMenuOpen(false);
     setLeadMenuOpen(false);
-    setStepWorkerMenuIdx(null);
     setConfirmDeleteTaskId(null);
   }, []);
 
@@ -553,9 +546,6 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setActiveThreadId(prev => preserveSelection && prev ? prev : initialId);
     if (data.members?.length > 0 && !newTaskLeadId) {
       setNewTaskLeadId(data.members[0].id);
-      setNewTaskSteps((prev) =>
-        prev.map((s) => ({ ...s, assigneeMemberId: s.assigneeMemberId || data.members[0].id }))
-      );
     }
   }, [newTaskLeadId]);
 
@@ -1860,49 +1850,48 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setTimeout(() => inputRef.current?.focus(), 60);
   };
 
-  const handleSubmitNewTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeThreadId || !newTaskTitle.trim()) return;
-    const leadId = newTaskLeadId || activeThread?.activeOwnerMemberId || members[0]?.id || '';
-    const stepsPayload = newTaskSteps.map((s, idx) => ({
-      stepOrder: idx + 1,
-      title: s.title.trim() || `步骤 ${idx + 1}`,
-      assigneeMemberId: s.assigneeMemberId || leadId,
-      dependsOnOrders: s.dependsOnPrev && idx > 0 ? [idx] : [],
-      brief: s.brief.trim() || s.title.trim(),
-      acceptanceCriteria: '交付内容清晰准确并通过负责人核验'
-    }));
-
-    const res = await fetch('/api/v2/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sourceThreadId: activeThreadId,
-        title: newTaskTitle.trim(),
-        kind: newTaskKind,
-        cronExpr: newTaskKind === 'scheduled' ? newTaskCron.trim() : null,
-        startImmediately: newTaskKind === 'scheduled' ? newTaskStartNow : true,
-        leadMemberId: leadId,
-        spec: {
-          goal: newTaskTitle.trim(),
-          steps: stepsPayload
-        }
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showChatNotice(data.message || data.error || '创建任务失败，请检查配置');
+  const handleSubmitNewTask = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const targetThreadId = activeThreadId;
+    const requirement = newTaskTitle.trim();
+    if (!targetThreadId || !requirement) return;
+    if (
+      switchingThreads.has(targetThreadId) ||
+      sendingByThread[targetThreadId] ||
+      visibleMessages.some((m) => m.turnStatus === 'running')
+    ) {
+      showChatNotice('当前对话正在处理中，请稍候再指派任务');
       return;
     }
+
+    const leadId = newTaskLeadId || activeThread?.activeOwnerMemberId || members[0]?.id || '';
+    const leadMember = memberById.get(leadId);
+    const leadName = leadMember?.name || leadId;
+    const kindPrefix =
+      newTaskKind === 'scheduled'
+        ? `【循环定时任务 · 交给 ${leadName}】`
+        : `【一次性任务 · 交给 ${leadName}】`;
+    const messageBody = `${kindPrefix}${requirement}`;
+
     setTaskModalOpen(false);
+    setLeadMenuOpen(false);
     setNewTaskTitle('');
-    setNewTaskStartNow(false);
-    await loadBootstrap(true);
-    await loadThread(activeThreadId);
-    if (data.task?.id) {
-      setActiveTaskId(data.task.id);
-      setViewMode('task');
+
+    // If user chose another ready member, switch conversation owner seamlessly before dispatching
+    if (
+      leadId &&
+      leadId !== activeThread?.activeOwnerMemberId &&
+      leadMember?.status === 'ready'
+    ) {
+      await handleSwitchOwner(leadId);
     }
+
+    await submitMessageToThread(targetThreadId, messageBody, {
+      restoreOnFail: () => {
+        setNewTaskTitle(requirement);
+        setTaskModalOpen(true);
+      }
+    });
   };
 
   const handlePauseTask = async (taskId: string, paused: boolean) => {
@@ -2460,7 +2449,6 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       onClick={() => {
         setOwnerMenuOpen(false);
         setLeadMenuOpen(false);
-        setStepWorkerMenuIdx(null);
       }}
     >
       {/* Left Sidebar: Exact 1.9.6 DuolaWork Brand + Nav + Spacious Conversations */}
@@ -2868,187 +2856,141 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             <div className="comm-body">
               <section className="conversation-column">
                 {taskModalOpen && (
-                  <form
-                    onSubmit={handleSubmitNewTask}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mx-7 mt-3 p-4 rounded-xl border flex flex-col gap-3 text-xs dw-inline-panel"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-[13px]">在本对话立项派单</span>
-                      <div className="connector-categories">
-                        <button
-                          type="button"
-                          aria-pressed={newTaskKind === 'once'}
-                          onClick={() => setNewTaskKind('once')}
-                        >
-                          单次任务
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={newTaskKind === 'scheduled'}
-                          onClick={() => setNewTaskKind('scheduled')}
-                        >
-                          定时任务
-                        </button>
-                      </div>
-                    </div>
+                  <div className="mx-7 mt-3" onClick={(e) => e.stopPropagation()}>
+                    <Frame className="dw-inline-panel rounded-xl">
+                      <FramePanel className="rounded-lg p-3.5">
+                        <form onSubmit={handleSubmitNewTask} className="flex flex-col gap-3 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-semibold text-foreground">
+                                指派任务
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                说清要做什么，由 Agent 理解并自动立项
+                              </span>
+                            </div>
 
-                    <input
-                      type="text"
-                      required
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      placeholder="任务名称与目标（例如：整理竞品动态并生成分析简报）"
-                      className="dw-input"
-                    />
+                            <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+                              {([
+                                ['once', '一次性'],
+                                ['scheduled', '循环定时']
+                              ] as const).map(([val, label]) => {
+                                const active = newTaskKind === val;
+                                return (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() => setNewTaskKind(val)}
+                                    className={
+                                      active
+                                        ? 'rounded-md bg-background px-2.5 py-1 text-[11.5px] font-medium text-foreground shadow-xs/5 ring-1 ring-border/70 transition-all'
+                                        : 'rounded-md px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground'
+                                    }
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setLeadMenuOpen((o) => !o)}
-                          className="dw-btn dw-btn-outline dw-btn-sm"
-                        >
-                          <span>负责人：{memberById.get(newTaskLeadId)?.name || '选择'}</span>
-                          <ChevronDown size={12} />
-                        </button>
-                        {leadMenuOpen && (
-                          <div className="chat-context-menu absolute left-0 top-full mt-1">
-                            {members.map((m) => (
+                          <textarea
+                            required
+                            autoFocus
+                            rows={2}
+                            value={newTaskTitle}
+                            onChange={(e) => setNewTaskTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                void handleSubmitNewTask();
+                              }
+                            }}
+                            placeholder={
+                              newTaskKind === 'scheduled'
+                                ? '一句话描述要定期做的事，可直接写上频率（如：每天早上 8 点抓取 Xhunter 热点并整理早报）；没写频率时 Agent 会先反问确认…'
+                                : '一句话描述要完成的任务需求（例如：整理今天 AI 热点并输出分析简报存入资料区）…'
+                            }
+                            className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/75 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                          />
+
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="relative flex items-center gap-2">
+                              <span className="text-[11px] text-muted-foreground">交给</span>
                               <button
-                                key={m.id}
                                 type="button"
+                                onClick={() => setLeadMenuOpen((o) => !o)}
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-xs font-medium text-foreground shadow-xs/5 transition-colors hover:bg-accent"
+                              >
+                                {(() => {
+                                  const selected = memberById.get(
+                                    newTaskLeadId || activeThread.activeOwnerMemberId
+                                  );
+                                  return (
+                                    <>
+                                      {selected && (
+                                        <AgentAvatar
+                                          small
+                                          name={selected.name}
+                                          platformId={selected.platformId}
+                                          status={selected.status}
+                                        />
+                                      )}
+                                      <span>{selected?.name || '选择成员'}</span>
+                                    </>
+                                  );
+                                })()}
+                                <ChevronDown size={12} className="text-muted-foreground" />
+                              </button>
+                              {leadMenuOpen && (
+                                <div className="chat-context-menu absolute left-8 top-full z-30 mt-1 max-h-56 overflow-y-auto coss-scroll">
+                                  {members.map((m) => {
+                                    const activeId = newTaskLeadId || activeThread.activeOwnerMemberId;
+                                    return (
+                                      <button
+                                        key={m.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setNewTaskLeadId(m.id);
+                                          setLeadMenuOpen(false);
+                                        }}
+                                      >
+                                        <AgentAvatar
+                                          small
+                                          name={m.name}
+                                          platformId={m.platformId}
+                                          status={m.status}
+                                        />
+                                        <span className="flex-1 text-left">{m.name}</span>
+                                        {activeId === m.id && <Check size={12} />}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="xs"
                                 onClick={() => {
-                                  setNewTaskLeadId(m.id);
+                                  setTaskModalOpen(false);
                                   setLeadMenuOpen(false);
                                 }}
                               >
-                                <AgentAvatar small name={m.name} platformId={m.platformId} />
-                                <span className="flex-1 text-left">{m.name}</span>
-                                {newTaskLeadId === m.id && <Check size={12} />}
-                              </button>
-                            ))}
+                                取消
+                              </Button>
+                              <Button type="submit" size="xs" disabled={!newTaskTitle.trim()}>
+                                交给 Agent 立项
+                              </Button>
+                            </div>
                           </div>
-                        )}
-                      </div>
-
-                      {newTaskKind === 'scheduled' && (
-                        <>
-                          <input
-                            type="text"
-                            value={newTaskCron}
-                            onChange={(e) => setNewTaskCron(e.target.value)}
-                            placeholder="Cron 表达式 (如 0 8,20 * * *)"
-                            className="dw-input"
-                            style={{ width: 200 }}
-                          />
-                          <button
-                            type="button"
-                            aria-pressed={newTaskStartNow}
-                            onClick={() => setNewTaskStartNow((v) => !v)}
-                            className={`dw-btn dw-btn-sm ${newTaskStartNow ? 'dw-btn-primary' : 'dw-btn-outline'}`}
-                          >
-                            {newTaskStartNow && <Check size={12} />}
-                            <span>创建后立即执行一次</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      {newTaskSteps.map((st, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="text-[11px] w-5" style={{ color: '#8d99ae' }}>
-                            #{idx + 1}
-                          </span>
-                          <input
-                            type="text"
-                            value={st.title}
-                            onChange={(e) =>
-                              setNewTaskSteps((arr) =>
-                                arr.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x))
-                              )
-                            }
-                            placeholder="分工项说明"
-                            className="dw-input"
-                          />
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setStepWorkerMenuIdx(stepWorkerMenuIdx === idx ? null : idx)}
-                              className="dw-btn dw-btn-outline dw-btn-sm"
-                            >
-                              <span>{memberById.get(st.assigneeMemberId)?.name || '指派人'}</span>
-                              <ChevronDown size={11} />
-                            </button>
-                            {stepWorkerMenuIdx === idx && (
-                              <div className="chat-context-menu absolute right-0 top-full mt-1">
-                                {members.map((m) => (
-                                  <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setNewTaskSteps((arr) =>
-                                        arr.map((x, i) => (i === idx ? { ...x, assigneeMemberId: m.id } : x))
-                                      );
-                                      setStepWorkerMenuIdx(null);
-                                    }}
-                                  >
-                                    <AgentAvatar small name={m.name} platformId={m.platformId} />
-                                    <span className="flex-1 text-left">{m.name}</span>
-                                    {st.assigneeMemberId === m.id && <Check size={12} />}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          {newTaskSteps.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNewTaskSteps((arr) => arr.filter((_, i) => i !== idx));
-                                setStepWorkerMenuIdx(null);
-                              }}
-                              className="dw-btn dw-btn-ghost dw-btn-icon"
-                              aria-label="移除该步骤"
-                              title="移除步骤"
-                            >
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-
-                      <div className="flex items-center justify-between pt-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNewTaskSteps((arr) => [
-                              ...arr,
-                              {
-                                title: `步骤 ${arr.length + 1}`,
-                                assigneeMemberId: members[0]?.id || '',
-                                brief: '',
-                                dependsOnPrev: true
-                              }
-                            ])
-                          }
-                          className="underline text-xs"
-                          style={{ color: '#5373c0' }}
-                        >
-                          + 添加下一步分工
-                        </button>
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => setTaskModalOpen(false)} className="dw-btn dw-btn-outline dw-btn-sm">
-                            取消
-                          </button>
-                          <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                            确认立项
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </form>
+                        </form>
+                      </FramePanel>
+                    </Frame>
+                  </div>
                 )}
 
                 <div ref={messagesScrollRef} className="messages-scroll">
