@@ -245,7 +245,7 @@ export function App(): React.JSX.Element {
   const [streamingTools, setStreamingTools] = useState<Record<string, ToolTraceItem[]>>({});
   const toolEventCount = useRef(0);
   const [streamingActivity, setStreamingActivity] = useState<Record<string, TurnActivity>>({});
-  const [streamDisconnected, setStreamDisconnected] = useState(false);
+  const [streamDisconnected, setStreamDisconnected] = useState(!navigator.onLine);
   const [expandedToolMsgIds, setExpandedToolMsgIds] = useState<Record<string, boolean>>({});
   const [expandedHandoffIds, setExpandedHandoffIds] = useState<Record<string, boolean>>({});
   const [pendingHandoffPreviews, setPendingHandoffPreviews] = useState<
@@ -901,14 +901,18 @@ export function App(): React.JSX.Element {
       }
     };
     const handleOnline = () => {
+      setStreamDisconnected(es.readyState !== EventSource.OPEN);
       syncAllActiveViews();
     };
+    const handleOffline = () => setStreamDisconnected(true);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       es.close();
     };
   }, [authState.authRequired, authState.authenticated]);
