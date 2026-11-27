@@ -299,6 +299,7 @@ export function App(): React.JSX.Element {
   } | null>(null);
 
   // Custom popover states
+  const [switchingThreads, setSwitchingThreads] = useState<Set<string>>(() => new Set());
   const [ownerMenuOpen, setOwnerMenuOpen] = useState<boolean>(false);
   const [taskModalOpen, setTaskModalOpen] = useState<boolean>(false);
   const [leadMenuOpen, setLeadMenuOpen] = useState<boolean>(false);
@@ -483,14 +484,18 @@ export function App(): React.JSX.Element {
     });
   }, [threads, threadSearch, memberById]);
 
+  const bootstrapRequest = useRef(0);
   const loadBootstrap = useCallback(async (preserveSelection = true) => {
+    const request = ++bootstrapRequest.current;
     const res = await fetch('/api/v2/bootstrap');
+    if (request !== bootstrapRequest.current) return;
     if (res.status === 401) {
       setAuthState({ checked: true, authRequired: true, authenticated: false });
       return;
     }
     if (!res.ok) return;
     const data = await res.json();
+    if (request !== bootstrapRequest.current) return;
     setAuthState({
       checked: true,
       authRequired: Boolean(data.auth?.authRequired),
@@ -1119,25 +1124,33 @@ export function App(): React.JSX.Element {
   const handleSwitchOwner = async (memberId: string) => {
     setOwnerMenuOpen(false);
     setEditingWorkspace(false);
-    if (!activeThreadId || activeThread?.activeOwnerMemberId === memberId) return;
+    if (!activeThreadId || switchingThreads.has(activeThreadId) || activeThread?.activeOwnerMemberId === memberId) return;
     const targetThreadId = activeThreadId;
-    const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/owner`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || '切换对接成员失败');
-      return;
+    setSwitchingThreads(prev => new Set(prev).add(targetThreadId));
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/owner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId })
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setThreads(prev => prev.map(t => t.id === targetThreadId ? data.thread : t));
+      if (activeThreadIdRef.current === targetThreadId) {
+        setPendingHandoffPreviews({});
+        setMessagesThreadId(targetThreadId);
+        setMessages(data.messages || []);
+      }
+      await loadBootstrap(true);
+    } catch {
+      showChatNotice('暂时无法确认对接成员，请稍后重试');
+    } finally {
+      setSwitchingThreads(prev => {
+        const next = new Set(prev);
+        next.delete(targetThreadId);
+        return next;
+      });
     }
-    const data = await res.json();
-    if (activeThreadIdRef.current === targetThreadId) {
-      setPendingHandoffPreviews({});
-      setMessagesThreadId(targetThreadId);
-      setMessages(data.messages || []);
-    }
-    await loadBootstrap(true);
   };
 
   const submitMessageToThread = async (
@@ -1205,7 +1218,7 @@ export function App(): React.JSX.Element {
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const targetThreadId = activeThreadId;
-    if (!targetThreadId || sendingByThread[targetThreadId] || visibleMessages.some(m => m.turnStatus === 'running')) return;
+    if (!targetThreadId || switchingThreads.has(targetThreadId) || sendingByThread[targetThreadId] || visibleMessages.some(m => m.turnStatus === 'running')) return;
     const rawDraftValue = inputDrafts[targetThreadId] || '';
     const rawText = rawDraftValue.trim();
     const savedRefs = draftRefsByThread[targetThreadId] || [];
@@ -3386,6 +3399,7 @@ export function App(): React.JSX.Element {
                             <button
                               key={m.id}
                               type="button"
+                              disabled={switchingThreads.has(activeThread.id)}
                               aria-pressed={m.id === activeThread.activeOwnerMemberId}
                               onClick={() => void handleSwitchOwner(m.id)}
                               title={`由 ${m.name} 接手当前对话`}
@@ -3536,7 +3550,7 @@ export function App(): React.JSX.Element {
                           ))}
                         </div>
                       )}
-                      {currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
+                      {switchingThreads.has(activeThread.id) ? <small role="status">正在切换成员…</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
                         <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id}/>}
                       <small>Enter 发送 · Shift + Enter 换行</small>
                     </div>
@@ -3552,7 +3566,7 @@ export function App(): React.JSX.Element {
                         type="submit"
                         aria-label="发送消息"
                         disabled={
-                          hasRunningTurn ||
+                          switchingThreads.has(activeThread.id) || hasRunningTurn ||
                           (!activeDraft.trim() &&
                             activeRefs.length === 0 &&
                             (draftImagesByThread[activeThread.id] || []).length === 0)

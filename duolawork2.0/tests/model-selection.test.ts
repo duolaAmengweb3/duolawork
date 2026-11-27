@@ -89,7 +89,17 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
       model: 'deep',
       effort: 'high'
     });
+    let releaseSwitch!: () => void;
+    const delayedOwner = new Promise<void>(resolve => {releaseSwitch = resolve;});
+    await page.route('**/threads/*/owner', async route => {await delayedOwner; await route.continue();}, {times:1});
+    await page.locator('.chat-composer textarea').fill('先保留这段草稿');
     await page.getByTitle('由 Beta 接手当前对话', { exact: true }).click();
+    try {
+      await page.getByText('正在切换成员…',{exact:true}).waitFor();
+      assert.equal(await picker.count(),0);
+      assert.ok(await page.getByRole('button',{name:'发送消息',exact:true}).isDisabled());
+    } finally {releaseSwitch();}
+
     await picker.filter({ hasText: /^模型$/ }).waitFor();
     await change('fixed');
     await page.getByTitle('由 Alpha 接手当前对话', { exact: true }).click();
