@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   Columns2,
@@ -32,12 +32,21 @@ import { Button } from './components/ui/button.js';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from './components/ui/menu.js';
 import { RichTextFileViewer, detectTextFileFormat } from './RichFileViewer.js';
 import {
+  buildPopoutPath,
   broadcastSpaceSync,
   getPopoutDesktopBridge,
   popoutTabKey,
   type PopoutTarget
 } from './lib/popout.js';
 import { extractMarkdownHeadings, MarkdownView } from './markdown.js';
+
+import { subscribeReaderUpdates } from './lib/reader-sync.js';
+import { detectPreviewKind } from '../shared/file-format.js';
+
+function currentTarget(tab: PopoutTarget): PopoutTarget {
+  if (tab.kind !== 'file' || !tab.title) return tab;
+  return {...tab, previewKind: detectPreviewKind(tab.title, tab.mimeType || '')};
+}
 
 interface TabMeta {
   title?: string;
@@ -120,6 +129,9 @@ function ReaderTabPane({
   const [draft, setDraft] = useState<string>('');
   const [docMode, setDocMode] = useState<'read' | 'split' | 'edit'>('read');
   const [saving, setSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState('');
+  const savePending = useRef(false);
+  const documentRead = useRef(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>('');
   const [remoteUpdateVersion, setRemoteUpdateVersion] = useState<number | null>(null);
@@ -129,18 +141,34 @@ function ReaderTabPane({
 
   const isDirty = target.kind === 'document' && artifact !== null && draft !== artifact.content;
   const isDirtyRef = useRef(isDirty);
-  const docModeRef = useRef(docMode);
+  const latest = useRef({artifact, draft});
+  const imageViewport = useRef<HTMLDivElement>(null);
+  const [imageSize, setImageSize] = useState({width: 0, height: 0});
+  const [viewportSize, setViewportSize] = useState({width: 0, height: 0});
+  useLayoutEffect(() => {
+    const viewport = imageViewport.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const {width, height} = entry.contentRect;
+      if (width && height) setViewportSize({width, height});
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [loading, target.previewKind]);
+  const fit = imageSize.width && imageSize.height && viewportSize.width
+    ? Math.min(1, viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+    : 1;
   const paneRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isDirtyRef.current = isDirty;
-    docModeRef.current = docMode;
-  }, [isDirty, docMode]);
+    latest.current = {artifact, draft};
+  }, [isDirty, artifact, draft]);
 
   const displayTitle =
     artifact?.title || target.title || (target.kind === 'document' ? '文档阅读器' : '文件预览');
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onMetaChange(tabKey, {
       title: displayTitle,
       version: artifact?.headVersion,
@@ -149,25 +177,35 @@ function ReaderTabPane({
   }, [tabKey, displayTitle, artifact?.headVersion, isDirty, onMetaChange]);
 
   const loadDocument = useCallback(
-    async (silent = false) => {
+    async (mode: 'open' | 'sync' | 'replace' = 'open') => {
       if (target.kind !== 'document') return;
-      if (!silent) {
-        setLoading(true);
-        setLoadError('');
-      }
+      const request = ++documentRead.current;
+      const atStart = latest.current;
+      if (mode === 'open') setLoading(true);
       try {
-        const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(target.id)}`);
-        if (!res.ok) throw new Error('无法读取文档内容，请确认登录状态或文档是否存在');
+        const res = await fetch('/api/v2/artifacts/' + encodeURIComponent(target.id), {
+          signal: AbortSignal.timeout(25000)
+        });
+        if (!res.ok) throw new Error('暂时无法读取文档，请重试');
         const data = await res.json();
-        const nextArt: ArtifactRecord = data.artifact;
-        setArtifact(nextArt);
+        if (request !== documentRead.current) return;
+        const next: ArtifactRecord = data.artifact;
+        const current = latest.current;
         setVersions(data.versions || []);
-        setDraft(nextArt.content || '');
+        setLoadError('');
+        if (current.artifact && (isDirtyRef.current || savePending.current) &&
+            !(mode === 'replace' && current.draft === atStart.draft)) {
+          if (next.headVersion !== current.artifact.headVersion) setRemoteUpdateVersion(next.headVersion);
+          return;
+        }
+        setArtifact(next);
+        setDraft(next.content);
         setRemoteUpdateVersion(null);
-      } catch (err) {
-        if (!silent) setLoadError((err as Error).message || '读取文档失败');
+      } catch {
+        if (request === documentRead.current && !latest.current.artifact) setLoadError('暂时无法读取文档，请重试');
+        else if (mode === 'replace') toast.error('暂时无法读取最新版本，请重试');
       } finally {
-        if (!silent) setLoading(false);
+        if (request === documentRead.current) setLoading(false);
       }
     },
     [target.id, target.kind]
@@ -197,52 +235,36 @@ function ReaderTabPane({
     else void loadFile();
   }, [target.kind, loadDocument, loadFile]);
 
-  // Live SSE sync for document updates
   useEffect(() => {
     if (target.kind !== 'document') return;
-    const es = new EventSource('/api/v2/events');
-    const onSpaceEvent = (ev: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(ev.data);
-        const artId = parsed?.artifactId || parsed?.artifact?.id || parsed?.itemId;
-        if (artId && artId !== target.id) return;
-        const nextVer = parsed?.artifact?.headVersion || parsed?.version;
-        if (isDirtyRef.current || docModeRef.current !== 'read') {
-          setRemoteUpdateVersion(typeof nextVer === 'number' ? nextVer : Date.now());
-        } else {
-          void loadDocument(true);
-        }
-      } catch {
-        // ignore malformed SSE
-      }
-    };
-    es.addEventListener('artifact.updated', onSpaceEvent);
-    es.addEventListener('space.updated', onSpaceEvent);
-    return () => es.close();
-  }, [target.id, target.kind, loadDocument]);
+    return subscribeReaderUpdates(threadId => {
+      if (!threadId || !target.threadId || threadId === target.threadId) void loadDocument('sync');
+    });
+  }, [target.id, target.kind, target.threadId, loadDocument]);
 
   const handleSave = useCallback(async () => {
-    if (target.kind !== 'document' || !artifact || saving) return;
+    if (target.kind !== 'document' || !artifact || savePending.current) return;
+    savePending.current = true;
+    setSaveError('');
     setSaving(true);
     try {
       const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifact.id)}`, {
         method: 'POST',
+        signal: AbortSignal.timeout(25000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           expectedBaseVersion: artifact.headVersion,
           content: draft
         })
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.message || '保存文档失败');
-        return;
-      }
+      if (!res.ok) throw new Error();
       const data = await res.json();
-      setArtifact(data.artifact);
+      documentRead.current++;
+      const editedAfterSubmit = latest.current.draft !== draft;
+      if (!data.conflict || !editedAfterSubmit) setArtifact(data.artifact);
       setVersions(data.versions || []);
-      setDraft(data.artifact.content || '');
-      setRemoteUpdateVersion(null);
+      setDraft(current => current === draft ? data.artifact.content : current);
+      setRemoteUpdateVersion(data.conflict && editedAfterSubmit ? data.artifact.headVersion : null);
       broadcastSpaceSync({
         type: 'artifact_saved',
         artifactId: data.artifact.id,
@@ -254,10 +276,14 @@ function ReaderTabPane({
           ? `检测到并发修改，已另存为冲突分支 v${data.artifact.headVersion}`
           : `已保存为 v${data.artifact.headVersion}`
       );
+      void loadDocument('sync');
+    } catch {
+      setSaveError('保存失败，草稿已保留。请检查连接后再次保存。');
     } finally {
+      savePending.current = false;
       setSaving(false);
     }
-  }, [artifact, draft, saving, target.kind, target.threadId]);
+  }, [artifact, draft, target.kind, target.threadId, loadDocument]);
 
   useEffect(() => {
     if (!active || target.kind !== 'document') return;
@@ -553,11 +579,14 @@ function ReaderTabPane({
         </div>
       </div>
 
+      {saveError && <p role="alert" className="px-4 py-2 text-xs text-destructive-foreground">{saveError}</p>}
       {remoteUpdateVersion !== null && (
         <div className="flex items-center justify-between gap-3 border-b border-border bg-info/8 px-4 py-2 text-xs text-info-foreground">
           <span>检测到主窗口或 Agent 已更新此文档，点击右侧按钮可载入最新版本。</span>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="xs" onClick={() => void loadDocument(true)}>
+            <Button variant="outline" size="xs" onClick={() => {
+              if (!isDirty || window.confirm('载入最新版本会替换当前草稿，继续吗？')) void loadDocument('replace');
+            }}>
               <RefreshCw size={11} />
               <span>载入最新</span>
             </Button>
@@ -657,15 +686,16 @@ function ReaderTabPane({
               </div>
             )
           ) : target.previewKind === 'image' ? (
-            <div className="dw-reader-canvas flex h-full w-full items-center justify-center overflow-auto p-8 coss-scroll">
+            <div ref={imageViewport} className="dw-reader-canvas flex h-full w-full overflow-auto p-8 coss-scroll">
               <img
                 src={`/api/v2/space/files/${encodeURIComponent(target.id)}`}
                 alt={displayTitle}
-                style={{
-                  width: fileZoom === 100 ? 'auto' : `${fileZoom}%`,
-                  maxWidth: fileZoom === 100 ? '100%' : 'none'
+                onLoad={event => {
+                  const img = event.currentTarget;
+                  setImageSize({width: img.naturalWidth, height: img.naturalHeight});
                 }}
-                className="max-h-full rounded-xl border border-border bg-card object-contain shadow-sm"
+                style={{width: imageSize.width ? imageSize.width * fit * fileZoom / 100 : undefined}}
+                className="m-auto h-auto max-w-none flex-none self-start rounded-xl object-contain shadow-sm"
               />
             </div>
           ) : target.previewKind === 'pdf' ? (
@@ -728,7 +758,7 @@ function ReaderTabPane({
 }
 
 export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.JSX.Element {
-  const [tabs, setTabs] = useState<PopoutTarget[]>(() => loadInitialTabs(target));
+  const [tabs, setTabs] = useState<PopoutTarget[]>(() => loadInitialTabs(target).map(currentTarget));
   const [activeKey, setActiveKey] = useState<string>(() => popoutTabKey(target));
   const [metaByKey, setMetaByKey] = useState<Record<string, TabMeta>>({});
   const [paperTheme, setPaperTheme] = useState<'light' | 'sepia' | 'dark'>(() => {
@@ -777,7 +807,8 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
     document.title = `${title} · DuolaWork`;
   }, [activeTab, metaByKey]);
 
-  const openOrFocusTab = useCallback((next: PopoutTarget) => {
+  const openOrFocusTab = useCallback((incoming: PopoutTarget) => {
+    const next = currentTarget(incoming);
     const k = popoutTabKey(next);
     setTabs((prev) => {
       const exists = prev.some((t) => popoutTabKey(t) === k);
@@ -789,28 +820,30 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
     setActiveKey(k);
   }, []);
 
-  const closeTab = useCallback((keyToClose: string) => {
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => popoutTabKey(t) === keyToClose);
-      if (idx === -1) return prev;
-      const next = prev.filter((t) => popoutTabKey(t) !== keyToClose);
-      if (next.length === 0) {
-        try {
-          sessionStorage.removeItem(TABS_STORAGE_KEY);
-          window.close();
-        } catch {
-          // ignore if browser blocks window.close
-        }
-        return next;
-      }
-      setActiveKey((cur) => {
-        if (cur !== keyToClose) return cur;
-        const fallback = next[Math.min(idx, next.length - 1)];
-        return popoutTabKey(fallback);
-      });
-      return next;
-    });
-  }, []);
+  useLayoutEffect(() => {
+    if (activeTab) window.history.replaceState(null, '', buildPopoutPath(activeTab));
+  }, [activeTab]);
+
+  const dirty = tabs.some(tab => metaByKey[popoutTabKey(tab)]?.dirty);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {event.preventDefault(); event.returnValue = '';};
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!tabs.length) window.close();
+  }, [tabs.length]);
+
+  const closeTab = useCallback((key: string) => {
+    if (metaByKey[key]?.dirty && !window.confirm('这份文档有未保存的修改。放弃修改并关闭标签？')) return;
+    const index = tabs.findIndex(tab => popoutTabKey(tab) === key);
+    if (index < 0) return;
+    const remaining = tabs.filter(tab => popoutTabKey(tab) !== key);
+    setTabs(remaining);
+    if (activeKey === key && remaining.length) setActiveKey(popoutTabKey(remaining[Math.min(index, remaining.length - 1)]));
+  }, [tabs, activeKey, metaByKey]);
 
   // Receive new tabs from Main Window via Electron IPC & Web BroadcastChannel
   useEffect(() => {
@@ -846,7 +879,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key.toLowerCase() === 'w' && tabs.length > 1) {
+      if (e.key.toLowerCase() === 'w' && tabs.length) {
         e.preventDefault();
         closeTab(activeKey);
         return;
