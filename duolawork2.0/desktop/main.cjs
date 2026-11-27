@@ -3,12 +3,20 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, nativeTheme } = require('electron');
+const { DEFAULT_CLOUD_URL, resolveDesktopBootMode } = require('./boot-mode.cjs');
 
 const testMode = process.env.DUOLAWORK_V2_TEST_MODE === '1';
 const customUserData = process.env.DUOLAWORK_V2_USER_DATA;
-app.setName('Agent Hub');
+app.setName('DuolaWork');
 if (customUserData) {
   app.setPath('userData', customUserData);
+} else {
+  const appDataDir = app.getPath('appData');
+  const legacyUserData = path.join(appDataDir, 'Agent Hub');
+  const nextUserData = path.join(appDataDir, 'DuolaWork');
+  if (fs.existsSync(legacyUserData) && !fs.existsSync(path.join(nextUserData, 'Cookies'))) {
+    app.setPath('userData', legacyUserData);
+  }
 }
 
 const gotLock = testMode ? true : app.requestSingleInstanceLock();
@@ -60,11 +68,70 @@ function readBuildInfo() {
   } catch {
     // ignore missing build-info
   }
-  return { id: 'dev', version: '2.0.0' };
+  return { id: 'dev', version: '3.0.0' };
 }
 
-function buildAppMenu() {
+function readClientConfig(clientConfigPath) {
+  try {
+    if (fs.existsSync(clientConfigPath)) {
+      return JSON.parse(fs.readFileSync(clientConfigPath, 'utf8'));
+    }
+  } catch {
+    // ignore malformed config
+  }
+  return null;
+}
+
+function writeClientConfigMode(clientConfigPath, mode, cloudUrl) {
+  fs.mkdirSync(path.dirname(clientConfigPath), { recursive: true, mode: 0o700 });
+  const prev = readClientConfig(clientConfigPath) || {};
+  const next = {
+    ...prev,
+    mode,
+    ...(cloudUrl ? { serverUrl: cloudUrl } : {})
+  };
+  fs.writeFileSync(clientConfigPath, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
+}
+
+function buildAppMenu(runtimeInfo = { mode: 'local', cloudUrl: '', clientConfigPath: '' }) {
   const isMac = process.platform === 'darwin';
+  const modeLabel =
+    runtimeInfo.mode === 'cloud'
+      ? `当前运行：云端控制面 (${runtimeInfo.cloudUrl || DEFAULT_CLOUD_URL})`
+      : '当前运行：本机工作台 (Local-First)';
+  const modeItems = !testMode && runtimeInfo.clientConfigPath
+    ? [
+        { type: 'separator' },
+        { label: modeLabel, enabled: false },
+        {
+          label: '切换到本地模式 (Local-First)',
+          type: 'radio',
+          checked: runtimeInfo.mode === 'local',
+          click: () => {
+            if (runtimeInfo.mode === 'local') return;
+            writeClientConfigMode(runtimeInfo.clientConfigPath, 'local', runtimeInfo.cloudUrl);
+            app.relaunch();
+            app.exit(0);
+          }
+        },
+        {
+          label: '连接云端控制面 (Cloud Sync)',
+          type: 'radio',
+          checked: runtimeInfo.mode === 'cloud',
+          click: () => {
+            if (runtimeInfo.mode === 'cloud') return;
+            const prev = readClientConfig(runtimeInfo.clientConfigPath);
+            const targetUrl =
+              (typeof prev?.serverUrl === 'string' && prev.serverUrl.trim()) ||
+              runtimeInfo.cloudUrl ||
+              DEFAULT_CLOUD_URL;
+            writeClientConfigMode(runtimeInfo.clientConfigPath, 'cloud', targetUrl);
+            app.relaunch();
+            app.exit(0);
+          }
+        }
+      ]
+    : [];
   const template = [
     ...(isMac
       ? [
@@ -72,6 +139,7 @@ function buildAppMenu() {
             label: 'DuolaWork',
             submenu: [
               { role: 'about', label: '关于 DuolaWork' },
+              ...modeItems,
               { type: 'separator' },
               { role: 'hide', label: '隐藏' },
               { role: 'hideOthers', label: '隐藏其他' },
@@ -276,34 +344,25 @@ app.whenReady().then(async () => {
     }
   }
 
-  buildAppMenu();
+  const buildInfo = readBuildInfo();
+  const desktopConfigDir = path.join(os.homedir(), '.config', 'duolawork-desktop');
+  const clientConfigPath = path.join(desktopConfigDir, 'client.json');
+  const cloudAccessPath = path.join(desktopConfigDir, 'cloud-access.json');
+
+  const boot = resolveDesktopBootMode({
+    envCloudUrl: process.env.DUOLAWORK_CLOUD_URL || '',
+    clientConfig: readClientConfig(clientConfigPath),
+    hasCloudAccess: fs.existsSync(cloudAccessPath),
+    testMode
+  });
+  const cloudUrl = boot.cloudUrl;
+
+  buildAppMenu({ mode: boot.mode, cloudUrl, clientConfigPath });
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     const allowed = permission === 'clipboard-read' || permission === 'clipboard-sanitized-write';
     callback(allowed);
   });
-
-  const buildInfo = readBuildInfo();
-  const DEFAULT_CLOUD_URL = 'https://work.manyaitool.com';
-  const clientConfigPath = path.join(os.homedir(), '.config', 'duolawork-desktop', 'client.json');
-  const cloudAccessPath = path.join(os.homedir(), '.config', 'duolawork-desktop', 'cloud-access.json');
-
-  let cloudUrl = (process.env.DUOLAWORK_CLOUD_URL || '').trim().replace(/\/+$/, '');
-  if (!cloudUrl && !testMode) {
-    if (fs.existsSync(clientConfigPath)) {
-      try {
-        const clientCfg = JSON.parse(fs.readFileSync(clientConfigPath, 'utf8'));
-        if (typeof clientCfg?.serverUrl === 'string' && clientCfg.serverUrl.trim()) {
-          cloudUrl = clientCfg.serverUrl.trim().replace(/\/+$/, '');
-        }
-      } catch {
-        // fall through to default cloud URL
-      }
-    }
-    if (!cloudUrl) {
-      cloudUrl = DEFAULT_CLOUD_URL;
-    }
-  }
 
   const allowedIpcOrigins = new Set([cloudUrl, 'http://127.0.0.1'].filter(Boolean));
   const isAllowedSender = (event) => {
@@ -332,6 +391,11 @@ app.whenReady().then(async () => {
     if (!isAllowedSender(event)) return { ok: false };
     applyWindowTheme(theme === 'dark' ? 'dark' : 'light');
     return { ok: true };
+  });
+
+  ipcMain.handle('dw2:get-runtime-mode', (event) => {
+    if (!isAllowedSender(event)) return { ok: false };
+    return { ok: true, mode: boot.mode, cloudUrl };
   });
 
   ipcMain.handle('dw2:set-always-on-top', (event, flag) => {

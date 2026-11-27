@@ -35,6 +35,21 @@ import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 import { CategoryBar, UsageProportionBar } from './components/ui/tremor.js';
 import { formatCompactTokens } from './lib/format.js';
+import { useI18n } from './lib/i18n.js';
+
+interface DiscoveredAgentCandidate {
+  id: 'codex' | 'claude' | 'gemini';
+  platformId: string;
+  name: string;
+  driverKind: DriverKind;
+  binaryName: string;
+  binaryPath: string | null;
+  status: 'ready' | 'needs_login' | 'not_installed';
+  hint: string;
+  installCommand: string;
+  loginCommand: string;
+  alreadyMemberId: string | null;
+}
 
 interface RecentAttempt {
   id: string;
@@ -126,6 +141,34 @@ export function MembersUsagePage({
   const [error, setError] = useState<string>('');
   const [memoryNotice, setMemoryNotice] = useState<string>('');
   const [syncingMemory, setSyncingMemory] = useState<boolean>(false);
+  const { t } = useI18n();
+  const [discoverData, setDiscoverData] = useState<{
+    mode: 'local' | 'cloud';
+    candidates: DiscoveredAgentCandidate[];
+  } | null>(null);
+  const [discoverLoading, setDiscoverLoading] = useState<boolean>(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+
+  const loadDiscover = useMemo(
+    () => async () => {
+      setDiscoverLoading(true);
+      try {
+        const res = await fetch('/api/v2/members/discover');
+        if (res.ok) {
+          const data = await res.json();
+          setDiscoverData({
+            mode: data.mode === 'cloud' ? 'cloud' : 'local',
+            candidates: Array.isArray(data.candidates) ? data.candidates : []
+          });
+        }
+      } catch {
+        // ignore optional discovery failure
+      } finally {
+        setDiscoverLoading(false);
+      }
+    },
+    []
+  );
 
   const loadUsage = usage.read;
   const loadSessions = sessionData.read;
@@ -136,6 +179,7 @@ export function MembersUsagePage({
     };
     void loadUsage().catch(report);
     void loadSessions().catch(report);
+    void loadDiscover();
     const timer = window.setInterval(() => {
       if (!document.hidden) void loadUsage(true).catch(report);
     }, 15000);
@@ -143,7 +187,28 @@ export function MembersUsagePage({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadUsage, loadSessions, members.length]);
+  }, [loadUsage, loadSessions, loadDiscover, members.length]);
+
+  const handleActivateDiscovered = async (candidate: DiscoveredAgentCandidate) => {
+    setActivatingId(candidate.id);
+    setError('');
+    try {
+      const res = await fetch('/api/v2/members/discover/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId: candidate.id })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || '激活成员失败');
+        return;
+      }
+      toast.success(`已接入 ${candidate.name}`);
+      await Promise.all([onReloadBootstrap(), loadDiscover(), loadUsage(true)]);
+    } finally {
+      setActivatingId(null);
+    }
+  };
 
   const handleGenerateNodePair = async (kind: 'cloud' | 'local') => {
     setError('');
@@ -344,14 +409,14 @@ export function MembersUsagePage({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="m-0 text-xl font-semibold tracking-tight text-foreground">
-                成员与用量统计
+                {t('membersPageTitle')}
               </h1>
               <Badge variant="outline" size="sm" className="font-mono tabular-nums">
                 {readyCount} / {members.length} 就绪
               </Badge>
             </div>
             <p className="m-0 text-[13px] text-muted-foreground">
-              统一管理本机与远端 Agent 成员、跨机执行节点与实时 Token 消耗流水。
+              {t('membersPageDesc')}
             </p>
           </div>
 
@@ -519,6 +584,121 @@ export function MembersUsagePage({
             </FramePanel>
           </Frame>
         )}
+
+        {/* BYOS Auto-Discovery (3-minute local CLI onboarding) */}
+        <Frame data-testid="byos-discovery-card">
+          <FrameHeader className="flex-row items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <FrameTitle className="flex items-center gap-1.5 text-[13px]">
+                <Sparkles size={14} className="text-blue-500" />
+                <span>{t('discoverTitle')}</span>
+              </FrameTitle>
+              <FrameDescription className="text-[11.5px]">{t('discoverDesc')}</FrameDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={discoverLoading}
+              onClick={() => void loadDiscover()}
+            >
+              <RefreshCw size={12} className={discoverLoading ? 'is-refreshing' : ''} />
+              <span>{t('discoverRefresh')}</span>
+            </Button>
+          </FrameHeader>
+          <FramePanel className="p-3.5 sm:p-4">
+            {discoverData?.mode === 'cloud' ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/35 px-3 py-2.5 text-xs text-muted-foreground">
+                <Server size={14} className="shrink-0" />
+                <span>{t('discoverCloudNote')}</span>
+              </div>
+            ) : !discoverData ? (
+              <div className="py-3 text-center text-xs text-muted-foreground">…</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {discoverData.candidates.map((c) => {
+                  const statusBadgeVariant = c.alreadyMemberId
+                    ? 'success'
+                    : c.status === 'ready'
+                      ? 'success'
+                      : c.status === 'needs_login'
+                        ? 'warning'
+                        : 'secondary';
+                  const statusLabel = c.alreadyMemberId
+                    ? t('discoverConnected')
+                    : c.status === 'ready'
+                      ? t('discoverReady')
+                      : c.status === 'needs_login'
+                        ? t('discoverNeedsLogin')
+                        : t('discoverNotInstalled');
+                  const cmdToCopy = c.status === 'needs_login' ? c.loginCommand : c.installCommand;
+                  return (
+                    <div
+                      key={c.id}
+                      data-testid={`discover-card-${c.id}`}
+                      className="flex flex-col justify-between gap-2.5 rounded-xl border border-border bg-background/80 p-3 text-xs"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <AgentAvatar small name={c.name} platformId={c.platformId} />
+                            <span className="truncate font-semibold text-foreground">{c.name}</span>
+                          </div>
+                          <Badge variant={statusBadgeVariant} size="sm">
+                            {statusLabel}
+                          </Badge>
+                        </div>
+                        <p className="m-0 text-[11.5px] leading-relaxed text-muted-foreground">
+                          {c.hint}
+                        </p>
+                        {c.binaryPath && (
+                          <div className="truncate font-mono text-[10.5px] text-muted-foreground/85" title={c.binaryPath}>
+                            {c.binaryPath}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {c.status !== 'ready' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(cmdToCopy);
+                              toast.success(`已复制命令: ${cmdToCopy}`);
+                            }}
+                            className="inline-flex min-w-0 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-1 font-mono text-[10.5px] text-foreground hover:bg-muted"
+                            title={cmdToCopy}
+                          >
+                            <Copy size={10} className="shrink-0" />
+                            <span className="truncate">{cmdToCopy}</span>
+                          </button>
+                        ) : (
+                          <span className="font-mono text-[10.5px] text-muted-foreground">BYOS</span>
+                        )}
+
+                        {c.binaryPath && (
+                          <Button
+                            size="xs"
+                            variant={c.alreadyMemberId ? 'outline' : 'default'}
+                            disabled={activatingId === c.id}
+                            onClick={() => void handleActivateDiscovered(c)}
+                          >
+                            <span>
+                              {activatingId === c.id
+                                ? '…'
+                                : c.alreadyMemberId
+                                  ? t('discoverReactivate')
+                                  : t('discoverActivate')}
+                            </span>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </FramePanel>
+        </Frame>
 
         {/* Bento KPI Overview (Coss Frame + Tremor CategoryBar) */}
         <Frame>

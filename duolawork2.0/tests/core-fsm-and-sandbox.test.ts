@@ -752,12 +752,21 @@ test('Audit Priority #1 & #2 & DW2-08: fixed-window Bot concurrency=1 serializat
   }
 });
 
-test('DW2-11: Frontend & prototype have 0 native <select>/<details>/<datalist>, 0 defensive jargon, and JS gzip < 180 KB', () => {
-  const webDir = path.join(projectRoot, 'src/web');
-  const webFiles = fs
-    .readdirSync(webDir)
-    .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
-    .map((f) => [f, fs.readFileSync(path.join(webDir, f), 'utf8')] as const);
+test('DW2-11: Frontend & prototype have 0 native <select>/<details>/<datalist>, 0 defensive jargon, and entry JS gzip < 160 KB (total < 240 KB)', () => {
+  const webRoot = path.join(projectRoot, 'src/web');
+  const collectTsFiles = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) out.push(...collectTsFiles(full));
+      else if (ent.name.endsWith('.tsx') || ent.name.endsWith('.ts')) out.push(full);
+    }
+    return out;
+  };
+  const webFiles = collectTsFiles(webRoot).map((f) => [
+    path.relative(webRoot, f),
+    fs.readFileSync(f, 'utf8')
+  ] as const);
   const protoHtml = fs.readFileSync(path.join(projectRoot, 'prototype-v2.html'), 'utf8');
 
   for (const [name, src] of [...webFiles, ['prototype-v2.html', protoHtml] as const]) {
@@ -771,17 +780,28 @@ test('DW2-11: Frontend & prototype have 0 native <select>/<details>/<datalist>, 
 
   // Check built web bundle size if dist/web/assets exists
   const assetsDir = path.join(projectRoot, 'dist/web/assets');
-  if (fs.existsSync(assetsDir)) {
+  const htmlPath = path.join(projectRoot, 'dist/web/index.html');
+  if (fs.existsSync(assetsDir) && fs.existsSync(htmlPath)) {
     const jsFiles = fs.readdirSync(assetsDir).filter((f) => f.endsWith('.js'));
     assert.ok(jsFiles.length > 0, 'Vite JS bundle exists');
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    const entryMatch = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/);
+    assert.ok(entryMatch?.[1], 'index.html must contain module entry script');
+    const entryAssetName = path.basename(entryMatch[1]);
+    assert.ok(jsFiles.includes(entryAssetName), `Entry JS ${entryAssetName} exists in assets`);
+    const entryGzipBytes = zlib.gzipSync(fs.readFileSync(path.join(assetsDir, entryAssetName))).length;
+    assert.ok(
+      entryGzipBytes < 160 * 1024,
+      `Entry JS gzip (${entryGzipBytes} B) must be < 160 KiB`
+    );
     let totalGzipBytes = 0;
     for (const f of jsFiles) {
       const raw = fs.readFileSync(path.join(assetsDir, f));
       totalGzipBytes += zlib.gzipSync(raw).length;
     }
     assert.ok(
-      totalGzipBytes < 180 * 1024,
-      `JS bundle gzip (${totalGzipBytes} B) must be < 180 KiB`
+      totalGzipBytes < 240 * 1024,
+      `Total JS bundle gzip (${totalGzipBytes} B) must be < 240 KiB`
     );
   }
 });

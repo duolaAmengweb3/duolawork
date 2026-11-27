@@ -41,6 +41,7 @@ import {
 import { extractMarkdownHeadings, MarkdownView } from './markdown.js';
 
 import { subscribeReaderUpdates } from './lib/reader-sync.js';
+import { useI18n } from './lib/i18n.js';
 import { detectPreviewKind } from '../shared/file-format.js';
 
 function currentTarget(tab: PopoutTarget): PopoutTarget {
@@ -122,6 +123,7 @@ function ReaderTabPane({
   onTogglePin: () => void;
   onMetaChange: (key: string, meta: TabMeta) => void;
 }): React.JSX.Element {
+  const { t } = useI18n();
   const tabKey = popoutTabKey(target);
   const [activeHeadingId, setActiveHeadingId] = useState<string>('');
   const [artifact, setArtifact] = useState<ArtifactRecord | null>(null);
@@ -381,9 +383,9 @@ function ReaderTabPane({
         {target.kind === 'document' && (
           <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
             {([
-              ['read', '阅读', Eye],
-              ['split', '分屏', Columns2],
-              ['edit', '编辑', Pencil]
+              ['read', t('readerModeRead'), Eye],
+              ['split', t('readerModeSplit'), Columns2],
+              ['edit', t('readerModeEdit'), Pencil]
             ] as const).map(([val, label, Icon]) => {
               const isMode = docMode === val;
               return (
@@ -414,7 +416,7 @@ function ReaderTabPane({
               title="切换目录大纲"
             >
               <ListTree size={13} />
-              <span>目录</span>
+              <span>{t('readerToc')}</span>
             </Button>
           )}
 
@@ -489,7 +491,7 @@ function ReaderTabPane({
                 render={
                   <Button variant="outline" size="xs">
                     <History size={12} />
-                    <span>版本 ({versions.length})</span>
+                    <span>{t('readerVersions', { n: versions.length })}</span>
                   </Button>
                 }
               />
@@ -518,19 +520,19 @@ function ReaderTabPane({
           {(target.kind === 'document' || target.previewKind === 'text') && (
             <Button variant="outline" size="xs" onClick={handleCopyContent}>
               {copiedDoc ? <Check size={12} /> : <Copy size={12} />}
-              <span>{copiedDoc ? '已复制' : '复制'}</span>
+              <span>{copiedDoc ? t('readerCopied') : t('readerCopy')}</span>
             </Button>
           )}
 
           <Button variant="outline" size="xs" onClick={handleExport}>
             <Download size={12} />
-            <span>{target.kind === 'document' ? '导出' : '下载'}</span>
+            <span>{target.kind === 'document' ? t('readerExport') : t('readerDownload')}</span>
           </Button>
 
           {target.kind === 'document' && (isDirty || docMode !== 'read') && (
             <Button size="xs" disabled={!isDirty || saving} loading={saving} onClick={() => void handleSave()}>
               <Save size={12} />
-              <span>{saving ? '保存中…' : '保存'}</span>
+              <span>{saving ? t('readerSaving') : t('readerSave')}</span>
             </Button>
           )}
 
@@ -548,9 +550,9 @@ function ReaderTabPane({
 
           <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5">
             {([
-              ['light', '浅色', Sun],
-              ['sepia', '护眼', null],
-              ['dark', '深色', Moon]
+              ['light', t('readerLight'), Sun],
+              ['sepia', t('readerSepia'), null],
+              ['dark', t('readerDark'), Moon]
             ] as const).map(([val, label, Icon]) => {
               const isTheme = paperTheme === val;
               return (
@@ -758,6 +760,7 @@ function ReaderTabPane({
 }
 
 export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.JSX.Element {
+  const { locale, toggleLocale, t } = useI18n();
   const [tabs, setTabs] = useState<PopoutTarget[]>(() => loadInitialTabs(target).map(currentTarget));
   const [activeKey, setActiveKey] = useState<string>(() => popoutTabKey(target));
   const [metaByKey, setMetaByKey] = useState<Record<string, TabMeta>>({});
@@ -940,7 +943,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
       <div
         className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-muted/55 px-2"
         role="tablist"
-        aria-label="已打开的文档标签页"
+        aria-label={t('readerTabList')}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto coss-scroll">
           {tabs.map((tab) => {
@@ -1008,8 +1011,8 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => void loadThreadSpaceItems()}
-                  aria-label="打开更多资料标签"
-                  title="打开当前对话里的其他文档或文件"
+                  aria-label={t('readerAddTab')}
+                  title={t('readerAddTab')}
                   className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   <Plus size={14} />
@@ -1055,6 +1058,17 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
             </MenuPopup>
           </Menu>
         )}
+
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={toggleLocale}
+          aria-label="切换语言"
+          title="中 / EN"
+          className="h-6 shrink-0 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+        >
+          {locale === 'zh' ? 'EN' : '中'}
+        </Button>
       </div>
 
       {/* Keep-alive Tab Panes */}

@@ -13,6 +13,7 @@ import { CloudAuthManager, hashPassword, type CloudAuthOptions } from './auth.js
 export { hashPassword };
 import { AuthSandbox, SandboxForbiddenError, isReadOnlyConnectorTool } from './auth-sandbox.js';
 import { DuolaWorkDatabase } from './db.js';
+import { activateDiscoveredAgent, discoverLocalAgents, ForbiddenDiscoveryError } from './discovery.js';
 import { DriverRegistry } from './drivers/registry.js';
 import {
   evaluateHubChannelMemberHealth,
@@ -1752,6 +1753,42 @@ export class DuolaWorkApp {
         return;
       }
 
+      if (pathname === '/api/v2/members/discover' && method === 'GET') {
+        const result = discoverLocalAgents({
+          existingMembers: this.db.listMembers(),
+          cloudMode: this.auth.isAuthRequired()
+        });
+        sendJson(res, 200, {
+          ...result,
+          nodes: this.nodeHub.listNodes()
+        });
+        return;
+      }
+
+      if (pathname === '/api/v2/members/discover/activate' && method === 'POST') {
+        const body = await readJsonBody(req);
+        try {
+          const saved = activateDiscoveredAgent(this.db, {
+            candidateId: typeof body.candidateId === 'string' ? body.candidateId : undefined,
+            platformId: typeof body.platformId === 'string' ? body.platformId : undefined,
+            id: typeof body.id === 'string' ? body.id : undefined,
+            name: typeof body.name === 'string' ? body.name : undefined,
+            driverKind: typeof body.driverKind === 'string' ? body.driverKind : undefined,
+            location: typeof body.location === 'string' ? body.location : undefined
+          });
+          const refreshed = this.db.listMembers();
+          this.threads.emit({ type: 'thread.members_refreshed', payload: refreshed });
+          sendJson(res, 201, { member: saved, members: refreshed });
+        } catch (err) {
+          if (err instanceof ForbiddenDiscoveryError) {
+            sendJson(res, 403, { error: 'forbidden', message: err.message });
+            return;
+          }
+          sendJson(res, 400, { error: 'discovery_activate_failed', message: (err as Error).message });
+        }
+        return;
+      }
+
       if (pathname === '/api/v2/members' && method === 'POST') {
         const body = await readJsonBody(req);
         const platformId = String(body.platformId || '').trim();
@@ -2717,7 +2754,7 @@ function loadBuildInfoFromDisk(staticWebDir: string | null): BuildInfoMeta {
       // ignore unreadable build-info
     }
   }
-  return { id: 'dev', version: '2.0.0' };
+  return { id: 'dev', version: '3.0.0' };
 }
 
 function sendJson(res: http.ServerResponse, status: number, payload: unknown): void {

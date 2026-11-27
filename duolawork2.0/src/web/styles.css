@@ -131,7 +131,7 @@
 .comm-brand-id {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   min-width: 0;
 }
 .comm-brand-id strong {
@@ -139,8 +139,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 18px;
-  letter-spacing: -0.4px;
+  font-size: 16.5px;
+  letter-spacing: -0.35px;
   color: #1f2b3f;
 }
 .comm-brand-id small {
