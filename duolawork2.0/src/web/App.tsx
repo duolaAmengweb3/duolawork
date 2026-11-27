@@ -1,7 +1,7 @@
 import { ViewCache, ViewCacheContext, useViewCache } from './view-cache.js';
 import { Toaster } from 'sonner';
 import { ModelPicker } from './ModelPicker.js';
-import { outcomeStatus } from '../shared/task-progress.js';
+import { localizeOutcomeLabel, outcomeStatus } from '../shared/task-progress.js';
 import { readableTurnFailure } from '../shared/turn-timeout.js';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -82,7 +82,7 @@ import {
 import { Button } from './components/ui/button.js';
 import { Frame, FramePanel } from './components/ui/frame.js';
 import { EmptyThreadWelcome } from './components/EmptyThreadWelcome.js';
-import { useI18n } from './lib/i18n.js';
+import { useI18n, type Locale } from './lib/i18n.js';
 
 const ConnectorsPage = React.lazy(() =>
   import('./ConnectorsPage.js').then((m) => ({ default: m.ConnectorsPage }))
@@ -122,52 +122,71 @@ interface DesktopBridge {
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
 }
 
-const workspaceToolLabels: Record<string, string> = {
-  connector_list: '查看连接', connector_discover: '查找工具', connector_check: '检查连接',
-  connector_call: '调用服务', vault_list: '查看凭证', vault_http_proxy: '请求服务',
-  experience_suggest: '查找经验', memory_recall: '查找记忆', experience_read: '读取经验',
-  space_list_materials: '查看资料', space_read_material: '读取资料', space_create_folder: '新建目录',
-  space_save_file: '保存文件', space_save_document: '保存文档', space_save_link: '保存链接',
-  space_move_item: '移动资料', space_upload_to_connector: '上传文件', chat_attach_image: '添加图片'
+const workspaceToolLabels: Record<string, { zh: string; en: string }> = {
+  connector_list: { zh: '查看连接', en: 'List connectors' },
+  connector_discover: { zh: '查找工具', en: 'Discover tools' },
+  connector_check: { zh: '检查连接', en: 'Check connector' },
+  connector_call: { zh: '调用服务', en: 'Call tool' },
+  vault_list: { zh: '查看凭证', en: 'List secrets' },
+  vault_http_proxy: { zh: '请求服务', en: 'HTTP proxy' },
+  experience_suggest: { zh: '查找经验', en: 'Search insights' },
+  memory_recall: { zh: '查找记忆', en: 'Recall memory' },
+  experience_read: { zh: '读取经验', en: 'Read insight' },
+  space_list_materials: { zh: '查看资料', en: 'List materials' },
+  space_read_material: { zh: '读取资料', en: 'Read material' },
+  space_create_folder: { zh: '新建目录', en: 'Create folder' },
+  space_save_file: { zh: '保存文件', en: 'Save file' },
+  space_save_document: { zh: '保存文档', en: 'Save document' },
+  space_save_link: { zh: '保存链接', en: 'Save link' },
+  space_move_item: { zh: '移动资料', en: 'Move material' },
+  space_upload_to_connector: { zh: '上传文件', en: 'Upload file' },
+  chat_attach_image: { zh: '添加图片', en: 'Attach image' }
 };
 
-function formatToolTraceRow(item: ToolTraceItem) {
+function formatToolTraceRow(item: ToolTraceItem, locale: Locale) {
+  const en = locale === 'en';
   const name = item.name.trim();
   const summary = item.summary?.trim() || '';
   const raw = summary && summary !== name ? name + ' — ' + summary : name;
-  let label = '调用工具';
+  const defaultLabel = en ? 'Run tool' : '调用工具';
+  let label = defaultLabel;
   let detail = summary || name;
   const toolKey = name.replace(/^Run\s+/i, '').replace(/^mcp[_:]+/i, '').replace(/^(?:duolabase|duolawork-space)[_:]+/i, '');
   if (Object.hasOwn(workspaceToolLabels, toolKey)) {
-    label = workspaceToolLabels[toolKey];
+    label = en ? workspaceToolLabels[toolKey].en : workspaceToolLabels[toolKey].zh;
     detail = summary;
   } else if (/ on Web$/i.test(name) || /^(websearch|google_web_search|联网检索)$/i.test(name)) {
-    label = '搜索网页';
+    label = en ? 'Web search' : '搜索网页';
     detail = summary || name.replace(/ on Web$/i, '');
   } else if (/^(File |read(?:_file)?$|view_file$|读取文件$)/i.test(name)) {
-    label = '读取文件';
+    label = en ? 'Read file' : '读取文件';
     detail = summary || name.replace(/^File /, '');
   } else if (/^(edit|write|replace|apply_patch|编辑文件|写入文件)/i.test(name)) {
-    label = '编辑文件';
+    label = en ? 'Edit file' : '编辑文件';
   } else if (/^(grep|rg|find|fd)\b/i.test(name)) {
-    label = '检索文件';
+    label = en ? 'Search files' : '检索文件';
   } else if (/^(imageGeneration|生成图片)$/i.test(name)) {
-    label = '生成图片';
+    label = en ? 'Generate image' : '生成图片';
   } else if (/^(执行命令|exec_command|run_shell_command|python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(name) || name === '执行命令') {
-    label = '执行命令';
+    label = en ? 'Run command' : '执行命令';
   }
-  if (detail === label || (detail === name && label !== '调用工具' && !/\s/.test(name))) detail = '';
-  if (label === '调用工具' && !summary) detail = detail.replace(/^Run mcp_/, '').replace(/^duolawork-space_space_/, 'space_');
-  if ((label === '读取文件' || label === '编辑文件') && detail.length > 56 && detail.includes('/')) {
+  if (detail === label || (detail === name && label !== defaultLabel && !/\s/.test(name))) detail = '';
+  if (label === defaultLabel && !summary) detail = detail.replace(/^Run mcp_/, '').replace(/^duolawork-space_space_/, 'space_');
+  if ((label === '读取文件' || label === '编辑文件' || label === 'Read file' || label === 'Edit file') && detail.length > 56 && detail.includes('/')) {
     detail = '…/' + detail.split('/').filter(Boolean).slice(-2).join('/');
   }
   return { label, detail, raw };
 }
 
-function ToolTraceRow({ item }: { item: ToolTraceItem }) {
+function ToolTraceRow({ item, locale }: { item: ToolTraceItem; locale: Locale }) {
   const [open, setOpen] = useState(false);
-  const row = formatToolTraceRow(item);
-  const state = item.status === 'error' ? '未完成' : item.status === 'running' ? '进行中' : '已完成';
+  const row = formatToolTraceRow(item, locale);
+  const en = locale === 'en';
+  const state = item.status === 'error'
+    ? (en ? 'Incomplete' : '未完成')
+    : item.status === 'running'
+      ? (en ? 'Running' : '进行中')
+      : (en ? 'Completed' : '已完成');
   const contents = <>
     <span className="turn-tool-mark" role="img" aria-label={state}>
       {item.status === 'done' ? <Check size={13} /> : item.status === 'error' ? <X size={12} /> : <Clock size={12} />}
@@ -185,19 +204,25 @@ function ToolTraceRow({ item }: { item: ToolTraceItem }) {
   </div>;
 }
 
-const phaseLabels: Record<TurnPhase, string> = {
-  processing: '正在处理', thinking: '正在思考', executing: '正在执行',
-  writing: '正在回复', queued: '正在排队', waiting_reply: '等待回复', reconnecting: '正在重连执行节点'
+const phaseLabels: Record<TurnPhase, { zh: string; en: string }> = {
+  processing: { zh: '正在处理', en: 'Processing' },
+  thinking: { zh: '正在思考', en: 'Thinking' },
+  executing: { zh: '正在执行', en: 'Executing' },
+  writing: { zh: '正在回复', en: 'Writing' },
+  queued: { zh: '正在排队', en: 'Queued' },
+  waiting_reply: { zh: '等待回复', en: 'Waiting for reply' },
+  reconnecting: { zh: '正在重连执行节点', en: 'Reconnecting node' }
 };
 
-function executionLabel(tool?: ToolTraceItem): string {
+function executionLabel(tool: ToolTraceItem | undefined, locale: Locale): string {
+  const en = locale === 'en';
   switch (tool?.name.toLowerCase()) {
-    case '执行命令': case 'bash': case 'run_shell_command': return '正在执行命令';
-    case '编辑文件': case 'edit': case 'write': case 'write_file': return '正在编辑文件';
-    case 'read': case 'read_file': return '正在读取文件';
-    case '联网检索': case 'websearch': case 'google_web_search': return '正在搜索';
-    case 'imagegeneration': return '正在生成图片';
-    default: return phaseLabels.executing;
+    case '执行命令': case 'bash': case 'run_shell_command': return en ? 'Running command' : '正在执行命令';
+    case '编辑文件': case 'edit': case 'write': case 'write_file': return en ? 'Editing file' : '正在编辑文件';
+    case 'read': case 'read_file': return en ? 'Reading file' : '正在读取文件';
+    case '联网检索': case 'websearch': case 'google_web_search': return en ? 'Searching web' : '正在搜索';
+    case 'imagegeneration': return en ? 'Generating image' : '正在生成图片';
+    default: return en ? phaseLabels.executing.en : phaseLabels.executing.zh;
   }
 }
 
@@ -253,7 +278,7 @@ type DocumentView = {artifact: ArtifactRecord; versions: ArtifactVersionRecord[]
 
 function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Element {
   const views = useViewCache();
-  const { locale, toggleLocale, t } = useI18n();
+  const { locale, toggleLocale, t, L } = useI18n();
   const [dark, setDark] = useState<boolean>(() => {
     try {
       return localStorage.getItem('dw2-theme') === 'dark';
@@ -751,7 +776,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           setVersions([]);
           loadedDocument.current = null;
         }
-        setDocNotice('暂时无法读取文稿，请重试');
+        setDocNotice(L('暂时无法读取文稿，请重试', 'Unable to load document right now. Please retry.'));
       }
     }
   }, []);
@@ -1031,7 +1056,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         if (parsed.type?.startsWith('thread.')) {
           if (parsed.type === 'thread.message_updated' && parsed.payload?.turnStatus === 'failed' &&
               parsed.threadId === cur.activeThreadId && cur.viewMode === 'thread') {
-            showChatNotice(readableTurnFailure(parsed.payload.body || '暂时未能收到回复'));
+            showChatNotice(readableTurnFailure(parsed.payload.body || L('暂时未能收到回复', 'No reply received yet')));
           }
           void cur.loadBootstrap(true);
           if (cur.viewMode === 'thread' && parsed.threadId === cur.activeThreadId) {
@@ -1117,7 +1142,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setAuthError(data.message || '登录失败，请检查输入');
+        setAuthError(data.message || L('登录失败，请检查输入', 'Sign in failed. Please check your credentials.'));
         return;
       }
       setAuthPassword('');
@@ -1141,13 +1166,15 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: preferredMemberId && ownerName ? `与 ${ownerName} 对话` : `新对话 ${threads.length + 1}`,
+        title: preferredMemberId && ownerName
+          ? L(`与 ${ownerName} 对话`, `Chat with ${ownerName}`)
+          : L(`新对话 ${threads.length + 1}`, `New Thread ${threads.length + 1}`),
         activeOwnerMemberId: defaultOwner
       })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || '新建对话失败');
+      showChatNotice(err.message || L('新建对话失败', 'Failed to create thread'));
       return;
     }
     const data = await res.json();
@@ -1183,7 +1210,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || '归档对话失败');
+      showChatNotice(err.message || L('归档对话失败', 'Failed to archive thread'));
       return;
     }
     if (activeThreadId === thread.id) {
@@ -1192,7 +1219,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       resetTransientMenus();
     }
     await loadBootstrap(false);
-    showChatNotice(`已归档对话「${thread.title}」`, { id: thread.id, title: thread.title });
+    showChatNotice(L(`已归档对话「${thread.title}」`, `Archived thread "${thread.title}"`), { id: thread.id, title: thread.title });
   };
 
   const handleRestoreArchivedThread = async (threadId: string) => {
@@ -1202,13 +1229,13 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       body: JSON.stringify({ status: 'active' })
     });
     if (!res.ok) {
-      showChatNotice('恢复对话失败');
+      showChatNotice(L('恢复对话失败', 'Failed to restore thread'));
       return;
     }
     await loadBootstrap(true);
     setActiveThreadId(threadId);
     setViewMode('thread');
-    showChatNotice('已恢复对话');
+    showChatNotice(L('已恢复对话', 'Thread restored'));
   };
 
   const handleSwitchOwner = async (memberId: string) => {
@@ -1234,7 +1261,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       }
       await loadBootstrap(true);
     } catch {
-      showChatNotice('暂时无法确认对接成员，请稍后重试');
+      showChatNotice(L('暂时无法确认对接成员，请稍后重试', 'Unable to confirm member handoff right now.'));
     } finally {
       setSwitchingThreads(prev => {
         const next = new Set(prev);
@@ -1275,13 +1302,13 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       if (!res.ok) {
         if (data?.persistedUserMessageId) {
           delete pendingClientReqByThreadRef.current[targetThreadId];
-          showChatNotice(readableTurnFailure(data.message || data.error || '发送失败，请检查成员状态后重试'));
+          showChatNotice(readableTurnFailure(data.message || data.error || L('发送失败，请检查成员状态后重试', 'Failed to send. Check member status and retry.')));
           if (activeThreadIdRef.current === targetThreadId) {
             await loadThread(targetThreadId);
           }
         } else {
           opts?.restoreOnFail?.();
-          showChatNotice(data.message || data.error || '消息未能送达服务端，草稿已保留，可直接重试');
+          showChatNotice(data.message || data.error || L('消息未能送达服务端，草稿已保留，可直接重试', 'Message did not reach the server. Your draft was preserved.'));
         }
         return;
       }
@@ -1301,7 +1328,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       await loadBootstrap(true);
     } catch {
       opts?.restoreOnFail?.();
-      showChatNotice('网络异常，草稿与资料引用已保留，恢复网络后可直接重试');
+      showChatNotice(L('网络异常，草稿与资料引用已保留，恢复网络后可直接重试', 'Network error. Your draft and references are preserved to retry.'));
     } finally {
       setSendingByThread((prev) => ({ ...prev, [targetThreadId]: false }));
     }
@@ -1319,7 +1346,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
     const refPrefix =
       savedRefs.length > 0
-        ? `[引用资料] ${savedRefs.map((r) => r.snippet).join('；')}${rawText || savedImages.length > 0 ? '\n\n' : ''}`
+        ? `${L('[引用资料]', '[Referenced Materials]')} ${savedRefs.map((r) => r.snippet).join(locale === 'en' ? '; ' : '；')}${rawText || savedImages.length > 0 ? '\n\n' : ''}`
         : '';
     const imageBlock =
       savedImages.length > 0
@@ -1410,19 +1437,19 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           ? [q.options[0]]
           : []
         : getSelectedOptionsForClarifyQuestion(msg.id, q);
-      const valText = picked.length > 0 ? picked.join('、') : '按合理默认处理';
-      answerLines.push(`${idx + 1}. ${q.question}：${valText}`);
+      const valText = picked.length > 0 ? picked.join(locale === 'en' ? ', ' : '、') : L('按合理默认处理', 'Use recommended default');
+      answerLines.push(`${idx + 1}. ${q.question}${locale === 'en' ? ': ' : '：'}${valText}`);
       summaryParts.push(valText);
     });
 
     if (note) {
-      answerLines.push(`补充说明：${note}`);
+      answerLines.push(`${L('补充说明：', 'Additional notes: ')}${note}`);
       summaryParts.push(note);
     }
 
     const header = useDefaults
-      ? '【已确认需求：按默认推荐方案立即立项派发任务】'
-      : '【已确认需求：请按以下确认项立即立项派发任务】';
+      ? L('【已确认需求：按默认推荐方案立即立项派发任务】', '[Confirmed: Dispatch task immediately with recommended defaults]')
+      : L('【已确认需求：请按以下确认项立即立项派发任务】', '[Confirmed: Dispatch task immediately with these selections]');
     const fullText = `${header}\n${answerLines.join('\n')}`;
     const shortSummary = summaryParts.join(' · ').slice(0, 140);
 
@@ -1444,16 +1471,17 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       if (activeThreadIdRef.current !== message.threadId) return;
       await loadThread(message.threadId);
       const notices: Record<string, string> = {
-        completed: '已找回原回复', waiting: '原任务仍在执行，收到回复后会自动显示',
-        stopping: '执行节点正在停止原任务，结束后可以继续',
-        unreachable: '暂时连不上原执行节点。可以等待重连，也可以切换在线成员后继续',
-        unavailable: '当前成员离线，恢复后可继续，也可以切换成员',
-        superseded: '这段对话已经有了新的处理记录',
-        busy: '这段对话还有任务正在执行'
+        completed: L('已找回原回复', 'Recovered original reply'),
+        waiting: L('原任务仍在执行，收到回复后会自动显示', 'Task still running; reply will appear automatically'),
+        stopping: L('执行节点正在停止原任务，结束后可以继续', 'Node is stopping previous run; continue once stopped'),
+        unreachable: L('暂时连不上原执行节点。可以等待重连，也可以切换在线成员后继续', 'Node unreachable. Wait for reconnect or switch to an online member.'),
+        unavailable: L('当前成员离线，恢复后可继续，也可以切换成员', 'Member offline. Resume when back online or switch member.'),
+        superseded: L('这段对话已经有了新的处理记录', 'A newer turn already exists in this thread'),
+        busy: L('这段对话还有任务正在执行', 'Another run is active in this thread')
       };
       if (notices[result.status]) showChatNotice(notices[result.status]);
     } catch {
-      showChatNotice('暂时连不上工作台。恢复连接后可以再次点继续。');
+      showChatNotice(L('暂时连不上工作台。恢复连接后可以再次点继续。', 'Workbench temporarily unreachable. Try resuming again once reconnected.'));
     } finally { setResumingMessage(null); }
   };
 
@@ -1563,7 +1591,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     if (!docDraft) return;
     try {
       await navigator.clipboard.writeText(docDraft);
-      setDocNotice('已复制到剪贴板');
+      setDocNotice(L('已复制到剪贴板', 'Copied to clipboard'));
     } catch {
       const ta = document.createElement('textarea');
       ta.value = docDraft;
@@ -1571,7 +1599,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       ta.select();
       document.execCommand('copy');
       ta.remove();
-      setDocNotice('已复制文本');
+      setDocNotice(L('已复制文本', 'Copied text'));
     }
     setTimeout(() => setDocNotice(''), 2500);
   };
@@ -1587,7 +1615,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     a.click();
     a.remove();
     URL.revokeObjectURL(href);
-    setDocNotice(`已导出 ${a.download}`);
+    setDocNotice(L(`已导出 ${a.download}`, `Exported ${a.download}`));
     setTimeout(() => setDocNotice(''), 2500);
   };
 
@@ -1614,7 +1642,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     if (activeThreadId) {
       void loadSpace(activeThreadId);
     }
-    setDocNotice(data.conflict ? '检测到版本冲突，已另存为冲突分支版本' : `已保存为 v${data.artifact.headVersion}`);
+    setDocNotice(
+      data.conflict
+        ? L('检测到版本冲突，已另存为冲突分支版本', 'Version conflict detected; saved as a conflict branch version')
+        : L(`已保存为 v${data.artifact.headVersion}`, `Saved as v${data.artifact.headVersion}`)
+    );
     setTimeout(() => setDocNotice(''), 3000);
   };
 
@@ -1650,14 +1682,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     try {
       for (const file of imageFiles) {
         if (file.size > 16 * 1024 * 1024) {
-          failedNames.push(`${file.name}(超16MiB)`);
+          failedNames.push(`${file.name}(${L('超16MiB', '>16MiB')})`);
           continue;
         }
         try {
           const dataUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(new Error('读取失败'));
+            reader.onerror = () => reject(new Error(L('读取失败', 'Read failed')));
             reader.readAsDataURL(file);
           });
           const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
@@ -1690,7 +1722,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         setTimeout(() => inputRef.current?.focus(), 40);
       }
       if (failedNames.length > 0) {
-        showChatNotice(`部分图片添加失败：${failedNames.join('、')}`);
+        showChatNotice(L(`部分图片添加失败：${failedNames.join('、')}`, `Some images failed: ${failedNames.join(', ')}`));
       }
     } finally {
       setUploadingChatImages(false);
@@ -1712,7 +1744,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           );
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            showChatNotice(err.message || err.error || '保存到资料区失败');
+            showChatNotice(err.message || err.error || L('保存到资料区失败', 'Failed to save to Materials'));
             return 'error';
           }
           const data = await res.json();
@@ -1721,12 +1753,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           setSpaceTab('documents');
           showChatNotice(
             data.alreadyInSpace
-              ? '该图片已在右侧资料区中'
-              : `已保存到资料区：${data.file?.name || alt || '图片'}`
+              ? L('该图片已在右侧资料区中', 'Image already exists in Materials')
+              : L(`已保存到资料区：${data.file?.name || alt || '图片'}`, `Saved to Materials: ${data.file?.name || alt || 'image'}`)
           );
           return data.alreadyInSpace ? 'already' : 'saved';
         } catch {
-          showChatNotice('保存到资料区失败');
+          showChatNotice(L('保存到资料区失败', 'Failed to save to Materials'));
           return 'error';
         }
       },
@@ -1745,10 +1777,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         document.body.appendChild(a);
         a.click();
         a.remove();
-        showChatNotice('已开始下载图片到本地');
+        showChatNotice(L('已开始下载图片到本地', 'Image download started'));
       }
     }),
-    [activeThreadId, loadSpace, setSpaceSelection, showChatNotice]
+    [activeThreadId, L, loadSpace, setSpaceSelection, showChatNotice]
   );
 
   const chatSpaceResolver = useMemo<MarkdownSpaceResolver>(() => {
@@ -1799,14 +1831,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     const failedNames: string[] = [];
     for (const file of files) {
       if (file.size > 16 * 1024 * 1024) {
-        failedNames.push(`${file.name}(超16MiB)`);
+        failedNames.push(`${file.name}(${L('超16MiB', '>16MiB')})`);
         continue;
       }
       try {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(new Error('读取失败'));
+          reader.onerror = () => reject(new Error(L('读取失败', 'Read failed')));
           reader.readAsDataURL(file);
         });
         const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
@@ -1834,11 +1866,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       await loadSpace(activeThreadId);
     }
     if (failedNames.length > 0 && uploaded === 0) {
-      showChatNotice(`上传失败：${failedNames.join('、')}`);
+      showChatNotice(L(`上传失败：${failedNames.join('、')}`, `Upload failed: ${failedNames.join(', ')}`));
     } else if (failedNames.length > 0) {
-      showChatNotice(`已上传 ${uploaded} 份，失败：${failedNames.join('、')}`);
+      showChatNotice(L(`已上传 ${uploaded} 份，失败：${failedNames.join('、')}`, `Uploaded ${uploaded}; failed: ${failedNames.join(', ')}`));
     } else if (uploaded > 0) {
-      showChatNotice(`已上传 ${uploaded} 份文件到协作空间`);
+      showChatNotice(L(`已上传 ${uploaded} 份文件到协作空间`, `Uploaded ${uploaded} files to Collaboration Space`));
     }
   };
 
@@ -1881,7 +1913,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setActiveThreadId(originThreadId);
     setInputDrafts((prev) => ({
       ...prev,
-      [originThreadId]: `请按《${latestArt.title}》(v${latestArt.headVersion}) 的最新修改继续调整`
+      [originThreadId]: L(
+        `请按《${latestArt.title}》(v${latestArt.headVersion}) 的最新修改继续调整`,
+        `Continue revising "${latestArt.title}" (v${latestArt.headVersion}) based on the latest edits`
+      )
     }));
     setTimeout(() => inputRef.current?.focus(), 60);
   };
@@ -1896,7 +1931,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       sendingByThread[targetThreadId] ||
       visibleMessages.some((m) => m.turnStatus === 'running')
     ) {
-      showChatNotice('当前对话正在处理中，请稍候再指派任务');
+      showChatNotice(L('当前对话正在处理中，请稍候再指派任务', 'Current thread is busy. Please wait before assigning a task.'));
       return;
     }
 
@@ -1905,8 +1940,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     const leadName = leadMember?.name || leadId;
     const kindPrefix =
       newTaskKind === 'scheduled'
-        ? `【循环定时任务 · 交给 ${leadName}】`
-        : `【一次性任务 · 交给 ${leadName}】`;
+        ? L(`【循环定时任务 · 交给 ${leadName}】`, `[Scheduled Task · Assigned to ${leadName}] `)
+        : L(`【一次性任务 · 交给 ${leadName}】`, `[One-off Task · Assigned to ${leadName}] `);
     const messageBody = `${kindPrefix}${requirement}`;
 
     setTaskModalOpen(false);
@@ -1939,7 +1974,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       await loadBootstrap(true);
       if (viewMode === 'task') await loadTaskDetail(taskId);
     } catch {
-      showChatNotice('未能更新任务状态，请稍后再试');
+      showChatNotice(L('未能更新任务状态，请稍后再试', 'Failed to update task status. Retry shortly.'));
     }
   };
 
@@ -1950,7 +1985,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       body: JSON.stringify({ enabled })
     });
     if (!res.ok) {
-      showChatNotice('更新定时启停状态失败');
+      showChatNotice(L('更新定时启停状态失败', 'Failed to update schedule toggle'));
       return;
     }
     if (viewMode === 'task' && activeTaskId === taskId) {
@@ -1965,14 +2000,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      showChatNotice(data.message || data.error || '触发任务失败');
+      showChatNotice(data.message || data.error || L('触发任务失败', 'Failed to trigger task run'));
       return;
     }
     if (viewMode === 'task' && activeTaskId === taskId) {
       await loadTaskDetail(taskId, data.run?.id);
     }
     await loadBootstrap(true);
-    showChatNotice('已触发新一轮任务执行');
+    showChatNotice(L('已触发新一轮任务执行', 'Triggered a new task run'));
   };
 
   const handleCancelRun = async (runId: string) => {
@@ -1981,14 +2016,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || '停止任务失败');
+      showChatNotice(err.message || L('停止任务失败', 'Failed to stop run'));
       return;
     }
     if (viewMode === 'task' && activeTaskId) {
       await loadTaskDetail(activeTaskId, runId);
     }
     await loadBootstrap(true);
-    showChatNotice('已停止本轮执行');
+    showChatNotice(L('已停止本轮执行', 'Stopped current run'));
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -1999,7 +2034,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showChatNotice(err.message || '删除任务失败');
+        showChatNotice(err.message || L('删除任务失败', 'Failed to delete task'));
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -2018,7 +2053,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       if (activeThreadId) {
         await loadSpace(activeThreadId);
       }
-      showChatNotice('已删除任务');
+      showChatNotice(L('已删除任务', 'Task deleted'));
     } finally {
       if (deletingTaskIdRef.current === taskId) {
         deletingTaskIdRef.current = null;
@@ -2033,7 +2068,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       body: JSON.stringify({ reason: 'ui_manual_sync' })
     });
     if (!res.ok) {
-      showChatNotice('触发全员协作记忆更新失败');
+      showChatNotice(L('触发全员协作记忆更新失败', 'Failed to sync collaboration protocol memory'));
       return null;
     }
     const data = await res.json();
@@ -2049,12 +2084,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         if (!res.ok) throw new Error();
         await loadBootstrap(true);
         if (viewMode==='task' && activeTaskId) await loadTaskDetail(activeTaskId,run.id);
-      } catch { showChatNotice('核对状态暂未更新，请稍后再试'); }
+      } catch { showChatNotice(L('核对状态暂未更新，请稍后再试', 'Verification status not updated yet. Retry shortly.')); }
     };
     return <div className="task-outcome-question">
       <span>{run.waitingQuestion}</span>
-      {step.canReadBack && <button type="button" onClick={()=>void verify(false)}>重新核对</button>}
-      <button type="button" onClick={()=>void verify(true)}>我已核实结果</button>
+      {step.canReadBack && <button type="button" onClick={()=>void verify(false)}>{L('重新核对', 'Re-verify')}</button>}
+      <button type="button" onClick={()=>void verify(true)}>{L('我已核实结果', 'Confirmed')}</button>
     </div>;
   };
 
@@ -2103,12 +2138,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           : 'offline';
   const ownerStatusLabel =
     ownerStatus === 'ready'
-      ? (currentOwner?.config.hubTransport === 'grok-webhook' ? '按需投递' : '在线')
+      ? (currentOwner?.config.hubTransport === 'grok-webhook' ? L('按需投递', 'On demand') : L('在线', 'Online'))
       : ownerStatus === 'busy'
-        ? '执行中'
+        ? L('执行中', 'Busy')
         : ownerStatus === 'auth_required'
-          ? '待授权'
-          : '离线';
+          ? L('待授权', 'Needs auth')
+          : L('离线', 'Offline');
   const spaceThread = threads.find((t) => t.id === spaceThreadId) ?? null;
   const showRightSpace = spaceOpen && (viewMode === 'thread' || viewMode === 'task');
   const activeRefs = activeThread ? draftRefsByThread[activeThread.id] || [] : [];
@@ -2240,14 +2275,20 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     };
 
     const statusLabel = isPending
-      ? '上下文交接待处理'
-      : lateReplies ? '已补交跨成员回复' : '上下文已交接';
+      ? L('上下文交接待处理', 'Handoff pending')
+      : lateReplies
+        ? L('已补交跨成员回复', 'Late member replies synced')
+        : L('上下文已交接', 'Context handed off');
 
-    const statsSummary = lateReplies ? `· ${lateReplies.length} 条`
+    const statsSummary = lateReplies
+      ? L(`· ${lateReplies.length} 条`, `· ${lateReplies.length}`)
       : detailMeta.handoffBytes !== undefined
-        ? `· ${detailMeta.strategy === 'full_thread_summary' ? '完整' : '增量'} · ${detailMeta.includedCount ?? 0} 条 · ${fmtSize(detailMeta.handoffBytes)}`
+        ? L(
+            `· ${detailMeta.strategy === 'full_thread_summary' ? '完整' : '增量'} · ${detailMeta.includedCount ?? 0} 条 · ${fmtSize(detailMeta.handoffBytes)}`,
+            `· ${detailMeta.strategy === 'full_thread_summary' ? 'Full' : 'Delta'} · ${detailMeta.includedCount ?? 0} msgs · ${fmtSize(detailMeta.handoffBytes)}`
+          )
         : isPending
-          ? '· 点击预览'
+          ? L('· 点击预览', '· Click to preview')
           : '';
 
     const ratioPct =
@@ -2293,26 +2334,35 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         </div>
 
         {expanded && (
-          <div className="handoff-inspector-card" role="region" aria-label="上下文交接详情">
+          <div className="handoff-inspector-card" role="region" aria-label={L('上下文交接详情', 'Context Handoff Details')}>
             {loadedPending?.state === 'loading' ? (
-              <div className="handoff-inspector-loading">正在计算即将交接的上下文范围…</div>
+              <div className="handoff-inspector-loading">{L('正在计算即将交接的上下文范围…', 'Calculating context scope for handoff…')}</div>
             ) : loadedPending?.state === 'error' ? (
-              <div className="handoff-inspector-loading">暂无法加载上下文预览</div>
+              <div className="handoff-inspector-loading">{L('暂无法加载上下文预览', 'Unable to load context preview')}</div>
             ) : (
               <>
                 <div className="handoff-inspector-head">
                   <div className="handoff-inspector-badges">
                     <span className="handoff-badge">
-                      {detailMeta.strategy === 'full_thread_summary' ? '完整上下文模式' : '增量同步模式'}
+                      {detailMeta.strategy === 'full_thread_summary'
+                        ? L('完整上下文模式', 'Full context mode')
+                        : L('增量同步模式', 'Incremental sync mode')}
                     </span>
                     <span className="handoff-badge is-subtle">
-                      {lateReplies ? '跨成员补交' : '成员切换交接'}
+                      {lateReplies ? L('跨成员补交', 'Cross-member backfill') : L('成员切换交接', 'Owner handoff')}
                     </span>
-                    {isPending && <span className="handoff-badge is-pending">待发送下条消息时触发</span>}
+                    {isPending && (
+                      <span className="handoff-badge is-pending">
+                        {L('待发送下条消息时触发', 'Applies on next message')}
+                      </span>
+                    )}
                   </div>
                   <div className="handoff-inspector-budget">
                     <span>
-                      已占 {fmtSize(detailMeta.handoffBytes)} / 上限 {fmtSize(detailMeta.budgetBytes)}
+                      {L(
+                        `已占 ${fmtSize(detailMeta.handoffBytes)} / 上限 ${fmtSize(detailMeta.budgetBytes)}`,
+                        `Used ${fmtSize(detailMeta.handoffBytes)} / Limit ${fmtSize(detailMeta.budgetBytes)}`
+                      )}
                     </span>
                   </div>
                 </div>
@@ -2329,42 +2379,62 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                 <div className="handoff-chip-list">
                   <span className="handoff-chip">
                     {(detailMeta.includedCount ?? 0) > 0
-                      ? `已带入 ${detailMeta.includedCount} 条消息${
+                      ? `${L(`已带入 ${detailMeta.includedCount} 条消息`, `Included ${detailMeta.includedCount} messages`)}${
                           detailMeta.includedFromSeq !== null && detailMeta.includedFromSeq !== undefined
                             ? ` (#${detailMeta.includedFromSeq}..#${detailMeta.includedToSeq})`
                             : ''
                         }`
-                      : '无新增历史消息'}
+                      : L('无新增历史消息', 'No new history messages')}
                   </span>
-                  {detailMeta.hasAnchor && <span className="handoff-chip is-accent">初始目标已锚定</span>}
+                  {detailMeta.hasAnchor && (
+                    <span className="handoff-chip is-accent">{L('初始目标已锚定', 'Initial goal anchored')}</span>
+                  )}
                   {detailMeta.hasArtifact && (
                     <span className="handoff-chip is-accent">
-                      关联文稿《{detailMeta.artifactTitle || '未命名'}》v{detailMeta.artifactVersion ?? 1}
+                      {L(
+                        `关联文稿《${detailMeta.artifactTitle || '未命名'}》v${detailMeta.artifactVersion ?? 1}`,
+                        `Linked doc "${detailMeta.artifactTitle || 'Untitled'}" v${detailMeta.artifactVersion ?? 1}`
+                      )}
                     </span>
                   )}
                   {(detailMeta.taskCount ?? 0) > 0 && (
-                    <span className="handoff-chip">关联任务 {detailMeta.taskCount} 项</span>
+                    <span className="handoff-chip">
+                      {L(`关联任务 ${detailMeta.taskCount} 项`, `${detailMeta.taskCount} linked tasks`)}
+                    </span>
                   )}
                   {(detailMeta.omittedCount ?? 0) > 0 && (
                     <span className="handoff-chip is-warn">
-                      早期折叠 {detailMeta.omittedCount} 条 (#{detailMeta.omittedFromSeq}..#{detailMeta.omittedToSeq})
+                      {L(
+                        `早期折叠 ${detailMeta.omittedCount} 条 (#${detailMeta.omittedFromSeq}..#${detailMeta.omittedToSeq})`,
+                        `Collapsed ${detailMeta.omittedCount} earlier (#${detailMeta.omittedFromSeq}..#${detailMeta.omittedToSeq})`
+                      )}
                     </span>
                   )}
                   {(detailMeta.truncatedSeqs?.length ?? 0) > 0 && (
                     <span className="handoff-chip is-warn">
-                      超长保留首尾 (#{detailMeta.truncatedSeqs!.join(', #')})
+                      {L(
+                        `超长保留首尾 (#${detailMeta.truncatedSeqs!.join(', #')})`,
+                        `Head/tail kept (#${detailMeta.truncatedSeqs!.join(', #')})`
+                      )}
                     </span>
                   )}
                   {lateSeqs.length > 0 && (
                     <span className="handoff-chip is-accent">
-                      补交迟到回复 (#{lateSeqs.join(', #')})
+                      {L(
+                        `补交迟到回复 (#${lateSeqs.join(', #')})`,
+                        `Late replies (#${lateSeqs.join(', #')})`
+                      )}
                     </span>
                   )}
                 </div>
 
                 <div className="handoff-preview-box">
                   <div className="handoff-preview-bar">
-                    <span>{isPending ? '预计传递上下文内容（脱敏预览）' : '本次实际传递上下文快照（已脱敏）'}</span>
+                    <span>
+                      {isPending
+                        ? L('预计传递上下文内容（脱敏预览）', 'Planned handoff context (redacted preview)')
+                        : L('本次实际传递上下文快照（已脱敏）', 'Delivered context snapshot (redacted)')}
+                    </span>
                     {detailMeta.previewText && (
                       <button
                         type="button"
@@ -2372,14 +2442,17 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         onClick={() => void handleCopyHandoffPreview(keyId, detailMeta.previewText || '')}
                       >
                         {copiedHandoffId === keyId ? <Check size={12} /> : <Copy size={12} />}
-                        <span>{copiedHandoffId === keyId ? '已复制' : '复制内容'}</span>
+                        <span>{copiedHandoffId === keyId ? L('已复制', 'Copied') : L('复制内容', 'Copy')}</span>
                       </button>
                     )}
                   </div>
                   <pre className="handoff-preview-code">
                     {detailMeta.previewText
                       ? detailMeta.previewText
-                      : '（当前无新增上下文需要附加，直接承接原对话继续交流。）'}
+                      : L(
+                          '（当前无新增上下文需要附加，直接承接原对话继续交流。）',
+                          '(No additional context needed; continuing directly with current thread.)'
+                        )}
                   </pre>
                 </div>
               </>
@@ -2397,9 +2470,9 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           <div className="flex items-center gap-3">
             <BrandLogo size={38} />
             <div>
-              <h1 className="text-base font-semibold m-0">DuolaWork 云端工作台</h1>
+              <h1 className="text-base font-semibold m-0">{L('DuolaWork 云端工作台', 'DuolaWork Cloud Workbench')}</h1>
               <p className="text-xs m-0" style={{ color: '#6b7a90' }}>
-                请先验证身份，跨设备访问你的对话与定时任务
+                {L('请先验证身份，跨设备访问你的对话与定时任务', 'Verify your identity to access threads and schedules across devices')}
               </p>
             </div>
           </div>
@@ -2412,7 +2485,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                 setAuthError('');
               }}
             >
-              管理员密码
+              {L('管理员密码', 'Admin Password')}
             </button>
             <button
               type="button"
@@ -2422,7 +2495,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                 setAuthError('');
               }}
             >
-              一次性配对码
+              {L('一次性配对码', 'One-time Code')}
             </button>
           </div>
           {authTab === 'password' ? (
@@ -2430,7 +2503,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
               type="password"
               value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
-              placeholder="输入工作台管理员密码"
+              placeholder={L('输入工作台管理员密码', 'Enter admin password')}
               autoFocus
               className="dw-input"
             />
@@ -2440,7 +2513,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
               inputMode="numeric"
               value={authCode}
               onChange={(e) => setAuthCode(e.target.value)}
-              placeholder="输入 6 位一次性登录码"
+              placeholder={L('输入 6 位一次性登录码', 'Enter 6-digit pairing code')}
               autoFocus
               className="dw-input"
             />
@@ -2455,7 +2528,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             disabled={authSubmitting || (authTab === 'password' ? !authPassword.trim() : !authCode.trim())}
             className="dw-btn dw-btn-primary w-full justify-center"
           >
-            {authSubmitting ? '验证中…' : '进入工作台'}
+            {authSubmitting ? L('验证中…', 'Signing in…') : L('进入工作台', 'Open Workbench')}
           </button>
         </form>
       </div>
@@ -2467,7 +2540,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
       type="button"
       onClick={() => setMobileSidebarOpen(true)}
       className="dw-btn dw-btn-ghost dw-btn-icon mobile-nav-trigger"
-      aria-label="打开侧边导航"
+      aria-label={L('打开侧边导航', 'Open navigation sidebar')}
       aria-controls="workbench-sidebar"
       aria-expanded={mobileSidebarOpen}
     >
@@ -2496,27 +2569,15 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
               DuolaWork<small>{t('brandSubtitle')}</small>
             </strong>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              data-testid="locale-toggle"
-              onClick={toggleLocale}
-              className="inline-flex h-7 items-center justify-center rounded-[7px] px-1.5 font-mono text-[10.5px] font-medium text-[#8895aa] transition-colors hover:bg-[#e9edf5] hover:text-[#355cc9] dark:hover:bg-[#232938]"
-              aria-label="切换语言"
-              title="中 / EN"
-            >
-              {locale === 'zh' ? 'EN' : '中'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDark((d) => !d)}
-              className="comm-theme-toggle"
-              aria-label={t('toggleTheme')}
-              title={dark ? '切换到浅色模式' : '切换到深色模式'}
-            >
-              {dark ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setDark((d) => !d)}
+            className="comm-theme-toggle"
+            aria-label={t('toggleTheme')}
+            title={dark ? L('切换到浅色模式', 'Switch to light mode') : L('切换到深色模式', 'Switch to dark mode')}
+          >
+            {dark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
         </div>
 
         <div className="comm-search">
@@ -2529,7 +2590,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             aria-label={t('searchThreads')}
           />
           {threadSearch && (
-            <button type="button" onClick={() => setThreadSearch('')} aria-label="清空搜索">
+            <button type="button" onClick={() => setThreadSearch('')} aria-label={L('清空搜索', 'Clear search')}>
               <X size={13} />
             </button>
           )}
@@ -2624,7 +2685,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   <span className="channel-copy">
                     {t.title}
                     <small>
-                      {ownerName} · {new Date(t.updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                      {ownerName} · {new Date(t.updatedAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}
                     </small>
                   </span>
                 </button>
@@ -2632,8 +2693,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   type="button"
                   onClick={(e) => void handleTogglePinThread(t, e)}
                   className={`channel-pin-btn ${t.pinnedAt ? 'is-pinned' : ''}`}
-                  aria-label={t.pinnedAt ? '取消置顶对话' : '置顶对话'}
-                  title={t.pinnedAt ? '取消置顶' : '置顶对话'}
+                  aria-label={t.pinnedAt ? L('取消置顶对话', 'Unpin thread') : L('置顶对话', 'Pin thread')}
+                  title={t.pinnedAt ? L('取消置顶', 'Unpin') : L('置顶对话', 'Pin thread')}
                 >
                   {t.pinnedAt ? <PinOff size={12} /> : <Pin size={12} />}
                 </button>
@@ -2641,8 +2702,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   type="button"
                   onClick={(e) => void handleArchiveThread(t, e)}
                   className="channel-archive-btn"
-                  aria-label="归档对话"
-                  title="归档对话"
+                  aria-label={L('归档对话', 'Archive thread')}
+                  title={L('归档对话', 'Archive thread')}
                 >
                   <Archive size={12} />
                 </button>
@@ -2687,7 +2748,23 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             </div>
           )}
           <div>
-            <i />{cloudMode ? t('modeCloud') : t('modeLocal')}<span title={buildId}>{cloudMode ? t('badgeCloud') : t('badgeLocal')}</span>
+            <i />
+            <em className="not-italic truncate">{cloudMode ? t('modeCloud') : t('modeLocal')}</em>
+            <span className="inline-flex items-center gap-1.5 shrink-0">
+              <small className="text-[10px] opacity-80" title={buildId}>
+                {cloudMode ? t('badgeCloud') : t('badgeLocal')}
+              </small>
+              <button
+                type="button"
+                data-testid="locale-toggle"
+                onClick={toggleLocale}
+                className="inline-flex h-5 items-center justify-center rounded-[5px] border border-border/70 bg-background/70 px-1.5 font-mono text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                aria-label={L('切换语言', 'Switch language')}
+                title="中 / EN"
+              >
+                {locale === 'zh' ? 'EN' : '中'}
+              </button>
+            </span>
           </div>
         </div>
       </aside>
@@ -2741,7 +2818,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                 }}
                 className="font-semibold underline ml-1"
               >
-                撤销
+                {L('撤销', 'Undo')}
               </button>
             )}
           </div>
@@ -2835,7 +2912,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                           setEditingThreadTitle(true);
                         }}
                         className="p-1 opacity-55 hover:opacity-100"
-                        aria-label="重命名对话"
+                        aria-label={L('重命名对话', 'Rename thread')}
                       >
                         <Pencil size={12} />
                       </button>
@@ -2900,14 +2977,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   type="text"
                   value={workspaceDraft}
                   onChange={(e) => setWorkspaceDraft(e.target.value)}
-                  placeholder="输入本机工作目录绝对路径"
+                  placeholder={L('输入本机工作目录绝对路径', 'Enter local workspace absolute path')}
                   className="dw-input"
                 />
                 <button type="submit" className="dw-btn dw-btn-primary dw-btn-sm">
-                  保存目录
+                  {L('保存目录', 'Save Path')}
                 </button>
                 <button type="button" onClick={() => setEditingWorkspace(false)} className="dw-btn dw-btn-outline dw-btn-sm">
-                  取消
+                  {L('取消', 'Cancel')}
                 </button>
               </form>
             )}
@@ -2989,15 +3066,21 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                             }}
                             placeholder={
                               newTaskKind === 'scheduled'
-                                ? '一句话描述要定期做的事，可直接写上频率（如：每天早上 8 点抓取 Xhunter 热点并整理早报）；没写频率时 Agent 会先反问确认…'
-                                : '一句话描述要完成的任务需求（例如：整理今天 AI 热点并输出分析简报存入资料区）…'
+                                ? L(
+                                    '一句话描述要定期做的事，可直接写上频率（如：每天早上 8 点抓取 Xhunter 热点并整理早报）；没写频率时 Agent 会先反问确认…',
+                                    'Describe the recurring task and schedule (e.g., Every morning at 8 AM summarize trends); if omitted, Agent will clarify first…'
+                                  )
+                                : L(
+                                    '一句话描述要完成的任务需求（例如：整理今天 AI 热点并输出分析简报存入资料区）…',
+                                    'Describe the one-off task goal (e.g., Research today’s AI news and save a brief to Materials)…'
+                                  )
                             }
                             className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/75 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                           />
 
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="relative flex items-center gap-2">
-                              <span className="text-[11px] text-muted-foreground">交给</span>
+                              <span className="text-[11px] text-muted-foreground">{L('交给', 'Assign to')}</span>
                               <button
                                 type="button"
                                 onClick={() => setLeadMenuOpen((o) => !o)}
@@ -3017,7 +3100,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                           status={selected.status}
                                         />
                                       )}
-                                      <span>{selected?.name || '选择成员'}</span>
+                                      <span>{selected?.name || L('选择成员', 'Select member')}</span>
                                     </>
                                   );
                                 })()}
@@ -3060,10 +3143,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                   setLeadMenuOpen(false);
                                 }}
                               >
-                                取消
+                                {L('取消', 'Cancel')}
                               </Button>
                               <Button type="submit" size="xs" disabled={!newTaskTitle.trim()}>
-                                交给 Agent 立项
+                                {L('交给 Agent 立项', 'Assign to Agent')}
                               </Button>
                             </div>
                           </div>
@@ -3077,14 +3160,14 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   {messagesThreadId !== activeThread.id ? (
                     <div className="channel-intro" role="status">
                       {threadLoadError === activeThread.id ? (
-                        <><p>对话加载失败</p><button className="dw-btn" onClick={() => void loadThread(activeThread.id)}>重新加载对话</button></>
-                      ) : <p>正在加载对话…</p>}
+                        <><p>{L('对话加载失败', 'Failed to load thread')}</p><button className="dw-btn" onClick={() => void loadThread(activeThread.id)}>{L('重新加载对话', 'Reload thread')}</button></>
+                      ) : <p>{L('正在加载对话…', 'Loading thread…')}</p>}
                     </div>
                   ) : visibleMessages.length === 0 ? (
                     <EmptyThreadWelcome
                       threadTitle={activeThread.title}
                       owner={currentOwner ?? null}
-                      ownerName={currentOwner?.name || '负责人'}
+                      ownerName={currentOwner?.name || L('负责人', 'Lead')}
                       workspacePath={activeThread.workspacePath}
                       membersCount={members.length}
                       onBindFolder={() => void handleChooseThreadWorkspace()}
@@ -3131,7 +3214,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                               <span className="handoff-divider-line" aria-hidden="true" />
                               <span className="handoff-divider-pill is-static">
                                 <ArrowLeftRight size={13} className="handoff-icon" />
-                                <span>{m.body}</span>
+                                <span>{/^已切换至\s*/.test(m.body) ? L(m.body, `Switched to ${legacyTargetName}`) : m.body}</span>
                                 {legacyMember && (
                                   <span className="handoff-member-chip handoff-member-target">
                                     <AgentAvatar
@@ -3160,20 +3243,19 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         const pastRun=Boolean(event.runId && event.runId!==run?.id);
                         const current=!pastRun && !scheduleEntry ? run : null;
                         const requesterId=current?.returnMemberId ?? task.requesterMemberId;
-                        const memberName=(id:string)=>memberById.get(id)?.name ?? '执行成员';
+                        const memberName=(id:string)=>memberById.get(id)?.name ?? L('执行成员', 'Assignee');
                         const active=current?.progress?.filter(s=>['running','submitted'].includes(s.status)) ?? [];
-                        const workers=[...new Set((active.length?active.map(s=>s.memberId):current?.spec?.steps.map(s=>s.assigneeMemberId) ?? task.spec.steps.map(s=>s.assigneeMemberId)).map(memberName))].join('、');
+                        const workers=[...new Set((active.length?active.map(s=>s.memberId):current?.spec?.steps.map(s=>s.assigneeMemberId) ?? task.spec.steps.map(s=>s.assigneeMemberId)).map(memberName))].join(locale === 'en' ? ', ' : '、');
                         const delegated=requesterId && (current?.returnMemberId || task.spec.steps.some(s=>s.assigneeMemberId!==requesterId));
-                        const routing=!pastRun && delegated ? memberName(requesterId)+' 委派给 '+workers : '';
+                        const routing=!pastRun && delegated ? memberName(requesterId) + L(' 委派给 ', ' delegated to ') + workers : '';
                         const phase=current?.returnTurnStatus;
                         const back=current?.returnMemberId && ['completed','failed','timed_out'].includes(current.status)
-                          ? memberName(current.returnMemberId)+(phase==='completed'?' 已跟进':phase==='failed'||phase==='canceled'?' 跟进中断':phase==='running'?' 正在跟进':' 等待接手') : '';
-                        const status=pastRun ? event.outcomeLabel || (event.kind==='delivered'?'本期已交付':event.kind==='failed'?'执行中断':'查看本期记录')
-                          : paused && (!current || current.status!=='completed') ? (current?.status==='running'?'当前步骤结束后暂停':'已暂停')
-                          : scheduleEntry ? '按计划执行'
-                          : outcomeStatus(current) ?? (current?.status==='running' ? (active.length ? workers+' 正在执行':'执行中')
-                          : current?.status==='waiting_user'?'等你回复':current?.status==='waiting_node_online'?'等待成员上线'
-                          : current?.status==='failed'||current?.status==='timed_out'?'执行中断':current?.status==='canceled'?'已停止':'待启动');
+                          ? memberName(current.returnMemberId)+(phase==='completed'?L(' 已跟进', ' followed up'):phase==='failed'||phase==='canceled'?L(' 跟进中断', ' follow-up stopped'):phase==='running'?L(' 正在跟进', ' following up'):L(' 等待接手', ' awaiting handoff')) : '';
+                        const status=pastRun ? localizeOutcomeLabel(event.outcomeLabel, locale) || (event.kind==='delivered'?L('本期已交付', 'Run delivered'):event.kind==='failed'?L('执行中断', 'Run interrupted'):L('查看本期记录', 'View run log'))
+                          : paused && (!current || current.status!=='completed') ? (current?.status==='running'?L('当前步骤结束后暂停', 'Pausing after current step'):L('已暂停', 'Paused'))
+                          : scheduleEntry ? L('按计划执行', 'Scheduled')
+                          : outcomeStatus(current, locale) ?? (current?.status==='running' ? (active.length ? workers + L(' 正在执行', ' running'):L('执行中', 'Running'))
+                          : current?.status==='waiting_user'?L('等你回复', 'Needs your reply'):current?.status==='waiting_node_online'?L('等待成员上线', 'Waiting for node'):current?.status==='failed'||current?.status==='timed_out'?L('执行中断', 'Interrupted'):current?.status==='canceled'?L('已停止', 'Stopped'):L('待启动', 'Pending'));
                         const selection=event.material || (m.artifactRefs[0] ? {kind:'document' as const,id:m.artifactRefs[0]} : null);
                         return (
                           <div key={m.id} className="chat-message chat-task-row">
@@ -3185,7 +3267,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                 requestedRunRef.current = event.runId;
                               }}>{event.runId && task.kind === 'scheduled' ? m.body : task.title}</button>
                               {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
-                                aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
+                                aria-label={paused ? L('继续任务', 'Resume task') : L('暂停任务', 'Pause task')} title={paused ? L('继续任务', 'Resume task') : L('暂停任务', 'Pause task')}
                                 onClick={() => void handlePauseTask(task.id, !paused)}>
                                 {paused ? <Play size={14} /> : <Pause size={14} />}
                               </button>}
@@ -3193,12 +3275,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                               {routing && <span className="chat-task-route">{routing}</span>}
                               {current?.status==='waiting_user' && (renderOutcomeQuestion(current) || (
                                 <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(current.id); }}>
-                                  <label>{current.waitingQuestion}<input className="dw-input" value={waitingReplies[current.id] ?? ''} onChange={e=>updateWaitingReply(current.id,e.target.value)} placeholder="回复任务负责人" /></label>
-                                  <button type="submit" disabled={!waitingReplies[current.id]?.trim()}>答复并继续</button>
+                                  <label>{current.waitingQuestion}<input className="dw-input" value={waitingReplies[current.id] ?? ''} onChange={e=>updateWaitingReply(current.id,e.target.value)} placeholder={L('回复任务负责人', 'Reply to task lead')} /></label>
+                                  <button type="submit" disabled={!waitingReplies[current.id]?.trim()}>{L('答复并继续', 'Reply & Continue')}</button>
                                 </form>
                               ))}
                                {event.kind === 'delivered' && selection ? (
-                                <button className="chat-task-delivery" type="button" title="打开本期交付文档" onClick={() => {
+                                <button className="chat-task-delivery" type="button" title={L('打开本期交付文档', 'Open delivered document')} onClick={() => {
                                   setDocEditing(false);
                                   setSpaceTab('documents');
                                   setSpaceSelection({kind:selection.kind,id:selection.id});
@@ -3216,7 +3298,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                       const lateReplies = crossAgentLateReplies.get(m.id);
                       const isUser = m.authorKind === 'user';
                       const authorMember = !isUser ? memberById.get(m.authorId) : undefined;
-                      const senderName = isUser ? '你' : authorMember?.name || m.authorId;
+                      const senderName = isUser ? L('你', 'You') : authorMember?.name || m.authorId;
                       const running = !isUser && m.turnStatus === 'running';
                       const trace = (running && streamingTools[m.id]) || m.toolTrace || [];
                       const activeTool = trace.findLast(t => t.status === 'running');
@@ -3225,9 +3307,15 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                       const phase = activity?.phase ?? (activeTool ? 'executing' : streamingDeltas[m.id] ? 'writing' : 'processing');
                       const waitingReceipt = running && m.body === '执行结束，等待回执';
                       const reconnecting = running && m.body === '正在恢复执行连接';
-                      const statusText = streamDisconnected ? '正在重新连接' : reconnecting ? '正在找回执行进度'
-                        : waitingReceipt ? '执行结束，等待回执'
-                        : phase === 'executing' ? executionLabel(activeTool) : phaseLabels[phase];
+                      const statusText = streamDisconnected
+                        ? L('正在重新连接', 'Reconnecting')
+                        : reconnecting
+                          ? L('正在找回执行进度', 'Recovering progress')
+                          : waitingReceipt
+                            ? L('执行结束，等待回执', 'Finishing up…')
+                            : phase === 'executing'
+                              ? executionLabel(activeTool, locale)
+                              : (locale === 'en' ? phaseLabels[phase].en : phaseLabels[phase].zh);
                       const displayBody = running
                         ? streamingDeltas[m.id] || (waitingReceipt || reconnecting || m.body === '正在处理…' ? '' : m.body)
                         : m.turnStatus === 'failed' ? readableTurnFailure(m.body) : m.body;
@@ -3251,7 +3339,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                   {statusText}<span className="turn-activity-dots" aria-hidden="true"><i /><i /><i /></span>
                                 </span>
                               ) : (
-                                <time>{m.turnStatus === 'canceled' ? '已停止' : new Date(m.createdAt).toLocaleTimeString('zh-CN', {
+                                <time>{m.turnStatus === 'canceled' ? L('已停止', 'Stopped') : new Date(m.createdAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', {
                                   hour: '2-digit', minute: '2-digit'
                                 })}</time>
                               )}
@@ -3262,7 +3350,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                 const isRunningTurn = m.turnStatus === 'running';
                                 const userExpanded = expandedToolMsgIds[m.id];
                                 const activeItem = activeTool ?? trace[trace.length - 1];
-                                const activeRow = formatToolTraceRow(activeItem);
+                                const activeRow = formatToolTraceRow(activeItem, locale);
                                 const showFullList = userExpanded === true;
                                 const showCompactLive = isRunningTurn && userExpanded === undefined;
                                 const showList = showFullList || showCompactLive;
@@ -3294,8 +3382,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                       </span>
                                       <span className="turn-tool-summary-text">
                                         {isRunningTurn
-                                          ? '操作记录'
-                                          : `${m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? '已记录' : '已执行'} ${trace.length} 项操作`}
+                                          ? L('操作记录', 'Activity')
+                                          : L(
+                                              `${m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? '已记录' : '已执行'} ${trace.length} 项操作`,
+                                              `${m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? 'Recorded' : 'Ran'} ${trace.length} actions`
+                                            )}
                                       </span>
                                       {isRunningTurn && (
                                         <span className="turn-tool-counter">{doneCount}/{trace.length}</span>
@@ -3311,11 +3402,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                               setExpandedToolMsgIds((prev) => ({ ...prev, [m.id]: true }))
                                             }
                                           >
-                                            展开前面已完成的 {hiddenLiveCount} 步…
+                                            {L(`展开前面已完成的 ${hiddenLiveCount} 步…`, `Show ${hiddenLiveCount} earlier steps…`)}
                                           </button>
                                         )}
                                         {visibleItems.map((item, idx) =>
-                                          <ToolTraceRow key={item.id || `${item.name}-${idx}`} item={item} />
+                                          <ToolTraceRow key={item.id || `${item.name}-${idx}`} item={item} locale={locale} />
                                         )}
                                       </div>
                                     )}
@@ -3330,7 +3421,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                             {['failed', 'canceled'].includes(m.turnStatus) && m.id === lastConversationTurn?.id && !isUser && !m.continuedByMessageId && !hasRunningTurn && (
                               <button type="button" className="turn-materials-link turn-resume" disabled={Boolean(resumingMessage)}
                                 onClick={() => void continueTurn(m)}>
-                                <Play size={13} />{resumingMessage === m.id ? '正在核对进度…' : '继续处理'}
+                                <Play size={13} />{resumingMessage === m.id ? L('正在核对进度…', 'Checking progress…') : L('继续处理', 'Resume')}
                               </button>
                             )}
                             {m.turnStatus === 'failed' && spaceItems.length > 0 && (
@@ -3339,7 +3430,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                 setSpaceTab('documents');
                                 setSpaceOpen(true);
                               }}>
-                                <FolderOpen size={14} />查看对话资料
+                                <FolderOpen size={14} />{L('查看对话资料', 'View materials')}
                               </button>
                             )}
                             {!isUser && m.clarificationCard && (() => {
@@ -3359,7 +3450,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                   <div className="clarify-card-head">
                                     <div className="clarify-card-title">
                                       <ListTodo size={14} />
-                                      <strong>{card.title || '派单前需求确认'}</strong>
+                                      <strong>{card.title || L('派单前需求确认', 'Task Confirmation')}</strong>
                                     </div>
                                     {card.targetMemberName && (
                                       <span
@@ -3369,9 +3460,9 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                             : ''
                                         }`}
                                       >
-                                        拟指派：{targetMem ? targetMem.name : card.targetMemberName}
+                                        {L('拟指派：', 'Assignee: ')}{targetMem ? targetMem.name : card.targetMemberName}
                                         {targetMem && targetMem.status !== 'ready' && targetMem.status !== 'busy'
-                                          ? '（当前离线）'
+                                          ? L('（当前离线）', ' (Offline)')
                                           : ''}
                                       </span>
                                     )}
@@ -3380,7 +3471,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                   {card.answered ? (
                                     <div className="clarify-answered-bar">
                                       <CheckCircle2 size={14} />
-                                      <span>已确认：{card.answeredSummary || '已提交确认并派单'}</span>
+                                      <span>{L('已确认：', 'Confirmed: ')}{card.answeredSummary || L('已提交确认并派单', 'Confirmed and dispatched')}</span>
                                     </div>
                                   ) : (
                                     <>
@@ -3393,7 +3484,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                                 <span>
                                                   {qIdx + 1}. {q.question}
                                                 </span>
-                                                {q.multiSelect && <small>可多选</small>}
+                                                {q.multiSelect && <small>{L('可多选', 'Multi-select')}</small>}
                                               </div>
                                               {q.options.length > 0 && (
                                                 <div className="clarify-options">
@@ -3424,7 +3515,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                         onChange={(e) =>
                                           setClarifyNotes((prev) => ({ ...prev, [m.id]: e.target.value }))
                                         }
-                                        placeholder="补充说明、时间范围或更换执行人（选填）…"
+                                        placeholder={L('补充说明、时间范围或更换执行人（选填）…', 'Optional notes, schedule, or alternate member…')}
                                         className="dw-input clarify-note-input"
                                       />
                                       <div className="clarify-actions">
@@ -3435,7 +3526,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                           className="dw-btn dw-btn-primary dw-btn-sm"
                                         >
                                           <Check size={13} />
-                                          <span>确认并派发任务</span>
+                                          <span>{L('确认并派发任务', 'Confirm & Dispatch')}</span>
                                         </button>
                                         <button
                                           type="button"
@@ -3444,7 +3535,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                           className="dw-btn dw-btn-outline dw-btn-sm"
                                         >
                                           <Play size={12} />
-                                          <span>按默认推荐直接派发</span>
+                                          <span>{L('按默认推荐直接派发', 'Use Defaults & Dispatch')}</span>
                                         </button>
                                       </div>
                                     </>
@@ -3483,7 +3574,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                   )
                                 }))
                               }
-                              aria-label={`移除引用 ${ref.title}`}
+                              aria-label={L(`移除引用 ${ref.title}`, `Remove reference ${ref.title}`)}
                             >
                               <X size={11} />
                             </button>
@@ -3515,7 +3606,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         }
                       }
                       return (
-                        <div className="composer-quick-mentions" role="group" aria-label="切换当前对接成员">
+                        <div className="composer-quick-mentions" role="group" aria-label={L('切换当前对接成员', 'Switch active member')}>
                           {displayedMembers.map((m) => (
                             <button
                               key={m.id}
@@ -3523,7 +3614,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                               disabled={switchingThreads.has(activeThread.id)}
                               aria-pressed={m.id === activeThread.activeOwnerMemberId}
                               onClick={() => void handleSwitchOwner(m.id)}
-                              title={`由 ${m.name} 接手当前对话`}
+                              title={L(`由 ${m.name} 接手当前对话`, `Hand off thread to ${m.name}`)}
                             >
                               <AgentAvatar small name={m.name} platformId={m.platformId} />
                               <span>{m.name}</span>
@@ -3535,7 +3626,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                               className="quick-members-toggle"
                               onClick={() => setShowAllQuickMembers((v) => !v)}
                             >
-                              <span>{showAllQuickMembers ? '收起' : `全部 ${members.length} 位`}</span>
+                              <span>{showAllQuickMembers ? L('收起', 'Collapse') : L(`全部 ${members.length} 位`, `All ${members.length}`)}</span>
                               <ChevronDown
                                 size={11}
                                 style={showAllQuickMembers ? { transform: 'rotate(180deg)' } : undefined}
@@ -3560,7 +3651,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                 [activeThread.id]: (prev[activeThread.id] || []).filter((x) => x.id !== img.id)
                               }))
                             }
-                            aria-label={`移除图片 ${img.name}`}
+                            aria-label={L(`移除图片 ${img.name}`, `Remove image ${img.name}`)}
                           >
                             <X size={11} />
                           </button>
@@ -3590,7 +3681,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         void handleSendMessage();
                       }
                     }}
-                    placeholder={t('sendPlaceholder', { name: currentOwner?.name || '负责人' })}
+                    placeholder={t('sendPlaceholder', { name: currentOwner?.name || L('负责人', 'Lead') })}
                   />
 
                   <div className="composer-toolbar">
@@ -3623,8 +3714,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         disabled={uploadingChatImages}
                         onClick={() => composerImageRef.current?.click()}
                         className="dw-btn dw-btn-ghost dw-btn-icon"
-                        aria-label="发送图片"
-                        title={uploadingChatImages ? '图片上传中…' : '添加图片到对话'}
+                        aria-label={L('发送图片', 'Attach image')}
+                        title={uploadingChatImages ? L('图片上传中…', 'Uploading images…') : L('添加图片到对话', 'Attach image to thread')}
                       >
                         <ImagePlus size={16} />
                       </button>
@@ -3632,8 +3723,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         type="button"
                         onClick={() => composerFileRef.current?.click()}
                         className="dw-btn dw-btn-ghost dw-btn-icon"
-                        aria-label="上传文件到协作空间"
-                        title="上传任意格式文件到资料区"
+                        aria-label={L('上传文件到协作空间', 'Upload file to Collaboration Space')}
+                        title={L('上传任意格式文件到资料区', 'Upload file to Materials')}
                       >
                         <Paperclip size={16} />
                       </button>
@@ -3641,8 +3732,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         type="button"
                         onClick={() => setOwnerMenuOpen((o) => !o)}
                         className="dw-btn dw-btn-ghost dw-btn-icon"
-                        aria-label="切换对接成员"
-                        title="切换成员"
+                        aria-label={L('切换对接成员', 'Switch member')}
+                        title={L('切换成员', 'Switch member')}
                       >
                         <AtSign size={16} />
                       </button>
@@ -3653,39 +3744,39 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                           setSpaceTab('documents');
                         }}
                         className="dw-btn dw-btn-ghost dw-btn-icon"
-                        aria-label="打开协作资料"
-                        title="打开协作资料"
+                        aria-label={L('打开协作资料', 'Open Collaboration Materials')}
+                        title={L('打开协作资料', 'Open Collaboration Materials')}
                       >
                         <FileText size={16} />
                       </button>
                       {ownerMenuOpen && (
-                        <div className="mention-picker" aria-label="选择对接成员">
+                        <div className="mention-picker" aria-label={L('选择对接成员', 'Select member')}>
                           {members.map((m) => (
                             <button key={m.id} type="button" onClick={() => void handleSwitchOwner(m.id)}>
                               <AgentAvatar small name={m.name} platformId={m.platformId} />
                               <span>
                                 {m.name}
-                                {m.id === activeThread.activeOwnerMemberId && <small>当前负责人</small>}
+                                {m.id === activeThread.activeOwnerMemberId && <small>{L('当前负责人', 'Current lead')}</small>}
                               </span>
                             </button>
                           ))}
                         </div>
                       )}
-                      {switchingThreads.has(activeThread.id) ? <small role="status">正在切换成员…</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
+                      {switchingThreads.has(activeThread.id) ? <small role="status">{L('正在切换成员…', 'Switching member…')}</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
                         <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id} perModel={(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)==='acp-stdio'}/>}
-                      <small>Enter 发送 · Shift + Enter 换行</small>
+                      <small>{L('Enter 发送 · Shift + Enter 换行', 'Enter to send · Shift + Enter for new line')}</small>
                     </div>
 
                     <div className="flex items-center gap-2">
                       {hasRunningTurn && (
                         <button type="button" onClick={() => void handleAbortTurn()} className="dw-btn dw-btn-outline dw-btn-sm">
                           <Square size={11} />
-                          <span>停止</span>
+                          <span>{L('停止', 'Stop')}</span>
                         </button>
                       )}
                       <button
                         type="submit"
-                        aria-label="发送消息"
+                        aria-label={L('发送消息', 'Send message')}
                         disabled={
                           switchingThreads.has(activeThread.id) || hasRunningTurn ||
                           (!activeDraft.trim() &&
@@ -3701,8 +3792,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                 </form>
 
                 <footer className="chat-bottom-note">
-                  <span>{streamDisconnected ? '正在重新连接' : cloudMode ? '云端工作区已同步' : '本机工作区已同步'}</span>
-                  <span>原生 Agent 协同执行</span>
+                  <span>{streamDisconnected ? L('正在重新连接', 'Reconnecting') : cloudMode ? L('云端工作区已同步', 'Cloud workspace synced') : L('本机工作区已同步', 'Local workspace synced')}</span>
+                  <span>{L('原生 Agent 协同执行', 'Native multi-agent execution')}</span>
                 </footer>
               </section>
 
@@ -3720,12 +3811,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <ArrowLeft size={13} />
-                  <span>返回对话</span>
+                  <span>{L('返回对话', 'Back to Threads')}</span>
                 </button>
                 <div>
-                  <h1>{archiveDetail?.archive.name || '历史归档（只读）'}</h1>
+                  <h1>{archiveDetail?.archive.name || L('历史归档（只读）', 'Archive (Read-only)')}</h1>
                   <p>
-                    1.x 只读历史归档记录 · 不触发当前模型派单
+                    {L('1.x 只读历史归档记录 · 不触发当前模型派单', '1.x read-only archive · Does not dispatch live models')}
                     {archiveDetail?.note ? ` · ${archiveDetail.note}` : ''}
                   </p>
                 </div>
@@ -3733,9 +3824,9 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             </header>
             <div className="messages-scroll">
               {archiveLoading ? (
-                <p className="space-muted text-center py-10">正在加载只读历史记录…</p>
+                <p className="space-muted text-center py-10">{L('正在加载只读历史记录…', 'Loading read-only archive…')}</p>
               ) : !archiveDetail || archiveDetail.messages.length === 0 ? (
-                <p className="space-muted text-center py-10">该历史归档暂无可展示消息</p>
+                <p className="space-muted text-center py-10">{L('该历史归档暂无可展示消息', 'No messages in this archive')}</p>
               ) : (
                 archiveDetail.messages.map((msg) => (
                   <article key={msg.id} className="chat-message">
@@ -3745,7 +3836,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         <strong>{msg.authorName}</strong>
                         <time>
                           {msg.createdAt
-                            ? new Date(msg.createdAt).toLocaleString('zh-CN', {
+                            ? new Date(msg.createdAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', {
                                 month: '2-digit',
                                 day: '2-digit',
                                 hour: '2-digit',
@@ -3776,20 +3867,20 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <ArrowLeft size={13} />
-                  <span>返回原对话</span>
+                  <span>{L('返回原对话', 'Back to Thread')}</span>
                 </button>
                 <div>
                   <h1>{taskDetail.task.title}</h1>
                   <p>
-                    负责人：
+                    {L('负责人：', 'Lead: ')}
                     {(() => {
                       const effectiveLeadId =
                         taskDetail.activeRun?.leadMemberId || taskDetail.task.leadMemberId;
                       return memberById.get(effectiveLeadId)?.name || effectiveLeadId;
                     })()}
                     {taskDetail.task.kind === 'scheduled' && taskDetail.task.cronExpr
-                      ? ` · 定时规则：${taskDetail.task.cronExpr} (${taskDetail.task.timezone})`
-                      : ' · 单次任务'}
+                      ? ` · ${L('定时规则：', 'Schedule: ')}${taskDetail.task.cronExpr} (${taskDetail.task.timezone})`
+                      : L(' · 单次任务', ' · One-off task')}
                   </p>
                 </div>
               </div>
@@ -3802,7 +3893,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                     className="dw-btn dw-btn-outline dw-btn-sm"
                   >
                     <Square size={11} />
-                    <span>停止执行</span>
+                    <span>{L('停止执行', 'Stop Run')}</span>
                   </button>
                 )}
                 {taskDetail.task.status === 'active' && (!taskDetail.runs.length || (taskDetail.task.kind === 'once' && ['failed','timed_out'].includes(taskDetail.runs[0].status)) || (taskDetail.task.kind === 'scheduled' && !taskDetail.runs.some(run => ['running','waiting_user','waiting_node_online','paused'].includes(run.status)))) && <button
@@ -3811,7 +3902,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <Play size={12} />
-                  <span>{taskDetail.task.kind === 'once' && taskDetail.runs.length ? '重新运行整项任务' : '立即执行一次'}</span>
+                  <span>{taskDetail.task.kind === 'once' && taskDetail.runs.length ? L('重新运行整项任务', 'Re-run Task') : L('立即执行一次', 'Run Now')}</span>
                 </button>}
                 {(taskDetail.task.kind === 'scheduled' || taskDetail.activeRun?.status === 'running' || taskDetail.task.status === 'paused') && (
                   <button
@@ -3820,7 +3911,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                     className="dw-btn dw-btn-outline dw-btn-sm"
                   >
                     {taskDetail.task.scheduleEnabled ? <Pause size={12} /> : <Play size={12} />}
-                    <span>{taskDetail.task.status === 'paused' ? '继续任务' : '暂停任务'}</span>
+                    <span>{taskDetail.task.status === 'paused' ? L('继续任务', 'Resume') : L('暂停任务', 'Pause')}</span>
                   </button>
                 )}
                 <button
@@ -3840,13 +3931,13 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   }
                 >
                   <Trash2 size={12} />
-                  <span>{confirmDeleteTaskId === taskDetail.task.id ? '确认删除？' : '删除任务'}</span>
+                  <span>{confirmDeleteTaskId === taskDetail.task.id ? L('确认删除？', 'Confirm Delete?') : L('删除任务', 'Delete')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSpaceOpen((v) => !v)}
                   className="dw-btn dw-btn-ghost dw-btn-icon"
-                  aria-label={spaceOpen ? '隐藏协作空间' : '展开协作空间'}
+                  aria-label={spaceOpen ? L('隐藏协作空间', 'Hide Collaboration Space') : L('展开协作空间', 'Show Collaboration Space')}
                 >
                   {spaceOpen ? <PanelRightClose size={19} /> : <PanelRightOpen size={19} />}
                 </button>
@@ -3864,18 +3955,18 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         aria-pressed={taskDetail.activeRun?.id === r.id}
                         onClick={() => void loadTaskDetail(taskDetail.task.id, r.id)}
                       >
-                        第 {r.runNumber} 期 (
+                        {L(`第 ${r.runNumber} 期 (`, `Run #${r.runNumber} (`)}
                         {r.status === 'completed'
-                          ? outcomeStatus(r)
+                          ? outcomeStatus(r, locale)
                           : r.status === 'failed'
-                            ? '失败'
+                            ? L('失败', 'Failed')
                             : r.status === 'timed_out'
-                              ? '超时'
+                              ? L('超时', 'Timed out')
                               : r.status === 'canceled'
-                                ? '已取消'
-                                : r.status === 'paused' ? '已暂停' : r.status === 'waiting_user'
-                                  ? '待确认'
-                                  : '进行中'}
+                                ? L('已取消', 'Canceled')
+                                : r.status === 'paused' ? L('已暂停', 'Paused') : r.status === 'waiting_user'
+                                  ? L('待确认', 'Needs reply')
+                                  : L('进行中', 'Running')}
                         )
                       </button>
                     ))}
@@ -3888,9 +3979,9 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                     void handleReplyWaitingRun(taskDetail.activeRun!.id);
                   }}>
                     <label>{taskDetail.activeRun.waitingQuestion}
-                      <input className="dw-input" value={waitingReplies[taskDetail.activeRun.id] ?? ''} onChange={e => updateWaitingReply(taskDetail.activeRun!.id,e.target.value)} placeholder="回复任务负责人" />
+                      <input className="dw-input" value={waitingReplies[taskDetail.activeRun.id] ?? ''} onChange={e => updateWaitingReply(taskDetail.activeRun!.id,e.target.value)} placeholder={L('回复任务负责人', 'Reply to task lead')} />
                     </label>
-                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplies[taskDetail.activeRun.id]?.trim()}>答复并继续</button>
+                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplies[taskDetail.activeRun.id]?.trim()}>{L('答复并继续', 'Reply & Continue')}</button>
                   </form>)
                 )}
                 {taskDetail.activeRun?.summary &&
@@ -3917,26 +4008,26 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                           </span>
                           <span className={`delivery-badge ${step.status === 'accepted' ? 'accepted' : ''}`}>
                             {step.status === 'accepted'
-                              ? '已通过'
+                              ? L('已通过', 'Accepted')
                               : step.status === 'changes_requested'
-                                ? '修改中'
+                                ? L('修改中', 'Revising')
                                 : step.status === 'failed'
-                                  ? '执行失败'
+                                  ? L('执行失败', 'Failed')
                                   : step.status === 'canceled'
-                                    ? '已取消'
+                                    ? L('已取消', 'Canceled')
                                     : step.status === 'timed_out'
-                                      ? '执行超时'
+                                      ? L('执行超时', 'Timed out')
                                       : step.status === 'blocked'
-                                        ? '待确认'
+                                        ? L('待确认', 'Blocked')
                                         : step.status === 'submitted'
-                                          ? '待核验'
+                                          ? L('待核验', 'Submitted')
                                           : step.status === 'running'
-                                            ? '进行中'
-                                            : '待开始'}
+                                            ? L('进行中', 'Running')
+                                            : L('待开始', 'Pending')}
                           </span>
                         </h3>
                         <p className="mt-2" style={{ fontSize: 12, color: '#7d8ca3' }}>
-                          执行人：{assigneeName}
+                          {L('执行人：', 'Assignee: ')}{assigneeName}
                         </p>
                         {latestSub && (
                           <div className="mt-2 p-3 rounded-lg dw-inline-subtle">
@@ -3945,7 +4036,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         )}
                         {latestRev && (
                           <p className="mt-2" style={{ fontSize: 12, color: '#6b7e9a' }}>
-                            负责人意见：{latestRev.comments}
+                            {L('负责人意见：', 'Lead review: ')}{latestRev.comments}
                           </p>
                         )}
                       </div>
@@ -3960,7 +4051,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           </>
         ) : viewMode === 'task' && activeTaskId ? (
           <div className="channel-intro" role="status">
-            {taskReadFailed ? <><p>暂时无法读取任务</p><button className="dw-btn" onClick={() => void loadTaskDetail(activeTaskId)}>重试</button></> : <p>正在读取任务…</p>}
+            {taskReadFailed ? <><p>{L('暂时无法读取任务', 'Unable to load task')}</p><button className="dw-btn" onClick={() => void loadTaskDetail(activeTaskId)}>{L('重试', 'Retry')}</button></> : <p>{L('正在读取任务…', 'Loading task…')}</p>}
           </div>
         ) : null}
       </main>

@@ -23,6 +23,7 @@ import { Frame, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
 import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
+import { useI18n } from './lib/i18n.js';
 
 interface ConnectorItem {
   id: string;
@@ -45,13 +46,13 @@ function isConnectorReady(c: ConnectorItem): boolean {
   return c.health === 'ready' || c.status === 'active' || c.status === 'connected';
 }
 
-const CATEGORIES: Array<{ id: string; label: string }> = [
-  { id: '', label: '全部' },
-  { id: 'office_social', label: '办公协同' },
-  { id: 'dev_cloud', label: '开发与云' },
-  { id: 'ai_model', label: '模型服务' },
-  { id: 'finance_wallet', label: '链上数据' },
-  { id: 'general', label: '通用' }
+const CATEGORIES: Array<{ id: string; zh: string; en: string }> = [
+  { id: '', zh: '全部', en: 'All' },
+  { id: 'office_social', zh: '办公协同', en: 'Workspace & Social' },
+  { id: 'dev_cloud', zh: '开发与云', en: 'Dev & Cloud' },
+  { id: 'ai_model', zh: '模型服务', en: 'AI Models' },
+  { id: 'finance_wallet', zh: '链上数据', en: 'Finance & Web3' },
+  { id: 'general', zh: '通用', en: 'General' }
 ];
 
 export function ConnectorsPage({
@@ -63,6 +64,7 @@ export function ConnectorsPage({
   onToggleDuolabase: () => Promise<void>;
   onReloadStatus: () => Promise<void>;
 }): React.JSX.Element {
+  const { locale, L } = useI18n();
   const views = useViewCache();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -139,8 +141,8 @@ export function ConnectorsPage({
         method: 'POST'
       });
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '检测失败');
-      toast.success('已完成连通性检测并同步工具列表');
+      if (!res.ok) throw new Error(out.message || L('检测失败', 'Health check failed'));
+      toast.success(L('已完成连通性检测并同步工具列表', 'Connectivity verified & tools synced'));
       await loadConnectors();
     } catch (err) {
       setError((err as Error).message);
@@ -159,7 +161,7 @@ export function ConnectorsPage({
     try {
       const res = await fetch(`/api/v2/duolabase/connectors/${encodeURIComponent(id)}/tools`);
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '读取工具列表失败');
+      if (!res.ok) throw new Error(out.message || L('读取工具列表失败', 'Failed to load tool list'));
       const tools = Array.isArray(out?.tools)
         ? out.tools
         : Array.isArray(out?.items)
@@ -199,9 +201,9 @@ export function ConnectorsPage({
         body: JSON.stringify(payload)
       });
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '保存连接器失败');
+      if (!res.ok) throw new Error(out.message || L('保存连接器失败', 'Failed to save connector'));
       setEditorOpen(false);
-      toast.success('连接器已保存并托管至 DuolaBase');
+      toast.success(L('连接器已保存并托管至 DuolaBase', 'Connector saved to DuolaBase'));
       await loadConnectors();
     } catch (err) {
       setError((err as Error).message);
@@ -224,7 +226,7 @@ export function ConnectorsPage({
       views.expire('/api/v2/duolabase/', true);
       setCfgToken('');
       setConfigOpen(false);
-      toast.success('已更新 DuolaBase 网关配置');
+      toast.success(L('已更新 DuolaBase 网关配置', 'DuolaBase gateway config updated'));
       await onReloadStatus();
       await loadConnectors();
     }
@@ -240,31 +242,31 @@ export function ConnectorsPage({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="m-0 text-xl font-semibold tracking-tight text-foreground">
-                连接器统一管理
+                {L('连接器统一管理', 'Connectors')}
               </h1>
               <Badge variant={duolabaseStatus.enabled ? 'success' : 'secondary'} size="sm">
-                {duolabaseStatus.enabled ? `在线 ${activeCount} / ${items.length}` : '已关闭'}
+                {duolabaseStatus.enabled ? L(`在线 ${activeCount} / ${items.length}`, `Ready ${activeCount} / ${items.length}`) : L('已关闭', 'Disabled')}
               </Badge>
             </div>
             <p className="m-0 text-[13px] text-muted-foreground">
-              由 DuolaBase 统一托管 OAuth 与外部工具权限，按需懒加载调用。
+              {L('由 DuolaBase 统一托管 OAuth 与外部工具权限，按需懒加载调用。', 'Centralized OAuth and external MCP permissions managed by DuolaBase with on-demand loading.')}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={() => void loadConnectors()} disabled={loading}>
               <RefreshCw size={13} className={loading ? 'is-refreshing' : ''} />
-              <span>刷新</span>
+              <span>{L('刷新', 'Refresh')}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setConfigOpen((v) => !v)}>
               <Settings2 size={13} />
-              <span>服务设置</span>
+              <span>{L('服务设置', 'Settings')}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => void onToggleDuolabase()}>
               <span
                 className={`size-1.5 rounded-full ${duolabaseStatus.enabled ? 'bg-emerald-500' : 'bg-neutral-400'}`}
               />
-              <span>{duolabaseStatus.enabled ? '已启用' : '点击启用'}</span>
+              <span>{duolabaseStatus.enabled ? L('已启用', 'Enabled') : L('点击启用', 'Enable')}</span>
             </Button>
             <Button
               size="sm"
@@ -281,7 +283,7 @@ export function ConnectorsPage({
               }}
             >
               <Plus size={14} />
-              <span>添加连接器</span>
+              <span>{L('添加连接器', 'Add Connector')}</span>
             </Button>
           </div>
         </header>
@@ -291,20 +293,20 @@ export function ConnectorsPage({
             <FramePanel className="p-4 sm:p-5">
               <form onSubmit={handleSaveGatewayConfig} className="flex flex-col gap-3.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <strong className="text-sm font-semibold text-foreground">DuolaBase 网关设置</strong>
+                  <strong className="text-sm font-semibold text-foreground">{L('DuolaBase 网关设置', 'DuolaBase Gateway')}</strong>
                   <a
                     href={duolabaseStatus.consoleUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-info-foreground hover:underline"
                   >
-                    <span>打开 DuolaBase 控制台</span>
+                    <span>{L('打开 DuolaBase 控制台', 'Open DuolaBase Console')}</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">MCP 接入地址</span>
+                    <span className="text-muted-foreground">{L('MCP 接入地址', 'MCP Endpoint URL')}</span>
                     <Input
                       nativeInput
                       type="url"
@@ -314,8 +316,11 @@ export function ConnectorsPage({
                   </label>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-muted-foreground">
-                      管理令牌（
-                      {duolabaseStatus.hasToken ? `已就绪 · 来源：${duolabaseStatus.tokenSource}` : '未配置'}）
+                      {L('管理令牌（', 'Admin Token (')}
+                      {duolabaseStatus.hasToken
+                        ? L(`已就绪 · 来源：${duolabaseStatus.tokenSource}`, `Configured · source: ${duolabaseStatus.tokenSource}`)
+                        : L('未配置', 'Not configured')}
+                      {L('）', ')')}
                     </span>
                     <Input
                       nativeInput
@@ -323,17 +328,17 @@ export function ConnectorsPage({
                       value={cfgToken}
                       onChange={(e) => setCfgToken(e.target.value)}
                       placeholder={
-                        duolabaseStatus.hasToken ? '留空保持已有令牌不变' : '粘贴 Bearer 访问令牌'
+                        duolabaseStatus.hasToken ? L('留空保持已有令牌不变', 'Leave empty to keep existing token') : L('粘贴 Bearer 访问令牌', 'Paste Bearer access token')
                       }
                     />
                   </label>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setConfigOpen(false)}>
-                    取消
+                    {L('取消', 'Cancel')}
                   </Button>
                   <Button type="submit" size="sm">
-                    保存配置
+                    {L('保存配置', 'Save')}
                   </Button>
                 </div>
               </form>
@@ -347,7 +352,7 @@ export function ConnectorsPage({
             className="flex items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-2.5 text-xs text-destructive-foreground"
           >
             <span>{error}</span>
-            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label="关闭错误">
+            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label={L('关闭错误', 'Dismiss error')}>
               <X size={13} />
             </Button>
           </div>
@@ -359,7 +364,7 @@ export function ConnectorsPage({
             <TabsList size="sm" className="flex-wrap">
               {CATEGORIES.map((c) => (
                 <TabsTab key={c.id || 'all'} value={c.id}>
-                  {c.label}
+                  {locale === 'en' ? c.en : c.zh}
                 </TabsTab>
               ))}
             </TabsList>
@@ -376,7 +381,7 @@ export function ConnectorsPage({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索连接器名称或平台…"
+              placeholder={L('搜索连接器名称或平台…', 'Search connectors or providers…')}
               className="pl-7 [&_input]:pl-7"
             />
           </div>
@@ -388,31 +393,31 @@ export function ConnectorsPage({
               <form onSubmit={handleSaveConnector} className="flex flex-col gap-4 text-xs">
                 <div className="flex items-center justify-between">
                   <strong className="text-sm font-semibold text-foreground">
-                    {editId ? '更新连接器配置' : '接入新外部连接器'}
+                    {editId ? L('更新连接器配置', 'Update Connector') : L('接入新外部连接器', 'Connect External Service')}
                   </strong>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => setEditorOpen(false)}
-                    aria-label="关闭编辑"
+                    aria-label={L('关闭编辑', 'Close editor')}
                   >
                     <X size={14} />
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">连接器名称</span>
+                    <span className="text-muted-foreground">{L('连接器名称', 'Connector Name')}</span>
                     <Input
                       nativeInput
                       type="text"
                       required
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      placeholder="例如：GitHub 研发仓库"
+                      placeholder={L('例如：GitHub 研发仓库', 'e.g., GitHub Engineering')}
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">业务分类</span>
+                    <span className="text-muted-foreground">{L('业务分类', 'Category')}</span>
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {CATEGORIES.filter((c) => c.id).map((c) => (
                         <Button
@@ -421,13 +426,13 @@ export function ConnectorsPage({
                           variant={editCategory === c.id ? 'default' : 'outline'}
                           onClick={() => setEditCategory(c.id)}
                         >
-                          {c.label}
+                          {locale === 'en' ? c.en : c.zh}
                         </Button>
                       ))}
                     </div>
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">传输协议</span>
+                    <span className="text-muted-foreground">{L('传输协议', 'Transport')}</span>
                     <div className="flex gap-1.5 pt-0.5">
                       {(['http_mcp', 'http_api'] as const).map((tr) => (
                         <Button
@@ -455,14 +460,14 @@ export function ConnectorsPage({
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">认证凭证（加密存入 DuolaBase Vault）</span>
+                    <span className="text-muted-foreground">{L('认证凭证（加密存入 DuolaBase Vault）', 'Credentials (Encrypted in DuolaBase Vault)')}</span>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setEditAuthMode(editAuthMode === 'none' ? 'bearer' : 'none')}
                       >
-                        {editAuthMode === 'none' ? '无需鉴权' : 'Bearer Token'}
+                        {editAuthMode === 'none' ? L('无需鉴权', 'No Auth') : 'Bearer Token'}
                       </Button>
                       {editAuthMode === 'bearer' && (
                         <div className="flex-1">
@@ -471,7 +476,7 @@ export function ConnectorsPage({
                             type="password"
                             value={editToken}
                             onChange={(e) => setEditToken(e.target.value)}
-                            placeholder={editId ? '留空保留原密钥' : '粘贴 API Token / 密钥'}
+                            placeholder={editId ? L('留空保留原密钥', 'Leave blank to keep secret') : L('粘贴 API Token / 密钥', 'Paste API Token / secret')}
                           />
                         </div>
                       )}
@@ -480,10 +485,10 @@ export function ConnectorsPage({
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setEditorOpen(false)}>
-                    取消
+                    {L('取消', 'Cancel')}
                   </Button>
                   <Button type="submit" size="sm" loading={saving}>
-                    {saving ? '保存检测中…' : '保存并检测'}
+                    {saving ? L('保存检测中…', 'Saving & checking…') : L('保存并检测', 'Save & Verify')}
                   </Button>
                 </div>
               </form>
@@ -502,13 +507,13 @@ export function ConnectorsPage({
                   </EmptyMedia>
                   <EmptyTitle className="text-base">
                     {!duolabaseStatus.enabled
-                      ? 'DuolaBase 连接器当前已关闭'
-                      : '尚未检测到 DuolaBase 授权令牌'}
+                      ? L('DuolaBase 连接器当前已关闭', 'DuolaBase Connectors Disabled')
+                      : L('尚未检测到 DuolaBase 授权令牌', 'DuolaBase Access Token Missing')}
                   </EmptyTitle>
                   <EmptyDescription>
                     {!duolabaseStatus.enabled
-                      ? '启用后可在此集中查看与管理飞书、GitHub、Gmail、Notion、Vercel 等外部服务连接。'
-                      : '请点击右上角「服务设置」填入 DuolaBase 访问令牌。'}
+                      ? L('启用后可在此集中查看与管理飞书、GitHub、Gmail、Notion、Vercel 等外部服务连接。', 'Enable to manage Lark, GitHub, Gmail, Notion, Vercel, and other MCP tools.')
+                      : L('请点击右上角「服务设置」填入 DuolaBase 访问令牌。', 'Open Settings in the top-right corner to enter your DuolaBase token.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -517,7 +522,7 @@ export function ConnectorsPage({
         ) : data === undefined ? (
           error ? null : (
             <div className="py-12 text-center text-xs text-muted-foreground" role="status">
-              正在读取连接器…
+              {L('正在读取连接器…', 'Loading connectors…')}
             </div>
           )
         ) : items.length === 0 ? (
@@ -528,9 +533,9 @@ export function ConnectorsPage({
                   <EmptyMedia variant="icon">
                     <Plug />
                   </EmptyMedia>
-                  <EmptyTitle className="text-base">没有匹配的连接器</EmptyTitle>
+                  <EmptyTitle className="text-base">{L('没有匹配的连接器', 'No matching connectors')}</EmptyTitle>
                   <EmptyDescription>
-                    调整分类或搜索词，或点击右上角「添加连接器」快速接入。
+                    {L('调整分类或搜索词，或点击右上角「添加连接器」快速接入。', 'Adjust your filters or search query, or click Add Connector above.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -569,7 +574,7 @@ export function ConnectorsPage({
                       size="sm"
                       className="shrink-0"
                     >
-                      {isDisabled ? '已停用' : isOk ? '可用' : conn.health || conn.status || '待检测'}
+                      {isDisabled ? L('已停用', 'Disabled') : isOk ? L('可用', 'Ready') : conn.health || conn.status || L('待检测', 'Pending')}
                     </Badge>
                   </div>
 
@@ -597,7 +602,7 @@ export function ConnectorsPage({
                       >
                         <Wrench size={11} />
                         <span>
-                          查看工具
+                          {L('查看工具', 'Tools')}
                           {conn.toolCount !== undefined ? ` (${conn.toolCount})` : ''}
                         </span>
                         {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
@@ -612,7 +617,7 @@ export function ConnectorsPage({
                           size={11}
                           className={checkingId === conn.id ? 'is-refreshing' : ''}
                         />
-                        <span>检测</span>
+                        <span>{L('检测', 'Check')}</span>
                       </Button>
                     </div>
                     <Button
@@ -629,14 +634,14 @@ export function ConnectorsPage({
                         setEditorOpen(true);
                       }}
                     >
-                      编辑
+                      {L('编辑', 'Edit')}
                     </Button>
                   </div>
 
                   {expanded && (
                     <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-muted/40 p-2.5 text-xs coss-scroll">
                       {tools.length === 0 ? (
-                        <p className="m-0 text-muted-foreground">暂未发现可用工具或正在读取…</p>
+                        <p className="m-0 text-muted-foreground">{L('暂未发现可用工具或正在读取…', 'No tools discovered or still loading…')}</p>
                       ) : (
                         tools.map((t) => (
                           <div

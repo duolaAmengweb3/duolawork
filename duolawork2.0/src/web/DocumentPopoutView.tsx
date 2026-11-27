@@ -123,7 +123,7 @@ function ReaderTabPane({
   onTogglePin: () => void;
   onMetaChange: (key: string, meta: TabMeta) => void;
 }): React.JSX.Element {
-  const { t } = useI18n();
+  const { locale, t, L } = useI18n();
   const tabKey = popoutTabKey(target);
   const [activeHeadingId, setActiveHeadingId] = useState<string>('');
   const [artifact, setArtifact] = useState<ArtifactRecord | null>(null);
@@ -168,7 +168,7 @@ function ReaderTabPane({
   }, [isDirty, artifact, draft]);
 
   const displayTitle =
-    artifact?.title || target.title || (target.kind === 'document' ? '文档阅读器' : '文件预览');
+    artifact?.title || target.title || (target.kind === 'document' ? L('文档阅读器', 'Document Reader') : L('文件预览', 'File Preview'));
 
   useLayoutEffect(() => {
     onMetaChange(tabKey, {
@@ -188,7 +188,7 @@ function ReaderTabPane({
         const res = await fetch('/api/v2/artifacts/' + encodeURIComponent(target.id), {
           signal: AbortSignal.timeout(25000)
         });
-        if (!res.ok) throw new Error('暂时无法读取文档，请重试');
+        if (!res.ok) throw new Error(L('暂时无法读取文档，请重试', 'Unable to load document. Retry shortly.'));
         const data = await res.json();
         if (request !== documentRead.current) return;
         const next: ArtifactRecord = data.artifact;
@@ -204,13 +204,13 @@ function ReaderTabPane({
         setDraft(next.content);
         setRemoteUpdateVersion(null);
       } catch {
-        if (request === documentRead.current && !latest.current.artifact) setLoadError('暂时无法读取文档，请重试');
-        else if (mode === 'replace') toast.error('暂时无法读取最新版本，请重试');
+        if (request === documentRead.current && !latest.current.artifact) setLoadError(L('暂时无法读取文档，请重试', 'Unable to load document. Retry shortly.'));
+        else if (mode === 'replace') toast.error(L('暂时无法读取最新版本，请重试', 'Unable to load latest version.'));
       } finally {
         if (request === documentRead.current) setLoading(false);
       }
     },
-    [target.id, target.kind]
+    [target.id, target.kind, L]
   );
 
   const loadFile = useCallback(async () => {
@@ -223,14 +223,14 @@ function ReaderTabPane({
     setLoadError('');
     try {
       const res = await fetch(`/api/v2/space/files/${encodeURIComponent(target.id)}`);
-      if (!res.ok) throw new Error('无法读取文件内容');
+      if (!res.ok) throw new Error(L('无法读取文件内容', 'Unable to read file contents'));
       setFileText(await res.text());
     } catch (err) {
-      setLoadError((err as Error).message || '读取文件失败');
+      setLoadError((err as Error).message || L('读取文件失败', 'Failed to read file'));
     } finally {
       setLoading(false);
     }
-  }, [target.id, target.kind, target.previewKind]);
+  }, [target.id, target.kind, target.previewKind, L]);
 
   useEffect(() => {
     if (target.kind === 'document') void loadDocument();
@@ -275,17 +275,17 @@ function ReaderTabPane({
       });
       toast.success(
         data.conflict
-          ? `检测到并发修改，已另存为冲突分支 v${data.savedVersion.version}`
-          : `已保存为 v${data.artifact.headVersion}`
+          ? L(`检测到并发修改，已另存为冲突分支 v${data.savedVersion.version}`, `Concurrent edit detected; saved branch v${data.savedVersion.version}`)
+          : L(`已保存为 v${data.artifact.headVersion}`, `Saved v${data.artifact.headVersion}`)
       );
       void loadDocument('sync');
     } catch {
-      setSaveError('保存失败，草稿已保留。请检查连接后再次保存。');
+      setSaveError(L('保存失败，草稿已保留。请检查连接后再次保存。', 'Save failed. Your draft is preserved; check connection and retry.'));
     } finally {
       savePending.current = false;
       setSaving(false);
     }
-  }, [artifact, draft, target.kind, target.threadId, loadDocument]);
+  }, [artifact, draft, target.kind, target.threadId, loadDocument, L]);
 
   useEffect(() => {
     if (!active || target.kind !== 'document') return;
@@ -304,7 +304,7 @@ function ReaderTabPane({
     if (!payload) return;
     void navigator.clipboard?.writeText(payload).then(() => {
       setCopiedDoc(true);
-      toast.success('已复制全文到剪贴板');
+      toast.success(L('已复制全文到剪贴板', 'Copied full text to clipboard'));
       setTimeout(() => setCopiedDoc(false), 1800);
     });
   };
@@ -370,12 +370,12 @@ function ReaderTabPane({
           )}
           {isDirty && (
             <Badge variant="warning" size="sm" className="text-[10px]">
-              未保存
+              {L('未保存', 'Unsaved')}
             </Badge>
           )}
           {readingMeta && (
             <span className="hidden font-mono text-[11px] text-muted-foreground tabular-nums lg:inline">
-              · {readingMeta.chars.toLocaleString()} 字 · {readingMeta.minutes} 分钟
+              · {readingMeta.chars.toLocaleString()} {L('字', 'chars')} · {readingMeta.minutes} {L('分钟', 'min read')}
             </span>
           )}
         </div>
@@ -413,7 +413,7 @@ function ReaderTabPane({
               variant={tocOpen ? 'secondary' : 'ghost'}
               size="xs"
               onClick={onToggleToc}
-              title="切换目录大纲"
+              title={L('切换目录大纲', 'Toggle outline')}
             >
               <ListTree size={13} />
               <span>{t('readerToc')}</span>
@@ -427,8 +427,8 @@ function ReaderTabPane({
                   type="button"
                   onClick={() => onSetFontSize((s) => Math.max(13, s - 1))}
                   className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  title="缩小字号"
-                  aria-label="缩小字号"
+                  title={L('缩小字号', 'Decrease font size')}
+                  aria-label={L('缩小字号', 'Decrease font size')}
                 >
                   <Minus size={11} />
                 </button>
@@ -439,8 +439,8 @@ function ReaderTabPane({
                   type="button"
                   onClick={() => onSetFontSize((s) => Math.min(22, s + 1))}
                   className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  title="放大字号"
-                  aria-label="放大字号"
+                  title={L('放大字号', 'Increase font size')}
+                  aria-label={L('放大字号', 'Increase font size')}
                 >
                   <Plus size={11} />
                 </button>
@@ -449,8 +449,8 @@ function ReaderTabPane({
                 variant="ghost"
                 size="icon-xs"
                 onClick={onToggleWide}
-                title={wide ? '切换为舒适版宽' : '切换为宽屏阅读'}
-                aria-label={wide ? '切换为舒适版宽' : '切换为宽屏阅读'}
+                title={wide ? L('切换为舒适版宽', 'Reading width') : L('切换为宽屏阅读', 'Wide width')}
+                aria-label={wide ? L('切换为舒适版宽', 'Reading width') : L('切换为宽屏阅读', 'Wide width')}
               >
                 {wide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               </Button>
@@ -463,7 +463,7 @@ function ReaderTabPane({
                 type="button"
                 onClick={() => setFileZoom((z) => Math.max(25, z - 25))}
                 className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="缩小图片"
+                title={L('缩小图片', 'Zoom out')}
               >
                 <ZoomOut size={12} />
               </button>
@@ -478,7 +478,7 @@ function ReaderTabPane({
                 type="button"
                 onClick={() => setFileZoom((z) => Math.min(250, z + 25))}
                 className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="放大图片"
+                title={L('放大图片', 'Zoom in')}
               >
                 <ZoomIn size={12} />
               </button>
@@ -501,15 +501,15 @@ function ReaderTabPane({
                     key={ver.id}
                     onClick={() => {
                       setDraft(ver.content);
-                      toast.info(`已切换到 v${ver.version} 预览`);
+                      toast.info(L(`已切换到 v${ver.version} 预览`, `Previewing v${ver.version}`));
                     }}
                     className="flex-col items-start gap-0.5"
                   >
                     <span className="font-medium text-foreground">
-                      v{ver.version} · {ver.branchKind === 'conflict_branch' ? '冲突保留稿' : '主稿'}
+                      v{ver.version} · {ver.branchKind === 'conflict_branch' ? L('冲突保留稿', 'Conflict branch') : L('主稿', 'Main')}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
-                      {new Date(ver.createdAt).toLocaleString('zh-CN')}
+                      {new Date(ver.createdAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')}
                     </span>
                   </MenuItem>
                 ))}
@@ -541,8 +541,8 @@ function ReaderTabPane({
               variant={pinned ? 'secondary' : 'ghost'}
               size="icon-xs"
               onClick={onTogglePin}
-              title={pinned ? '取消窗口置顶' : '窗口置顶'}
-              aria-label={pinned ? '取消窗口置顶' : '窗口置顶'}
+              title={pinned ? L('取消窗口置顶', 'Unpin window') : L('窗口置顶', 'Pin window on top')}
+              aria-label={pinned ? L('取消窗口置顶', 'Unpin window') : L('窗口置顶', 'Pin window on top')}
             >
               {pinned ? <PinOff size={13} /> : <Pin size={13} />}
             </Button>
@@ -560,8 +560,8 @@ function ReaderTabPane({
                   key={val}
                   type="button"
                   onClick={() => onSetPaperTheme(val)}
-                  title={`切换为${label}纸张`}
-                  aria-label={`切换为${label}模式`}
+                  title={L(`切换为${label}纸张`, `Switch to ${label} paper`)}
+                  aria-label={L(`切换为${label}模式`, `Switch to ${label} theme`)}
                   className={
                     isTheme
                       ? 'inline-flex h-6 items-center gap-1 rounded-md bg-muted px-2 text-[11px] font-medium text-foreground'
@@ -584,16 +584,16 @@ function ReaderTabPane({
       {saveError && <p role="alert" className="px-4 py-2 text-xs text-destructive-foreground">{saveError}</p>}
       {remoteUpdateVersion !== null && (
         <div className="flex items-center justify-between gap-3 border-b border-border bg-info/8 px-4 py-2 text-xs text-info-foreground">
-          <span>检测到主窗口或 Agent 已更新此文档，点击右侧按钮可载入最新版本。</span>
+          <span>{L('检测到主窗口或 Agent 已更新此文档，点击右侧按钮可载入最新版本。', 'Updated by main window or agent. Load the latest version on the right.')}</span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="xs" onClick={() => {
-              if (!isDirty || window.confirm('载入最新版本会替换当前草稿，继续吗？')) void loadDocument('replace');
+              if (!isDirty || window.confirm(L('载入最新版本会替换当前草稿，继续吗？', 'Loading the latest version will replace your draft. Continue?'))) void loadDocument('replace');
             }}>
               <RefreshCw size={11} />
-              <span>载入最新</span>
+              <span>{L('载入最新', 'Load Latest')}</span>
             </Button>
             <Button variant="ghost" size="xs" onClick={() => setRemoteUpdateVersion(null)}>
-              稍后
+              {L('稍后', 'Later')}
             </Button>
           </div>
         </div>
@@ -604,9 +604,9 @@ function ReaderTabPane({
         {showTocPanel && (
           <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-sidebar/60 md:flex">
             <div className="border-b border-border/70 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              目录大纲 ({headings.length})
+              {L(`目录大纲 (${headings.length})`, `Outline (${headings.length})`)}
             </div>
-            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 coss-scroll" aria-label="文档目录">
+            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 coss-scroll" aria-label={L('文档目录', 'Table of contents')}>
               {headings.map((h) => (
                 <button
                   key={h.id}
@@ -630,7 +630,7 @@ function ReaderTabPane({
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           {loading ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-              正在加载内容…
+              {L('正在加载内容…', 'Loading content…')}
             </div>
           ) : loadError ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -640,7 +640,7 @@ function ReaderTabPane({
                 size="sm"
                 onClick={() => void (target.kind === 'document' ? loadDocument() : loadFile())}
               >
-                重新加载
+                {L('重新加载', 'Reload')}
               </Button>
             </div>
           ) : target.kind === 'document' ? (
@@ -649,18 +649,18 @@ function ReaderTabPane({
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  aria-label="独立窗口文档编辑器"
+                  aria-label={L('独立窗口文档编辑器', 'Popout document editor')}
                   className="h-full w-full flex-1 resize-none rounded-xl border border-border bg-card p-5 font-mono text-[13.5px] leading-relaxed text-foreground focus:border-ring focus:outline-none coss-scroll"
                 />
               </div>
             ) : docMode === 'split' ? (
               <div className="grid h-full grid-cols-1 divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
                 <div className="flex h-full min-h-0 flex-col p-4">
-                  <div className="mb-2 font-mono text-[11px] text-muted-foreground">Markdown 源码</div>
+                  <div className="mb-2 font-mono text-[11px] text-muted-foreground">{L('Markdown 源码', 'Markdown Source')}</div>
                   <textarea
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    aria-label="分屏 Markdown 编辑器"
+                    aria-label={L('分屏 Markdown 编辑器', 'Split Markdown editor')}
                     className="h-full w-full flex-1 resize-none rounded-xl border border-border bg-card p-4 font-mono text-[13px] leading-relaxed text-foreground focus:border-ring focus:outline-none coss-scroll"
                   />
                 </div>
@@ -669,7 +669,7 @@ function ReaderTabPane({
                   style={{ '--dw-reader-size': `${fontSize}px` } as React.CSSProperties}
                 >
                   <div className="dw-reader-paper px-7 py-8">
-                    <MarkdownView text={draft || '(空文档)'} className="dw-reader-prose" />
+                    <MarkdownView text={draft || L('(空文档)', '(Empty document)')} className="dw-reader-prose" />
                   </div>
                 </div>
               </div>
@@ -683,7 +683,7 @@ function ReaderTabPane({
                     wide ? 'max-w-[1080px]' : 'max-w-[820px]'
                   }`}
                 >
-                  <MarkdownView text={draft || '(空文档)'} className="dw-reader-prose" />
+                  <MarkdownView text={draft || L('(空文档)', '(Empty document)')} className="dw-reader-prose" />
                 </article>
               </div>
             )
@@ -727,11 +727,11 @@ function ReaderTabPane({
               <File size={32} className="text-muted-foreground" />
               <div className="text-sm font-semibold text-foreground">{displayTitle}</div>
               <p className="m-0 max-w-sm text-xs text-muted-foreground">
-                该格式文件保留原件，可点击右上角「下载」后用本机应用打开。
+                {L('该格式文件保留原件，可点击右上角「下载」后用本机应用打开。', 'Download the original file in the top-right to open it with a local app.')}
               </p>
               <Button variant="outline" size="sm" onClick={handleExport}>
                 <Download size={13} />
-                <span>下载原件</span>
+                <span>{L('下载原件', 'Download')}</span>
               </Button>
             </div>
           ) : (
@@ -760,7 +760,7 @@ function ReaderTabPane({
 }
 
 export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.JSX.Element {
-  const { locale, toggleLocale, t } = useI18n();
+  const { locale, toggleLocale, t, L } = useI18n();
   const [tabs, setTabs] = useState<PopoutTarget[]>(() => loadInitialTabs(target).map(currentTarget));
   const [activeKey, setActiveKey] = useState<string>(() => popoutTabKey(target));
   const [metaByKey, setMetaByKey] = useState<Record<string, TabMeta>>({});
@@ -806,9 +806,9 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
   );
 
   useEffect(() => {
-    const title = (activeTab && (metaByKey[popoutTabKey(activeTab)]?.title || activeTab.title)) || '阅读器';
+    const title = (activeTab && (metaByKey[popoutTabKey(activeTab)]?.title || activeTab.title)) || L('阅读器', 'Reader');
     document.title = `${title} · DuolaWork`;
-  }, [activeTab, metaByKey]);
+  }, [activeTab, metaByKey, L]);
 
   const openOrFocusTab = useCallback((incoming: PopoutTarget) => {
     const next = currentTarget(incoming);
@@ -840,13 +840,13 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
   }, [tabs.length]);
 
   const closeTab = useCallback((key: string) => {
-    if (metaByKey[key]?.dirty && !window.confirm('这份文档有未保存的修改。放弃修改并关闭标签？')) return;
+    if (metaByKey[key]?.dirty && !window.confirm(L('这份文档有未保存的修改。放弃修改并关闭标签？', 'Unsaved changes in this document. Discard and close tab?'))) return;
     const index = tabs.findIndex(tab => popoutTabKey(tab) === key);
     if (index < 0) return;
     const remaining = tabs.filter(tab => popoutTabKey(tab) !== key);
     setTabs(remaining);
     if (activeKey === key && remaining.length) setActiveKey(popoutTabKey(remaining[Math.min(index, remaining.length - 1)]));
-  }, [tabs, activeKey, metaByKey]);
+  }, [tabs, activeKey, metaByKey, L]);
 
   // Receive new tabs from Main Window via Electron IPC & Web BroadcastChannel
   useEffect(() => {
@@ -912,7 +912,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
     const res = await getPopoutDesktopBridge()?.setAlwaysOnTop?.(next);
     if (res?.ok) {
       setPinned(next);
-      toast.success(next ? '已将阅读窗口置顶' : '已取消窗口置顶');
+      toast.success(next ? L('已将阅读窗口置顶', 'Reader window pinned on top') : L('已取消窗口置顶', 'Unpinned reader window'));
     }
   };
 
@@ -980,7 +980,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
                   {meta?.dirty && (
                     <span
                       className="size-1.5 shrink-0 rounded-full bg-amber-500"
-                      title="有未保存的修改"
+                      title={L('有未保存的修改', 'Unsaved changes')}
                     />
                   )}
                 </button>
@@ -990,8 +990,8 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
                     e.stopPropagation();
                     closeTab(k);
                   }}
-                  aria-label={`关闭标签 ${label}`}
-                  title="关闭标签页"
+                  aria-label={L(`关闭标签 ${label}`, `Close tab ${label}`)}
+                  title={L('关闭标签页', 'Close tab')}
                   className={`flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground ${
                     isSelected ? 'opacity-75 hover:opacity-100' : 'opacity-0 group-hover:opacity-80'
                   }`}
@@ -1022,11 +1022,11 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
             <MenuPopup align="end" className="max-h-72 w-72 overflow-y-auto coss-scroll">
               {pickerLoading ? (
                 <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  读取资料列表中…
+                  {L('读取资料列表中…', 'Loading materials…')}
                 </div>
               ) : spaceItems.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  当前对话暂无其他可打开的资料
+                  {L('当前对话暂无其他可打开的资料', 'No other materials in this thread')}
                 </div>
               ) : (
                 spaceItems.map((it) => {
@@ -1049,7 +1049,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
                       <Icon size={13} className="shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate">{it.title}</span>
                       {alreadyOpen && (
-                        <span className="shrink-0 text-[10px] text-muted-foreground">已打开</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{L('已打开', 'Open')}</span>
                       )}
                     </MenuItem>
                   );
@@ -1063,7 +1063,7 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
           variant="ghost"
           size="xs"
           onClick={toggleLocale}
-          aria-label="切换语言"
+          aria-label={L('切换语言', 'Switch language')}
           title="中 / EN"
           className="h-6 shrink-0 px-1.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
         >
@@ -1074,9 +1074,9 @@ export function DocumentPopoutView({ target }: { target: PopoutTarget }): React.
       {/* Keep-alive Tab Panes */}
       {tabs.length === 0 ? (
         <div className="dw-reader-canvas flex flex-1 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
-          <span>所有标签页已关闭</span>
+          <span>{L('所有标签页已关闭', 'All tabs closed')}</span>
           <Button variant="outline" size="xs" onClick={() => openOrFocusTab(target)}>
-            重新打开文档
+            {L('重新打开文档', 'Reopen document')}
           </Button>
         </div>
       ) : (

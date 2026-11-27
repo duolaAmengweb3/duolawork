@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   X
 } from 'lucide-react';
+import { useI18n } from './lib/i18n.js';
 
 export interface MarkdownHeadingItem {
   id: string;
@@ -102,6 +103,7 @@ function CodeBlockCard({
   lang: string;
   code: string;
 }): React.JSX.Element {
+  const { L } = useI18n();
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     void navigator.clipboard?.writeText(code).then(() => {
@@ -113,9 +115,9 @@ function CodeBlockCard({
     <div className="dw-code-block">
       <div className="dw-code-header">
         <span className="dw-code-lang">{lang || 'code'}</span>
-        <button type="button" className="dw-code-copy" onClick={handleCopy} title="复制代码">
+        <button type="button" className="dw-code-copy" onClick={handleCopy} title={L('复制代码', 'Copy code')}>
           {copied ? <Check size={11} /> : <Copy size={11} />}
-          <span>{copied ? '已复制' : '复制'}</span>
+          <span>{copied ? L('已复制', 'Copied') : L('复制', 'Copy')}</span>
         </button>
       </div>
       <pre className="coss-scroll">
@@ -165,12 +167,12 @@ function parseTableAlignments(sepLine: string): Array<'left' | 'center' | 'right
   });
 }
 
-const CALLOUT_META: Record<string, { cls: string; label: string; Icon: React.ComponentType<{ size?: number }> }> = {
-  NOTE: { cls: 'is-note', label: '说明', Icon: Info },
-  TIP: { cls: 'is-tip', label: '建议', Icon: Lightbulb },
-  IMPORTANT: { cls: 'is-important', label: '重要', Icon: AlertCircle },
-  WARNING: { cls: 'is-warning', label: '注意', Icon: AlertTriangle },
-  CAUTION: { cls: 'is-caution', label: '警示', Icon: ShieldAlert }
+const CALLOUT_META: Record<string, { cls: string; zh: string; en: string; Icon: React.ComponentType<{ size?: number }> }> = {
+  NOTE: { cls: 'is-note', zh: '说明', en: 'Note', Icon: Info },
+  TIP: { cls: 'is-tip', zh: '建议', en: 'Tip', Icon: Lightbulb },
+  IMPORTANT: { cls: 'is-important', zh: '重要', en: 'Important', Icon: AlertCircle },
+  WARNING: { cls: 'is-warning', zh: '注意', en: 'Warning', Icon: AlertTriangle },
+  CAUTION: { cls: 'is-caution', zh: '警示', en: 'Caution', Icon: ShieldAlert }
 };
 
 export interface MarkdownImageActions {
@@ -285,21 +287,24 @@ function resolveSpaceRef(
   return null;
 }
 
-function renderSpaceRefChip(
-  target: ResolvedSpaceTarget,
-  displayText: string,
-  resolver: MarkdownSpaceResolver,
-  key: string
-): React.JSX.Element {
+function SpaceRefChip({
+  target,
+  displayText,
+  resolver
+}: {
+  target: ResolvedSpaceTarget;
+  displayText: string;
+  resolver: MarkdownSpaceResolver;
+}): React.JSX.Element {
+  const { L } = useI18n();
   if (target.type === 'folder') {
     return (
       <button
-        key={key}
         type="button"
         className="dw-space-ref-chip is-folder"
         data-space-ref-folder={target.folder.id}
         onClick={() => resolver.onOpenFolder(target.folder.id)}
-        title={`点击在右侧文档管理打开文件夹「${target.folder.path}」`}
+        title={L(`点击在右侧文档管理打开文件夹「${target.folder.path}」`, `Open folder "${target.folder.path}" in Files & Folders`)}
       >
         <Folder size={12} />
         <span>{displayText}</span>
@@ -317,17 +322,25 @@ function renderSpaceRefChip(
           : File;
   return (
     <button
-      key={key}
       type="button"
       className="dw-space-ref-chip"
       data-space-ref-item={`${it.kind}:${it.id}`}
       onClick={() => resolver.onOpenItem(it)}
-      title={`点击在右侧协作空间直接打开「${it.title}」`}
+      title={L(`点击在右侧协作空间直接打开「${it.title}」`, `Open "${it.title}" in Collaboration Space`)}
     >
       <Icon size={12} />
       <span>{displayText}</span>
     </button>
   );
+}
+
+function renderSpaceRefChip(
+  target: ResolvedSpaceTarget,
+  displayText: string,
+  resolver: MarkdownSpaceResolver,
+  key: string
+): React.JSX.Element {
+  return <SpaceRefChip key={key} target={target} displayText={displayText} resolver={resolver} />;
 }
 
 function isAllowedImageSrc(raw: string): boolean {
@@ -360,6 +373,7 @@ function ChatImageCard({
   alt: string;
   actions?: MarkdownImageActions;
 }): React.JSX.Element {
+  const { L } = useI18n();
   const spaceFileId = extractSpaceFileId(src);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(
     spaceFileId ? 'saved' : 'idle'
@@ -402,8 +416,8 @@ function ChatImageCard({
   return (
     <>
       <figure className="dw-chat-image-card" data-testid="chat-image-card">
-        <button type="button" className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} aria-label={`查看大图：${label || '图片'}`} title="点击查看大图">
-          <img src={src} alt={label || '图片'} loading="lazy" />
+        <button type="button" className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} aria-label={L(`查看大图：${label || '图片'}`, `View image: ${label || 'image'}`)} title={L('点击查看大图', 'Click to expand')}>
+          <img src={src} alt={label || L('图片', 'Image')} loading="lazy" />
           <span className="dw-chat-image-zoom" aria-hidden="true">
             <Maximize2 size={12} />
           </span>
@@ -423,22 +437,22 @@ function ChatImageCard({
                     onClick={() => void handleSave()}
                     disabled={saveState === 'saving'}
                     className={`dw-chat-img-btn ${saveState === 'saved' && !spaceFileId ? 'is-saved' : ''}`}
-                    title={spaceFileId ? '在右侧协作空间中打开' : '保存到当前对话右侧协作空间'}
+                    title={spaceFileId ? L('在右侧协作空间中打开', 'Open in Collaboration Space') : L('保存到当前对话右侧协作空间', 'Save to Collaboration Space')}
                   >
                     {spaceFileId ? (
                       <>
                         <ExternalLink size={11} />
-                        <span>在资料区查看</span>
+                        <span>{L('在资料区查看', 'Open in Space')}</span>
                       </>
                     ) : saveState === 'saved' ? (
                       <>
                         <Check size={11} />
-                        <span>已存入资料区</span>
+                        <span>{L('已存入资料区', 'Saved to Space')}</span>
                       </>
                     ) : (
                       <>
                         <FolderPlus size={11} />
-                        <span>{saveState === 'saving' ? '保存中…' : saveState === 'error' ? '重试存入' : '保存到资料区'}</span>
+                        <span>{saveState === 'saving' ? L('保存中…', 'Saving…') : saveState === 'error' ? L('重试存入', 'Retry Save') : L('保存到资料区', 'Save to Space')}</span>
                       </>
                     )}
                   </button>
@@ -447,10 +461,10 @@ function ChatImageCard({
                   type="button"
                   onClick={handleDownload}
                   className="dw-chat-img-btn"
-                  title="下载图片到本地设备"
+                  title={L('下载图片到本地设备', 'Download image locally')}
                 >
                   <Download size={11} />
-                  <span>保存到本地</span>
+                  <span>{L('保存到本地', 'Save Local')}</span>
                 </button>
               </div>
             )}
@@ -463,7 +477,7 @@ function ChatImageCard({
           className="dw-image-lightbox"
           role="dialog"
           aria-modal="true"
-          aria-label="大图预览"
+          aria-label={L('大图预览', 'Image preview')}
           onClick={() => setLightboxOpen(false)}
         >
           <div className="dw-image-lightbox-inner" onClick={(e) => e.stopPropagation()}>
@@ -471,11 +485,11 @@ function ChatImageCard({
               type="button"
               className="dw-image-lightbox-close"
               onClick={() => setLightboxOpen(false)}
-              aria-label="关闭大图预览"
+              aria-label={L('关闭大图预览', 'Close image preview')}
             >
               <X size={18} />
             </button>
-            <img src={src} alt={label || '大图预览'} />
+            <img src={src} alt={label || L('大图预览', 'Image preview')} />
             <div className="dw-image-lightbox-bar">
               {label && <span>{label}</span>}
               <div className="dw-chat-image-actions">
@@ -489,24 +503,24 @@ function ChatImageCard({
                     {spaceFileId ? (
                       <>
                         <ExternalLink size={12} />
-                        <span>在资料区查看</span>
+                        <span>{L('在资料区查看', 'Open in Space')}</span>
                       </>
                     ) : saveState === 'saved' ? (
                       <>
                         <Check size={12} />
-                        <span>已存入资料区</span>
+                        <span>{L('已存入资料区', 'Saved to Space')}</span>
                       </>
                     ) : (
                       <>
                         <FolderPlus size={12} />
-                        <span>保存到资料区</span>
+                        <span>{L('保存到资料区', 'Save to Space')}</span>
                       </>
                     )}
                   </button>
                 )}
                 <button type="button" onClick={handleDownload} className="dw-chat-img-btn">
                   <Download size={12} />
-                  <span>保存到本地</span>
+                  <span>{L('保存到本地', 'Save Local')}</span>
                 </button>
               </div>
             </div>
@@ -673,6 +687,7 @@ export function MarkdownView({
   imageActions?: MarkdownImageActions;
   spaceResolver?: MarkdownSpaceResolver;
 }): React.JSX.Element {
+  const { locale, L } = useI18n();
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
   let i = 0;
@@ -742,7 +757,7 @@ export function MarkdownView({
             actions={imageActions}
           />
         ) : (
-          <p key={`blk-${key++}`}>{standaloneImg[1] || '图片'}（图片地址无法在此打开）</p>
+          <p key={`blk-${key++}`}>{standaloneImg[1] || L('图片', 'Image')}{L('（图片地址无法在此打开）', ' (image URL cannot be opened here)')}</p>
         )
       );
       i += 1;
@@ -828,7 +843,7 @@ export function MarkdownView({
           <div key={`blk-${blkId}`} className={`dw-callout ${meta.cls}`}>
             <div className="dw-callout-title">
               <CalloutIcon size={13} />
-              <span>{customTitle || meta.label}</span>
+              <span>{customTitle || (locale === 'en' ? meta.en : meta.zh)}</span>
             </div>
             {bodyLines.length > 0 && (
               <div className="dw-callout-body">

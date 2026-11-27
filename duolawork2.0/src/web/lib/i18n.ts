@@ -196,6 +196,7 @@ export function useI18n(): {
   setLocale: (next: Locale) => void;
   toggleLocale: () => void;
   t: (key: I18nKey, vars?: Record<string, string | number>) => string;
+  L: (zh: string, en: string) => string;
 } {
   const locale = useSyncExternalStore<Locale>(
     (cb) => {
@@ -220,5 +221,7 @@ export function useI18n(): {
     [locale]
   );
 
-  return { locale, setLocale: setAppLocale, toggleLocale, t };
+  const L = useCallback((zh: string, en: string) => (locale === 'en' ? en : zh), [locale]);
+
+  return { locale, setLocale: setAppLocale, toggleLocale, t, L };
 }

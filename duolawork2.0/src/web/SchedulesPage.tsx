@@ -22,23 +22,26 @@ import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
 import { Tracker, type TrackerBlockProps } from './components/ui/tremor.js';
 import { formatCronHuman } from './lib/format.js';
+import { useI18n, type Locale } from './lib/i18n.js';
 
 export interface TaskWithLatestRun extends TaskRecord {
   latestRun: TaskRunRecord | null;
 }
 
-function buildMiniTracker(task: TaskWithLatestRun): TrackerBlockProps[] {
+function buildMiniTracker(task: TaskWithLatestRun, locale: Locale): TrackerBlockProps[] {
+  const en = locale === 'en';
   const latest = task.latestRun;
+  const histTip = en ? 'Past run' : '历史周期';
   const slots: TrackerBlockProps[] = [
-    { color: 'neutral', tooltip: '历史周期' },
-    { color: 'neutral', tooltip: '历史周期' },
-    { color: 'neutral', tooltip: '历史周期' },
-    { color: 'neutral', tooltip: '历史周期' }
+    { color: 'neutral', tooltip: histTip },
+    { color: 'neutral', tooltip: histTip },
+    { color: 'neutral', tooltip: histTip },
+    { color: 'neutral', tooltip: histTip }
   ];
   if (!latest) {
     slots.push({
       color: task.kind === 'scheduled' && task.scheduleEnabled ? 'blue' : 'neutral',
-      tooltip: task.kind === 'scheduled' ? '等待定时触发' : '待启动'
+      tooltip: task.kind === 'scheduled' ? (en ? 'Awaiting schedule' : '等待定时触发') : (en ? 'Pending' : '待启动')
     });
     return slots;
   }
@@ -54,7 +57,7 @@ function buildMiniTracker(task: TaskWithLatestRun): TrackerBlockProps[] {
             : 'neutral';
   slots.push({
     color,
-    tooltip: `第 ${latest.runNumber} 期 · ${latest.status}`
+    tooltip: en ? `Run #${latest.runNumber} · ${latest.status}` : `第 ${latest.runNumber} 期 · ${latest.status}`
   });
   return slots;
 }
@@ -82,6 +85,7 @@ export function SchedulesPage({
   onDeleteTask?: (taskId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
 }): React.JSX.Element {
+  const { locale, L } = useI18n();
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'once' | 'archive'>('all');
   const [query, setQuery] = useState<string>('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -127,30 +131,30 @@ export function SchedulesPage({
     const latest = task.latestRun;
 
     const statusText =
-      outcomeStatus(latest) ??
+      outcomeStatus(latest, locale) ??
       (task.status === 'paused'
         ? latest?.status === 'running'
-          ? '当前步骤结束后暂停'
-          : '已暂停'
+          ? L('当前步骤结束后暂停', 'Pausing after step')
+          : L('已暂停', 'Paused')
         : !latest
           ? task.kind === 'scheduled'
             ? task.scheduleEnabled
-              ? '等待定时触发'
-              : '已暂停'
-            : '待启动'
+              ? L('等待定时触发', 'Scheduled')
+              : L('已暂停', 'Paused')
+            : L('待启动', 'Pending')
           : latest.status === 'completed'
             ? task.kind === 'scheduled'
-              ? `第 ${latest.runNumber} 期已完成`
-              : '已完成'
+              ? L(`第 ${latest.runNumber} 期已完成`, `Run #${latest.runNumber} done`)
+              : L('已完成', 'Done')
             : latest.status === 'waiting_user'
-              ? '待你确认'
+              ? L('待你确认', 'Needs reply')
               : latest.status === 'failed'
-                ? '执行失败'
+                ? L('执行失败', 'Failed')
                 : latest.status === 'timed_out'
-                  ? '最近一期超时'
+                  ? L('最近一期超时', 'Timed out')
                   : latest.status === 'canceled'
-                    ? '已取消'
-                    : '进行中');
+                    ? L('已取消', 'Canceled')
+                    : L('进行中', 'Running'));
 
     const badgeVariant =
       latest?.status === 'completed'
@@ -199,14 +203,14 @@ export function SchedulesPage({
               {task.title}
             </button>
             <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-muted-foreground">
-              <span>负责人：{leadName}</span>
+              <span>{L(`负责人：${leadName}`, `Lead: ${leadName}`)}</span>
               {originThread && (
                 <button
                   type="button"
                   onClick={() => onOpenThread(originThread.id)}
                   className="inline-flex items-center gap-0.5 text-info-foreground hover:underline"
                 >
-                  <span>来自：{originThread.title}</span>
+                  <span>{L(`来自：${originThread.title}`, `Thread: ${originThread.title}`)}</span>
                   <ArrowUpRight size={11} />
                 </button>
               )}
@@ -228,7 +232,7 @@ export function SchedulesPage({
             <>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <Clock size={12} className="text-muted-foreground shrink-0" />
-                <span>{formatCronHuman(task.cronExpr)}</span>
+                <span>{formatCronHuman(task.cronExpr, locale)}</span>
               </span>
               <span className="font-mono text-[10.5px] text-muted-foreground">
                 {task.cronExpr} · {task.timezone.replace('Asia/', '')}
@@ -236,9 +240,9 @@ export function SchedulesPage({
             </>
           ) : (
             <>
-              <span className="text-xs font-medium text-muted-foreground">单次协作任务</span>
+              <span className="text-xs font-medium text-muted-foreground">{L('单次协作任务', 'One-off Task')}</span>
               <span className="font-mono text-[10.5px] text-muted-foreground/80">
-                {new Date(task.updatedAt).toLocaleDateString('zh-CN', {
+                {new Date(task.updatedAt).toLocaleDateString(locale === 'en' ? 'en-US' : 'zh-CN', {
                   month: '2-digit',
                   day: '2-digit',
                   hour: '2-digit',
@@ -254,7 +258,7 @@ export function SchedulesPage({
           <Badge variant={badgeVariant} size="sm" className="schedule-pill">
             {statusText}
           </Badge>
-          <Tracker data={buildMiniTracker(task)} className="hidden sm:flex" />
+          <Tracker data={buildMiniTracker(task, locale)} className="hidden sm:flex" />
         </div>
 
         {/* Quiet Inline Actions */}
@@ -274,7 +278,7 @@ export function SchedulesPage({
               }}
             >
               <Square size={10} />
-              <span>停止</span>
+              <span>{L('停止', 'Stop')}</span>
             </Button>
           )}
 
@@ -294,7 +298,7 @@ export function SchedulesPage({
               }}
             >
               <Play size={11} />
-              <span>{task.kind === 'once' && latest ? '重新运行整项任务' : '立即执行'}</span>
+              <span>{task.kind === 'once' && latest ? L('重新运行整项任务', 'Re-run') : L('立即执行', 'Run Now')}</span>
             </Button>
           )}
 
@@ -305,12 +309,12 @@ export function SchedulesPage({
               onClick={() => void onToggleSchedule(task.id, !task.scheduleEnabled)}
             >
               {task.scheduleEnabled ? <Pause size={11} /> : <Play size={11} />}
-              <span>{task.scheduleEnabled ? '运行中' : '已暂停'}</span>
+              <span>{task.scheduleEnabled ? L('运行中', 'Active') : L('已暂停', 'Paused')}</span>
             </Button>
           )}
 
           <Button variant="ghost" size="xs" onClick={() => onOpenTask(task.id)}>
-            查看详情
+            {L('查看详情', 'Details')}
           </Button>
 
           {onDeleteTask && (
@@ -334,7 +338,7 @@ export function SchedulesPage({
               className={confirmingDel ? '' : 'text-muted-foreground hover:text-destructive-foreground'}
             >
               <Trash2 size={11} />
-              <span>{confirmingDel ? '确认删除' : '删除'}</span>
+              <span>{confirmingDel ? L('确认删除', 'Confirm') : L('删除', 'Delete')}</span>
             </Button>
           )}
         </div>
@@ -356,20 +360,20 @@ export function SchedulesPage({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="m-0 text-xl font-semibold tracking-tight text-foreground">
-                任务与定时总览
+                {L('任务与定时总览', 'Tasks & Schedules')}
               </h1>
               <Badge variant={activeSchedulesCount > 0 ? 'success' : 'secondary'} size="sm">
-                {activeSchedulesCount} 个周期计划运行中
+                {L(`${activeSchedulesCount} 个周期计划运行中`, `${activeSchedulesCount} scheduled active`)}
               </Badge>
             </div>
             <p className="m-0 text-[13px] text-muted-foreground">
-              集中管理周期计划与单次协作任务，按时间节律追踪每期交付状态。
+              {L('集中管理周期计划与单次协作任务，按时间节律追踪每期交付状态。', 'Track recurring cron plans and one-off agent tasks on one timeline.')}
             </p>
           </div>
 
           <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
             <RefreshCw size={13} />
-            <span>刷新</span>
+            <span>{L('刷新', 'Refresh')}</span>
           </Button>
         </header>
 
@@ -380,14 +384,14 @@ export function SchedulesPage({
             onValueChange={(v) => setFilter(v as 'all' | 'scheduled' | 'once' | 'archive')}
           >
             <TabsList size="sm">
-              <TabsTab value="all">当前任务 ({current.length})</TabsTab>
+              <TabsTab value="all">{L(`当前任务 (${current.length})`, `Active (${current.length})`)}</TabsTab>
               <TabsTab value="scheduled">
-                定时长期 ({current.filter((t) => t.kind === 'scheduled').length})
+                {L(`定时长期 (${current.filter((t) => t.kind === 'scheduled').length})`, `Scheduled (${current.filter((t) => t.kind === 'scheduled').length})`)}
               </TabsTab>
               <TabsTab value="once">
-                单次任务 ({current.filter((t) => t.kind === 'once').length})
+                {L(`单次任务 (${current.filter((t) => t.kind === 'once').length})`, `One-off (${current.filter((t) => t.kind === 'once').length})`)}
               </TabsTab>
-              <TabsTab value="archive">已归档 ({archived.size})</TabsTab>
+              <TabsTab value="archive">{L(`已归档 (${archived.size})`, `Archived (${archived.size})`)}</TabsTab>
             </TabsList>
           </Tabs>
 
@@ -402,7 +406,7 @@ export function SchedulesPage({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="筛选任务标题或负责人…"
+              placeholder={L('筛选任务标题或负责人…', 'Filter by task title or lead…')}
               className="pl-7 [&_input]:pl-7"
             />
           </div>
@@ -416,9 +420,9 @@ export function SchedulesPage({
                   <EmptyMedia variant="icon">
                     <CalendarClock />
                   </EmptyMedia>
-                  <EmptyTitle className="text-base">还没有立项或定时任务</EmptyTitle>
+                  <EmptyTitle className="text-base">{L('还没有立项或定时任务', 'No tasks or schedules yet')}</EmptyTitle>
                   <EmptyDescription>
-                    在任意对话里点击「指派任务」或让负责人立项后，即可在此统一跟进周期计划、步骤状态和最终结果。
+                    {L('在任意对话里点击「指派任务」或让负责人立项后，即可在此统一跟进周期计划、步骤状态和最终结果。', 'Click "Assign Task" in any thread or ask a member to launch a task to track progress here.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -429,10 +433,10 @@ export function SchedulesPage({
             <Frame>
               <FrameHeader className="flex-row items-center justify-between px-4 py-2.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  周期计划 · CRON
+                  {L('周期计划 · CRON', 'Recurring · CRON')}
                 </span>
                 <span className="font-mono text-[11px] text-muted-foreground">
-                  {scheduledGroup.length} 项
+                  {L(`${scheduledGroup.length} 项`, `${scheduledGroup.length}`)}
                 </span>
               </FrameHeader>
               <FramePanel className="max-h-[440px] overflow-y-auto p-0 coss-scroll">
@@ -455,10 +459,10 @@ export function SchedulesPage({
             <Frame>
               <FrameHeader className="flex-row items-center justify-between px-4 py-2.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  单次协作任务
+                  {L('单次协作任务', 'One-off Tasks')}
                 </span>
                 <span className="font-mono text-[11px] text-muted-foreground">
-                  {onceGroup.length} 项
+                  {L(`${onceGroup.length} 项`, `${onceGroup.length}`)}
                 </span>
               </FrameHeader>
               <FramePanel className="max-h-[440px] overflow-y-auto p-0 coss-scroll">

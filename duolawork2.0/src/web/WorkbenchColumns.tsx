@@ -1,10 +1,14 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type PointerEvent } from 'react';
+import { useI18n } from './lib/i18n.js';
 
 type Side = 'sidebar' | 'space';
 type Widths = Record<Side, number | null>;
 const minimum = { sidebar: 180, space: 280 };
 const centerMin = 360;
-const label = { sidebar: '对话列表宽度', space: '协作空间宽度' };
+const label = {
+  sidebar: { zh: '对话列表宽度', en: 'Thread list width' },
+  space: { zh: '协作空间宽度', en: 'Collaboration Space width' }
+};
 const storageKey = (side: Side) => 'dw2-column-width-' + side;
 
 function savedWidth(side: Side) {
@@ -94,9 +98,11 @@ export function WorkbenchColumns({ spaceVisible, wideSpace, leaveWideSpace, chil
 }
 
 export function ColumnDivider({ side }: { side: Side }) {
+  const { locale, L } = useI18n();
   const { current, maximum, change, save } = useContext(Columns)!;
   const drag = useRef<{ id: number; x: number; start: number; last: number | null } | null>(null);
   const sign = side === 'sidebar' ? 1 : -1;
+  const sideLabel = locale === 'en' ? label[side].en : label[side].zh;
   const clamp = (v: number) => Math.min(maximum[side], Math.max(minimum[side], Math.round(v)));
 
   function move(event: PointerEvent<HTMLDivElement>) {
@@ -118,9 +124,9 @@ export function ColumnDivider({ side }: { side: Side }) {
   return (
     <div
       className="workbench-divider" role="separator" tabIndex={0} aria-orientation="vertical"
-      aria-label={label[side]} aria-controls={side === 'sidebar' ? 'workbench-sidebar' : 'workbench-space'}
+      aria-label={sideLabel} aria-controls={side === 'sidebar' ? 'workbench-sidebar' : 'workbench-space'}
       aria-valuemin={minimum[side]} aria-valuemax={maximum[side]} aria-valuenow={current[side]}
-      aria-valuetext={current[side] + ' 像素'} title={'拖动调整' + label[side] + '，双击恢复默认宽度'}
+      aria-valuetext={`${current[side]} ${L('像素', 'px')}`} title={L(`拖动调整${label[side].zh}，双击恢复默认宽度`, `Drag to resize ${label[side].en.toLowerCase()}, double-click to reset`)}
       onPointerDown={(event) => {
         if (event.button !== 0 || !event.isPrimary || drag.current) return;
         event.preventDefault();

@@ -210,8 +210,33 @@ test('DW3-03: EmptyThreadWelcome scenarios, bilingual i18n toggle persistence, t
     await page.getByRole('button', { name: 'Members & Usage' }).waitFor();
     assert.equal(await page.evaluate(() => localStorage.getItem('dw_locale')), 'en');
 
+    // Verify brand title "DuolaWork" is not truncated inside the sidebar header
+    const brandFits = await page.evaluate(() => {
+      const el = document.querySelector('.comm-brand-id strong');
+      return Boolean(el && el.scrollWidth <= el.clientWidth + 1);
+    });
+    assert.equal(brandFits, true, 'DuolaWork brand title should fit without ellipsis truncation');
+
+    // Verify Collaboration Space tabs and Resources panel render in English
+    const space = page.getByRole('complementary', { name: 'Collaboration Space', exact: true });
+    await space.waitFor();
+    await space.getByRole('button', { name: 'Materials', exact: true }).waitFor();
+    await space.getByRole('button', { name: 'Tasks', exact: true }).waitFor();
+    await space.getByRole('button', { name: 'Resources', exact: true }).click();
+    await space.getByText('Workspace Directory').waitFor();
+    await space.getByText('DuolaBase Connectors & Vault').waitFor();
+
+    // Verify Connectors, Vault Secrets & Schedules subpages in English
+    const sidebar = page.locator('#workbench-sidebar');
+    await sidebar.getByRole('button', { name: /^Connectors/ }).click();
+    await page.getByRole('heading', { name: 'Connectors', exact: true }).waitFor();
+    await sidebar.getByRole('button', { name: /^Vault Secrets/ }).click();
+    await page.getByRole('heading', { name: 'Vault Secrets', exact: true }).waitFor();
+    await sidebar.getByRole('button', { name: /^Schedules/ }).click();
+    await page.getByRole('heading', { name: 'Tasks & Schedules', exact: true }).waitFor();
+
     // 5. Open Members & Usage page -> verify BYOS Discovery frame renders in English & toggle back to Chinese
-    await page.getByRole('button', { name: 'Members & Usage' }).click();
+    await sidebar.getByRole('button', { name: /^Members & Usage/ }).click();
     await page.getByTestId('byos-discovery-card').waitFor();
     await page.getByText('Auto-Discover Local Agents (BYOS)').waitFor();
 
