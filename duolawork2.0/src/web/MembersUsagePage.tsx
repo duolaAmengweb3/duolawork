@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useViewCache, useViewData } from './view-cache.js';
+import React, { useEffect, useState } from 'react';
 import { Activity, Copy, Laptop, LogOut, MessageSquare, Plus, RefreshCw, Search, Server, ShieldCheck, Sparkles, Trash2, Users, X } from 'lucide-react';
 import type { AuthSessionRecord, DriverKind, ExecutionNodeRecord, MemberRecord, MemberUsageSummary, ThreeTierUsage } from '../shared/types.js';
 import { AgentAvatar } from './AgentAvatar.js';
@@ -53,9 +54,12 @@ export function MembersUsagePage({
   onStartChatWithMember: (memberId: string) => Promise<void>;
   onSyncProtocolMemory?: () => Promise<{ version: string; memberCount: number } | null>;
 }): React.JSX.Element {
-  const [summaries, setSummaries] = useState<Record<string, MemberUsageSummary>>({});
-  const [recent, setRecent] = useState<RecentAttempt[]>([]);
-  const [sessions, setSessions] = useState<AuthSessionRecord[]>([]);
+  const views = useViewCache();
+  const usage = useViewData<{summaries: MemberUsageSummary[]; recent: RecentAttempt[]}>('/api/v2/members/usage', 15000);
+  const sessionData = useViewData<{sessions: AuthSessionRecord[]}>('/api/v2/auth/sessions', 0, authRequired);
+  const summaries = Object.fromEntries((usage.data?.summaries ?? []).map(s => [s.memberId,s]));
+  const recent = usage.data?.recent ?? [];
+  const sessions = sessionData.data?.sessions ?? [];
   const [nodePairInfo, setNodePairInfo] = useState<{ code: string; expiresAt: string; kind: 'cloud' | 'local' } | null>(null);
   const [loginMagicInfo, setLoginMagicInfo] = useState<{ code: string; expiresAt: string } | null>(null);
   const [query, setQuery] = useState<string>('');
@@ -68,31 +72,15 @@ export function MembersUsagePage({
   const [memoryNotice, setMemoryNotice] = useState<string>('');
   const [syncingMemory, setSyncingMemory] = useState<boolean>(false);
 
-  const loadUsage = useCallback(async () => {
-    const res = await fetch('/api/v2/members/usage');
-    if (!res.ok) return;
-    const data = await res.json();
-    const map: Record<string, MemberUsageSummary> = {};
-    for (const s of data.summaries || []) {
-      map[s.memberId] = s;
-    }
-    setSummaries(map);
-    setRecent(data.recent || []);
-  }, []);
-
-  const loadSessions = useCallback(async () => {
-    if (!authRequired) return;
-    const res = await fetch('/api/v2/auth/sessions');
-    if (!res.ok) return;
-    const data = await res.json();
-    setSessions(data.sessions || []);
-  }, [authRequired]);
-
+  const loadUsage = usage.read;
+  const loadSessions = sessionData.read;
   useEffect(() => {
-    void loadUsage();
-    void loadSessions();
-    const timer = window.setInterval(() => { if (!document.hidden) void loadUsage(); }, 15000);
-    return () => window.clearInterval(timer);
+    let active = true;
+    const report = () => {if (active) setError('暂时无法更新成员信息');};
+    void loadUsage().catch(report);
+    void loadSessions().catch(report);
+    const timer = window.setInterval(() => {if (!document.hidden) void loadUsage(true).catch(report);},15000);
+    return () => {active = false;window.clearInterval(timer);};
   }, [loadUsage, loadSessions, members.length]);
 
   const handleGenerateNodePair = async (kind: 'cloud' | 'local') => {
@@ -135,7 +123,7 @@ export function MembersUsagePage({
     const res = await fetch(`/api/v2/auth/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
     if (!res.ok) return;
     const data = await res.json();
-    setSessions(data.sessions || []);
+    views.put('/api/v2/auth/sessions',{sessions:data.sessions || []});
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -177,7 +165,7 @@ export function MembersUsagePage({
     setName('');
     setCommandOrUrl('');
     await onReloadBootstrap();
-    await loadUsage();
+    await loadUsage(true);
   };
 
   const handleRemoveMember = async (member: MemberRecord) => {
@@ -268,7 +256,7 @@ export function MembersUsagePage({
             type="button"
             onClick={() => {
               void onRefreshMembers();
-              void loadUsage();
+              void loadUsage(true).catch(() => setError('暂时无法更新成员信息'));
             }}
             disabled={refreshingMembers}
             className="dw-btn dw-btn-outline dw-btn-sm"

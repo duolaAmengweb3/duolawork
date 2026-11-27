@@ -1,3 +1,4 @@
+import { useViewCache, useViewData } from './view-cache.js';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Archive,
@@ -71,7 +72,7 @@ export function VaultPage({
 }: {
   duolabaseStatus: DuolaBasePublicStatus;
 }): React.JSX.Element {
-  const [items, setItems] = useState<VaultItem[]>([]);
+  const views = useViewCache();
   const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | 'deleted'>('active');
   const [query, setQuery] = useState<string>('');
   const [projectFilter, setProjectFilter] = useState<string>('');
@@ -96,36 +97,26 @@ export function VaultPage({
   const [taggingItem, setTaggingItem] = useState<VaultItem | null>(null);
   const [tagDraft, setTagDraft] = useState<string>('');
 
-  const loadVault = useCallback(async () => {
-    if (!duolabaseStatus.enabled || !duolabaseStatus.hasToken) {
-      setItems([]);
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const qs = new URLSearchParams({ status: statusFilter });
-      if (query.trim()) qs.set('query', query.trim());
-      if (projectFilter.trim()) qs.set('project', projectFilter.trim());
-      const res = await fetch(`/api/v2/duolabase/vault?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '读取凭证库失败');
-      const list = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-          ? data
-          : [];
-      setItems(list);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [duolabaseStatus.enabled, duolabaseStatus.hasToken, statusFilter, query, projectFilter]);
-
+  const qs = new URLSearchParams({status:statusFilter});
+  if (projectFilter.trim()) qs.set('project',projectFilter.trim());
+  if (query.trim()) qs.set('query',query.trim());
+  const enabled = duolabaseStatus.enabled && duolabaseStatus.hasToken;
+  const url = '/api/v2/duolabase/vault?'+qs.toString();
+  const {data, read} = useViewData<{items?: VaultItem[]} | VaultItem[]>(url, 30000, enabled);
+  const items = Array.isArray(data) ? data : data?.items ?? [];
+  const loadVault = async () => {
+    views.expire('/api/v2/duolabase/vault');
+    setLoading(true); setError('');
+    try { await read(); } catch (err) { setError((err as Error).message); }
+    finally {setLoading(false);}
+  };
   useEffect(() => {
-    void loadVault();
-  }, [loadVault]);
+    let active = true;
+    setLoading(enabled && !views.peek(url));setError('');
+    void read().catch(err => {if (active) setError(err.message);})
+      .finally(() => {if (active) setLoading(false);});
+    return () => {active = false;};
+  }, [enabled, read, url, views]);
 
   const handleSaveVault = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -486,7 +477,9 @@ export function VaultPage({
             <h2>需要启用并授权 DuolaBase 后查看凭证</h2>
             <p>可在左侧「连接器」页顶部的“服务设置”里查看或配置 DuolaBase 连接状态。</p>
           </div>
-        ) : items.length === 0 && !loading ? (
+        ) : data === undefined ? (
+          error ? null : <p className="connector-empty-inline" role="status">正在读取凭证列表…</p>
+        ) : items.length === 0 ? (
           <div className="vault-empty">
             {statusFilter === 'deleted' ? <Archive size={30} /> : <KeyRound size={30} />}
             <h2>当前筛选条件下暂无凭证</h2>

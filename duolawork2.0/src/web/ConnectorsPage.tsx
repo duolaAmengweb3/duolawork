@@ -1,3 +1,4 @@
+import { useViewCache, useViewData } from './view-cache.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
@@ -54,7 +55,7 @@ export function ConnectorsPage({
   onToggleDuolabase: () => Promise<void>;
   onReloadStatus: () => Promise<void>;
 }): React.JSX.Element {
-  const [items, setItems] = useState<ConnectorItem[]>([]);
+  const views = useViewCache();
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [notice, setNotice] = useState<string>('');
@@ -81,36 +82,26 @@ export function ConnectorsPage({
   const [cfgEndpoint, setCfgEndpoint] = useState<string>(duolabaseStatus.endpoint);
   const [cfgToken, setCfgToken] = useState<string>('');
 
-  const loadConnectors = useCallback(async () => {
-    if (!duolabaseStatus.enabled || !duolabaseStatus.hasToken) {
-      setItems([]);
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const qs = new URLSearchParams();
-      if (category) qs.set('category', category);
-      if (query.trim()) qs.set('query', query.trim());
-      const res = await fetch(`/api/v2/duolabase/connectors?${qs.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '加载连接器失败');
-      const list = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-          ? data
-          : [];
-      setItems(list);
-    } catch (err) {
-      setError((err as Error).message || '加载连接器失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [duolabaseStatus.enabled, duolabaseStatus.hasToken, category, query]);
-
+  const qs = new URLSearchParams();
+  if (category) qs.set('category',category);
+  if (query.trim()) qs.set('query',query.trim());
+  const enabled = duolabaseStatus.enabled && duolabaseStatus.hasToken;
+  const url = '/api/v2/duolabase/connectors?'+qs.toString();
+  const {data, read} = useViewData<{items?: ConnectorItem[]} | ConnectorItem[]>(url, 30000, enabled);
+  const items = Array.isArray(data) ? data : data?.items ?? [];
+  const loadConnectors = async () => {
+    views.expire('/api/v2/duolabase/connectors');
+    setLoading(true); setError('');
+    try { await read(); } catch (err) { setError((err as Error).message); }
+    finally {setLoading(false);}
+  };
   useEffect(() => {
-    void loadConnectors();
-  }, [loadConnectors]);
+    let active = true;
+    setLoading(enabled && !views.peek(url));setError('');
+    void read().catch(err => {if (active) setError(err.message);})
+      .finally(() => {if (active) setLoading(false);});
+    return () => {active = false;};
+  }, [enabled, read, url, views]);
 
   const handleCheck = async (id: string) => {
     setCheckingId(id);
@@ -200,6 +191,7 @@ export function ConnectorsPage({
       })
     });
     if (res.ok) {
+      views.expire('/api/v2/duolabase/', true);
       setCfgToken('');
       setConfigOpen(false);
       await onReloadStatus();
@@ -479,7 +471,9 @@ export function ConnectorsPage({
                 : '请点击右上角“服务设置”填入 DuolaBase 访问令牌，或保持本机 Codex 的 [mcp_servers.duolabase] 配置有效。'}
             </p>
           </div>
-        ) : items.length === 0 && !loading ? (
+        ) : data === undefined ? (
+          error ? null : <p className="connector-empty-inline" role="status">正在读取连接器…</p>
+        ) : items.length === 0 ? (
           <p className="connector-empty-inline">没有匹配的连接器，可点击右上角「添加连接器」快速接入。</p>
         ) : (
           <div className="connector-section">
