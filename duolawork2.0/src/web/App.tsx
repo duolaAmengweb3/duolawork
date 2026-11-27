@@ -2969,6 +2969,7 @@ export function App(): React.JSX.Element {
                                     <button
                                       type="button"
                                       className="turn-tool-summary"
+                                      aria-expanded={showFullList}
                                       title={activeRow.raw}
                                       onClick={() =>
                                         setExpandedToolMsgIds((prev) => ({
@@ -2989,9 +2990,9 @@ export function App(): React.JSX.Element {
                                           ? `${activeRow.badge}：${activeRow.label}`
                                           : `已执行 ${trace.length} 项操作`}
                                       </span>
-                                      <span className="turn-tool-counter">
-                                        {isRunningTurn ? `${doneCount}/${trace.length}` : `${trace.length} 步`}
-                                      </span>
+                                      {isRunningTurn && (
+                                        <span className="turn-tool-counter">{doneCount}/{trace.length}</span>
+                                      )}
                                     </button>
                                     {showList && visibleItems.length > 0 && (
                                       <div className="turn-tool-list">

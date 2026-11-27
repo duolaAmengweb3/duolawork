@@ -895,29 +895,19 @@ html.dark {
 }
 .turn-tool-trace {
   margin: 4px 0 10px;
-  border: 1px solid #e6ebf4;
-  border-radius: 10px;
-  background: #f8faff;
-  padding: 6px 10px;
   font-size: 12px;
   color: #52627b;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-.turn-tool-trace.is-running {
-  border-color: #c7d7f7;
-  background: #f5f8ff;
 }
 .turn-tool-summary {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  width: fit-content;
+  min-height: 24px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
   text-align: left;
   font-weight: 500;
   color: inherit;
@@ -938,7 +928,6 @@ html.dark {
 }
 .turn-tool-head-dot.is-running {
   background: #416ee6;
-  box-shadow: 0 0 0 3px rgba(65, 110, 230, 0.16);
 }
 .turn-tool-summary-text {
   flex: 1 1 auto;
@@ -952,17 +941,14 @@ html.dark {
   font-size: 11px;
   font-weight: 500;
   color: #7b8ba5;
-  background: rgba(123, 139, 165, 0.12);
-  padding: 1px 6px;
-  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
 }
 .turn-tool-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px dashed #dde4f0;
+  margin-top: 4px;
+  padding-inline-start: 19px;
   max-height: 220px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1011,9 +997,6 @@ html.dark {
   font-size: 10px;
   font-weight: 600;
   color: #4f6484;
-  background: #e9effa;
-  padding: 1px 5px;
-  border-radius: 4px;
   flex-shrink: 0;
 }
 .turn-tool-label {
@@ -1037,26 +1020,15 @@ html.dark {
   white-space: nowrap;
 }
 .dark .turn-tool-trace {
-  border-color: #252c3b;
-  background: #171c26;
   color: #9baac4;
 }
-.dark .turn-tool-trace.is-running {
-  border-color: #354c7a;
-  background: #161e2e;
-}
-.dark .turn-tool-list {
-  border-top-color: #262e3e;
-}
 .dark .turn-tool-badge {
-  background: #232d42;
   color: #9bb2d8;
 }
 .dark .turn-tool-label {
   color: #c8d3e6;
 }
 .dark .turn-tool-counter {
-  background: rgba(155, 170, 196, 0.14);
   color: #95a5c0;
 }
 .dark .turn-tool-more-btn {
