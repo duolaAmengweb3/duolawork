@@ -64,7 +64,8 @@ export class DuolaWorkNodeRunner {
   private readonly drivers = new Map<string, AgentDriver>();
   private readonly outbox = new Map<string, OutboxEntry>();
   private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver }>();
-  private readonly pendingToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private canResumeTools = false;
+  private readonly pendingToolCalls = new Map<string, { frame: Record<string, unknown>; sent: boolean; resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private readonly activeMcpAttempts = new Map<
     string,
     { token: string; tools: DynamicToolDefinition[]; delivery?: ChatImageDelivery }
@@ -393,6 +394,7 @@ export class DuolaWorkNodeRunner {
       );
       this.send({
         type: 'node.hello',
+        resumesToolCalls: true,
         name: this.config.name,
         kind: this.config.kind,
         platform: process.platform,
@@ -400,6 +402,7 @@ export class DuolaWorkNodeRunner {
         drivers: [...this.drivers.keys()],
         allowWorkspaceBrowse: Boolean(this.config.allowWorkspaceBrowse),
         allowedWorkspaceRoots: this.config.allowedWorkspaceRoots ?? [],
+        activeAttempts: [...this.runningAttempts.keys()],
         members: safeMembers
       });
 
@@ -420,6 +423,13 @@ export class DuolaWorkNodeRunner {
         return;
       }
       if (msg.type === 'node.welcome') {
+        this.canResumeTools = msg.resumesToolCalls === true;
+        for (const pending of this.pendingToolCalls.values()) {
+          if (!pending.sent || this.canResumeTools) {
+            this.send(pending.frame);
+            pending.sent = true;
+          }
+        }
         this.flushOutbox();
         onFirstWelcome?.();
         return;
@@ -481,6 +491,7 @@ export class DuolaWorkNodeRunner {
       if (!pending) return;
       this.pendingToolCalls.delete(callId);
       clearTimeout(pending.timer);
+      if (this.canResumeTools) this.send({ type: 'turn.tool_ack', attemptId: pending.frame.attemptId, callId });
       if (msg.ok) pending.resolve(msg.result);
       else pending.reject(new Error(String(msg.error || '工具调用被拒绝')));
       return;
@@ -793,9 +804,7 @@ export class DuolaWorkNodeRunner {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('云端控制面连接已断开，无法调用沙箱工具'));
-    }
+    if (this.stopped) return Promise.reject(new Error('执行节点已停止'));
     let effectiveArgs: Record<string, unknown> = args;
     if (
       (toolName === 'space_save_file' || toolName === 'chat_attach_image') &&
@@ -835,8 +844,10 @@ export class DuolaWorkNodeRunner {
         reject(new Error(`云端工具调用超时: ${toolName}`));
       }, 60_000);
       timer.unref?.();
-      this.pendingToolCalls.set(callId, { resolve, reject, timer });
-      this.send({ type: 'turn.tool_call', callId, attemptId, toolName, args: effectiveArgs });
+      const frame = { type: 'turn.tool_call', callId, attemptId, toolName, args: effectiveArgs };
+      const sent = this.ws?.readyState === WebSocket.OPEN;
+      this.pendingToolCalls.set(callId, { resolve, reject, timer, frame, sent });
+      if (sent) this.send(frame);
     });
   }
 

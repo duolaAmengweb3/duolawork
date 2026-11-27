@@ -20,6 +20,7 @@ import {
   type AgentDriver,
   type DynamicToolDefinition,
   type EnsuredSession,
+  type ReconcileResult,
   type McpHttpServerConfig,
   type TurnExecutionResult,
   type TurnStreamEvent
@@ -175,7 +176,7 @@ export class DriverRegistry {
     const saved = this.db.sqlite.prepare(
       `UPDATE v2_dispatch_attempts SET status='succeeded', response_text=?, usage_json=?, error_message=NULL,
          native_session_id=COALESCE(?,native_session_id), native_turn_id=COALESCE(?,native_turn_id), settled_at=?
-       WHERE id=? AND status IN ('timed_out','late_ignored') AND EXISTS (
+       WHERE id=? AND status IN ('failed','timed_out','late_ignored') AND EXISTS (
          SELECT 1 FROM v2_thread_messages m WHERE m.id=v2_dispatch_attempts.target_id
            AND m.attempt_id=v2_dispatch_attempts.id AND m.turn_status IN ('failed','running'))`
     ).run(receipt.text, JSON.stringify(usage), receipt.nativeSessionId ?? null, receipt.nativeTurnId ?? null,
@@ -641,7 +642,7 @@ export class DriverRegistry {
     } catch (err) {
       const msg = redactSecrets((err as Error).message);
       if (!timedOutReleased) {
-        const isExplicitCancel = Boolean(cancelReason) || msg === 'ATTEMPT_CANCELED';
+        const isExplicitCancel = (Boolean(cancelReason) && cancelReason !== 'SHUTDOWN') || msg === 'ATTEMPT_CANCELED';
         const isDisconnect =
           !isExplicitCancel &&
           (msg.includes('DISCONNECT') ||
@@ -739,12 +740,16 @@ export class DriverRegistry {
       const driver = this.getDriver(member.driverKind);
 
       const deadline = Date.now() + waitTimeoutMs;
-      let rec = await driver.reconcileAttempt(member, att);
+      const lookup = () => driver.reconcileAttempt(member, att).catch(() => ({
+        state: 'still_running' as const, errorMessage: '执行节点暂不可达'
+      }));
+      let rec: ReconcileResult = await lookup();
       while (rec.state === 'still_running' && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, pollIntervalMs));
-        rec = await driver.reconcileAttempt(member, att);
+        rec = await lookup();
       }
 
+      if (!['prepared', 'dispatched', 'running', 'reconciling'].includes(this.getAttempt(att.id)?.status ?? '')) continue;
       if (rec.state === 'completed' && rec.text !== undefined) {
         const usage: ThreeTierUsage = {
           workbenchDispatches: att.usage.workbenchDispatches || 1,

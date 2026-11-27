@@ -236,12 +236,15 @@ export class ThreadEngine {
     }
     const rows = this.db.sqlite
       .prepare(
-        `SELECT m.*, CASE WHEN m.author_kind = 'switch_notice' AND m.handoff_meta_json IS NOT NULL THEN ${previousRecipientSql} END AS previous_recipient
+        `SELECT m.*, CASE WHEN m.turn_status IN ('canceled','failed') THEN
+           (SELECT u.paired_message_id FROM v2_thread_messages u WHERE u.thread_id=m.thread_id AND u.client_request_id='continue:'||m.id) END AS continued_by,
+           CASE WHEN m.author_kind = 'switch_notice' AND m.handoff_meta_json IS NOT NULL THEN ${previousRecipientSql} END AS previous_recipient
          FROM v2_thread_messages m WHERE ${clauses.join(' AND ')} ORDER BY seq ASC`
       )
       .all(...args) as Record<string, unknown>[];
     return rows.flatMap((row) => {
       const msg = mapMessageRow(row);
+      if (row.continued_by) msg.continuedByMessageId = String(row.continued_by);
       const live = msg.turnStatus === 'running' && this.liveTurns.get(msg.id);
       if (live) {
         msg.activity = live.activity;
@@ -445,7 +448,7 @@ export class ThreadEngine {
     const attemptRow = this.db.sqlite
       .prepare(
         `SELECT * FROM v2_dispatch_attempts
-         WHERE thread_id = ? AND status IN ('prepared', 'dispatched', 'running')
+         WHERE thread_id = ? AND status IN ('prepared', 'dispatched', 'running', 'reconciling')
          ORDER BY dispatched_at DESC LIMIT 1`
       )
       .get(threadId) as Record<string, unknown> | undefined;
@@ -481,7 +484,7 @@ export class ThreadEngine {
         .prepare(
           `UPDATE v2_dispatch_attempts
            SET status = 'failed', slot_held = 0, error_message = '已由用户停止', settled_at = ?
-           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running')`
+           WHERE id = ? AND status IN ('prepared', 'dispatched', 'running', 'reconciling')`
         )
         .run(now, attemptId);
       this.db.sqlite
@@ -494,7 +497,7 @@ export class ThreadEngine {
         )
         .run(now, attemptId);
       this.registry.cancelDispatchedAttempt(attemptId, 'ATTEMPT_CANCELED');
-      if (attempt && member && (attempt.status === 'dispatched' || attempt.status === 'running')) {
+      if (attempt && member && (attempt.status === 'dispatched' || attempt.status === 'running' || attempt.status === 'reconciling')) {
         try {
           aborted = await this.registry.getDriver(member.driverKind).abortTurn(member, attempt);
         } catch {
@@ -536,6 +539,73 @@ export class ThreadEngine {
     return { aborted, message: null };
   }
 
+  public async continueInterruptedTurn(threadId: string, messageId: string) {
+    const source = this.getMessage(messageId);
+    if (!source || source.threadId !== threadId || source.authorKind !== 'agent') throw new Error('找不到这条执行记录');
+    const key = 'continue:' + messageId;
+    const existing = () => this.db.sqlite.prepare(
+      'SELECT paired_message_id FROM v2_thread_messages WHERE thread_id=? AND client_request_id=?'
+    ).get(threadId, key);
+    if (existing()) return { status: 'continued' };
+    if (source.turnStatus === 'completed') return { status: 'completed' };
+    if (!['failed', 'canceled'].includes(source.turnStatus)) return { status: 'waiting' };
+
+    const attempt = source.attemptId && this.registry.getAttempt(source.attemptId);
+    const executor = this.db.getMember(source.authorId);
+    if (attempt && executor && ['remote-node', 'webhook-bot', 'remote-bridge'].includes(executor.driverKind)) {
+      const receipt = await this.registry.getDriver(executor.driverKind).reconcileAttempt(executor, attempt);
+      if (receipt.state === 'completed' && receipt.text?.trim()) {
+        this.db.inTransaction(() => {
+          // The user explicitly requested this stopped result. Passive replay still respects Stop.
+          if (source.turnStatus === 'canceled') this.db.sqlite.prepare(
+            `UPDATE v2_thread_messages SET turn_status='failed' WHERE id=? AND attempt_id=? AND turn_status='canceled'`
+          ).run(messageId, attempt.id);
+          this.registry.recoverLateThreadReply(attempt, receipt);
+          this.syncReconciledThreadTurns();
+        });
+      }
+      if (receipt.state === 'still_running') {
+        if (!receipt.errorMessage) return { status: source.turnStatus === 'canceled' ? 'stopping' : 'waiting' };
+        if (this.getThread(threadId)?.activeOwnerMemberId === source.authorId) return { status: 'unreachable' };
+      }
+    }
+    // A completion or a second click may have arrived while we were checking the original request.
+    if (existing()) return { status: 'continued' };
+    if (this.getMessage(messageId)?.turnStatus === 'completed') return { status: 'completed' };
+    if (this.db.sqlite.prepare(`SELECT 1 FROM v2_thread_messages WHERE thread_id=? AND turn_status IN ('queued','running')`).get(threadId)) {
+      return { status: 'busy' };
+    }
+    const ownerId = this.getThread(threadId)?.activeOwnerMemberId;
+    const owner = ownerId && this.db.getMember(ownerId);
+    if (!owner || !['ready','busy'].includes(owner.status)) return { status: 'unavailable' };
+
+    // Follow earlier continuation requests to retain the user's original goal and image references.
+    let preceding = source;
+    let requestText = '';
+    for (;;) {
+      const request = this.db.sqlite.prepare(
+        `SELECT body,client_request_id FROM v2_thread_messages
+         WHERE thread_id=? AND author_kind='user' AND seq<? ORDER BY seq DESC LIMIT 1`
+      ).get(threadId, preceding.seq) as { body: string; client_request_id: string | null } | undefined;
+      if (!request) break;
+      requestText = request.body;
+      const previous = request.client_request_id?.startsWith('continue:') && this.getMessage(request.client_request_id.slice(9));
+      if (!previous || previous.threadId !== threadId || previous.seq >= preceding.seq) break;
+      preceding = previous;
+    }
+    const operations = (source.toolTrace ?? []).slice(-12).map(t => [t.name, t.summary].filter(Boolean).join(' ')).join('、');
+    const context = [
+      '用户要求继续这个中断的任务。原始请求：' + requestText,
+      '上一轮留下的记录：' + (source.body || '没有最终回复'),
+      operations && '近期工具记录（仅表示调用过）：' + operations,
+      '先核对已有文件和外部操作回执，再继续剩余工作。已完成的步骤跳过。发文、发送、支付等操作若结果不明，先查证；无法确认时告知用户，切勿重复提交。'
+    ].filter(Boolean).join('\n');
+    const execution = this.sendUserMessage({ threadId, body: '从上次中断处继续', idempotencyKey: key, continuationContext: context });
+    if (!existing()) await execution;
+    else void execution.catch(() => {}); // The normal message lifecycle persists and emits its result.
+    return { status: 'continued' };
+  }
+
   /**
    * Sends a user message EXCLUSIVELY to `thread.activeOwnerMemberId`.
    * - Mentions like `@Grok` or `@Codex` in `body` are treated strictly as plain text (0 bystander wakeups).
@@ -548,6 +618,7 @@ export class ThreadEngine {
     body: string;
     idempotencyKey?: string;
     timeoutMs?: number;
+    continuationContext?: string;
     clarifyReply?: { messageId: string; summary: string };
   }): Promise<{
     userMessage: ThreadMessageRecord;
@@ -584,6 +655,7 @@ export class ThreadEngine {
       body: string;
       idempotencyKey?: string;
       timeoutMs?: number;
+      continuationContext?: string;
       clarifyReply?: { messageId: string; summary: string };
     },
     cleanClientKey: string | null
@@ -815,7 +887,7 @@ export class ThreadEngine {
         targetMemberId: targetMember.id,
         fromMemberId: pendingSwitchNotice?.handoffMeta?.fromMemberId ?? null,
         currentUserSeq: userMsg.seq,
-        currentUserBody: cleanBody,
+        currentUserBody: input.continuationContext || cleanBody,
         priorMessages,
         boundArtifact,
         activeTasksSummary,
@@ -925,7 +997,7 @@ export class ThreadEngine {
       const seenImgKeys = new Set<string>();
       const imgRefRegex = /!\[[^\]]*\]\((\/api\/v2\/(?:chat-images|space\/files)\/([^)?#\s]+))\)/g;
       let im: RegExpExecArray | null;
-      while ((im = imgRefRegex.exec(cleanBody)) !== null && turnImages.length < 6) {
+      while ((im = imgRefRegex.exec(input.continuationContext || cleanBody)) !== null && turnImages.length < 6) {
         const fullUrl = im[1];
         const rawId = decodeURIComponent(im[2]);
         if (seenImgKeys.has(fullUrl)) continue;
@@ -1053,7 +1125,7 @@ export class ThreadEngine {
             this.markWaitingForReceipt(placeholderAgentMsg.id);
           } else if (ev.kind === 'activity' && ev.phase) {
             // A reasoning block can finish after a tool or text stream has already started.
-            if (ev.phase !== 'processing' || ['thinking', 'queued'].includes(live.activity.phase)) setActivity(ev.phase);
+            if (ev.phase !== 'processing' || ['thinking', 'queued', 'reconnecting'].includes(live.activity.phase)) setActivity(ev.phase);
           } else if (ev.kind === 'delta' && ev.text) {
             setActivity('writing');
             this.emit({
@@ -1197,7 +1269,14 @@ export class ThreadEngine {
       const now = new Date().toISOString();
       const errText = (err as Error).message || '请求未完成';
       const currentMsg = this.getMessage(placeholderAgentMsg.id);
-      if (errText === 'ATTEMPT_TIMED_OUT' && currentMsg?.turnStatus === 'completed') {
+      if (this.registry.getAttempt(attemptId)?.status === 'reconciling' && currentMsg?.turnStatus === 'running') {
+        this.db.sqlite.prepare(`UPDATE v2_thread_messages SET body=?, tool_trace_json=?, updated_at=? WHERE id=? AND turn_status='running'`)
+          .run('正在恢复执行连接', JSON.stringify(toolTrace), now, currentMsg.id);
+        const recovering = this.getMessage(currentMsg.id)!;
+        this.emit({ type: 'thread.message_updated', threadId: thread.id, payload: recovering });
+        return { userMessage: userMsg, agentMessage: recovering, handoffBytes: activePacket.handoffBytes };
+      }
+      if (currentMsg?.turnStatus === 'completed') {
         return { userMessage: userMsg, agentMessage: currentMsg, handoffBytes: activePacket.handoffBytes };
       }
       if (
@@ -1427,7 +1506,7 @@ export class ThreadEngine {
         (r.att_status === 'timed_out' ? '执行超时，请重试' : '应用重启或远端中断，未能收到回复，请重试');
       const fallbackBody = ['timed_out', 'late_ignored'].includes(r.att_status)
         ? chatTimeoutMessage(r.error_message)
-        : String(r.body || '').trim() || `暂时未能收到回复：${reason}`;
+        : (r.body === '正在恢复执行连接' || r.body === '执行结束，等待回执' ? '' : String(r.body || '').trim()) || `暂时未能收到回复：${reason}`;
       this.db.sqlite
         .prepare(
           `UPDATE v2_thread_messages

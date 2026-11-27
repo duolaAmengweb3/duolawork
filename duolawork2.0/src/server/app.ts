@@ -1853,6 +1853,13 @@ export class DuolaWorkApp {
         return;
       }
 
+      const continueMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/messages\/([^/]+)\/continue$/);
+      if (continueMatch && method === 'POST') {
+        const result = await this.threads.continueInterruptedTurn(decodeURIComponent(continueMatch[1]), decodeURIComponent(continueMatch[2]));
+        sendJson(res, result.status === 'continued' ? 202 : 200, result);
+        return;
+      }
+
       const ownerMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/owner$/);
       if (ownerMatch && method === 'POST') {
         const threadId = decodeURIComponent(ownerMatch[1]);

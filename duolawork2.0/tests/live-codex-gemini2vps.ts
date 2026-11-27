@@ -110,14 +110,11 @@ try {
   geminiMember.config.simulateDisconnectAfterDispatchOnce = true;
   app.db.upsertMember(geminiMember);
 
-  await assert.rejects(
-    () =>
-      app.threads.sendUserMessage({
-        threadId: thread.id,
-        body: '请不要调用任何外部工具，确认 Codex 的 v3 进展并只回复一句：“跨机断线恢复核验通过 DW2-RECONCILE-OK”。'
-      }),
-    /SIMULATED_NETWORK_DISCONNECT_AFTER_REMOTE_DISPATCH/
-  );
+  const interrupted = await app.threads.sendUserMessage({
+    threadId: thread.id,
+    body: '请不要调用任何外部工具，确认 Codex 的 v3 进展并只回复一句：“跨机断线恢复核验通过 DW2-RECONCILE-OK”。'
+  });
+  assert.equal(interrupted.agentMessage.turnStatus, 'running');
   delete geminiMember.config.simulateDisconnectAfterDispatchOnce;
   app.db.upsertMember(geminiMember);
 

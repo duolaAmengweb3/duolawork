@@ -1727,7 +1727,7 @@ test('Audit-R5-1: grok-webhook and dots-events stay ready when verified, and lon
     assert.ok(overflowAfterExpand.boxOverflow <= 1, `Expanded box overflowed horizontally: ${JSON.stringify(overflowAfterExpand)}`);
     assert.ok(overflowAfterExpand.listHeight <= 235, `Expanded list should scroll within max-height 220px, got ${overflowAfterExpand.listHeight}`);
 
-    for (const width of [1440, 1024]) {
+    for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 860 });
       const rows = await page.locator('.turn-tool-item:has(.turn-tool-detail)').evaluateAll((items) =>
         items.map((item) => {
@@ -1736,17 +1736,24 @@ test('Audit-R5-1: grok-webhook and dots-events stay ready when verified, and lon
           const text = document.createRange();
           text.selectNodeContents(label);
           return {
+            left: label.getBoundingClientRect().left,
             gap: detail.getBoundingClientRect().left - text.getBoundingClientRect().right,
             overflow: item.scrollWidth - item.clientWidth
           };
         })
       );
-      assert.equal(rows.length, 2);
+      assert.equal(rows.length, 10);
+      assert.ok(Math.max(...rows.map(r => r.left)) - Math.min(...rows.map(r => r.left)) <= 1);
       for (const row of rows) {
         assert.ok(row.gap >= 0 && row.gap <= 8, `Expected adjacent label and detail at ${width}px, gap was ${row.gap}px`);
         assert.ok(row.overflow <= 1, `Tool row overflowed at ${width}px`);
       }
     }
+    await page.locator('.turn-tool-row').nth(1).click();
+    const fullPath = page.locator('.turn-tool-full').filter({ hasText: 'report.py' });
+    await fullPath.waitFor();
+    assert.ok(await fullPath.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+
   } finally {
     await browser.close();
     await app.close();

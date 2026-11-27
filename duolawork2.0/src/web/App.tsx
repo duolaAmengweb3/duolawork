@@ -105,55 +105,56 @@ interface DesktopBridge {
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
 }
 
-function formatToolTraceRow(item: ToolTraceItem): {
-  badge: string;
-  label: string;
-  detail: string;
-  raw: string;
-} {
-  const rawName = String(item.name || '').replace(/\s+/g, ' ').trim();
-  const rawSummary = String(item.summary || '').replace(/\s+/g, ' ').trim();
-  const raw = rawSummary && rawSummary !== rawName ? `${rawName} — ${rawSummary}` : rawName || rawSummary;
-
-  let badge = '工具';
-  let label = rawName;
-  let detail = rawSummary;
-
-  if (/\s+on Web$/i.test(rawName)) {
-    badge = '搜索';
-    label = rawName.replace(/\s+on Web$/i, '').replace(/^"+|"+$/g, '').trim();
-    detail = '';
-  } else if (/^File\s+/i.test(rawName)) {
-    badge = '文件';
-    const filePath = rawName.replace(/^File\s+/i, '').trim();
-    const parts = filePath.split('/').filter(Boolean);
-    label = parts.length > 1 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : filePath;
-    detail = '';
-  } else if (/^(grep|rg|find|fd)\b/i.test(rawName)) {
-    badge = '检索';
-    label = rawName;
-    detail = '';
-  } else if (/^(python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(rawName)) {
-    badge = '命令';
-    label = rawName;
-    detail = '';
-  } else if (rawName.startsWith('duolabase:') || rawName.startsWith('duolabase_')) {
-    badge = 'DuolaBase';
-    label = rawName.replace(/^duolabase[:_]/, '');
-  } else if (/^(read|write|edit|view|list)/i.test(rawName)) {
-    badge = '文件';
+function formatToolTraceRow(item: ToolTraceItem) {
+  const name = item.name.trim();
+  const summary = item.summary?.trim() || '';
+  const raw = summary && summary !== name ? name + ' — ' + summary : name;
+  let label = '调用工具';
+  let detail = summary || name;
+  if (/ on Web$/i.test(name) || /^(websearch|google_web_search|联网检索)$/i.test(name)) {
+    label = '搜索网页';
+    detail = summary || name.replace(/ on Web$/i, '');
+  } else if (/^(File |read(?:_file)?$|view_file$|读取文件$)/i.test(name)) {
+    label = '读取文件';
+    detail = summary || name.replace(/^File /, '');
+  } else if (/^(edit|write|replace|apply_patch|编辑文件|写入文件)/i.test(name)) {
+    label = '编辑文件';
+  } else if (/^(grep|rg|find|fd)\b/i.test(name)) {
+    label = '检索文件';
+  } else if (/^(imageGeneration|生成图片)$/i.test(name)) {
+    label = '生成图片';
+  } else if (/^(执行命令|exec_command|run_shell_command|python3?|node|bash|sh|zsh|curl|git|npm|pnpm|yarn|ls|cat|sed|awk|mkdir|rm|cp|mv)\b/i.test(name) || name === '执行命令') {
+    label = '执行命令';
   }
+  if (detail === label || (detail === name && label !== '调用工具' && !/\s/.test(name))) detail = '';
+  if (label === '调用工具' && !summary) detail = detail.replace(/^Run mcp_/, '').replace(/^duolawork-space_space_/, 'space_');
+  return { label, detail, raw };
+}
 
-  if (detail && (label === detail || label.includes(detail) || detail.includes(label))) {
-    detail = '';
-  }
-
-  return { badge, label: label || '执行操作', detail, raw };
+function ToolTraceRow({ item }: { item: ToolTraceItem }) {
+  const [open, setOpen] = useState(false);
+  const row = formatToolTraceRow(item);
+  const state = item.status === 'error' ? '未完成' : item.status === 'running' ? '进行中' : '已完成';
+  const contents = <>
+    <span className="turn-tool-mark" role="img" aria-label={state}>
+      {item.status === 'done' ? <Check size={13} /> : item.status === 'error' ? <X size={12} /> : <Clock size={12} />}
+    </span>
+    <strong className="turn-tool-label">{row.label}</strong>
+    {row.detail && <span className="turn-tool-detail">{row.detail}</span>}
+  </>;
+  return <div className={`turn-tool-item status-${item.status}`}>
+    {row.detail ? <>
+      <button type="button" className="turn-tool-row" aria-expanded={open} title={row.raw} onClick={() => setOpen(!open)}>
+        {contents}
+      </button>
+      {open && <div className="turn-tool-full">{row.raw}</div>}
+    </> : <div className="turn-tool-row">{contents}</div>}
+  </div>;
 }
 
 const phaseLabels: Record<TurnPhase, string> = {
   processing: '正在处理', thinking: '正在思考', executing: '正在执行',
-  writing: '正在回复', queued: '正在排队', waiting_reply: '等待回复'
+  writing: '正在回复', queued: '正在排队', waiting_reply: '等待回复', reconnecting: '正在重连执行节点'
 };
 
 function executionLabel(tool?: ToolTraceItem): string {
@@ -247,6 +248,7 @@ export function App(): React.JSX.Element {
   const toolEventCount = useRef(0);
   const toolSnapshots = useRef<Record<string, ToolTraceItem[]>>({});
   const [streamingActivity, setStreamingActivity] = useState<Record<string, TurnActivity>>({});
+  const [resumingMessage, setResumingMessage] = useState<string | null>(null);
   const [streamDisconnected, setStreamDisconnected] = useState(!navigator.onLine);
   const [expandedToolMsgIds, setExpandedToolMsgIds] = useState<Record<string, boolean>>({});
   const [expandedHandoffIds, setExpandedHandoffIds] = useState<Record<string, boolean>>({});
@@ -531,7 +533,7 @@ export function App(): React.JSX.Element {
       const current = () => request === threadRequest.current && activeThreadIdRef.current === threadId;
       let data;
       try {
-        const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`);
+        const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`, { signal: AbortSignal.timeout(15_000) });
         if (!res.ok) throw new Error(String(res.status));
         data = await res.json();
       } catch {
@@ -576,6 +578,19 @@ export function App(): React.JSX.Element {
     () => (messagesThreadId === activeThreadId ? messages : []),
     [messagesThreadId, activeThreadId, messages]
   );
+
+  const waitingForTurn = visibleMessages.some(message => message.turnStatus === 'running');
+  useEffect(() => {
+    if (!streamDisconnected || !waitingForTurn || viewMode !== 'thread' || !activeThreadId) return;
+    // A proxy can block SSE while ordinary HTTP is already available.
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (pending || !navigator.onLine || document.hidden) return;
+      pending = true;
+      try { await loadThread(activeThreadId); } finally { pending = false; }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [streamDisconnected, waitingForTurn, viewMode, activeThreadId, loadThread]);
 
   // Historical replies can contain internal sync diagnostics with a guessed sender.
   // Only attribute a supplemental delivery to the authors of replies actually included.
@@ -1256,6 +1271,28 @@ export function App(): React.JSX.Element {
     });
   };
 
+  const continueTurn = async (message: ThreadMessageRecord) => {
+    if (resumingMessage) return;
+    setResumingMessage(message.id);
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}/continue`, { method: 'POST' });
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      if (activeThreadIdRef.current !== message.threadId) return;
+      await loadThread(message.threadId);
+      const notices: Record<string, string> = {
+        completed: '已找回原回复', waiting: '原任务仍在执行，收到回复后会自动显示',
+        stopping: '执行节点正在停止原任务，结束后可以继续',
+        unreachable: '暂时连不上原执行节点。可以等待重连，也可以切换在线成员后继续',
+        unavailable: '当前成员离线，恢复后可继续，也可以切换成员',
+        busy: '这段对话还有任务正在执行'
+      };
+      if (notices[result.status]) showChatNotice(notices[result.status]);
+    } catch {
+      showChatNotice('暂时连不上工作台。恢复连接后可以再次点继续。');
+    } finally { setResumingMessage(null); }
+  };
+
   const handleAbortTurn = async () => {
     const targetThreadId = activeThreadId;
     if (!targetThreadId) return;
@@ -1855,7 +1892,7 @@ export function App(): React.JSX.Element {
   const sending = Boolean(activeThreadId && sendingByThread[activeThreadId]);
   const currentOwner = activeThread ? memberById.get(activeThread.activeOwnerMemberId) : null;
   const showWorkspaceBinding = isLocalCodingMember(currentOwner) || Boolean(activeThread?.workspacePath);
-  const hasRunningTurn = sending || visibleMessages.some((m) => m.turnStatus === 'running');
+  const hasRunningTurn = sending || waitingForTurn;
   const ownerStatus = currentOwner?.status ?? 'ready';
   const ownerStatusClass =
     ownerStatus === 'ready'
@@ -2982,11 +3019,12 @@ export function App(): React.JSX.Element {
                       const activity = recent && recent.revision > (m.activity?.revision ?? 0) ? recent : m.activity;
                       const phase = activity?.phase ?? (activeTool ? 'executing' : streamingDeltas[m.id] ? 'writing' : 'processing');
                       const waitingReceipt = running && m.body === '执行结束，等待回执';
-                      const statusText = streamDisconnected ? '正在重新连接'
+                      const reconnecting = running && m.body === '正在恢复执行连接';
+                      const statusText = streamDisconnected ? '正在重新连接' : reconnecting ? '正在找回执行进度'
                         : waitingReceipt ? '执行结束，等待回执'
                         : phase === 'executing' ? executionLabel(activeTool) : phaseLabels[phase];
                       const displayBody = running
-                        ? streamingDeltas[m.id] || (waitingReceipt || m.body === '正在处理…' ? '' : m.body)
+                        ? streamingDeltas[m.id] || (waitingReceipt || reconnecting || m.body === '正在处理…' ? '' : m.body)
                         : m.turnStatus === 'failed' ? readableTurnFailure(m.body) : m.body;
 
                       return (
@@ -3049,10 +3087,6 @@ export function App(): React.JSX.Element {
                                       <span className="turn-tool-chevron">
                                         {showFullList ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                                       </span>
-                                      <i
-                                        className={`turn-tool-head-dot ${isRunningTurn ? 'is-running' : m.turnStatus === 'failed' || m.turnStatus === 'canceled' ? 'is-interrupted' : 'is-done'}`}
-                                        aria-hidden="true"
-                                      />
                                       <span className="turn-tool-summary-text">
                                         {isRunningTurn
                                           ? '操作记录'
@@ -3075,23 +3109,9 @@ export function App(): React.JSX.Element {
                                             展开前面已完成的 {hiddenLiveCount} 步…
                                           </button>
                                         )}
-                                        {visibleItems.map((t, idx) => {
-                                          const row = formatToolTraceRow(t);
-                                          return (
-                                            <div
-                                              key={`${t.id || t.name}-${idx}`}
-                                              className={`turn-tool-item status-${t.status}`}
-                                              title={row.raw}
-                                            >
-                                              <i aria-hidden="true" />
-                                              <em className="turn-tool-badge">{row.badge}</em>
-                                              <strong className="turn-tool-label">{row.label}</strong>
-                                              {row.detail && (
-                                                <span className="turn-tool-detail">{row.detail}</span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                        {visibleItems.map((item, idx) =>
+                                          <ToolTraceRow key={item.id || `${item.name}-${idx}`} item={item} />
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -3101,6 +3121,12 @@ export function App(): React.JSX.Element {
                               <div className="message-markdown">
                                 <MarkdownView text={displayBody} imageActions={chatImageActions} spaceResolver={chatSpaceResolver} />
                               </div>
+                            )}
+                            {['failed', 'canceled'].includes(m.turnStatus) && !isUser && !m.continuedByMessageId && !hasRunningTurn && (
+                              <button type="button" className="turn-materials-link turn-resume" disabled={Boolean(resumingMessage)}
+                                onClick={() => void continueTurn(m)}>
+                                <Play size={13} />{resumingMessage === m.id ? '正在核对进度…' : '继续处理'}
+                              </button>
                             )}
                             {m.turnStatus === 'failed' && spaceItems.length > 0 && (
                               <button type="button" className="turn-materials-link" onClick={() => {

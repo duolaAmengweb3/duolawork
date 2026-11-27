@@ -212,12 +212,14 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
   fs.writeFileSync(path.join(workspaceDir, 'hello.ts'), 'export const ok = true;\n');
 
   const mcpCalls: string[] = [];
+  let interruptDuringTool: (() => Promise<void>) | null = null;
   const app = new DuolaWorkApp({
     dbPath: path.join(tmpDir, 'cloud.sqlite'),
     filesDir: path.join(tmpDir, 'files'),
     autoImportAgentHub: false,
     externalMcpCaller: async (toolName) => {
       mcpCalls.push(toolName);
+      if (interruptDuringTool) await interruptDuringTool();
       return { items: [{ id: 'conn_1', name: 'Gmail' }] };
     }
   });
@@ -311,6 +313,33 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     assert.equal(turnOut.agentMessage.body, '来自跨机 Execution Node 的稳定回复！');
     assert.equal(vaultRevealBlocked, true, 'Cloud sandbox MUST block vault_reveal from remote node');
     assert.ok(mcpCalls.includes('connector_list'));
+
+    // Sever the actual runner socket after accepting a tool call but before delivering its result.
+    const startingCalls = mcpCalls.length;
+    const priorDispatches = nodeMockDriver.recordedPrompts.length;
+    const disconnect = () => (runner as unknown as { ws: { terminate(): void } }).ws.terminate();
+    interruptDuringTool = async () => {
+      interruptDuringTool = null;
+      disconnect();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(app.nodeHub.isNodeOnline(node.id), false);
+      const interrupted = app.threads.listMessages(thread.id).at(-1)!;
+      assert.equal(interrupted.turnStatus, 'running');
+      assert.equal(interrupted.activity?.phase, 'reconnecting');
+    };
+    nodeMockDriver.handlers.set('mem_remote_node_agent', async input => {
+      const original = await input.onToolCall!('duolabase:connector_list', {});
+      assert.ok(original);
+      // A second outage occurs before a different tool is submitted.
+      disconnect();
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.ok(await input.onToolCall!('duolabase:connector_list', {}));
+      return { text: '断线后两次工具回执都已收到' };
+    });
+    const resumed = await app.threads.sendUserMessage({ threadId: thread.id, body: '断线续执行', timeoutMs: 12_000 });
+    assert.equal(resumed.agentMessage.body, '断线后两次工具回执都已收到');
+    assert.equal(nodeMockDriver.recordedPrompts.length - priorDispatches, 1);
+    assert.equal(mcpCalls.length - startingCalls, 2);
 
     // 4. Remote workspace browse allowlist check + thread workspace-files node proxy
     const allowedLs = await fetch(

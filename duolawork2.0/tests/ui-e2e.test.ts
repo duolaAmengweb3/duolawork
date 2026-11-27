@@ -856,6 +856,38 @@ test('chat shows one animated status for the current turn, restores live phases 
     await page.getByText('已完成测试', {exact:true}).waitFor();
     await page.getByText('已执行 23 项操作', {exact:true}).waitFor();
     assert.equal(await status.count(), 0);
+
+    // A dropped upstream request remains in recovery; the manual action checks its terminal state.
+    app.registry.mockDriver.handlers.set(member.id, async () => { throw new Error('DISCONNECT'); });
+    const lost = await app.threads.sendUserMessage({threadId: thread.id, body:'核验目标 3472'});
+    assert.equal(lost.agentMessage.turnStatus, 'running');
+    await shows('正在找回执行进度');
+    await app.registry.reconcileInFlightAttempts();
+    app.threads.syncReconciledThreadTurns();
+    const resume = page.getByRole('button', {name:'继续处理',exact:true});
+    await resume.waitFor();
+    let resumes = 0;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    app.registry.mockDriver.handlers.set(member.id, async input => {
+      assert.ok(input.prompt.includes('原始请求：核验目标 3472'));
+      assert.ok(input.prompt.includes('回执'));
+      resumes++;
+      await gate;
+      return {text:'已接续 3472'};
+    });
+    const endpoint = '/api/v2/threads/' + thread.id + '/messages/' + lost.agentMessage.id + '/continue';
+    await resume.click();
+    await page.getByText('从上次中断处继续', {exact:true}).waitFor();
+    const duplicate = await page.evaluate(url => fetch(url, {method:'POST'}).then(r => r.status), endpoint);
+    assert.equal(duplicate, 202);
+    release();
+    await page.getByText('已接续 3472', {exact:true}).waitFor();
+    await page.reload();
+    await page.getByText('已接续 3472', {exact:true}).waitFor();
+    assert.equal(await resume.count(), 0);
+    assert.equal(resumes, 1);
+
   } finally {
     finish?.();
     await browser.close();

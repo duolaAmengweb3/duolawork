@@ -162,7 +162,7 @@ export interface ThreadRecord {
 export type MessageAuthorKind = 'user' | 'agent' | 'system_task_card' | 'switch_notice';
 export type TurnStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
-export const turnPhases = ['processing', 'thinking', 'executing', 'writing', 'queued', 'waiting_reply'] as const;
+export const turnPhases = ['processing', 'thinking', 'executing', 'writing', 'queued', 'waiting_reply', 'reconnecting'] as const;
 export type TurnPhase = typeof turnPhases[number];
 
 export interface TurnActivity {
@@ -232,6 +232,7 @@ export interface ThreadMessageRecord {
   body: string;
   artifactRefs: string[];
   toolTrace?: ToolTraceItem[];
+  continuedByMessageId?: string;
   activity?: TurnActivity;
   handoffMeta?: HandoffNoticeMeta | null;
   clarificationCard?: ClarificationCardData | null;
