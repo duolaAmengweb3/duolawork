@@ -257,6 +257,9 @@ export class DuolaWorkDatabase {
         settled_at TEXT
       );
 
+      CREATE INDEX IF NOT EXISTS idx_v2_member_dispatch_time
+      ON v2_dispatch_attempts(member_id, dispatched_at DESC);
+
       CREATE TABLE IF NOT EXISTS v2_scoped_tokens (
         token TEXT PRIMARY KEY,
         principal_kind TEXT NOT NULL,

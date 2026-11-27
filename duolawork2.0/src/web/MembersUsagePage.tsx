@@ -91,6 +91,8 @@ export function MembersUsagePage({
   useEffect(() => {
     void loadUsage();
     void loadSessions();
+    const timer = window.setInterval(() => { if (!document.hidden) void loadUsage(); }, 15000);
+    return () => window.clearInterval(timer);
   }, [loadUsage, loadSessions, members.length]);
 
   const handleGenerateNodePair = async (kind: 'cloud' | 'local') => {
@@ -218,6 +220,10 @@ export function MembersUsagePage({
     );
   });
 
+  const dispatchLabels = {
+    succeeded: '已收到回执', failed: '失败', timed_out: '等待超时', late_ignored: '迟到回执已忽略',
+    prepared: '准备中', dispatched: '已投递', running: '执行中', reconciling: '正在核对回执'
+  };
   const readyCount = members.filter((m) => m.status === 'ready').length;
 
   return (
@@ -391,7 +397,7 @@ export function MembersUsagePage({
         </div>
         <div className="members-summary">
           <i aria-hidden="true" />
-          <span>在线就绪 {readyCount} / {members.length}</span>
+          <span>可派单 {readyCount} / {members.length}</span>
         </div>
       </div>
 
@@ -435,6 +441,13 @@ export function MembersUsagePage({
                           <span className="member-caption">
                             {m.statusMessage} · 并发上限 {m.capabilities.maxConcurrentRuns}
                           </span>
+                          {m.config.hubTransport === 'grok-webhook' && (
+                            <span className="member-caption">
+                              {sum?.lastDispatchStatus && sum.lastActiveAt
+                                ? `最近派单 ${new Date(sum.lastActiveAt).toLocaleString('zh-CN')} · ${dispatchLabels[sum.lastDispatchStatus]}`
+                                : sum ? '暂无派单记录' : '正在读取派单记录…'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -444,7 +457,7 @@ export function MembersUsagePage({
                     <td>
                       <span className={`member-status ${isReady ? 'is-ready' : 'is-pending'}`}>
                         <i aria-hidden="true" />
-                        <span>{statusLabels[m.status] || m.status}</span>
+                        <span>{isReady && m.config.hubTransport === 'grok-webhook' ? '按需投递' : statusLabels[m.status] || m.status}</span>
                       </span>
                     </td>
                     <td>

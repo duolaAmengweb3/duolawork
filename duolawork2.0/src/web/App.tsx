@@ -1541,7 +1541,7 @@ export function App(): React.JSX.Element {
           : 'offline';
   const ownerStatusLabel =
     ownerStatus === 'ready'
-      ? '在线'
+      ? (currentOwner?.config.hubTransport === 'grok-webhook' ? '按需投递' : '在线')
       : ownerStatus === 'busy'
         ? '执行中'
         : ownerStatus === 'auth_required'

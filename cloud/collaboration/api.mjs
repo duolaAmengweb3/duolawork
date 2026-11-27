@@ -338,12 +338,35 @@ async function readDocument(repo, actor, documentId) {
     : null;
   return { ...document, original, working, candidate };
 }
+async function noteSuccessfulInboxPoll(repo, memberId) {
+  if (!memberId) return;
+  const now = Date.now();
+  // Telemetry has its own row so concurrent connection edits cannot erase it.
+  await repo.db.prepare(`INSERT INTO hub_v2_records(workspace_id,kind,id,revision,updated_at,body)
+    SELECT workspace_id,'receiver_poll',id,1,?,'{}' FROM hub_v2_records
+    WHERE workspace_id=? AND kind='connection' AND id=? AND json_extract(body,'$.transport')='muse-poll'
+    ON CONFLICT(workspace_id,kind,id) DO UPDATE SET updated_at=excluded.updated_at
+    WHERE updated_at < ?`).bind(new Date(now).toISOString(), repo.workspaceId, memberId,
+      new Date(now - 10000).toISOString()).run();
+}
+
+async function readLastInboxPoll(repo, connection) {
+  if (connection.transport !== 'muse-poll') return null;
+  const row = await repo.db.prepare("SELECT updated_at FROM hub_v2_records WHERE workspace_id=? AND kind='receiver_poll' AND id=?")
+    .bind(repo.workspaceId, connection.id).first();
+  return row?.updated_at || null;
+}
+
 export async function callTool(repo, identity, actor, name, args, env, options = {}) {
   let canonical;
   try{
     canonical=normalizeToolArguments(name,args);
     validateToolArguments(TOOLS.find(t=>t.name===name),canonical);
-    return await dispatchTool(repo,identity,actor,name,canonical,env,options);
+    const result = await dispatchTool(repo,identity,actor,name,canonical,env,options);
+    if (name === "receive_messages" || name === "list_work" || (name === "claim_work" && (canonical.stepId === "inbox" || canonical.stepId?.startsWith("inbox:after:")))) {
+      await noteSuccessfulInboxPoll(repo, actor.memberId);
+    }
+    return result;
   }catch(error){
     const turnId=canonical?.turnId||(name==='submit_work'&&canonical?.attemptId?.startsWith('turn_')?canonical.attemptId:null);
     if(actor.memberId&&['stay_silent','post_message','submit_work'].includes(name)&&typeof turnId==='string')try{
@@ -728,6 +751,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if(url.pathname==='/v2/self/inbox'&&request.method==='GET'){
     if(!actor.memberId)fail('member_required','需要成员身份',403);
     const [chat,work]=await Promise.all([conversationWork(repo,identity,actor.memberId,{delivery:true}),workForMember(repo,identity,actor.memberId)]);
+    await noteSuccessfulInboxPoll(repo, actor.memberId);
     return json({work:[...chat,...work]});
   }
   if (url.pathname === "/v2/self/status" && request.method === "GET") return json(await selfStatus(repo, actor, url.origin));
@@ -739,6 +763,7 @@ export async function v2Fetch(request, env, ctx, identity) {
   if (url.pathname === "/v2/signal" && request.method === "GET") {
     if (!actor.memberId) fail("member_required", "需要成员身份", 403);
     const work = [...await conversationWork(repo,identity,actor.memberId),...await workForMember(repo, identity, actor.memberId)];
+    await noteSuccessfulInboxPoll(repo, actor.memberId);
     return json({
       hasWork: work.some((x) => x.status === "ready"),
       pending: work.filter((x) => x.status === "ready").length,
@@ -870,6 +895,7 @@ export async function v2Fetch(request, env, ctx, identity) {
       connections: await Promise.all(
         (await repo.list("connection")).map(async (c) => ({
           ...publicConnection(c),
+          lastPollAt: await readLastInboxPoll(repo, c),
           authSeenAt: c.authSeenAt || c.toolSeenAt,
           authorizedAt:
             (

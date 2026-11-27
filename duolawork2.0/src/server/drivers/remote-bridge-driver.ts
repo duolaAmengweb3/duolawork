@@ -70,6 +70,9 @@ export function evaluateHubChannelMemberHealth(
 ): { status: MemberRecord['status']; message: string } {
   const transport = String(conn?.transport || remoteMember?.mode || fallbackTransport);
 
+  if (remoteMember?.paused === true || remoteMember?.status === 'disabled') {
+    return { status: 'offline', message: '成员已暂停接收' };
+  }
   if (conn?.needsAuthorization === true) {
     return {
       status: 'auth_required',
@@ -77,69 +80,35 @@ export function evaluateHubChannelMemberHealth(
     };
   }
 
-  // Cloud-to-cloud push webhooks (grok-webhook):
-  // Never keep a persistent SSE subscription (`subscriptionActive` is always false by design)
-  // and do not depend on legacy browser-mode `browserPaused` flags once verified on webhook.
-  if (transport === 'grok-webhook') {
-    if (conn?.status === 'verified') {
-      return { status: 'ready', message: `已连接 (${transport})` };
-    }
-    if (conn?.status === 'configured') {
-      return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
-    }
-    return { status: 'offline', message: `Webhook 连接暂未就绪 (${transport})` };
-  }
-
-  // Cloud-to-cloud event push (dots-events, e.g. Dot):
-  // `authSeenAt` only updates when invoked on demand, not via idle heartbeats.
-  if (transport === 'dots-events') {
-    if (conn?.status === 'verified' && conn?.subscriptionActive !== false) {
-      return { status: 'ready', message: `已连接 (${transport})` };
-    }
-    if (conn?.status === 'configured') {
-      return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
-    }
-    return { status: 'offline', message: `事件订阅未激活 (${transport})` };
-  }
-
-  // Polling / local browser connectors (muse-poll, browser):
-  if (
-    localConn &&
-    (localConn.browserPaused === true || String(localConn.message || '').includes('已关闭'))
-  ) {
-    return {
-      status: 'offline',
-      message: `专用浏览器未开启 (${transport})`
-    };
-  }
-
-  if (conn?.status === 'verified') {
-    const seenIso = String(
-      conn.authSeenAt || conn.toolSeenAt || remoteMember?.lastSeenAt || ''
-    ).trim();
-    const seenMs = seenIso ? Date.parse(seenIso) : Number.NaN;
-    if (conn.subscriptionActive === true || (Number.isFinite(seenMs) && Date.now() - seenMs <= 24 * 3600_000)) {
-      return {
-        status: 'ready',
-        message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
-      };
-    }
-    return {
-      status: 'offline',
-      message: `本机/轮询接收端暂未运行 (${transport})`
-    };
-  }
-
   if (conn?.status === 'configured') {
-    return { status: 'auth_required', message: `已配置 (${transport})，待完成首轮连接验证` };
+    return { status: 'auth_required', message: `待完成首次连接验证 (${transport})` };
   }
-  if (remoteMember?.status === 'ready' || localConn?.status === 'ready') {
-    return {
-      status: 'ready',
-      message: localConn?.status === 'ready' ? `专用浏览器已连接 (${transport})` : `已连接 (${transport})`
-    };
+  if (conn?.status !== 'verified') {
+    return { status: 'offline', message: `未确认接收端可用 (${transport})` };
   }
-  return { status: 'offline', message: `远端成员暂未在线 (${transport})` };
+  if (transport === 'grok-webhook') {
+    return { status: 'ready', message: 'Webhook 已验证，可按需投递' };
+  }
+  if (transport === 'dots-events') {
+    return conn.subscriptionActive === true
+      ? { status: 'ready', message: '事件订阅有效' }
+      : { status: 'offline', message: '事件订阅未激活' };
+  }
+  if (localConn?.browserPaused === true || localConn?.message?.includes('已关闭')) {
+    return { status: 'offline', message: '专用浏览器已关闭' };
+  }
+  if (transport === 'muse-poll') {
+    const interval = Number(conn.pollSeconds);
+    const intervalMs = Number.isFinite(interval) && interval > 0 ? interval * 1000 : 15000;
+    const ageMs = Date.now() - Date.parse(conn.lastPollAt || '');
+    if (ageMs >= 0 && ageMs <= Math.max(45000, 3 * intervalMs)) {
+      return { status: 'ready', message: '接收端近期已成功轮询' };
+    }
+    return { status: 'offline', message: '未收到近期成功轮询' };
+  }
+  return conn.subscriptionActive === true
+    ? { status: 'ready', message: `事件订阅有效 (${transport})` }
+    : { status: 'offline', message: `未确认接收端可用 (${transport})` };
 }
 
 /**
@@ -155,7 +124,7 @@ export class RemoteBridgeDriver implements AgentDriver {
   public readonly kind = 'remote-bridge' as const;
   private readonly abortedAttempts = new Set<string>();
 
-  private loadHubCredentials(member: MemberRecord): HubConfigFile {
+  private loadHubCredentials(member: Pick<MemberRecord, 'config'>): HubConfigFile {
     const explicitPath =
       typeof member.config.agentHubConfigPath === 'string'
         ? member.config.agentHubConfigPath
@@ -275,26 +244,24 @@ export class RemoteBridgeDriver implements AgentDriver {
     if (remoteMode === 'hub-channel') {
       const creds = this.loadHubCredentials(input.member);
       // Fast liveness guard: fail immediately if the legacy 1.9.6 receiver is explicitly disconnected/inactive
-      const ws = await this.hubRequest<any>(creds, '/v2/workspace').catch(() => null);
-      if (ws) {
-        const remoteMember = Array.isArray(ws?.members)
-          ? ws.members.find((m: any) => m.id === input.member.id)
-          : null;
-        const conn = Array.isArray(ws?.connections)
-          ? ws.connections.find((c: any) => c.id === input.member.id)
-          : null;
-        const localConn = this.readLocalAgentConnection(input.member);
-        const liveHealth = evaluateHubChannelMemberHealth(
-          conn,
-          remoteMember,
-          localConn,
-          String(input.member.config.hubTransport || 'connector')
+      const ws = await this.hubRequest<any>(creds, '/v2/workspace');
+      const remoteMember = Array.isArray(ws?.members)
+        ? ws.members.find((m: any) => m.id === input.member.id)
+        : null;
+      const conn = Array.isArray(ws?.connections)
+        ? ws.connections.find((c: any) => c.id === input.member.id)
+        : null;
+      const localConn = this.readLocalAgentConnection(input.member);
+      const liveHealth = evaluateHubChannelMemberHealth(
+        conn,
+        remoteMember,
+        localConn,
+        String(input.member.config.hubTransport || 'connector')
+      );
+      if (liveHealth.status !== 'ready' && liveHealth.status !== 'busy') {
+        throw new Error(
+          `成员「${input.member.name}」当前不可用（${liveHealth.message}），请改派给在线成员（如 Gemini2VPS、Codex、Gemini 本机）或先启动对应连接器`
         );
-        if (liveHealth.status !== 'ready' && liveHealth.status !== 'busy') {
-          throw new Error(
-            `成员「${input.member.name}」当前不可用（${liveHealth.message}），请改派给在线成员（如 Gemini2VPS、Codex、Gemini 本机）或先启动对应连接器`
-          );
-        }
       }
       if (existingChannelId) {
         return {
@@ -471,6 +438,7 @@ export class RemoteBridgeDriver implements AgentDriver {
     const timeoutMs = input.timeoutMs ?? 900_000;
     const deadline = Date.now() + timeoutMs;
     let consecutivePollErrors = 0;
+    let waitingForReceipt = false;
 
     while (Date.now() < deadline) {
       if (this.abortedAttempts.has(input.attemptId)) {
@@ -488,6 +456,10 @@ export class RemoteBridgeDriver implements AgentDriver {
         }
         await new Promise((r) => setTimeout(r, 3000));
         continue;
+      }
+      if (rec.waitingForReceipt && !waitingForReceipt) {
+        waitingForReceipt = true;
+        onEvent?.({ kind: 'waiting_for_receipt' });
       }
       if (rec.state === 'completed') {
         return {
@@ -507,8 +479,8 @@ export class RemoteBridgeDriver implements AgentDriver {
   }
 
   public async reconcileAttempt(
-    member: MemberRecord,
-    attempt: DispatchAttemptRecord
+    member: Pick<MemberRecord, 'id' | 'config'>,
+    attempt: Pick<DispatchAttemptRecord, 'bridgeMeta'>
   ): Promise<ReconcileResult> {
     const bridgeChannelId = String(attempt.bridgeMeta?.bridgeChannelId || '');
     const bridgeMessageId = String(attempt.bridgeMeta?.bridgeMessageId || '');
@@ -532,36 +504,42 @@ export class RemoteBridgeDriver implements AgentDriver {
     bridgeChannelId: string,
     bridgeMessageId: string
   ): Promise<ReconcileResult> {
-    const d = await this.hubRequest<any>(
-      creds,
-      `/v2/channel?id=${encodeURIComponent(bridgeChannelId)}`
-    );
-    const messages: any[] = Array.isArray(d?.messages) ? d.messages : [];
-    const bridgeMsg = messages.find((m) => m.id === bridgeMessageId);
+    const route = `/v2/channel?id=${encodeURIComponent(bridgeChannelId)}&view=chat`;
+    const d = await this.hubRequest<any>(creds, route);
+    let messages: any[] = Array.isArray(d?.messages) ? d.messages : [];
+    let bridgeMsg = messages.find((m) => m.id === bridgeMessageId);
     const activities: any[] = Array.isArray(d?.activity) ? d.activity : [];
-    const matchingTurns = activities.filter((t) => t.messageId === bridgeMessageId);
-    const doneTurn =
-      matchingTurns.find((t) => t.status === 'done' || t.status === 'completed') ?? matchingTurns[0];
-
-    let reply = messages.find(
-      (m) => m.authorId === memberId && m.replyTo === bridgeMessageId && String(m.body || '').trim()
+    const matchingTurns = activities.filter((t) =>
+      t.messageId === bridgeMessageId && t.memberId === memberId
     );
-    if (!reply && matchingTurns.some((t) => t.status === 'done' || t.status === 'completed')) {
-      const candidates = messages.filter(
-        (m) =>
-          m.authorId === memberId &&
-          String(m.body || '').trim().length > 0 &&
-          (!bridgeMsg?.createdAt || String(m.createdAt || '') >= String(bridgeMsg.createdAt))
-      );
-      reply = candidates[candidates.length - 1];
+    const doneTurn = matchingTurns.find((t) => t.status === 'done' || t.status === 'completed');
+    const belongsToAttempt = (m: any) => {
+      if (m.authorId !== memberId || m.hidden || !String(m.body || '').trim()) return false;
+      if (m.type && m.type !== 'message') return false;
+      if (m.replyTo && m.replyTo !== bridgeMessageId) return false;
+      if (m.usageTurnId) {
+        const turn = activities.find((t) => t.id === m.usageTurnId);
+        if (turn) return turn.messageId === bridgeMessageId && turn.memberId === memberId;
+      }
+      return m.replyTo === bridgeMessageId;
+    };
+    let reply = messages.find(belongsToAttempt);
+    let before: number | null = d?.before;
+    while (!reply && !bridgeMsg && typeof before === 'number' && before > 0) {
+      const page = await this.hubRequest<any>(creds, `${route}&before=${before}`);
+      messages = Array.isArray(page?.messages) ? page.messages : [];
+      reply = messages.find(belongsToAttempt);
+      bridgeMsg = messages.find((m) => m.id === bridgeMessageId);
+      before = typeof page?.before === 'number' && page.before < before ? page.before : null;
     }
 
     if (reply) {
+      const replyTurn = matchingTurns.find((t) => t.id === reply.usageTurnId) ?? doneTurn;
       return {
         state: 'completed',
         text: String(reply.body || '').trim(),
-        nativeSessionId: doneTurn?.nativeSessionId ? String(doneTurn.nativeSessionId) : null,
-        nativeTurnId: doneTurn?.id ? String(doneTurn.id) : String(reply.id),
+        nativeSessionId: replyTurn?.nativeSessionId ? String(replyTurn.nativeSessionId) : null,
+        nativeTurnId: String(reply.usageTurnId || replyTurn?.id || reply.id),
         providerUsage: parseBridgeTokenUsage(reply.tokenUsage)
       };
     }
@@ -588,7 +566,7 @@ export class RemoteBridgeDriver implements AgentDriver {
     const issue = Array.isArray(d?.deliveryIssues)
       ? d.deliveryIssues.find(
           (i: any) =>
-            i.messageId === bridgeMessageId &&
+            i.messageId === bridgeMessageId && (!i.memberId || i.memberId === memberId) &&
             (i.status === 'needs_user' ||
               i.status === 'failed' ||
               i.status === 'abandoned' ||
@@ -615,7 +593,8 @@ export class RemoteBridgeDriver implements AgentDriver {
       }
     }
     return {
-      state: 'still_running'
+      state: 'still_running',
+      waitingForReceipt: Boolean(doneTurn)
     };
   }
 
