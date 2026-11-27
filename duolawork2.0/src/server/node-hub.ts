@@ -47,7 +47,7 @@ export interface NodeHelloMember {
 }
 
 export class ExecutionNodeHub {
-  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
+  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 40 * 1024 * 1024 });
   private readonly liveSockets = new Map<string, LiveNodeSocket>();
   private readonly pendingRpcs = new Map<string, PendingRpc>();
   private readonly activeTurns = new Map<string, ActiveNodeTurn>();
@@ -622,7 +622,8 @@ export class ExecutionNodeHub {
         scopeKey: input.scopeKey,
         cwd: input.cwd,
         existingNativeSessionId: input.existingNativeSessionId ?? null,
-        dynamicTools: input.dynamicTools ?? []
+        dynamicTools: input.dynamicTools ?? [],
+        mcpServers: input.mcpServers ?? []
       },
       45_000
     );
@@ -670,7 +671,9 @@ export class ExecutionNodeHub {
         prompt: input.prompt,
         fallbackFullPrompt: input.fallbackFullPrompt ?? null,
         timeoutMs: input.timeoutMs ?? 900_000,
-        dynamicTools: input.dynamicTools ?? []
+        dynamicTools: input.dynamicTools ?? [],
+        mcpServers: input.mcpServers ?? [],
+        ...(input.images && input.images.length > 0 ? { images: input.images } : {})
       });
     });
   }

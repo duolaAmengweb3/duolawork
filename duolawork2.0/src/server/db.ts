@@ -306,6 +306,18 @@ export class DuolaWorkDatabase {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS v2_chat_images (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES v2_threads(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'image/png',
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        storage_rel_path TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        uploader_id TEXT NOT NULL DEFAULT 'owner',
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS v2_space_links (
         id TEXT PRIMARY KEY,
         thread_id TEXT NOT NULL REFERENCES v2_threads(id) ON DELETE CASCADE,

@@ -239,6 +239,7 @@ export class DuolaWorkApp {
       return cfg ? [cfg] : [];
     };
     this.tasks.space = this.space;
+    this.threads.space = this.space;
     this.tasks.scopedToolExecutor = (claims, toolName, args) =>
       this.executeScopedAgentTool(claims, toolName, args);
 
@@ -665,13 +666,23 @@ export class DuolaWorkApp {
     if (toolName === 'space_list_materials') {
       const space = this.space.listSpace(claims.threadId);
       return {
+        folders: space.folders.map((f) => ({
+          id: f.id,
+          title: f.title,
+          parentFolderId: f.parentFolderId,
+          path: this.space.getFolderPath(claims.threadId, f.id)
+        })),
         items: space.items.map((it) => ({
           kind: it.kind,
           id: it.id,
           title: it.title,
+          folderId: it.folderId,
+          folderPath: this.space.getFolderPath(claims.threadId, it.folderId),
           version: it.version,
+          mimeType: it.mimeType,
           sizeBytes: it.sizeBytes,
           url: it.url,
+          updatedAt: it.updatedAt,
           excerpt: it.excerpt
         }))
       };
@@ -684,6 +695,219 @@ export class DuolaWorkApp {
         throw new Error('请指定有效的资料类型 (document/file/link) 与 ID');
       }
       return this.space.readMaterialForAgent(claims.threadId, kind, id);
+    }
+
+    if (toolName === 'space_create_folder') {
+      const rawPath = typeof args.path === 'string' && args.path.trim() ? args.path.trim() : '';
+      const rawTitle = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : '';
+      const parentFolderId =
+        typeof args.parentFolderId === 'string' && args.parentFolderId.trim()
+          ? args.parentFolderId.trim()
+          : null;
+      const targetSpec = rawPath || rawTitle;
+      if (!targetSpec) {
+        throw new Error('请提供文件夹名称 (title) 或路径 (path)');
+      }
+      const folder = this.space.ensureFolderPath(claims.threadId, targetSpec, parentFolderId);
+      this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      return {
+        ok: true,
+        folder,
+        path: this.space.getFolderPath(claims.threadId, folder.id)
+      };
+    }
+
+    if (toolName === 'space_save_file') {
+      let name = typeof args.name === 'string' ? args.name.trim() : '';
+      let dataBase64 = typeof args.dataBase64 === 'string' ? args.dataBase64 : undefined;
+      const content = typeof args.content === 'string' ? args.content : undefined;
+      const localPath = typeof args.localPath === 'string' ? args.localPath.trim() : '';
+
+      // If running directly on the same host (without remote node-runner hydration), hydrate localPath here
+      if (localPath && !dataBase64 && content === undefined) {
+        const resolved = path.resolve(localPath);
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+          throw new Error(`找不到本地文件: ${localPath}`);
+        }
+        const st = fs.statSync(resolved);
+        if (st.size === 0) throw new Error(`本地文件为空: ${localPath}`);
+        if (st.size > 24 * 1024 * 1024) throw new Error(`单个文件超过 24 MiB 限制: ${localPath}`);
+        dataBase64 = fs.readFileSync(resolved).toString('base64');
+        if (!name) name = path.basename(resolved);
+      }
+
+      if (!name) {
+        throw new Error('请提供文件名 (name)');
+      }
+      const saved = this.space.saveOrUpdateFileForAgent({
+        threadId: claims.threadId,
+        name,
+        content,
+        dataBase64,
+        mimeType: typeof args.mimeType === 'string' ? args.mimeType : undefined,
+        folderId: typeof args.folderId === 'string' ? args.folderId : null,
+        folderPath: typeof args.folderPath === 'string' ? args.folderPath : undefined,
+        uploaderId: claims.memberId,
+        replaceExisting: args.replaceExisting !== false
+      });
+      this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      const previewUrl = `/api/v2/space/files/${encodeURIComponent(saved.file.id)}`;
+      return {
+        ok: true,
+        kind: 'file',
+        id: saved.file.id,
+        name: saved.file.name,
+        mimeType: saved.file.mimeType,
+        sizeBytes: saved.file.sizeBytes,
+        folderId: saved.folderId,
+        folderPath: saved.folderPath,
+        replaced: saved.replaced,
+        updatedAt: saved.file.updatedAt,
+        previewUrl,
+        ...(saved.file.mimeType.startsWith('image/')
+          ? { markdownEmbed: `![${saved.file.name}](${previewUrl})` }
+          : {})
+      };
+    }
+
+    if (toolName === 'chat_attach_image') {
+      let name = typeof args.name === 'string' ? args.name.trim() : '';
+      let dataBase64 = typeof args.dataBase64 === 'string' ? args.dataBase64 : undefined;
+      const localPath = typeof args.localPath === 'string' ? args.localPath.trim() : '';
+
+      if (localPath && !dataBase64) {
+        const resolved = path.resolve(localPath);
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+          throw new Error(`找不到本地图片: ${localPath}`);
+        }
+        const st = fs.statSync(resolved);
+        if (st.size === 0) throw new Error(`本地图片为空: ${localPath}`);
+        if (st.size > 24 * 1024 * 1024) throw new Error(`图片超过 24 MiB 限制: ${localPath}`);
+        dataBase64 = fs.readFileSync(resolved).toString('base64');
+        if (!name) name = path.basename(resolved);
+      }
+
+      if (!dataBase64) throw new Error('请提供图片内容 (localPath 或 dataBase64)');
+      if (!name) name = 'image.png';
+      const cleanedB64 = dataBase64.replace(/^data:[^;]+;base64,/i, '').replace(/\s+/g, '');
+      const buf = Buffer.from(cleanedB64, 'base64');
+      const saved = this.space.saveChatImageBuffer({
+        threadId: claims.threadId,
+        name,
+        mimeType: typeof args.mimeType === 'string' ? args.mimeType : undefined,
+        buffer: buf,
+        uploaderId: claims.memberId
+      });
+      const alt = typeof args.alt === 'string' && args.alt.trim() ? args.alt.trim() : saved.name;
+      return {
+        ok: true,
+        id: saved.id,
+        name: saved.name,
+        mimeType: saved.mimeType,
+        sizeBytes: saved.sizeBytes,
+        url: saved.url,
+        markdownEmbed: `![${alt}](${saved.url})`
+      };
+    }
+
+    if (toolName === 'space_save_document') {
+      const title = typeof args.title === 'string' ? args.title.trim() : '';
+      const content = typeof args.content === 'string' ? args.content : '';
+      if (!title) throw new Error('请提供文档标题 (title)');
+      const saved = this.space.saveOrUpdateDocumentForAgent({
+        threadId: claims.threadId,
+        title,
+        content,
+        documentId: typeof args.documentId === 'string' ? args.documentId : null,
+        folderId:
+          args.folderId === null
+            ? null
+            : typeof args.folderId === 'string'
+              ? args.folderId
+              : undefined,
+        folderPath: typeof args.folderPath === 'string' ? args.folderPath : undefined,
+        writerId: claims.memberId,
+        attemptId: claims.attemptId
+      });
+      this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      return {
+        ok: true,
+        kind: 'document',
+        id: saved.artifact.id,
+        title: saved.artifact.title,
+        version: saved.artifact.headVersion,
+        folderId: saved.folderId,
+        folderPath: saved.folderPath,
+        created: saved.created,
+        updatedAt: saved.artifact.updatedAt
+      };
+    }
+
+    if (toolName === 'space_save_link') {
+      const title = typeof args.title === 'string' ? args.title.trim() : '';
+      const urlStr = typeof args.url === 'string' ? args.url.trim() : '';
+      if (!urlStr) throw new Error('请提供有效链接地址 (url)');
+      const folderId = this.space.resolveTargetFolderId(claims.threadId, {
+        folderId: typeof args.folderId === 'string' ? args.folderId : null,
+        folderPath: typeof args.folderPath === 'string' ? args.folderPath : undefined
+      });
+      const link = this.space.createLink({
+        threadId: claims.threadId,
+        title: title || urlStr,
+        url: urlStr,
+        note: typeof args.note === 'string' ? args.note : '',
+        folderId
+      });
+      this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      return {
+        ok: true,
+        kind: 'link',
+        id: link.id,
+        title: link.title,
+        url: link.url,
+        folderId,
+        folderPath: this.space.getFolderPath(claims.threadId, folderId)
+      };
+    }
+
+    if (toolName === 'space_move_item') {
+      const kind = String(args.kind || '') as SpaceItemKind;
+      const id = String(args.id || '').trim();
+      if (!['document', 'file', 'link'].includes(kind) || !id) {
+        throw new Error('请指定有效的资料类型 (document/file/link) 与 ID');
+      }
+      // Enforce thread scope before mutating
+      const active = this.space.listSpace(claims.threadId).items.find((it) => it.kind === kind && it.id === id);
+      if (!active) {
+        throw new Error('协作空间资料不存在或不属于当前对话');
+      }
+      let nextFolderId: string | null | undefined = undefined;
+      if (args.folderId === null || args.folderPath === '') {
+        nextFolderId = null;
+      } else if (
+        (typeof args.folderId === 'string' && args.folderId.trim()) ||
+        (typeof args.folderPath === 'string' && args.folderPath.trim())
+      ) {
+        nextFolderId = this.space.resolveTargetFolderId(claims.threadId, {
+          folderId: typeof args.folderId === 'string' ? args.folderId : null,
+          folderPath: typeof args.folderPath === 'string' ? args.folderPath : undefined
+        });
+      }
+      if (nextFolderId !== undefined) {
+        this.space.mutateItem({ kind, id, action: 'move', folderId: nextFolderId });
+      }
+      if (typeof args.title === 'string' && args.title.trim()) {
+        this.space.mutateItem({ kind, id, action: 'rename', title: args.title.trim() });
+      }
+      this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      const finalFolderId = nextFolderId !== undefined ? nextFolderId : active.folderId;
+      return {
+        ok: true,
+        kind,
+        id,
+        folderId: finalFolderId,
+        folderPath: this.space.getFolderPath(claims.threadId, finalFolderId)
+      };
     }
 
     // External DuolaBase tool proxy (enforcing read-only vs write vs disabled switch!)
@@ -1786,6 +2010,212 @@ export class DuolaWorkApp {
         return;
       }
 
+      const chatImagesCreateMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/chat-images$/);
+      if (chatImagesCreateMatch && method === 'POST') {
+        const threadId = decodeURIComponent(chatImagesCreateMatch[1]);
+        const thread = this.threads.getThread(threadId);
+        if (!thread) return sendJson(res, 404, { error: '对话不存在' });
+        const ct = String(req.headers['content-type'] || '');
+        let imgName = 'image.png';
+        let imgMime: string | undefined;
+        let imgBuf: Buffer;
+        if (ct.includes('application/json')) {
+          const body = await readJsonBody(req, 24 * 1024 * 1024);
+          imgName = String(body.name || 'image.png');
+          imgMime = typeof body.mimeType === 'string' ? body.mimeType : undefined;
+          const b64 = String(body.dataBase64 || '').replace(/^data:[^;]+;base64,/i, '').replace(/\s+/g, '');
+          imgBuf = Buffer.from(b64, 'base64');
+        } else {
+          const rawBuf = await readRawBody(req, 24 * 1024 * 1024);
+          if (ct.includes('multipart/form-data')) {
+            const fakeReq = new Request('http://localhost/upload', {
+              method: 'POST',
+              headers: { 'content-type': ct },
+              body: new Uint8Array(rawBuf)
+            });
+            const form = await fakeReq.formData();
+            const f = form.get('file');
+            if (!f || typeof f === 'string') {
+              return sendJson(res, 400, { error: 'missing_file', message: '请附带 file 图片字段' });
+            }
+            imgName = f.name || 'image.png';
+            imgMime = f.type || undefined;
+            imgBuf = Buffer.from(await f.arrayBuffer());
+          } else {
+            imgName = decodeURIComponent(String(req.headers['x-file-name'] || url.searchParams.get('name') || 'image.png'));
+            imgMime = ct || undefined;
+            imgBuf = rawBuf;
+          }
+        }
+        const saved = this.space.saveChatImageBuffer({
+          threadId,
+          name: imgName,
+          mimeType: imgMime,
+          buffer: imgBuf,
+          uploaderId: 'owner'
+        });
+        sendJson(res, 201, {
+          image: {
+            id: saved.id,
+            threadId: saved.threadId,
+            name: saved.name,
+            mimeType: saved.mimeType,
+            sizeBytes: saved.sizeBytes,
+            url: saved.url
+          }
+        });
+        return;
+      }
+
+      const chatImageServeMatch = pathname.match(/^\/api\/v2\/chat-images\/([^/]+)$/);
+      if (chatImageServeMatch && method === 'GET') {
+        const imgId = decodeURIComponent(chatImageServeMatch[1]);
+        const found = this.space.getChatImageWithPath(imgId);
+        if (!found) return sendJson(res, 404, { error: '图片不存在' });
+        const download = url.searchParams.get('download') === '1';
+        const disp = download ? 'attachment' : 'inline';
+        const encodedName = encodeURIComponent(found.image.name);
+        res.writeHead(200, {
+          'Content-Type': found.image.mimeType || 'image/png',
+          'Content-Length': String(found.image.sizeBytes),
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Disposition': `${disp}; filename*=UTF-8''${encodedName}`
+        });
+        fs.createReadStream(found.absPath).pipe(res);
+        return;
+      }
+
+      const spaceImportImgMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/space\/import-image$/);
+      if (spaceImportImgMatch && method === 'POST') {
+        const threadId = decodeURIComponent(spaceImportImgMatch[1]);
+        const thread = this.threads.getThread(threadId);
+        if (!thread) return sendJson(res, 404, { error: '对话不存在' });
+        const body = await readJsonBody(req, 24 * 1024 * 1024);
+        const src = String(body.src || body.url || '').trim();
+        const preferredName = typeof body.name === 'string' ? body.name.trim() : '';
+        const folderId = typeof body.folderId === 'string' && body.folderId.trim() ? body.folderId.trim() : null;
+        if (!src) return sendJson(res, 400, { error: 'missing_src', message: '缺少图片地址' });
+
+        // 1. Already a Space file
+        const spaceRef = src.match(/^\/api\/v2\/space\/files\/([^?#]+)/);
+        if (spaceRef) {
+          const existing = this.space.getFile(decodeURIComponent(spaceRef[1]));
+          if (!existing) return sendJson(res, 404, { error: '文件不存在' });
+          if (existing.threadId === threadId) {
+            return sendJson(res, 200, { ok: true, alreadyInSpace: true, file: existing });
+          }
+          const foundOther = this.space.getFileWithPath(existing.id);
+          if (!foundOther) return sendJson(res, 404, { error: '文件不存在' });
+          const copied = this.space.saveFileBuffer({
+            threadId,
+            name: preferredName || foundOther.file.name,
+            mimeType: foundOther.file.mimeType,
+            buffer: fs.readFileSync(foundOther.absPath),
+            folderId
+          });
+          this.threads.emit({ type: 'thread.space_updated', threadId });
+          return sendJson(res, 201, { ok: true, file: copied });
+        }
+
+        // 2. Chat uploaded image
+        const chatRef = src.match(/^\/api\/v2\/chat-images\/([^?#]+)/);
+        if (chatRef) {
+          const found = this.space.getChatImageWithPath(decodeURIComponent(chatRef[1]));
+          if (!found) return sendJson(res, 404, { error: '图片不存在' });
+          const saved = this.space.saveFileBuffer({
+            threadId,
+            name: preferredName || found.image.name,
+            mimeType: found.image.mimeType,
+            buffer: fs.readFileSync(found.absPath),
+            folderId
+          });
+          this.threads.emit({ type: 'thread.space_updated', threadId });
+          return sendJson(res, 201, { ok: true, file: saved });
+        }
+
+        // 3. Inline data:image/...;base64,...
+        const dataUri = src.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (dataUri) {
+          const mime = dataUri[1];
+          const buf = Buffer.from(dataUri[2], 'base64');
+          const ext = mimeToImageExt(mime);
+          const finalName = ensureFileExt(preferredName || `image-${Date.now()}${ext}`, ext);
+          const saved = this.space.saveFileBuffer({
+            threadId,
+            name: finalName,
+            mimeType: mime,
+            buffer: buf,
+            folderId
+          });
+          this.threads.emit({ type: 'thread.space_updated', threadId });
+          return sendJson(res, 201, { ok: true, file: saved });
+        }
+
+        // 4. External http(s) URL (SSRF-safe fetch)
+        const fetched = await fetchSafeExternalMedia(src);
+        const ext = mimeToImageExt(fetched.mimeType);
+        const fallbackBase = deriveNameFromUrl(src) || `image-${Date.now()}${ext}`;
+        const finalName = ensureFileExt(preferredName || fallbackBase, ext);
+        const saved = this.space.saveFileBuffer({
+          threadId,
+          name: finalName,
+          mimeType: fetched.mimeType,
+          buffer: fetched.buffer,
+          folderId
+        });
+        this.threads.emit({ type: 'thread.space_updated', threadId });
+        sendJson(res, 201, { ok: true, file: saved });
+        return;
+      }
+
+      if (pathname === '/api/v2/media/download' && method === 'GET') {
+        const targetUrl = String(url.searchParams.get('url') || '').trim();
+        const preferredName = String(url.searchParams.get('name') || '').trim();
+        if (!targetUrl) return sendJson(res, 400, { error: 'missing_url' });
+
+        const spaceRef = targetUrl.match(/^\/api\/v2\/space\/files\/([^?#]+)/);
+        if (spaceRef) {
+          const found = this.space.getFileWithPath(decodeURIComponent(spaceRef[1]));
+          if (!found) return sendJson(res, 404, { error: '文件不存在' });
+          const dlName = encodeURIComponent(preferredName || found.file.name);
+          res.writeHead(200, {
+            'Content-Type': found.file.mimeType || 'application/octet-stream',
+            'Content-Length': String(found.file.sizeBytes),
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': `attachment; filename*=UTF-8''${dlName}`
+          });
+          fs.createReadStream(found.absPath).pipe(res);
+          return;
+        }
+
+        const chatRef = targetUrl.match(/^\/api\/v2\/chat-images\/([^?#]+)/);
+        if (chatRef) {
+          const found = this.space.getChatImageWithPath(decodeURIComponent(chatRef[1]));
+          if (!found) return sendJson(res, 404, { error: '图片不存在' });
+          const dlName = encodeURIComponent(preferredName || found.image.name);
+          res.writeHead(200, {
+            'Content-Type': found.image.mimeType || 'image/png',
+            'Content-Length': String(found.image.sizeBytes),
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': `attachment; filename*=UTF-8''${dlName}`
+          });
+          fs.createReadStream(found.absPath).pipe(res);
+          return;
+        }
+
+        const fetched = await fetchSafeExternalMedia(targetUrl);
+        const ext = mimeToImageExt(fetched.mimeType);
+        const dlName = encodeURIComponent(ensureFileExt(preferredName || deriveNameFromUrl(targetUrl) || `image${ext}`, ext));
+        res.writeHead(200, {
+          'Content-Type': fetched.mimeType,
+          'Content-Length': String(fetched.buffer.length),
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Disposition': `attachment; filename*=UTF-8''${dlName}`
+        });
+        res.end(fetched.buffer);
+        return;
+      }
+
       const spaceLinksCreateMatch = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/space\/links$/);
       if (spaceLinksCreateMatch && method === 'POST') {
         const threadId = decodeURIComponent(spaceLinksCreateMatch[1]);
@@ -2221,4 +2651,94 @@ function contentTypeFor(filePath: string): string {
   if (filePath.endsWith('.woff2')) return 'font/woff2';
   if (filePath.endsWith('.json')) return 'application/json; charset=utf-8';
   return 'application/octet-stream';
+}
+
+function isBlockedPrivateHost(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1') {
+    return true;
+  }
+  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+  }
+  if (/^(?:fc|fd|fe80)/i.test(h)) return true;
+  return false;
+}
+
+async function fetchSafeExternalMedia(rawUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('无效的图片链接地址');
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('仅支持 http 或 https 图片地址');
+  }
+  if (isBlockedPrivateHost(parsed.hostname)) {
+    throw new Error('禁止访问内网或本机地址');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(parsed.toString(), {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: { 'User-Agent': 'DuolaWork/2.0' }
+    });
+    if (!res.ok) {
+      throw new Error(`远端图片拉取失败 (HTTP ${res.status})`);
+    }
+    const finalParsed = new URL(res.url || parsed.toString());
+    if (isBlockedPrivateHost(finalParsed.hostname)) {
+      throw new Error('禁止重定向至内网地址');
+    }
+    const contentLength = Number(res.headers.get('content-length') || 0);
+    if (contentLength > 20 * 1024 * 1024) {
+      throw new Error('远端图片超过 20 MiB 限制');
+    }
+    const arr = await res.arrayBuffer();
+    if (arr.byteLength === 0) throw new Error('远端图片内容为空');
+    if (arr.byteLength > 20 * 1024 * 1024) throw new Error('远端图片超过 20 MiB 限制');
+    const rawCt = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    const mimeType = rawCt || 'image/png';
+    return { buffer: Buffer.from(arr), mimeType };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function mimeToImageExt(mime: string): string {
+  const m = mime.toLowerCase();
+  if (m.includes('jpeg') || m.includes('jpg')) return '.jpg';
+  if (m.includes('webp')) return '.webp';
+  if (m.includes('gif')) return '.gif';
+  if (m.includes('svg')) return '.svg';
+  if (m.includes('bmp')) return '.bmp';
+  if (m.includes('avif')) return '.avif';
+  return '.png';
+}
+
+function deriveNameFromUrl(rawUrl: string): string {
+  try {
+    const p = new URL(rawUrl).pathname;
+    const base = path.basename(p).trim();
+    if (base && base !== '/' && base.length <= 100) {
+      return decodeURIComponent(base);
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+function ensureFileExt(name: string, ext: string): string {
+  const clean = name.trim() || `image${ext}`;
+  return path.extname(clean) ? clean : `${clean}${ext}`;
 }

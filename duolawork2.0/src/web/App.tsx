@@ -14,6 +14,7 @@ import {
   FileText,
   FolderArchive,
   FolderOpen,
+  ImagePlus,
   KeyRound,
   Link2,
   ListTodo,
@@ -66,7 +67,7 @@ import {
   type WorkbenchNavPage
 } from './CollaborationSpacePanel.js';
 import { ConnectorsPage } from './ConnectorsPage.js';
-import { MarkdownView } from './markdown.js';
+import { MarkdownView, type MarkdownImageActions } from './markdown.js';
 import { MembersUsagePage } from './MembersUsagePage.js';
 import { SchedulesPage } from './SchedulesPage.js';
 import { VaultPage } from './VaultPage.js';
@@ -308,8 +309,13 @@ export function App(): React.JSX.Element {
     { title: '执行调研与产出初稿', assigneeMemberId: '', brief: '产出初稿供审阅', dependsOnPrev: false }
   ]);
   const [waitingReplyText, setWaitingReplyText] = useState<string>('');
+  const [draftImagesByThread, setDraftImagesByThread] = useState<
+    Record<string, Array<{ id: string; name: string; url: string }>>
+  >({});
+  const [uploadingChatImages, setUploadingChatImages] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileRef = useRef<HTMLInputElement | null>(null);
+  const composerImageRef = useRef<HTMLInputElement | null>(null);
   const activeThreadIdRef = useRef<string>('');
   const deletingTaskIdRef = useRef<string | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -986,13 +992,24 @@ export function App(): React.JSX.Element {
     const rawDraftValue = inputDrafts[targetThreadId] || '';
     const rawText = rawDraftValue.trim();
     const savedRefs = draftRefsByThread[targetThreadId] || [];
-    if (!rawText && savedRefs.length === 0) return;
+    const savedImages = draftImagesByThread[targetThreadId] || [];
+    if (!rawText && savedRefs.length === 0 && savedImages.length === 0) return;
 
     const refPrefix =
       savedRefs.length > 0
-        ? `[引用资料] ${savedRefs.map((r) => r.snippet).join('；')}${rawText ? '\n\n' : ''}`
+        ? `[引用资料] ${savedRefs.map((r) => r.snippet).join('；')}${rawText || savedImages.length > 0 ? '\n\n' : ''}`
         : '';
-    const text = `${refPrefix}${rawText}`;
+    const imageBlock =
+      savedImages.length > 0
+        ? savedImages.map((img) => `![${img.name}](${img.url})`).join('\n')
+        : '';
+    const text = [
+      refPrefix ? refPrefix.trimEnd() : '',
+      rawText,
+      imageBlock
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     const restoreUnconfirmedDraft = () => {
       setInputDrafts((prev) => ({
@@ -1004,10 +1021,16 @@ export function App(): React.JSX.Element {
         [targetThreadId]:
           prev[targetThreadId] && prev[targetThreadId].length > 0 ? prev[targetThreadId] : savedRefs
       }));
+      setDraftImagesByThread((prev) => ({
+        ...prev,
+        [targetThreadId]:
+          prev[targetThreadId] && prev[targetThreadId].length > 0 ? prev[targetThreadId] : savedImages
+      }));
     };
 
     setInputDrafts((prev) => ({ ...prev, [targetThreadId]: '' }));
     setDraftRefsByThread((prev) => ({ ...prev, [targetThreadId]: [] }));
+    setDraftImagesByThread((prev) => ({ ...prev, [targetThreadId]: [] }));
     await submitMessageToThread(targetThreadId, text, {
       restoreOnFail: restoreUnconfirmedDraft
     });
@@ -1263,6 +1286,123 @@ export function App(): React.JSX.Element {
     });
     setTimeout(() => inputRef.current?.focus(), 50);
   };
+
+  const uploadChatImages = async (files: File[]) => {
+    const targetThreadId = activeThreadId;
+    if (!targetThreadId || files.length === 0) return;
+    const imageFiles = files.filter(
+      (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
+    );
+    if (imageFiles.length === 0) {
+      await uploadFilesToThreadSpace(files);
+      return;
+    }
+    setUploadingChatImages(true);
+    const added: Array<{ id: string; name: string; url: string }> = [];
+    const failedNames: string[] = [];
+    try {
+      for (const file of imageFiles) {
+        if (file.size > 16 * 1024 * 1024) {
+          failedNames.push(`${file.name}(超16MiB)`);
+          continue;
+        }
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('读取失败'));
+            reader.readAsDataURL(file);
+          });
+          const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+          const res = await fetch(`/api/v2/threads/${encodeURIComponent(targetThreadId)}/chat-images`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: file.name || `image-${Date.now()}.png`,
+              mimeType: file.type || 'image/png',
+              dataBase64: base64
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.image?.id && data.image?.url) {
+              added.push({ id: data.image.id, name: data.image.name, url: data.image.url });
+            }
+          } else {
+            failedNames.push(file.name);
+          }
+        } catch {
+          failedNames.push(file.name);
+        }
+      }
+      if (added.length > 0) {
+        setDraftImagesByThread((prev) => ({
+          ...prev,
+          [targetThreadId]: [...(prev[targetThreadId] || []), ...added]
+        }));
+        setTimeout(() => inputRef.current?.focus(), 40);
+      }
+      if (failedNames.length > 0) {
+        showChatNotice(`部分图片添加失败：${failedNames.join('、')}`);
+      }
+    } finally {
+      setUploadingChatImages(false);
+    }
+  };
+
+  const chatImageActions = useMemo<MarkdownImageActions>(
+    () => ({
+      onSaveToSpace: async (src: string, alt: string) => {
+        if (!activeThreadId) return 'error';
+        try {
+          const res = await fetch(
+            `/api/v2/threads/${encodeURIComponent(activeThreadId)}/space/import-image`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ src, name: alt || undefined })
+            }
+          );
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showChatNotice(err.message || err.error || '保存到资料区失败');
+            return 'error';
+          }
+          const data = await res.json();
+          await loadSpace(activeThreadId);
+          setSpaceOpen(true);
+          setSpaceTab('documents');
+          showChatNotice(
+            data.alreadyInSpace
+              ? '该图片已在右侧资料区中'
+              : `已保存到资料区：${data.file?.name || alt || '图片'}`
+          );
+          return data.alreadyInSpace ? 'already' : 'saved';
+        } catch {
+          showChatNotice('保存到资料区失败');
+          return 'error';
+        }
+      },
+      onOpenInSpace: (fileId: string) => {
+        setSpaceOpen(true);
+        setSpaceTab('documents');
+        setSpaceSelection({ kind: 'file', id: fileId });
+      },
+      onDownloadLocal: (src: string, alt: string) => {
+        const href = src.startsWith('/api/v2/')
+          ? `${src}${src.includes('?') ? '&' : '?'}download=1`
+          : `/api/v2/media/download?url=${encodeURIComponent(src)}${alt ? `&name=${encodeURIComponent(alt)}` : ''}`;
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = alt || 'image';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showChatNotice('已开始下载图片到本地');
+      }
+    }),
+    [activeThreadId, loadSpace, setSpaceSelection, showChatNotice]
+  );
 
   const uploadFilesToThreadSpace = async (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
@@ -2131,7 +2271,15 @@ export function App(): React.JSX.Element {
         onDrop={(e) => {
           if (viewMode === 'thread' && activeThreadId && e.dataTransfer.files.length > 0) {
             e.preventDefault();
-            void uploadFilesToThreadSpace(Array.from(e.dataTransfer.files));
+            const dropped = Array.from(e.dataTransfer.files);
+            const allImages = dropped.every(
+              (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
+            );
+            if (allImages) {
+              void uploadChatImages(dropped);
+            } else {
+              void uploadFilesToThreadSpace(dropped);
+            }
           }
         }}
       >
@@ -2755,7 +2903,7 @@ export function App(): React.JSX.Element {
                                 );
                               })()}
                             <div className="message-markdown">
-                              <MarkdownView text={displayBody} />
+                              <MarkdownView text={displayBody} imageActions={chatImageActions} />
                             </div>
                             {!isUser && m.clarificationCard && (() => {
                               const card = m.clarificationCard;
@@ -2960,6 +3108,29 @@ export function App(): React.JSX.Element {
                       );
                     })()}
 
+                  {(draftImagesByThread[activeThread.id] || []).length > 0 && (
+                    <div className="composer-image-strip" data-testid="composer-image-strip">
+                      {(draftImagesByThread[activeThread.id] || []).map((img) => (
+                        <div key={img.id} className="composer-image-thumb">
+                          <img src={img.url} alt={img.name} />
+                          <span title={img.name}>{img.name}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraftImagesByThread((prev) => ({
+                                ...prev,
+                                [activeThread.id]: (prev[activeThread.id] || []).filter((x) => x.id !== img.id)
+                              }))
+                            }
+                            aria-label={`移除图片 ${img.name}`}
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <textarea
                     ref={inputRef}
                     value={activeDraft}
@@ -2972,7 +3143,7 @@ export function App(): React.JSX.Element {
                       );
                       if (!files.length) return;
                       e.preventDefault();
-                      void uploadFilesToThreadSpace(files);
+                      void uploadChatImages(files);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') setOwnerMenuOpen(false);
@@ -2981,11 +3152,23 @@ export function App(): React.JSX.Element {
                         void handleSendMessage();
                       }
                     }}
-                    placeholder={`发消息给 ${currentOwner?.name || '负责人'}…`}
+                    placeholder={`发消息给 ${currentOwner?.name || '负责人'}（支持粘贴或拖拽图片）…`}
                   />
 
                   <div className="composer-toolbar">
                     <div onClick={(e) => e.stopPropagation()}>
+                      <input
+                        ref={composerImageRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        hidden
+                        onChange={(e) => {
+                          const list = Array.from(e.target.files || []);
+                          e.target.value = '';
+                          void uploadChatImages(list);
+                        }}
+                      />
                       <input
                         ref={composerFileRef}
                         type="file"
@@ -2999,10 +3182,20 @@ export function App(): React.JSX.Element {
                       />
                       <button
                         type="button"
+                        disabled={uploadingChatImages}
+                        onClick={() => composerImageRef.current?.click()}
+                        className="dw-btn dw-btn-ghost dw-btn-icon"
+                        aria-label="发送图片"
+                        title={uploadingChatImages ? '图片上传中…' : '添加图片到对话'}
+                      >
+                        <ImagePlus size={16} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => composerFileRef.current?.click()}
                         className="dw-btn dw-btn-ghost dw-btn-icon"
                         aria-label="上传文件到协作空间"
-                        title="上传文件"
+                        title="上传任意格式文件到资料区"
                       >
                         <Paperclip size={16} />
                       </button>
@@ -3053,7 +3246,12 @@ export function App(): React.JSX.Element {
                       <button
                         type="submit"
                         aria-label="发送消息"
-                        disabled={sending || (!activeDraft.trim() && activeRefs.length === 0)}
+                        disabled={
+                          sending ||
+                          (!activeDraft.trim() &&
+                            activeRefs.length === 0 &&
+                            (draftImagesByThread[activeThread.id] || []).length === 0)
+                        }
                         className="dw-send-btn"
                       >
                         <ArrowUp size={17} />

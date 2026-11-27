@@ -200,7 +200,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
   const [kindFilter, setKindFilter] = useState<'' | SpaceItemKind>('');
   const [filterMenuOpen, setFilterMenuOpen] = useState<boolean>(false);
   const [addMenuOpen, setAddMenuOpen] = useState<boolean>(false);
-  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
+  const [expandedRecent, setExpandedRecent] = useState<boolean>(false);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
   const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
@@ -270,6 +270,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     setRowMenuKey(null);
     setFolderMenuId(null);
     setActiveFolderId(null);
+    setExpandedRecent(false);
     setWsSubpath('');
     setEditingWsPath(false);
     setUndoTrash(null);
@@ -517,9 +518,6 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         body: JSON.stringify({ title, parentFolderId: activeFolderId })
       });
       if (res.ok) {
-        if (activeFolderId && !expandedFolderIds.includes(activeFolderId)) {
-          setExpandedFolderIds((old) => [...old, activeFolderId]);
-        }
         setCreateMode(null);
         await onRefreshSpace();
       } else {
@@ -599,11 +597,14 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
   };
 
   const handleDeleteFolder = async (folderId: string) => {
+    const target = folders.find((f) => f.id === folderId) ?? null;
     const res = await fetch(`/api/v2/space/folders/${encodeURIComponent(folderId)}`, {
       method: 'DELETE'
     });
     if (res.ok) {
-      if (activeFolderId === folderId) setActiveFolderId(null);
+      if (activeFolderId === folderId) {
+        setActiveFolderId(target?.parentFolderId ?? null);
+      }
       await onRefreshSpace();
     } else {
       const err = await res.json().catch(() => ({}));
@@ -704,20 +705,127 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     });
   }, [items, query, kindFilter]);
 
-  const pinnedItems = useMemo(() => items.filter((it) => Boolean(it.pinnedAt)), [items]);
-  const rootItems = useMemo(() => items.filter((it) => !it.folderId && !it.pinnedAt), [items]);
+  const folderById = useMemo(() => {
+    const map = new Map<string, SpaceFolderRecord>();
+    for (const f of folders) map.set(f.id, f);
+    return map;
+  }, [folders]);
+
+  const folderPathById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of folders) {
+      const parts: string[] = [];
+      const seen = new Set<string>();
+      let cur: SpaceFolderRecord | undefined = f;
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        parts.unshift(cur.title);
+        cur = cur.parentFolderId ? folderById.get(cur.parentFolderId) : undefined;
+      }
+      map.set(f.id, parts.join('/'));
+    }
+    return map;
+  }, [folders, folderById]);
+
+  const effectiveActiveFolderId = useMemo(
+    () => (activeFolderId && folderById.has(activeFolderId) ? activeFolderId : null),
+    [activeFolderId, folderById]
+  );
+
+  useEffect(() => {
+    if (activeFolderId && !folderById.has(activeFolderId)) {
+      setActiveFolderId(null);
+    }
+  }, [activeFolderId, folderById]);
+
+  // Top section: strictly chronological (updatedAt DESC) across all folders so newly saved or edited items are found immediately.
+  const recentItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const cmp = b.updatedAt.localeCompare(a.updatedAt);
+      return cmp !== 0 ? cmp : b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [items]);
 
   const childrenFoldersByParent = useMemo(() => {
     const map = new Map<string | null, SpaceFolderRecord[]>();
-    const validIds = new Set(folders.map((f) => f.id));
     for (const f of folders) {
-      const parent = f.parentFolderId && validIds.has(f.parentFolderId) ? f.parentFolderId : null;
+      const parent = f.parentFolderId && folderById.has(f.parentFolderId) ? f.parentFolderId : null;
       const list = map.get(parent) ?? [];
       list.push(f);
       map.set(parent, list);
     }
     return map;
-  }, [folders]);
+  }, [folders, folderById]);
+
+  const breadcrumbs = useMemo(() => {
+    const trail: SpaceFolderRecord[] = [];
+    const seen = new Set<string>();
+    let cur = effectiveActiveFolderId ? folderById.get(effectiveActiveFolderId) : undefined;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      trail.unshift(cur);
+      cur = cur.parentFolderId ? folderById.get(cur.parentFolderId) : undefined;
+    }
+    return trail;
+  }, [effectiveActiveFolderId, folderById]);
+
+  const currentChildFolders = useMemo(
+    () => childrenFoldersByParent.get(effectiveActiveFolderId) ?? [],
+    [childrenFoldersByParent, effectiveActiveFolderId]
+  );
+
+  const currentFolderItems = useMemo(() => {
+    return items
+      .filter((it) => {
+        const fid = it.folderId && folderById.has(it.folderId) ? it.folderId : null;
+        return fid === effectiveActiveFolderId;
+      })
+      .sort((a, b) => {
+        if (Boolean(a.pinnedAt) !== Boolean(b.pinnedAt)) {
+          return a.pinnedAt ? -1 : 1;
+        }
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+  }, [items, folderById, effectiveActiveFolderId]);
+
+  const folderEntryCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of folders) {
+      if (f.parentFolderId && folderById.has(f.parentFolderId)) {
+        counts.set(f.parentFolderId, (counts.get(f.parentFolderId) ?? 0) + 1);
+      }
+    }
+    for (const it of items) {
+      if (it.folderId && folderById.has(it.folderId)) {
+        counts.set(it.folderId, (counts.get(it.folderId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [folders, items, folderById]);
+
+  const formatSpaceTime = (iso: string): string => {
+    const ts = Date.parse(iso);
+    if (!Number.isFinite(ts)) return '';
+    const diffMs = Date.now() - ts;
+    if (diffMs >= 0 && diffMs < 60_000) return '刚刚';
+    if (diffMs >= 60_000 && diffMs < 3600_000) return `${Math.floor(diffMs / 60_000)}分钟前`;
+    const d = new Date(ts);
+    const now = new Date();
+    const hhmm = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    ) {
+      return hhmm;
+    }
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    if (d.getFullYear() === now.getFullYear()) {
+      return `${mm}-${dd} ${hhmm}`;
+    }
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  };
 
   const filteredTasks = useMemo(() => {
     return threadTasks.filter((t) => {
@@ -732,16 +840,17 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
 
   const conflictVersionsCount = versions.filter((v) => v.branchKind === 'conflict_branch').length;
 
-  const renderItemRow = (item: SpaceItemView, depth = 0) => {
+  const renderItemRow = (
+    item: SpaceItemView,
+    opts?: { showFolderChip?: boolean; showTime?: boolean; keyPrefix?: string }
+  ) => {
     const Icon = itemIcon(item);
-    const key = `${item.kind}:${item.id}`;
+    const key = `${opts?.keyPrefix ?? 'dir'}:${item.kind}:${item.id}`;
     const menuOpen = rowMenuKey === key;
+    const folderLabel = item.folderId ? folderPathById.get(item.folderId) || '' : '';
+    const timeLabel = opts?.showTime !== false ? formatSpaceTime(item.updatedAt) : '';
     return (
-      <div
-        key={key}
-        className="material-row"
-        style={{ paddingLeft: depth * 12 }}
-      >
+      <div key={key} className="material-row" data-item-id={item.id} data-item-kind={item.kind}>
         <button
           type="button"
           onClick={() => {
@@ -749,15 +858,29 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             onSelectItem({ kind: item.kind, id: item.id });
           }}
           className="material-item-open"
-          title={`${item.title} · ${kindLabel(item)}`}
+          title={`${item.title} · ${kindLabel(item)}${folderLabel ? ` · 目录：${folderLabel}` : ''}`}
         >
           <Icon size={15} />
           <span className="material-item-title">
-            {item.title}
-            <small className="block text-[10.5px]" style={{ color: '#8f9bb0' }}>
-              {kindLabel(item)}
-              {item.taskId ? ' · 任务产物' : ''}
-            </small>
+            <span>
+              {item.pinnedAt && (
+                <span className="material-pin-badge" title="已置顶">
+                  <Pin size={10} />
+                </span>
+              )}
+              {item.title}
+            </span>
+            <span className="material-item-meta">
+              <span>{kindLabel(item)}</span>
+              {opts?.showFolderChip && folderLabel && (
+                <span className="material-folder-chip" title={folderLabel}>
+                  <Folder size={9} />
+                  <span>{folderLabel}</span>
+                </span>
+              )}
+              {item.taskId && <span>· 任务产物</span>}
+              {timeLabel && <span>· {timeLabel}</span>}
+            </span>
           </span>
         </button>
 
@@ -830,104 +953,94 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     );
   };
 
-  const renderFolderTree = (folder: SpaceFolderRecord, depth = 0, seen: string[] = []): React.ReactNode => {
-    if (seen.includes(folder.id)) return null;
-    const isOpen = expandedFolderIds.includes(folder.id);
-    const isActive = activeFolderId === folder.id;
-    const FolderIcon = isOpen ? FolderOpen : Folder;
-    const childFolders = childrenFoldersByParent.get(folder.id) ?? [];
-    const childItems = items.filter((it) => it.folderId === folder.id && !it.pinnedAt);
+  const renderFolderRow = (folder: SpaceFolderRecord): React.ReactNode => {
     const menuOpen = folderMenuId === folder.id;
+    const entryCount = folderEntryCountById.get(folder.id) ?? 0;
 
     return (
-      <div key={folder.id}>
-        <div
-          className={`material-folder-row relative ${isActive ? 'selected' : ''}`}
-          style={{ paddingLeft: depth * 12 }}
+      <div key={folder.id} className="material-folder-row relative" data-folder-id={folder.id}>
+        <button
+          type="button"
+          onClick={() => setActiveFolderId(folder.id)}
+          className="material-folder-open"
+          title={`打开文件夹「${folder.title}」`}
         >
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            onClick={() =>
-              setExpandedFolderIds((old) =>
-                old.includes(folder.id) ? old.filter((x) => x !== folder.id) : [...old, folder.id]
-              )
-            }
-            className="material-folder-toggle"
-            aria-label={`${isOpen ? '收起' : '展开'}文件夹 ${folder.title}`}
-          >
-            <ChevronRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveFolderId(isActive ? null : folder.id);
-              if (!isOpen) setExpandedFolderIds((old) => [...old, folder.id]);
-            }}
-            className="material-folder-open"
-          >
-            <FolderIcon size={15} />
-            <span>{folder.title}</span>
-          </button>
+          <Folder size={15} />
+          <span className="material-folder-name">{folder.title}</span>
+          <span className="material-folder-count">{entryCount > 0 ? `${entryCount} 项` : '空'}</span>
+          <ChevronRight size={13} className="material-folder-chevron" />
+        </button>
 
-          <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setFolderMenuId(menuOpen ? null : folder.id)}
-              className="material-row-menu"
-              aria-label={`管理文件夹 ${folder.title}`}
-            >
-              <MoreHorizontal size={14} />
-            </button>
-            {menuOpen && (
-              <div className="chat-context-menu absolute right-0 top-full mt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFolderMenuId(null);
-                    setActiveFolderId(folder.id);
-                    setCreateMode('document');
-                    setDraftTitle('');
-                    setDraftNote('');
-                  }}
-                >
-                  在此新建文档
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFolderMenuId(null);
-                    setRenameTarget({ target: 'folder', id: folder.id, title: folder.title });
-                  }}
-                >
-                  重命名文件夹
-                </button>
-                <button
-                  type="button"
-                  className="destructive"
-                  onClick={() => {
-                    setFolderMenuId(null);
-                    void handleDeleteFolder(folder.id);
-                  }}
-                >
-                  删除文件夹
-                </button>
-              </div>
-            )}
-          </div>
+        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setFolderMenuId(menuOpen ? null : folder.id)}
+            className="material-row-menu"
+            aria-label={`管理文件夹 ${folder.title}`}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          {menuOpen && (
+            <div className="chat-context-menu absolute right-0 top-full mt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                }}
+              >
+                <FolderOpen size={13} />
+                <span>打开文件夹</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                  setCreateMode('document');
+                  setDraftTitle('');
+                  setDraftNote('');
+                }}
+              >
+                <FileText size={13} />
+                <span>在此新建文档</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                  setCreateMode('folder');
+                  setDraftTitle('');
+                }}
+              >
+                <Folder size={13} />
+                <span>在此新建子文件夹</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setRenameTarget({ target: 'folder', id: folder.id, title: folder.title });
+                }}
+              >
+                <Pencil size={13} />
+                <span>重命名文件夹</span>
+              </button>
+              <button
+                type="button"
+                className="destructive"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  void handleDeleteFolder(folder.id);
+                }}
+              >
+                <Trash2 size={13} />
+                <span>删除文件夹</span>
+              </button>
+            </div>
+          )}
         </div>
-
-        {isOpen && (
-          <div className="material-folder-children">
-            {childFolders.map((cf) => renderFolderTree(cf, depth + 1, [...seen, folder.id]))}
-            {childItems.map((ci) => renderItemRow(ci, depth + 1))}
-            {childFolders.length === 0 && childItems.length === 0 && (
-              <div className="material-list-empty" style={{ paddingLeft: (depth + 1) * 12 + 18 }}>
-                文件夹为空
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   };
@@ -1602,7 +1715,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               >
                 <div className="font-semibold">
                   {createMode === 'document' ? '新建文档' : createMode === 'link' ? '添加链接' : '新建文件夹'}
-                  {activeFolderId ? '（在当前选中目录）' : ''}
+                  {effectiveActiveFolderId
+                    ? `（在 /${folderPathById.get(effectiveActiveFolderId) || '当前目录'}）`
+                    : ''}
                 </div>
                 <input
                   type="text"
@@ -1697,7 +1812,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     }}
                     className="dw-btn dw-btn-outline dw-btn-sm justify-start truncate"
                   >
-                    / {fld.title}
+                    / {folderPathById.get(fld.id) || fld.title}
                   </button>
                 ))}
                 <button
@@ -1727,46 +1842,152 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 {filteredItems.length === 0 ? (
                   <p className="material-list-empty">没有找到匹配资料</p>
                 ) : (
-                  filteredItems.map((it) => renderItemRow(it))
+                  filteredItems.map((it) =>
+                    renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'search' })
+                  )
                 )}
               </div>
             ) : items.length === 0 && folders.length === 0 ? (
               <div className="space-blank my-auto">
                 <span><FolderOpen size={20} /></span>
                 <strong>还没有资料</strong>
-                <p>拖拽文件到此处、点击 + 新建文档或添加链接；对话与任务产出的文档也会自动归档到这里。</p>
+                <p>拖拽任意格式文件到此处、点击 + 新建文档或文件夹；Agent 产出的文件与目录也会自动归档到这里。</p>
               </div>
             ) : (
               <div>
-                {pinnedItems.length > 0 && (
-                  <div className="material-shortcuts">
+                {/* Top section: chronological recent updates (saved or edited) */}
+                {recentItems.length > 0 && (
+                  <section className="material-shortcuts" data-testid="space-recent-section" aria-label="最近更新">
                     <div className="material-section-title">
-                      <Pin size={11} />
-                      <span>置顶</span>
+                      <Clock size={11} />
+                      <span>最近更新 ({recentItems.length})</span>
+                      {recentItems.length > 6 && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedRecent((v) => !v)}
+                          className="material-section-toggle"
+                        >
+                          {expandedRecent ? '收起' : `查看全部`}
+                        </button>
+                      )}
                     </div>
-                    {pinnedItems.map((it) => renderItemRow(it))}
-                  </div>
+                    <div className={`material-recent-list ${expandedRecent ? 'expanded' : ''}`}>
+                      {(expandedRecent ? recentItems : recentItems.slice(0, 6)).map((it) =>
+                        renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'recent' })
+                      )}
+                    </div>
+                  </section>
                 )}
 
-                <div className={pinnedItems.length > 0 ? 'material-directory' : ''}>
+                {/* Bottom section: drill-down document & folder manager */}
+                <section
+                  className={recentItems.length > 0 ? 'material-directory' : ''}
+                  data-testid="space-manager-section"
+                  aria-label="文档管理"
+                >
                   <div className="material-section-heading">
+                    <span className="material-root-select active">
+                      <FolderOpen size={12} />
+                      <span>文档管理</span>
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setActiveFolderId(null)}
-                      className={`material-root-select ${activeFolderId === null ? 'active' : ''}`}
+                      onClick={() => {
+                        setCreateMode('folder');
+                        setDraftTitle('');
+                      }}
+                      title={effectiveActiveFolderId ? '在当前目录下新建子文件夹' : '在根目录新建文件夹'}
                     >
-                      <FolderOpen size={11} />
-                      <span>资料目录</span>
+                      + 新建文件夹
                     </button>
-                    {expandedFolderIds.length > 0 && (
-                      <button type="button" onClick={() => setExpandedFolderIds([])}>
-                        收起全部
-                      </button>
-                    )}
                   </div>
-                  {(childrenFoldersByParent.get(null) ?? []).map((fld) => renderFolderTree(fld))}
-                  {rootItems.map((it) => renderItemRow(it))}
-                </div>
+
+                  {effectiveActiveFolderId && (
+                    <div className="material-explorer-nav" data-testid="space-folder-nav">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = folderById.get(effectiveActiveFolderId);
+                          setActiveFolderId(cur?.parentFolderId ?? null);
+                        }}
+                        className="material-explorer-back"
+                        aria-label="返回上一级文件夹"
+                      >
+                        <ArrowLeft size={12} />
+                        <span>返回上级</span>
+                      </button>
+                      <div className="material-breadcrumbs" aria-label="当前文件夹路径">
+                        <button
+                          type="button"
+                          onClick={() => setActiveFolderId(null)}
+                          className="material-breadcrumb-btn"
+                        >
+                          根目录
+                        </button>
+                        {breadcrumbs.map((crumb, idx) => {
+                          const isLast = idx === breadcrumbs.length - 1;
+                          return (
+                            <React.Fragment key={crumb.id}>
+                              <span>/</span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveFolderId(crumb.id)}
+                                className={`material-breadcrumb-btn ${isLast ? 'current' : ''}`}
+                                title={crumb.title}
+                              >
+                                {crumb.title}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentChildFolders.map((fld) => renderFolderRow(fld))}
+                  {currentFolderItems.map((it) =>
+                    renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
+                  )}
+
+                  {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
+                    <div className="material-folder-empty">
+                      <span>{effectiveActiveFolderId ? '当前文件夹为空' : '根目录暂无未归档文件'}</span>
+                      <div className="material-folder-empty-actions">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="dw-btn dw-btn-outline dw-btn-sm"
+                        >
+                          <Paperclip size={11} />
+                          <span>上传文件</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateMode('document');
+                            setDraftTitle('');
+                            setDraftNote('');
+                          }}
+                          className="dw-btn dw-btn-outline dw-btn-sm"
+                        >
+                          <FileText size={11} />
+                          <span>新建文档</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateMode('folder');
+                            setDraftTitle('');
+                          }}
+                          className="dw-btn dw-btn-outline dw-btn-sm"
+                        >
+                          <Folder size={11} />
+                          <span>新建文件夹</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
               </div>
             )}
 

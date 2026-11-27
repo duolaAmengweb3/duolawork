@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ArtifactStore } from './artifacts.js';
@@ -8,7 +9,8 @@ import type { DriverRegistry } from './drivers/registry.js';
 import {
   sanitizeToolSummary,
   SPACE_AND_DUOLABASE_TOOLS,
-  type DynamicToolDefinition
+  type DynamicToolDefinition,
+  type TurnImageAttachment
 } from './drivers/types.js';
 import {
   computeMessageRevision,
@@ -16,6 +18,7 @@ import {
   type BuiltHandoffPacket,
   type HandoffEngine
 } from './handoff.js';
+import type { SpaceStore } from './space.js';
 import {
   isExcludedClaudeVps,
   resolveEffectiveDriverKind,
@@ -29,7 +32,7 @@ import {
   type ToolTraceItem
 } from '../shared/types.js';
 
-export const DEFAULT_WORKBENCH_PROTOCOL_VERSION = 'dw2-proto-2026-11-26-v3';
+export const DEFAULT_WORKBENCH_PROTOCOL_VERSION = 'dw2-proto-2026-11-27-v5';
 
 export type ServerEventListener = (event: {
   type: string;
@@ -58,6 +61,7 @@ export interface StructuredActionHandler {
 
 export class ThreadEngine {
   private readonly listeners = new Set<ServerEventListener>();
+  public space?: SpaceStore;
   private readonly inflightClientRequests = new Map<
     string,
     Promise<{
@@ -798,13 +802,24 @@ export class ThreadEngine {
         forceFullContext
       });
 
+    const hasNativeSpaceTools =
+      effectiveDriverKind === 'codex-app-server' ||
+      effectiveDriverKind === 'acp-stdio' ||
+      effectiveDriverKind === 'claude-cli' ||
+      effectiveDriverKind === 'mock';
+
     const protocolBrief = needsProtocolSync
       ? [
           `<duolawork_v2_protocol version="${protocolVersion}">`,
           `你当前接入的是新版 DuolaWork 2.0 工作台（非旧版 1.9.6 群聊）：`,
           `- 当前对话ID：${thread.id}；当前对接成员：${targetMember.name}(${targetMember.id})；团队成员：${memberNamesSummary || targetMember.name}`,
           `- 对话机制：每次消息仅由当前指定负责人单线响应；切人时历史通过 <context_handoff> 自动交接，未同步的更早历史如实说明看不到。`,
-          `- 协作空间资料：右侧「资料」里的文档、文件（文本片段/路径）与链接会自动附带摘要，有需要时可调用 space_list_materials / space_read_material 或 artifact_read 查看全文。`,
+          `- 协作空间资料与文件夹（支持任意格式文件 + 文件夹管理）：右侧「资料」里的文件夹与文档/文件/链接会自动附带摘要。${
+            hasNativeSpaceTools
+              ? '你已直接挂载协作空间工具（含 duolawork-space MCP / 动态工具）：space_list_materials（列出目录与资料）、space_read_material（读取内容）、space_create_folder（创建单层或嵌套文件夹如 "调研/2026-11"）、space_save_file（保存任意格式文件如 .csv/.json/.html/.py/.png/.pdf/.xlsx/.zip，支持传文本 content、二进制 dataBase64，或直接传你本机生成的绝对路径 localPath 自动上传）、space_save_document（创建/更新 Markdown 文档并放入目录）、space_save_link（保存链接）、space_move_item（移动目录或重命名）。'
+              : '支持通过内联标签向右侧协作空间创建文件夹与写入任意格式文件。'
+          }同时所有成员均可使用通用内联标签作为兜底：<duolawork_folder path="目录/子目录" />、<duolawork_file name="文件名.csv" folder="可选目录" encoding="utf8|base64">文件内容</duolawork_file>、<duolawork_artifact title="标题.md" folder="可选目录">Markdown正文</duolawork_artifact>、<duolawork_link title="标题" url="https://..." folder="可选目录">备注</duolawork_link>。`,
+          `- 对话图片展示：前端支持在对话中直接渲染图片并提供「保存到资料区」与「保存到本地」按钮。如果你找到了网图，请直接输出标准 Markdown 图片 \`![图片说明](https://图片URL)\`；如果你在本机生成了图片文件（如 PNG/JPG/SVG），先调用 \`chat_attach_image\`（或 \`space_save_file\`）传入 \`localPath\`，再把工具返回的 \`markdownEmbed\` 直接写进回复即可向用户展示图片。`,
           `- 外部连接器与凭证：通过 DuolaBase 工具或已挂载的 duolabase MCP 访问外部服务（connector_list → connector_discover → connector_call，凭证使用 vault_list → vault_http_proxy）。严禁调用 vault_reveal 或向对话输出明文密钥/Token！`,
           `- 先确认后派单规则：当用户让你安排/分配单次或定时任务时，先判断需求是否已明确——` +
             `（1）若需求还存在关键分叉或模糊点（如时间范围、选题/测评/制作等方向取舍、产出形式、执行频率未定），本轮严禁直接立项派单！请先简短给出分析建议，并${
@@ -817,11 +832,6 @@ export class ThreadEngine {
                 ? '调用 task_create_or_update 工具或'
                 : ''
             }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, startImmediately:true|false, steps 可选）。`,
-          `- 保存文稿规则：使用 ${
-            effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
-              ? 'artifact_write 工具或 '
-              : ''
-          }<duolawork_artifact title="文件名.md">正文</duolawork_artifact> 自动写入右侧协作空间。`,
           targetMember.driverKind === 'remote-bridge'
             ? `- 关键禁令：严禁调用旧版 Agent Hub (1.9.6) 的频道定时任务 (schedule) 或看板任务 (board_task) 工具！该桥接频道对用户完全不可见，立项与定时任务必须通过 <duolawork_task>...</duolawork_task> 写入 DuolaWork 2.0。`
             : `- 安全规范：绝不索要或输出明文密钥，外部服务通过 DuolaBase 连接器与 Vault HTTP 代理按授权访问。`,
@@ -843,7 +853,11 @@ export class ThreadEngine {
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 保存右侧文稿：附带 <duolawork_artifact title="标题.md">正文</duolawork_artifact>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明","startImmediately":false}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
+            hasNativeSpaceTools
+              ? '优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
+              : ''
+          }可附带 <duolawork_folder path="目录/子目录" />、<duolawork_file name="任意文件.csv" folder="可选目录" encoding="utf8|base64">内容</duolawork_file>、<duolawork_artifact title="标题.md" folder="可选目录">正文</duolawork_artifact>、<duolawork_link title="标题" url="https://..." folder="可选目录">备注</duolawork_link>。普通回答直接输出自然语言，切勿输出内部调试词。${compactBridgeGuard}]`
         : '';
 
     const formatPromptForDriver = (packet: BuiltHandoffPacket): string => {
@@ -880,6 +894,52 @@ export class ThreadEngine {
 
     const dynamicTools = this.buildThreadOwnerTools();
     const promptForDriver = formatPromptForDriver(initialPacket);
+
+    // Extract any user-attached chat/space images referenced in this message for multimodal delivery
+    const turnImages: TurnImageAttachment[] = [];
+    if (this.space) {
+      const seenImgKeys = new Set<string>();
+      const imgRefRegex = /!\[[^\]]*\]\((\/api\/v2\/(?:chat-images|space\/files)\/([^)?#\s]+))\)/g;
+      let im: RegExpExecArray | null;
+      while ((im = imgRefRegex.exec(cleanBody)) !== null && turnImages.length < 6) {
+        const fullUrl = im[1];
+        const rawId = decodeURIComponent(im[2]);
+        if (seenImgKeys.has(fullUrl)) continue;
+        seenImgKeys.add(fullUrl);
+        try {
+          if (fullUrl.startsWith('/api/v2/chat-images/')) {
+            const found = this.space.getChatImageWithPath(rawId);
+            if (found && found.image.threadId === thread.id && found.image.sizeBytes <= 10 * 1024 * 1024) {
+              turnImages.push({
+                id: found.image.id,
+                name: found.image.name,
+                mimeType: found.image.mimeType,
+                dataBase64: fs.readFileSync(found.absPath).toString('base64'),
+                localPath: found.absPath
+              });
+            }
+          } else if (fullUrl.startsWith('/api/v2/space/files/')) {
+            const found = this.space.getFileWithPath(rawId);
+            if (
+              found &&
+              found.file.threadId === thread.id &&
+              found.file.mimeType.startsWith('image/') &&
+              found.file.sizeBytes <= 10 * 1024 * 1024
+            ) {
+              turnImages.push({
+                id: found.file.id,
+                name: found.file.name,
+                mimeType: found.file.mimeType,
+                dataBase64: fs.readFileSync(found.absPath).toString('base64'),
+                localPath: found.absPath
+              });
+            }
+          }
+        } catch {
+          // ignore unreadable image attachment
+        }
+      }
+    }
 
     const toolTrace: ToolTraceItem[] = [];
     let toolClarificationCard: ClarificationCardData | null = null;
@@ -925,6 +985,7 @@ export class ThreadEngine {
         },
         timeoutMs: input.timeoutMs,
         dynamicTools,
+        ...(turnImages.length > 0 ? { images: turnImages } : {}),
         onToolCall: async (toolName, args) => {
           if (!this.actionHandler) throw new Error('Action handler not bound');
           if (toolName === 'task_ask_clarification') {
@@ -1183,7 +1244,13 @@ export class ThreadEngine {
              m.author_kind = 'agent'
              AND m.turn_status = 'completed'
              AND m.inline_actions_applied = 0
-             AND (a.response_text LIKE '%<duolawork_artifact%' OR a.response_text LIKE '%<duolawork_task%')
+             AND (
+               a.response_text LIKE '%<duolawork_artifact%'
+               OR a.response_text LIKE '%<duolawork_task%'
+               OR a.response_text LIKE '%<duolawork_folder%'
+               OR a.response_text LIKE '%<duolawork_file%'
+               OR a.response_text LIKE '%<duolawork_link%'
+             )
            )
          )
            AND a.status = 'succeeded'
@@ -1472,9 +1539,30 @@ export class ThreadEngine {
     let currentBaseVer = pinnedArtifactVersion;
     let spaceChanged = false;
     let blockIndex = 0;
+    let folderIndex = 0;
+    let fileIndex = 0;
+    let linkIndex = 0;
     let hadUnhandledError = false;
 
-    const cleaned = stripInlineArtifactBlock(rawText, (title, content) => {
+    let cleaned = rawText;
+
+    // 1. Inline <duolawork_folder path="a/b" /> or <duolawork_folder>a/b</duolawork_folder>
+    cleaned = stripInlineFolderBlocks(cleaned, (folderPath) => {
+      const idx = folderIndex++;
+      const actionKey = `inline_folder:${keyOwner}:${idx}`;
+      if (this.getActionReceipt(actionKey)) return;
+      if (!this.space || !folderPath) return;
+      try {
+        const created = this.space.ensureFolderPath(claims.threadId, folderPath);
+        this.saveActionReceipt(actionKey, keyOwner, 'folder_create', created.id);
+        spaceChanged = true;
+      } catch {
+        hadUnhandledError = true;
+      }
+    });
+
+    // 2. Inline <duolawork_artifact title="..." folder="...">Markdown</duolawork_artifact>
+    cleaned = stripInlineArtifactBlock(cleaned, (title, content, folderPath) => {
       const idx = blockIndex++;
       const actionKey = `inline_artifact:${keyOwner}:${idx}`;
       const existingReceiptId = this.getActionReceipt(actionKey);
@@ -1486,6 +1574,47 @@ export class ThreadEngine {
 
       try {
         this.db.inTransaction(() => {
+          if (this.space && (folderPath || title)) {
+            const existingBound = currentArtifactId ? this.artifacts.getArtifact(currentArtifactId) : null;
+            const matchesBound =
+              Boolean(existingBound) &&
+              !folderPath &&
+              (!title || existingBound!.title.toLowerCase() === title.toLowerCase());
+            if (matchesBound && currentArtifactId && currentBaseVer !== null) {
+              const written = this.artifacts.writeArtifact({
+                artifactId: currentArtifactId,
+                expectedBaseVersion: currentBaseVer,
+                title: title || undefined,
+                content,
+                writerKind: 'agent',
+                writerId: claims.memberId,
+                attemptId: claims.attemptId
+              });
+              currentBaseVer = written.artifact.headVersion;
+              this.saveActionReceipt(actionKey, keyOwner, 'artifact_write', currentArtifactId);
+              spaceChanged = true;
+              return;
+            }
+            const saved = this.space.saveOrUpdateDocumentForAgent({
+              threadId: claims.threadId,
+              title: title || existingBound?.title || '对话文稿.md',
+              content,
+              folderPath: folderPath || undefined,
+              writerId: claims.memberId,
+              attemptId: claims.attemptId
+            });
+            currentArtifactId = saved.artifact.id;
+            currentBaseVer = saved.artifact.headVersion;
+            this.saveActionReceipt(
+              actionKey,
+              keyOwner,
+              saved.created ? 'artifact_create' : 'artifact_write',
+              saved.artifact.id
+            );
+            spaceChanged = true;
+            return;
+          }
+
           if (!currentArtifactId) {
             const curThread = this.getThread(claims.threadId);
             if (curThread?.boundArtifactId) {
@@ -1528,6 +1657,55 @@ export class ThreadEngine {
             spaceChanged = true;
           }
         });
+      } catch {
+        hadUnhandledError = true;
+      }
+    });
+
+    // 3. Inline <duolawork_file name="..." folder="..." mime="..." encoding="utf8|base64">...</duolawork_file>
+    cleaned = stripInlineFileBlocks(cleaned, (spec) => {
+      const idx = fileIndex++;
+      const actionKey = `inline_file:${keyOwner}:${idx}`;
+      if (this.getActionReceipt(actionKey)) return;
+      if (!this.space || !spec.name) return;
+      try {
+        const isBase64 = (spec.encoding || '').toLowerCase() === 'base64';
+        const saved = this.space.saveOrUpdateFileForAgent({
+          threadId: claims.threadId,
+          name: spec.name,
+          content: isBase64 ? undefined : spec.body,
+          dataBase64: isBase64 ? spec.body : undefined,
+          mimeType: spec.mimeType,
+          folderPath: spec.folderPath,
+          uploaderId: claims.memberId,
+          replaceExisting: true
+        });
+        this.saveActionReceipt(actionKey, keyOwner, 'file_save', saved.file.id);
+        spaceChanged = true;
+      } catch {
+        hadUnhandledError = true;
+      }
+    });
+
+    // 4. Inline <duolawork_link title="..." url="..." folder="...">note</duolawork_link>
+    cleaned = stripInlineLinkBlocks(cleaned, (spec) => {
+      const idx = linkIndex++;
+      const actionKey = `inline_link:${keyOwner}:${idx}`;
+      if (this.getActionReceipt(actionKey)) return;
+      if (!this.space || !spec.url) return;
+      try {
+        const folderId = this.space.resolveTargetFolderId(claims.threadId, {
+          folderPath: spec.folderPath
+        });
+        const link = this.space.createLink({
+          threadId: claims.threadId,
+          title: spec.title || spec.url,
+          url: spec.url,
+          note: spec.note,
+          folderId
+        });
+        this.saveActionReceipt(actionKey, keyOwner, 'link_save', link.id);
+        spaceChanged = true;
       } catch {
         hadUnhandledError = true;
       }
@@ -2002,15 +2180,106 @@ export class ThreadEngine {
   }
 }
 
+function parseTagAttrs(rawAttrs: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRegex = /([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = attrRegex.exec(rawAttrs)) !== null) {
+    attrs[m[1].toLowerCase()] = (m[2] ?? m[3] ?? '').trim();
+  }
+  return attrs;
+}
+
 function stripInlineArtifactBlock(
   text: string,
-  onBlock: (title: string | undefined, content: string) => void
+  onBlock: (title: string | undefined, content: string, folderPath?: string) => void
 ): string {
-  const regex = /<duolawork_artifact(?:\s+title="([^"]*)")?>([\s\S]*?)<\/duolawork_artifact>/g;
+  const regex = /<duolawork_artifact(\s+[^>]*)?>([\s\S]*?)<\/duolawork_artifact>/gi;
   let match: RegExpExecArray | null;
   let cleaned = text;
   while ((match = regex.exec(text)) !== null) {
-    onBlock(match[1]?.trim() || undefined, match[2].trim());
+    const attrs = parseTagAttrs(match[1] || '');
+    onBlock(
+      attrs.title || undefined,
+      match[2].trim(),
+      attrs.folder || attrs.folderpath || attrs.dir || undefined
+    );
+    cleaned = cleaned.replace(match[0], '').trim();
+  }
+  return cleaned;
+}
+
+function stripInlineFolderBlocks(
+  text: string,
+  onBlock: (folderPath: string) => void
+): string {
+  const selfClosing = /<duolawork_folder(\s+[^>]*)\/>/gi;
+  const paired = /<duolawork_folder(\s+[^>]*)?>([\s\S]*?)<\/duolawork_folder>/gi;
+  let cleaned = text;
+  let match: RegExpExecArray | null;
+  while ((match = selfClosing.exec(text)) !== null) {
+    const attrs = parseTagAttrs(match[1] || '');
+    const p = attrs.path || attrs.title || attrs.name || '';
+    if (p) onBlock(p);
+    cleaned = cleaned.replace(match[0], '').trim();
+  }
+  while ((match = paired.exec(cleaned)) !== null) {
+    const attrs = parseTagAttrs(match[1] || '');
+    const p = attrs.path || attrs.title || attrs.name || match[2].trim();
+    if (p) onBlock(p);
+    cleaned = cleaned.replace(match[0], '').trim();
+  }
+  return cleaned;
+}
+
+function stripInlineFileBlocks(
+  text: string,
+  onBlock: (spec: {
+    name: string;
+    body: string;
+    folderPath?: string;
+    mimeType?: string;
+    encoding?: string;
+  }) => void
+): string {
+  const regex = /<duolawork_file(\s+[^>]*)?>([\s\S]*?)<\/duolawork_file>/gi;
+  let match: RegExpExecArray | null;
+  let cleaned = text;
+  while ((match = regex.exec(text)) !== null) {
+    const attrs = parseTagAttrs(match[1] || '');
+    const name = attrs.name || attrs.title || attrs.filename || '';
+    if (name) {
+      onBlock({
+        name,
+        body: match[2].replace(/^\r?\n/, '').replace(/\r?\n$/, ''),
+        folderPath: attrs.folder || attrs.folderpath || attrs.dir || undefined,
+        mimeType: attrs.mime || attrs.mimetype || attrs.type || undefined,
+        encoding: attrs.encoding || 'utf8'
+      });
+    }
+    cleaned = cleaned.replace(match[0], '').trim();
+  }
+  return cleaned;
+}
+
+function stripInlineLinkBlocks(
+  text: string,
+  onBlock: (spec: { title?: string; url: string; note: string; folderPath?: string }) => void
+): string {
+  const regex = /<duolawork_link(\s+[^>]*)?>([\s\S]*?)<\/duolawork_link>/gi;
+  let match: RegExpExecArray | null;
+  let cleaned = text;
+  while ((match = regex.exec(text)) !== null) {
+    const attrs = parseTagAttrs(match[1] || '');
+    const url = attrs.url || attrs.href || '';
+    if (url) {
+      onBlock({
+        title: attrs.title || undefined,
+        url,
+        note: match[2].trim(),
+        folderPath: attrs.folder || attrs.folderpath || attrs.dir || undefined
+      });
+    }
     cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;

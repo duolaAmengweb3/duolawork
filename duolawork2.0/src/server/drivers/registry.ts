@@ -267,6 +267,7 @@ export class DriverRegistry {
     toolPolicy?: string;
     dynamicTools?: DynamicToolDefinition[];
     mcpServers?: McpHttpServerConfig[];
+    images?: import('./types.js').TurnImageAttachment[];
     onToolCall?: (toolName: string, args: Record<string, unknown>, attemptId: string) => Promise<unknown>;
     onEvent?: (ev: TurnStreamEvent) => void;
   }): Promise<{ attempt: DispatchAttemptRecord; result: TurnExecutionResult; deduplicated: boolean }> {
@@ -455,6 +456,7 @@ export class DriverRegistry {
           timeoutMs: timeoutMs + 5000,
           dynamicTools: input.dynamicTools,
           ...(effectiveMcpServers.length > 0 ? { mcpServers: effectiveMcpServers } : {}),
+          ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
           onToolCall: input.onToolCall
             ? (name, args) => input.onToolCall!(name, args, attemptId)
             : undefined

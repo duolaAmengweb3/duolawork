@@ -18,14 +18,33 @@ export interface McpHttpServerConfig {
   headers?: Record<string, string>;
 }
 
+export interface TurnImageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+  localPath?: string;
+}
+
+export const SPACE_TOOL_NAMES = new Set([
+  'space_list_materials',
+  'space_read_material',
+  'space_create_folder',
+  'space_save_file',
+  'space_save_document',
+  'space_save_link',
+  'space_move_item',
+  'chat_attach_image'
+]);
+
 /**
- * Shared DuolaBase + Collaboration Space read tools exposed to both thread owners and task workers
- * when `toolPolicy !== 'none'`. Server-side `AuthSandbox` enforces read-only vs full vs 403 secret bounds.
+ * Shared DuolaBase + Collaboration Space tools exposed to both thread owners and task workers
+ * when `toolPolicy !== 'none'`. Server-side `AuthSandbox` enforces thread scope, read-only vs full, and 403 secret bounds.
  */
 export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
   {
     name: 'space_list_materials',
-    description: '列出当前对话右侧协作空间里的全部活跃文档、文件与链接列表（含 id、标题、类型与大小）。',
+    description: '列出当前对话右侧协作空间里的全部文件夹与活跃文档、文件、链接列表（含 id、目录路径、标题、类型、大小与更新时间）。',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -38,6 +57,98 @@ export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
         id: { type: 'string' }
       },
       required: ['kind', 'id']
+    }
+  },
+  {
+    name: 'space_create_folder',
+    description: '在当前对话右侧协作空间创建文件夹（支持单层 title 或多层嵌套 path，如 "调研资料/2026-11/图表"；同名目录已存在时自动复用不重复创建）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '单层文件夹名称' },
+        path: { type: 'string', description: '嵌套文件夹路径，使用 / 分隔，例如 "竞品分析/截图"' },
+        parentFolderId: { type: 'string', description: '可选父文件夹 ID（不填则在根目录创建）' }
+      }
+    }
+  },
+  {
+    name: 'space_save_file',
+    description:
+      '保存任意格式的文件到当前对话右侧协作空间（支持 .csv/.json/.html/.py/.txt/.svg/.png/.jpg/.pdf/.xlsx/.docx/.zip/.mp4 等所有格式）。文本类传 content，二进制传 dataBase64，或直接传当前执行机已生成的本地绝对路径 localPath（自动读取上传，最大 24 MiB）。支持指定 folderId 或 folderPath（自动建目录）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '保存的文件名（含扩展名，如 report.csv、chart.png、page.html）' },
+        content: { type: 'string', description: 'UTF-8 文本文件内容（与 dataBase64 / localPath 三选一）' },
+        dataBase64: { type: 'string', description: 'Base64 编码的二进制文件内容（与 content / localPath 三选一）' },
+        localPath: { type: 'string', description: '当前执行节点本机已生成的文件绝对路径（用于直接上传图片/PDF/Excel/压缩包等任意文件）' },
+        mimeType: { type: 'string', description: '可选 MIME 类型，不填按扩展名自动识别' },
+        folderId: { type: 'string', description: '可选目标文件夹 ID' },
+        folderPath: { type: 'string', description: '可选目标文件夹路径（如 "数据导出/图表"），不存在会自动创建' },
+        replaceExisting: { type: 'boolean', description: '同目录下存在同名文件时是否覆盖更新并刷新更新时间，默认 true' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'space_save_document',
+    description: '在当前对话右侧协作空间创建或更新 Markdown 文档（支持指定 folderId 或 folderPath 自动归档到文件夹，并刷新更新时间）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '文档标题（如 方案评审.md）' },
+        content: { type: 'string', description: '完整 Markdown 正文' },
+        documentId: { type: 'string', description: '可选：更新指定已有文档 ID' },
+        folderId: { type: 'string', description: '可选目标文件夹 ID' },
+        folderPath: { type: 'string', description: '可选目标文件夹路径（如 "周报/2026-11"），不存在会自动创建' }
+      },
+      required: ['title', 'content']
+    }
+  },
+  {
+    name: 'space_save_link',
+    description: '在当前对话右侧协作空间保存外部参考链接（支持指定 folderId 或 folderPath）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        url: { type: 'string' },
+        note: { type: 'string' },
+        folderId: { type: 'string' },
+        folderPath: { type: 'string' }
+      },
+      required: ['title', 'url']
+    }
+  },
+  {
+    name: 'space_move_item',
+    description: '将右侧协作空间中的文档、文件或链接移动到指定文件夹（或根目录）或重命名。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['document', 'file', 'link'] },
+        id: { type: 'string' },
+        folderId: { type: ['string', 'null'], description: '目标文件夹 ID；传 null 移回根目录' },
+        folderPath: { type: 'string', description: '目标文件夹路径（不存在会自动创建）；传 "" 移回根目录' },
+        title: { type: 'string', description: '可选新名称' }
+      },
+      required: ['kind', 'id']
+    }
+  },
+  {
+    name: 'chat_attach_image',
+    description:
+      '将本地生成的图片（PNG/JPG/WEBP/GIF/SVG）上传为对话图片，返回可在回复中直接渲染的 markdownEmbed（如 ![说明](/api/v2/chat-images/...)），前端会直接展示图片并提供「保存到资料区」和「保存到本地」按钮。支持传 localPath 或 dataBase64。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '图片文件名（如 chart.png、cover.jpg）' },
+        localPath: { type: 'string', description: '执行机本机图片绝对路径' },
+        dataBase64: { type: 'string', description: 'Base64 图片内容（与 localPath 二选一）' },
+        mimeType: { type: 'string' },
+        alt: { type: 'string', description: '图片说明文字' }
+      },
+      required: ['name']
     }
   },
   {
@@ -142,6 +253,7 @@ export interface TurnDispatchInput {
   timeoutMs?: number;
   dynamicTools?: DynamicToolDefinition[];
   mcpServers?: McpHttpServerConfig[];
+  images?: TurnImageAttachment[];
   onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 

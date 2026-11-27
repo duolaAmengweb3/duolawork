@@ -12,7 +12,15 @@ import { AcpStdioDriver } from '../server/drivers/acp-driver.js';
 import { ClaudeCliDriver } from '../server/drivers/claude-cli-driver.js';
 import { CodexAppServerDriver, resolveLocalProxyEnv } from '../server/drivers/codex-driver.js';
 import { MockDriver } from '../server/drivers/mock-driver.js';
-import { redactSecrets, type AgentDriver, type TurnExecutionResult } from '../server/drivers/types.js';
+import {
+  redactSecrets,
+  SPACE_TOOL_NAMES,
+  type AgentDriver,
+  type DynamicToolDefinition,
+  type McpHttpServerConfig,
+  type TurnExecutionResult,
+  type TurnImageAttachment
+} from '../server/drivers/types.js';
 import type { NodeHelloMember } from '../server/node-hub.js';
 import { isExcludedClaudeVps, type DriverKind, type MemberRecord, type WorkspaceFileEntry } from '../shared/types.js';
 
@@ -56,6 +64,12 @@ export class DuolaWorkNodeRunner {
   private readonly outbox = new Map<string, OutboxEntry>();
   private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver }>();
   private readonly pendingToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private readonly activeMcpAttempts = new Map<
+    string,
+    { token: string; tools: DynamicToolDefinition[] }
+  >();
+  private loopbackMcpServer: http.Server | null = null;
+  private loopbackMcpPort: number | null = null;
   private ws: WebSocket | null = null;
   private stopped = false;
   private reconnectAttempt = 0;
@@ -72,8 +86,9 @@ export class DuolaWorkNodeRunner {
     this.loadOutbox();
   }
 
-  public start(): Promise<void> {
+  public async start(): Promise<void> {
     this.stopped = false;
+    await this.ensureLoopbackMcpServer();
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       this.connect((err) => {
@@ -100,6 +115,16 @@ export class DuolaWorkNodeRunner {
       pending.reject(new Error('NODE_STOPPED'));
     }
     this.pendingToolCalls.clear();
+    this.activeMcpAttempts.clear();
+    if (this.loopbackMcpServer) {
+      try {
+        this.loopbackMcpServer.close();
+      } catch {
+        // ignore
+      }
+      this.loopbackMcpServer = null;
+      this.loopbackMcpPort = null;
+    }
     if (this.ws) {
       try {
         this.ws.close();
@@ -108,6 +133,173 @@ export class DuolaWorkNodeRunner {
       }
       this.ws = null;
     }
+  }
+
+  private async ensureLoopbackMcpServer(): Promise<void> {
+    if (this.loopbackMcpServer && this.loopbackMcpPort) return;
+    const server = http.createServer((req, res) => {
+      void this.handleLoopbackMcpRequest(req, res);
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
+    const addr = server.address();
+    this.loopbackMcpServer = server;
+    this.loopbackMcpPort = typeof addr === 'object' && addr ? addr.port : null;
+  }
+
+  private async handleLoopbackMcpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    const reqUrl = new URL(req.url || '/', 'http://127.0.0.1');
+    const match = reqUrl.pathname.match(/^\/mcp\/([^/]+)$/);
+    if (!match) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not_found' }));
+      return;
+    }
+    const attemptId = decodeURIComponent(match[1]);
+    const entry = this.activeMcpAttempts.get(attemptId);
+    const authHeader = String(req.headers.authorization || '');
+    if (!entry || authHeader !== `Bearer ${entry.token}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      return;
+    }
+    if (req.method === 'DELETE') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'method_not_allowed' }));
+      return;
+    }
+
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    for await (const chunk of req) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buf.length;
+      if (totalBytes > 36 * 1024 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'payload_too_large' }));
+        return;
+      }
+      chunks.push(buf);
+    }
+
+    let payload: any;
+    try {
+      payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }));
+      return;
+    }
+
+    const handleOne = async (msg: any): Promise<Record<string, unknown> | null> => {
+      const id = msg?.id;
+      const method = String(msg?.method || '');
+      if (method === 'notifications/initialized' || method.startsWith('notifications/')) {
+        return null;
+      }
+      if (method === 'initialize') {
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            protocolVersion: String(msg?.params?.protocolVersion || '2024-11-05'),
+            capabilities: { tools: {} },
+            serverInfo: { name: 'duolawork-space', version: '2.0.0' }
+          }
+        };
+      }
+      if (method === 'ping') {
+        return { jsonrpc: '2.0', id, result: {} };
+      }
+      if (method === 'tools/list') {
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            tools: entry.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema
+            }))
+          }
+        };
+      }
+      if (method === 'tools/call') {
+        const toolName = String(msg?.params?.name || '');
+        const toolArgs =
+          msg?.params?.arguments && typeof msg.params.arguments === 'object'
+            ? (msg.params.arguments as Record<string, unknown>)
+            : {};
+        if (!entry.tools.some((t) => t.name === toolName)) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              isError: true,
+              content: [{ type: 'text', text: `未授权或未知协作空间工具: ${toolName}` }]
+            }
+          };
+        }
+        try {
+          const out = await this.invokeCloudTool(attemptId, toolName, toolArgs);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(out, null, 2) }]
+            }
+          };
+        } catch (err) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              isError: true,
+              content: [{ type: 'text', text: redactSecrets((err as Error).message || '工具调用失败') }]
+            }
+          };
+        }
+      }
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32601, message: `Method not found: ${method}` }
+      };
+    };
+
+    if (Array.isArray(payload)) {
+      const results = (await Promise.all(payload.map(handleOne))).filter(Boolean);
+      if (results.length === 0) {
+        res.writeHead(202);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(results));
+      return;
+    }
+
+    const single = await handleOne(payload);
+    if (!single) {
+      res.writeHead(202);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(single));
   }
 
   private buildWsUrl(): string {
@@ -335,7 +527,8 @@ export class DuolaWorkNodeRunner {
           scopeKey: String(msg.scopeKey || ''),
           cwd: String(msg.cwd || os.tmpdir()),
           existingNativeSessionId: msg.existingNativeSessionId ?? null,
-          dynamicTools: Array.isArray(msg.dynamicTools) ? msg.dynamicTools : []
+          dynamicTools: Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [],
+          mcpServers: Array.isArray(msg.mcpServers) ? (msg.mcpServers as McpHttpServerConfig[]) : []
         });
         this.send({ type: 'rpc.result', reqId, ok: true, result: ensured });
       } catch (err) {
@@ -369,6 +562,71 @@ export class DuolaWorkNodeRunner {
       const driver = this.resolveDriver(member.driverKind);
       this.runningAttempts.set(attemptId, { member, driver });
 
+      const dynamicTools: DynamicToolDefinition[] = Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [];
+      const incomingMcpServers: McpHttpServerConfig[] = Array.isArray(msg.mcpServers)
+        ? (msg.mcpServers as McpHttpServerConfig[])
+        : [];
+      const effectiveMcpServers: McpHttpServerConfig[] = [...incomingMcpServers];
+
+      const spaceToolsForMcp = dynamicTools.filter((t) => SPACE_TOOL_NAMES.has(t.name));
+      if (
+        (member.driverKind === 'acp-stdio' || member.driverKind === 'claude-cli') &&
+        spaceToolsForMcp.length > 0 &&
+        this.loopbackMcpPort
+      ) {
+        const mcpToken = randomUUID().replace(/-/g, '');
+        this.activeMcpAttempts.set(attemptId, { token: mcpToken, tools: spaceToolsForMcp });
+        effectiveMcpServers.push({
+          name: 'duolawork-space',
+          url: `http://127.0.0.1:${this.loopbackMcpPort}/mcp/${encodeURIComponent(attemptId)}`,
+          headers: { Authorization: `Bearer ${mcpToken}` }
+        });
+      }
+
+      const incomingImages: TurnImageAttachment[] = Array.isArray(msg.images)
+        ? (msg.images as TurnImageAttachment[])
+        : [];
+      const hydratedImages: TurnImageAttachment[] = [];
+      let tempImageDir: string | null = null;
+      if (incomingImages.length > 0) {
+        tempImageDir = path.join(os.tmpdir(), 'duolawork-chat-images', attemptId.replace(/[^a-zA-Z0-9_-]/g, '_'));
+        fs.mkdirSync(tempImageDir, { recursive: true, mode: 0o700 });
+        for (let idx = 0; idx < incomingImages.length; idx++) {
+          const img = incomingImages[idx];
+          if (!img?.dataBase64) continue;
+          const safeName = `${idx + 1}-${path.basename(String(img.name || 'image.png')).replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_')}`;
+          const localPath = path.join(tempImageDir, safeName);
+          try {
+            fs.writeFileSync(localPath, Buffer.from(img.dataBase64, 'base64'), { mode: 0o600 });
+            hydratedImages.push({ ...img, localPath });
+          } catch {
+            hydratedImages.push(img);
+          }
+        }
+      }
+
+      const imagePathNote =
+        hydratedImages.length > 0
+          ? `\n\n[用户随本条消息附带了 ${hydratedImages.length} 张图片，你可直接查看或用本地读取工具查看：\n${hydratedImages
+              .map((img) => `- ${img.name} (${img.mimeType})${img.localPath ? ` 本地路径: ${img.localPath}` : ''}`)
+              .join('\n')}\n]`
+          : '';
+      const promptWithImages = `${String(msg.prompt || '')}${imagePathNote}`;
+      const fallbackWithImages =
+        typeof msg.fallbackFullPrompt === 'string'
+          ? `${msg.fallbackFullPrompt}${imagePathNote}`
+          : undefined;
+
+      const cleanupTempImages = () => {
+        if (tempImageDir) {
+          try {
+            fs.rmSync(tempImageDir, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        }
+      };
+
       void driver
         .runTurn(
           {
@@ -377,10 +635,12 @@ export class DuolaWorkNodeRunner {
             scopeKey: String(msg.scopeKey || ''),
             cwd: String(msg.cwd || os.tmpdir()),
             nativeSessionId: String(msg.nativeSessionId || ''),
-            prompt: String(msg.prompt || ''),
-            fallbackFullPrompt: typeof msg.fallbackFullPrompt === 'string' ? msg.fallbackFullPrompt : undefined,
+            prompt: promptWithImages,
+            fallbackFullPrompt: fallbackWithImages,
             timeoutMs: typeof msg.timeoutMs === 'number' ? msg.timeoutMs : 900_000,
-            dynamicTools: Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [],
+            dynamicTools,
+            mcpServers: effectiveMcpServers,
+            ...(hydratedImages.length > 0 ? { images: hydratedImages } : {}),
             onToolCall: (toolName, args) => this.invokeCloudTool(attemptId, toolName, args)
           },
           (ev) => {
@@ -402,6 +662,8 @@ export class DuolaWorkNodeRunner {
         )
         .then((res) => {
           this.runningAttempts.delete(attemptId);
+          this.activeMcpAttempts.delete(attemptId);
+          cleanupTempImages();
           this.recordAndEmitOutbox({
             attemptId,
             ok: true,
@@ -415,6 +677,8 @@ export class DuolaWorkNodeRunner {
         })
         .catch((err) => {
           this.runningAttempts.delete(attemptId);
+          this.activeMcpAttempts.delete(attemptId);
+          cleanupTempImages();
           this.recordAndEmitOutbox({
             attemptId,
             ok: false,
@@ -521,15 +785,47 @@ export class DuolaWorkNodeRunner {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('云端控制面连接已断开，无法调用沙箱工具'));
     }
+    let effectiveArgs: Record<string, unknown> = args;
+    if (
+      (toolName === 'space_save_file' || toolName === 'chat_attach_image') &&
+      typeof args.localPath === 'string' &&
+      args.localPath.trim() &&
+      !args.dataBase64 &&
+      args.content === undefined
+    ) {
+      try {
+        const resolved = path.resolve(args.localPath.trim());
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+          return Promise.reject(new Error(`执行节点上找不到指定文件: ${args.localPath}`));
+        }
+        const st = fs.statSync(resolved);
+        if (st.size === 0) {
+          return Promise.reject(new Error(`本地文件为空: ${args.localPath}`));
+        }
+        if (st.size > 24 * 1024 * 1024) {
+          return Promise.reject(new Error(`文件超过 24 MiB 传输上限: ${args.localPath}`));
+        }
+        const b64 = fs.readFileSync(resolved).toString('base64');
+        const nextArgs: Record<string, unknown> = {
+          ...args,
+          name: typeof args.name === 'string' && args.name.trim() ? args.name.trim() : path.basename(resolved),
+          dataBase64: b64
+        };
+        delete nextArgs.localPath;
+        effectiveArgs = nextArgs;
+      } catch (err) {
+        return Promise.reject(new Error(`读取本地文件失败: ${(err as Error).message}`));
+      }
+    }
     const callId = `tc_${randomUUID().slice(0, 12)}`;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingToolCalls.delete(callId);
         reject(new Error(`云端工具调用超时: ${toolName}`));
-      }, 30_000);
+      }, 60_000);
       timer.unref?.();
       this.pendingToolCalls.set(callId, { resolve, reject, timer });
-      this.send({ type: 'turn.tool_call', callId, attemptId, toolName, args });
+      this.send({ type: 'turn.tool_call', callId, attemptId, toolName, args: effectiveArgs });
     });
   }
 

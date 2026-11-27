@@ -39,6 +39,14 @@ async function callSessionWithMcpFallback(
     return await rpc.call(method, { ...params, mcpServers }, timeoutMs);
   } catch (err) {
     if (mcpServers.length === 0) throw err;
+    const localOnly = mcpServers.filter((s) => s.name === 'duolawork-space');
+    if (localOnly.length > 0 && localOnly.length < mcpServers.length) {
+      try {
+        return await rpc.call(method, { ...params, mcpServers: localOnly }, timeoutMs);
+      } catch {
+        // fall through to empty mcpServers
+      }
+    }
     return await rpc.call(method, { ...params, mcpServers: [] }, timeoutMs);
   }
 }
@@ -189,7 +197,12 @@ export class AcpStdioDriver implements AgentDriver {
               ? sanitizeToolSummary('command', upd.rawInput.command)
               : upd.rawInput?.file_path !== undefined || upd.rawInput?.path !== undefined
                 ? sanitizeToolSummary('file', upd.rawInput.file_path ?? upd.rawInput.path)
-                : sanitizeToolSummary('search', upd.rawInput?.query);
+                : upd.rawInput?.name !== undefined || upd.rawInput?.title !== undefined || upd.rawInput?.folderPath !== undefined
+                  ? sanitizeToolSummary(
+                      'file',
+                      [upd.rawInput.folderPath, upd.rawInput.name ?? upd.rawInput.title].filter(Boolean).join('/')
+                    )
+                  : sanitizeToolSummary('search', upd.rawInput?.query);
           onEvent?.({
             kind: 'tool',
             toolId: upd.toolCallId ? String(upd.toolCallId) : undefined,
@@ -202,8 +215,16 @@ export class AcpStdioDriver implements AgentDriver {
       rpc.on('notification', onNotif);
 
       onEvent?.({ kind: 'started' });
-      const effectivePrompt =
+      let effectivePrompt =
         sessionReset && input.fallbackFullPrompt ? input.fallbackFullPrompt : input.prompt;
+      // Note: `agy acp` rejects inline base64 image blocks inside `session/prompt` at runtime.
+      // Instead, `node-runner` (or local host) provides real on-disk `localPath`s that ACP reads natively.
+      const localImgPaths = (input.images ?? []).filter((img) => img.localPath);
+      if (localImgPaths.length > 0 && !effectivePrompt.includes('[用户随本条消息附带了')) {
+        effectivePrompt += `\n\n[用户随本条消息附带了 ${localImgPaths.length} 张图片，可直接用读取工具查看：\n${localImgPaths
+          .map((img) => `- ${img.name} (${img.mimeType}) 本地路径: ${img.localPath}`)
+          .join('\n')}\n]`;
+      }
       const res = await rpc.call(
         'session/prompt',
         {
