@@ -7,17 +7,23 @@ export interface PopoutTarget {
   previewKind?: string;
 }
 
+export function popoutTabKey(t: Pick<PopoutTarget, 'kind' | 'id'>): string {
+  return `${t.kind}:${t.id}`;
+}
+
 interface DesktopPopoutBridge {
   isDesktop?: boolean;
   openPopoutWindow?: (opts: {
     path: string;
     title: string;
     key: string;
+    tabPayload?: PopoutTarget;
     width?: number;
     height?: number;
   }) => Promise<{ ok?: boolean }>;
   setAlwaysOnTop?: (alwaysOnTop: boolean) => Promise<{ ok?: boolean; alwaysOnTop?: boolean }>;
   setTheme?: (theme: 'light' | 'dark') => Promise<unknown>;
+  onReaderOpenTab?: (cb: (target: PopoutTarget) => void) => () => void;
 }
 
 export function getPopoutDesktopBridge(): DesktopPopoutBridge | undefined {
@@ -52,21 +58,64 @@ export function buildPopoutPath(target: PopoutTarget): string {
   return `/?${qs.toString()}`;
 }
 
+let cachedWebReaderWin: Window | null = null;
+
+function tryFocusExistingWebReader(target: PopoutTarget): Promise<boolean> {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    let ch: BroadcastChannel | null = null;
+    try {
+      ch = new BroadcastChannel('dw2-reader-tabs');
+      ch.onmessage = (ev) => {
+        if (ev.data?.type === 'open_tab_ack' && ev.data?.reqId === reqId && !settled) {
+          settled = true;
+          ch?.close();
+          if (cachedWebReaderWin && !cachedWebReaderWin.closed) {
+            try {
+              cachedWebReaderWin.focus();
+            } catch {
+              // ignore focus restriction
+            }
+          }
+          resolve(true);
+        }
+      };
+      ch.postMessage({ type: 'open_tab', reqId, target });
+    } catch {
+      ch?.close();
+      resolve(false);
+      return;
+    }
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        ch?.close();
+        resolve(false);
+      }
+    }, 90);
+  });
+}
+
 export async function openMaterialPopout(target: PopoutTarget): Promise<void> {
   if (typeof window === 'undefined') return;
   const relPath = buildPopoutPath(target);
   const title = target.title || (target.kind === 'document' ? '文档阅读器' : '文件预览');
-  const key = `${target.kind}:${target.id}`;
   const bridge = getPopoutDesktopBridge();
 
+  // Mac Electron desktop: single shared tabbed reader BrowserWindow
   if (bridge?.openPopoutWindow) {
     try {
       const res = await bridge.openPopoutWindow({
         path: relPath,
         title,
-        key,
-        width: 1080,
-        height: 800
+        key: 'reader-workspace',
+        tabPayload: target,
+        width: 1160,
+        height: 820
       });
       if (res?.ok) return;
     } catch {
@@ -74,10 +123,18 @@ export async function openMaterialPopout(target: PopoutTarget): Promise<void> {
     }
   }
 
+  // Web browser: if reader window already open, add/activate tab inside it!
+  const handledByExisting = await tryFocusExistingWebReader(target);
+  if (handledByExisting) return;
+
   const fullUrl = new URL(relPath, window.location.origin).toString();
-  const winName = `dw2_popout_${target.kind}_${target.id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-  const opened = window.open(fullUrl, winName, 'popup,width=1080,height=800,resizable=yes,scrollbars=yes');
+  const opened = window.open(
+    fullUrl,
+    'dw2_reader_workspace',
+    'popup,width=1160,height=820,resizable=yes,scrollbars=yes'
+  );
   if (opened) {
+    cachedWebReaderWin = opened;
     opened.focus();
   } else {
     window.open(fullUrl, '_blank', 'noopener,noreferrer');
