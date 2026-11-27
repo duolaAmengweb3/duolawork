@@ -933,13 +933,13 @@ export class ThreadEngine {
           }同时所有成员均可使用通用内联标签作为兜底：<duolawork_folder path="目录/子目录" />、<duolawork_file name="文件名.csv" folder="可选目录" encoding="utf8|base64">文件内容</duolawork_file>、<duolawork_artifact title="标题.md" folder="可选目录">Markdown正文</duolawork_artifact>、<duolawork_link title="标题" url="https://..." folder="可选目录">备注</duolawork_link>。`,
           `- 对话图片展示：前端支持在对话中直接渲染图片并提供「保存到资料区」与「保存到本地」按钮。如果你找到了网图，请直接输出标准 Markdown 图片 \`![图片说明](https://图片URL)\`；如果你在本机生成了图片文件（如 PNG/JPG/SVG），先调用 \`chat_attach_image\`（或 \`space_save_file\`）传入 \`localPath\`，再把工具返回的 \`markdownEmbed\` 直接写进回复即可向用户展示图片。`,
           `- 外部连接器与凭证：通过 DuolaBase 工具或已挂载的 duolabase MCP 访问外部服务（connector_list → connector_discover → connector_call，凭证使用 vault_list → vault_http_proxy）。严禁调用 vault_reveal 或向对话输出明文密钥/Token！`,
-          `- 先确认后派单规则：当用户让你安排/分配单次或定时任务时，先判断需求是否已明确——` +
-            `（1）若需求还存在关键分叉或模糊点（如时间范围、选题/测评/制作等方向取舍、产出形式、执行频率未定），本轮严禁直接立项派单！请先简短给出分析建议，并${
+          `- 先确认后派单规则：当用户让你安排/分配单次或定时任务（包括以「【一次性任务 · 交给 ...】」或「【循环定时任务 · 交给 ...】」发起的指令）时，先判断需求是否已明确——` +
+            `（1）若需求还存在关键分叉或模糊点（尤其是「循环定时任务」未说明具体执行频率或时间点时，严禁自行猜测 Cron 表达式！以及选题方向、产出形式未定），本轮严禁直接立项派单！请先简短给出分析建议，并${
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
                 ? '调用 task_ask_clarification 工具或'
                 : ''
-            }在回复末尾附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"简明问题","options":["推荐选项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>（严格限 1～3 个关键问题，每题给 2～4 个短选项，首项放默认推荐），弹卡片让用户一键确认后再派单；` +
-            `（2）若用户需求已十分明确（目标范围、执行对象、时间/频率清楚，或刚通过确认卡片回复了选择，或明确说直接执行），则无需追问，直接${
+            }在回复末尾附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"简明问题（如：请问希望多久自动执行一次？）","options":["每天 08:00","工作日 09:00","每周一 10:00"],"multiSelect":false}]}</duolawork_ask>（严格限 1～3 个关键问题，每题给 2～4 个短选项，首项放默认推荐），弹卡片让用户一键确认后再派单；` +
+            `（2）若用户需求已十分明确（一次性任务目标清楚；或循环定时任务已说明明确频率/时间点，如“每天8点”“每周一上午10点”，请自动换算为 5 段标准 Cron 表达式；或刚通过确认卡片回复了选择），则无需追问，直接${
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
                 ? '按实际成果设置 outcome（reply、material 或 external），调用 task_create_or_update 工具或'
                 : ''
@@ -965,7 +965,7 @@ export class ThreadEngine {
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略。资料步骤填 outcome 的 kind:"material"、materialKind、name、folderPath，以及用户给定的完整正文 expectedText；外部动作填写 kind:"external"。当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
+        ? `[结构化指令说明：① 派单前确认（若循环定时任务未说明执行频率/时间点，或需求存在模糊分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，严禁猜 Cron 或直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；缺频率时询问频率；原指派人offline时提供改派在线成员选项）","options":["每天 08:00","工作日 09:00","每周一 10:00"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用；请自动将自然语言频率换算为 5 段 Cron）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略。资料步骤填 outcome 的 kind:"material"、materialKind、name、folderPath，以及用户给定的完整正文 expectedText；外部动作填写 kind:"external"。当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
             hasNativeSpaceTools
               ? '向外部连接器上传图片或文件时，先用 space_save_file(localPath) 保存，再用 space_upload_to_connector 传文件 ID，让工作台传输原始字节。优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
               : ''
