@@ -7,10 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const builtApp = path.join(rootDir, 'release', 'Agent Hub.app');
+const builtApp = path.join(rootDir, 'release', 'DuolaWork.app');
 const buildInfoPath = path.join(rootDir, 'dist', 'build-info.json');
 const targetReleaseDir = '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release';
-const targetApp = path.join(targetReleaseDir, 'Agent Hub.app');
+const targetApp = path.join(targetReleaseDir, 'DuolaWork.app');
+const legacyV2App = path.join(targetReleaseDir, 'Agent Hub.app');
 const backup196App = path.join(targetReleaseDir, 'previous-Agent-Hub-1.9.6.app');
 const evidenceDir = path.join(rootDir, 'evidence', 'v2-final');
 const launchPng = path.join(evidenceDir, 'desktop-activated.png');
@@ -192,21 +193,20 @@ if (pids8780.length > 0) {
   await new Promise((r) => setTimeout(r, 300));
 }
 
-// 3. Preserve 1.9.6 backup & atomically install 2.0.0 into live release/Agent Hub.app
+// 3. Preserve 1.9.6 backup & atomically install DuolaWork.app into live release/DuolaWork.app
 fs.mkdirSync(targetReleaseDir, { recursive: true });
-const previousVersion = fs.existsSync(targetApp) ? readBundleVersion(targetApp) : '';
-if (fs.existsSync(targetApp)) {
-  if (previousVersion && !previousVersion.startsWith('2.') && !fs.existsSync(backup196App)) {
-    console.log(`[activate] backing up legacy ${previousVersion} -> ${backup196App}`);
-    fs.renameSync(targetApp, backup196App);
-  }
+const legacyAppVer = fs.existsSync(legacyV2App) ? readBundleVersion(legacyV2App) : '';
+if (fs.existsSync(legacyV2App) && legacyAppVer && legacyAppVer.startsWith('1.') && !fs.existsSync(backup196App)) {
+  console.log(`[activate] backing up legacy ${legacyAppVer} -> ${backup196App}`);
+  fs.renameSync(legacyV2App, backup196App);
 }
+const previousVersion = fs.existsSync(targetApp) ? readBundleVersion(targetApp) : legacyAppVer;
 
-const stagingTarget = path.join(targetReleaseDir, `.staging-Agent Hub-${Date.now()}.app`);
+const stagingTarget = path.join(targetReleaseDir, `.staging-DuolaWork-${Date.now()}.app`);
 fs.rmSync(stagingTarget, { recursive: true, force: true });
 execFileSync('/usr/bin/ditto', [builtApp, stagingTarget], { stdio: 'inherit' });
 if (fs.existsSync(targetApp)) {
-  const prevTrash = path.join(targetReleaseDir, '.prev-Agent Hub.app');
+  const prevTrash = path.join(targetReleaseDir, '.prev-DuolaWork.app');
   fs.rmSync(prevTrash, { recursive: true, force: true });
   fs.renameSync(targetApp, prevTrash);
   fs.renameSync(stagingTarget, targetApp);

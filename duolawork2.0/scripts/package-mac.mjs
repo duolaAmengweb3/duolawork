@@ -52,8 +52,9 @@ function setPlistKey(plistPath, key, value) {
 const templateApp = findElectronTemplateApp();
 const releaseDir = path.join(rootDir, 'release');
 fs.mkdirSync(releaseDir, { recursive: true });
-const stagingApp = path.join(releaseDir, `.staging-Agent Hub.app`);
-const targetApp = path.join(releaseDir, 'Agent Hub.app');
+const stagingApp = path.join(releaseDir, `.staging-DuolaWork.app`);
+const targetApp = path.join(releaseDir, 'DuolaWork.app');
+const legacyPackagedApp = path.join(releaseDir, 'Agent Hub.app');
 fs.rmSync(stagingApp, { recursive: true, force: true });
 
 console.log(`[package:mac] copying Electron template -> ${stagingApp}`);
@@ -72,7 +73,7 @@ fs.writeFileSync(
     {
       name: 'duolawork',
       productName: 'DuolaWork',
-      version: String(pkg.version || '2.0.0'),
+      version: String(pkg.version || '3.0.0'),
       main: 'desktop/main.cjs'
     },
     null,
@@ -89,6 +90,7 @@ if (fs.existsSync(icnsSrc)) {
 // Preserve standalone external MCP/Feishu helper bundles for live process compatibility without importing 1.x server code
 const compatBundleNames = ['feishu-mcp-bundle.cjs', 'mcp-tool-host-bundle.cjs'];
 const compatSearchDirs = [
+  '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/DuolaWork.app/Contents/Resources/app/local',
   '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/Agent Hub.app/Contents/Resources/app/local',
   '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/previous-Agent-Hub-1.9.6.app/Contents/Resources/app/local'
 ];
@@ -106,16 +108,17 @@ for (const bundleName of compatBundleNames) {
 
 const plistPath = path.join(stagingApp, 'Contents', 'Info.plist');
 setPlistKey(plistPath, 'CFBundleDisplayName', 'DuolaWork');
-setPlistKey(plistPath, 'CFBundleName', 'Agent Hub');
+setPlistKey(plistPath, 'CFBundleName', 'DuolaWork');
 setPlistKey(plistPath, 'CFBundleIdentifier', 'com.duola.agenthub');
-setPlistKey(plistPath, 'CFBundleShortVersionString', String(pkg.version || '2.0.0'));
+setPlistKey(plistPath, 'CFBundleShortVersionString', String(pkg.version || '3.0.0'));
 setPlistKey(plistPath, 'CFBundleVersion', String(buildInfo.id));
 setPlistKey(plistPath, 'CFBundleIconFile', 'DuolaWork.icns');
 
 fs.rmSync(targetApp, { recursive: true, force: true });
+fs.rmSync(legacyPackagedApp, { recursive: true, force: true });
 fs.renameSync(stagingApp, targetApp);
 
-console.log('[package:mac] codesigning Agent Hub.app...');
+console.log('[package:mac] codesigning DuolaWork.app...');
 execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none', targetApp], {
   stdio: 'inherit'
 });

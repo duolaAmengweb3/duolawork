@@ -74,17 +74,28 @@ import {
   type SpaceTaskSummary,
   type WorkbenchNavPage
 } from './CollaborationSpacePanel.js';
-import { ConnectorsPage } from './ConnectorsPage.js';
 import {
   MarkdownView,
   type MarkdownImageActions,
   type MarkdownSpaceResolver
 } from './markdown.js';
-import { MembersUsagePage } from './MembersUsagePage.js';
-import { SchedulesPage } from './SchedulesPage.js';
-import { VaultPage } from './VaultPage.js';
 import { Button } from './components/ui/button.js';
 import { Frame, FramePanel } from './components/ui/frame.js';
+import { EmptyThreadWelcome } from './components/EmptyThreadWelcome.js';
+import { useI18n } from './lib/i18n.js';
+
+const ConnectorsPage = React.lazy(() =>
+  import('./ConnectorsPage.js').then((m) => ({ default: m.ConnectorsPage }))
+);
+const MembersUsagePage = React.lazy(() =>
+  import('./MembersUsagePage.js').then((m) => ({ default: m.MembersUsagePage }))
+);
+const SchedulesPage = React.lazy(() =>
+  import('./SchedulesPage.js').then((m) => ({ default: m.SchedulesPage }))
+);
+const VaultPage = React.lazy(() =>
+  import('./VaultPage.js').then((m) => ({ default: m.VaultPage }))
+);
 
 interface TaskWithLatestRun extends TaskRecord {
   latestRun: TaskRunRecord | null;
@@ -242,6 +253,7 @@ type DocumentView = {artifact: ArtifactRecord; versions: ArtifactVersionRecord[]
 
 function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Element {
   const views = useViewCache();
+  const { locale, toggleLocale, t } = useI18n();
   const [dark, setDark] = useState<boolean>(() => {
     try {
       return localStorage.getItem('dw2-theme') === 'dark';
@@ -2481,18 +2493,30 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           <div className="comm-brand-id">
             <BrandLogo size={38} loop />
             <strong>
-              DuolaWork<small>一起沟通，一起完成</small>
+              DuolaWork<small>{t('brandSubtitle')}</small>
             </strong>
           </div>
-          <button
-            type="button"
-            onClick={() => setDark((d) => !d)}
-            className="comm-theme-toggle"
-            aria-label="切换深浅主题"
-            title={dark ? '切换到浅色模式' : '切换到深色模式'}
-          >
-            {dark ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              data-testid="locale-toggle"
+              onClick={toggleLocale}
+              className="inline-flex h-7 items-center justify-center rounded-[7px] px-1.5 font-mono text-[10.5px] font-medium text-[#8895aa] transition-colors hover:bg-[#e9edf5] hover:text-[#355cc9] dark:hover:bg-[#232938]"
+              aria-label="切换语言"
+              title="中 / EN"
+            >
+              {locale === 'zh' ? 'EN' : '中'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDark((d) => !d)}
+              className="comm-theme-toggle"
+              aria-label={t('toggleTheme')}
+              title={dark ? '切换到浅色模式' : '切换到深色模式'}
+            >
+              {dark ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+          </div>
         </div>
 
         <div className="comm-search">
@@ -2501,8 +2525,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             type="text"
             value={threadSearch}
             onChange={(e) => setThreadSearch(e.target.value)}
-            placeholder="搜索对话…"
-            aria-label="搜索对话"
+            placeholder={t('searchThreads')}
+            aria-label={t('searchThreads')}
           />
           {threadSearch && (
             <button type="button" onClick={() => setThreadSearch('')} aria-label="清空搜索">
@@ -2520,7 +2544,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           }}
         >
           <Users size={17} />
-          成员与用量
+          {t('navMembers')}
           <span>{members.length}</span>
         </button>
         <button
@@ -2532,7 +2556,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           }}
         >
           <Plug size={17} />
-          连接器
+          {t('navConnectors')}
           <span style={{ color: duolabaseStatus.enabled && duolabaseStatus.hasToken ? '#4ea98c' : '#97a1b2' }}>
             {duolabaseStatus.enabled && duolabaseStatus.hasToken ? '●' : ''}
           </span>
@@ -2546,7 +2570,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           }}
         >
           <KeyRound size={17} />
-          Vault 凭证库
+          {t('navVault')}
         </button>
         <button
           type="button"
@@ -2557,16 +2581,16 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           }}
         >
           <Clock size={17} />
-          定时任务
+          {t('navSchedules')}
           {tasks.length > 0 && <span>{tasks.length}</span>}
         </button>
 
         <div className="sidebar-caption">
-          <span>对话</span>
+          <span>{t('sidebarThreads')}</span>
           <button
             type="button"
-            aria-label="新对话"
-            title="新建对话"
+            aria-label={t('newThreadAria')}
+            title={t('newThreadTitle')}
             onClick={() => void handleCreateThread()}
           >
             <Plus size={17} />
@@ -2626,7 +2650,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             );
           })}
           {visibleThreads.length === 0 && (
-            <p className="sidebar-empty">没有匹配的对话，清空搜索可查看全部。</p>
+            <p className="sidebar-empty">{t('sidebarEmpty')}</p>
           )}
         </div>
 
@@ -2635,13 +2659,13 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             <span className="inline-flex items-center gap-1.5" style={{ marginLeft: 0 }}>
               {archivesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <FolderArchive size={12} />
-              <span>历史归档 ({archives.length})</span>
+              <span>{t('legacyArchives', { n: archives.length })}</span>
             </span>
           </button>
           {archivesOpen && (
             <div className="mb-2 flex flex-col gap-0.5 max-h-32 overflow-y-auto coss-scroll">
               {archives.length === 0 ? (
-                <small style={{ color: '#9aa4b7' }}>暂无旧版只读归档记录</small>
+                <small style={{ color: '#9aa4b7' }}>{t('legacyArchivesEmpty')}</small>
               ) : (
                 archives.map((a) => (
                   <button
@@ -2663,7 +2687,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             </div>
           )}
           <div>
-            <i />{cloudMode ? '云端工作区' : '本机工作区'}<span title={buildId}>{cloudMode ? '云端版' : '本地版'}</span>
+            <i />{cloudMode ? t('modeCloud') : t('modeLocal')}<span title={buildId}>{cloudMode ? t('badgeCloud') : t('badgeLocal')}</span>
           </div>
         </div>
       </aside>
@@ -2723,45 +2747,56 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           </div>
         )}
 
-        {viewMode === 'members' ? (
-          <MembersUsagePage
-            members={members}
-            nodes={nodes}
-            authRequired={authState.authRequired}
-            onLogout={handleCloudLogout}
-            refreshingMembers={refreshingMembers}
-            onRefreshMembers={handleRefreshMembers}
-            onReloadBootstrap={() => loadBootstrap(true)}
-            onStartChatWithMember={(memberId) => handleCreateThread(memberId)}
-            onSyncProtocolMemory={handleSyncProtocolMemory}
-          />
-        ) : viewMode === 'connectors' ? (
-          <ConnectorsPage key={serviceScope(duolabaseStatus)}
-            duolabaseStatus={duolabaseStatus}
-            onToggleDuolabase={handleToggleDuolabase}
-            onReloadStatus={() => loadBootstrap(true)}
-          />
-        ) : viewMode === 'vault' ? (
-          <VaultPage key={serviceScope(duolabaseStatus)} duolabaseStatus={duolabaseStatus} />
-        ) : viewMode === 'schedules' ? (
-          <SchedulesPage
-            tasks={tasks}
-            members={members}
-            threads={threads}
-            onOpenTask={(tid) => {
-              setActiveTaskId(tid);
-              setViewMode('task');
-            }}
-            onOpenThread={(tid) => {
-              setActiveThreadId(tid);
-              setViewMode('thread');
-            }}
-            onToggleSchedule={(tid, enabled) => handleToggleScheduleById(tid, enabled)}
-            onRunTaskNow={handleRunTaskNowById}
-            onCancelRun={(rid) => handleCancelRun(rid)}
-            onDeleteTask={(tid) => handleDeleteTask(tid)}
-            onRefresh={() => loadBootstrap(true)}
-          />
+        {viewMode === 'members' || viewMode === 'connectors' || viewMode === 'vault' || viewMode === 'schedules' ? (
+          <React.Suspense
+            fallback={
+              <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+                …
+              </div>
+            }
+          >
+            {viewMode === 'members' ? (
+              <MembersUsagePage
+                members={members}
+                nodes={nodes}
+                authRequired={authState.authRequired}
+                onLogout={handleCloudLogout}
+                refreshingMembers={refreshingMembers}
+                onRefreshMembers={handleRefreshMembers}
+                onReloadBootstrap={() => loadBootstrap(true)}
+                onStartChatWithMember={(memberId) => handleCreateThread(memberId)}
+                onSyncProtocolMemory={handleSyncProtocolMemory}
+              />
+            ) : viewMode === 'connectors' ? (
+              <ConnectorsPage
+                key={serviceScope(duolabaseStatus)}
+                duolabaseStatus={duolabaseStatus}
+                onToggleDuolabase={handleToggleDuolabase}
+                onReloadStatus={() => loadBootstrap(true)}
+              />
+            ) : viewMode === 'vault' ? (
+              <VaultPage key={serviceScope(duolabaseStatus)} duolabaseStatus={duolabaseStatus} />
+            ) : (
+              <SchedulesPage
+                tasks={tasks}
+                members={members}
+                threads={threads}
+                onOpenTask={(tid) => {
+                  setActiveTaskId(tid);
+                  setViewMode('task');
+                }}
+                onOpenThread={(tid) => {
+                  setActiveThreadId(tid);
+                  setViewMode('thread');
+                }}
+                onToggleSchedule={(tid, enabled) => handleToggleScheduleById(tid, enabled)}
+                onRunTaskNow={handleRunTaskNowById}
+                onCancelRun={(rid) => handleCancelRun(rid)}
+                onDeleteTask={(tid) => handleDeleteTask(tid)}
+                onRefresh={() => loadBootstrap(true)}
+              />
+            )}
+          </React.Suspense>
         ) : viewMode === 'thread' && activeThread ? (
           <>
             <header className="comm-header">
@@ -2816,11 +2851,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         type="button"
                         onClick={() => void handleChooseThreadWorkspace()}
                         className="inline-flex items-center gap-1 hover:underline truncate max-w-[260px]"
-                        title={activeThread.workspacePath || '点击绑定本机项目目录'}
+                        title={activeThread.workspacePath || t('bindWorkspace')}
                       >
                         <FolderOpen size={11} />
                         <span className="truncate">
-                          {activeThread.workspacePath ? activeThread.workspacePath : '绑定工作目录'}
+                          {activeThread.workspacePath ? activeThread.workspacePath : t('bindWorkspace')}
                         </span>
                       </button>
                     )}
@@ -2839,21 +2874,21 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   className="dw-btn dw-btn-ghost dw-btn-sm"
                 >
                   <ListTodo size={15} />
-                  <span>指派任务</span>
+                  <span>{t('assignTask')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSpaceOpen((v) => !v)}
                   className="dw-btn dw-btn-ghost dw-btn-icon"
-                  aria-label={spaceOpen ? '隐藏协作空间' : '展开协作空间'}
-                  title={spaceOpen ? '收起协作空间' : '展开协作空间'}
+                  aria-label={spaceOpen ? t('hideSpace') : t('expandSpace')}
+                  title={spaceOpen ? t('hideSpace') : t('expandSpace')}
                 >
                   {spaceOpen ? <PanelRightClose size={19} /> : <PanelRightOpen size={19} />}
                 </button>
               </div>
             </header>
 
-            {editingWorkspace && showWorkspaceBinding && (
+            {editingWorkspace && (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -2887,17 +2922,17 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <span className="text-[13px] font-semibold text-foreground">
-                                指派任务
+                                {t('assignTask')}
                               </span>
                               <span className="text-[11px] text-muted-foreground">
-                                说清要做什么，由 Agent 理解并自动立项
+                                {t('assignTaskHint')}
                               </span>
                             </div>
 
                             <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
                               {([
-                                ['once', '一次性'],
-                                ['scheduled', '循环定时']
+                                ['once', t('taskOnce')],
+                                ['scheduled', t('taskScheduled')]
                               ] as const).map(([val, label]) => {
                                 const active = newTaskKind === val;
                                 return (
@@ -2917,6 +2952,27 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                                 );
                               })}
                             </div>
+                          </div>
+
+                          {/* Solo-founder & product team preset templates */}
+                          <div className="flex flex-wrap items-center gap-1.5" data-testid="task-preset-chips">
+                            {([
+                              ['presetTrackTitle', 'scheduled', 'presetTrackPrompt'],
+                              ['presetRepoTitle', 'scheduled', 'presetRepoPrompt'],
+                              ['presetReviewTitle', 'once', 'presetReviewPrompt']
+                            ] as const).map(([titleKey, kindVal, promptKey]) => (
+                              <button
+                                key={titleKey}
+                                type="button"
+                                onClick={() => {
+                                  setNewTaskKind(kindVal);
+                                  setNewTaskTitle(t(promptKey));
+                                }}
+                                className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-muted/40 px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:border-ring/50 hover:bg-background hover:text-foreground"
+                              >
+                                <span>+ {t(titleKey)}</span>
+                              </button>
+                            ))}
                           </div>
 
                           <textarea
@@ -3025,16 +3081,41 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                       ) : <p>正在加载对话…</p>}
                     </div>
                   ) : visibleMessages.length === 0 ? (
-                    <div className="channel-intro">
-                      <AgentAvatar
-                        name={currentOwner?.name || '负责人'}
-                        platformId={currentOwner?.platformId}
-                      />
-                      <h2>{activeThread.title}</h2>
-                      <p>
-                        直接提问、讨论或拖入资料，当前由 {currentOwner?.name || '负责人'} 对接处理；点下方任意成员头像即可切换对接人。
-                      </p>
-                    </div>
+                    <EmptyThreadWelcome
+                      threadTitle={activeThread.title}
+                      owner={currentOwner ?? null}
+                      ownerName={currentOwner?.name || '负责人'}
+                      workspacePath={activeThread.workspacePath}
+                      membersCount={members.length}
+                      onBindFolder={() => void handleChooseThreadWorkspace()}
+                      onOpenDiscovery={() => setViewMode('members')}
+                      onPickSpecScenario={() => {
+                        setInputDrafts((prev) => ({
+                          ...prev,
+                          [activeThread.id]: t('scenarioSpecPrompt')
+                        }));
+                        setSpaceOpen(true);
+                        inputRef.current?.focus();
+                      }}
+                      onPickScheduleScenario={() => {
+                        setNewTaskLeadId(activeThread.activeOwnerMemberId);
+                        setNewTaskKind('scheduled');
+                        setNewTaskTitle(t('presetTrackPrompt'));
+                        setTaskModalOpen(true);
+                      }}
+                      onPickFolderScenario={() => {
+                        if (activeThread.workspacePath) {
+                          setInputDrafts((prev) => ({
+                            ...prev,
+                            [activeThread.id]: t('scenarioFolderBoundPrompt')
+                          }));
+                          setSpaceOpen(true);
+                          inputRef.current?.focus();
+                        } else {
+                          void handleChooseThreadWorkspace();
+                        }
+                      }}
+                    />
                   ) : (
                     visibleMessages.map((m) => {
                       if (m.authorKind === 'switch_notice') {
@@ -3415,7 +3496,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   <div className="composer-recipient">
                     <MessageSquare size={13} />
                     <span className="composer-recipient-label">
-                      当前对话由 {currentOwner?.name || activeThread.activeOwnerMemberId} 承接
+                      {t('currentHandler', { name: currentOwner?.name || activeThread.activeOwnerMemberId })}
                     </span>
                   </div>
 
@@ -3509,7 +3590,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         void handleSendMessage();
                       }
                     }}
-                    placeholder={`发消息给 ${currentOwner?.name || '负责人'}（支持粘贴或拖拽图片）…`}
+                    placeholder={t('sendPlaceholder', { name: currentOwner?.name || '负责人' })}
                   />
 
                   <div className="composer-toolbar">

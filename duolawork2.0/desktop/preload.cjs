@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('duolaworkDesktop', {
   setTheme: (theme) => ipcRenderer.invoke('dw2:set-theme', theme),
   openPopoutWindow: (opts) => ipcRenderer.invoke('dw2:open-popout', opts),
   setAlwaysOnTop: (alwaysOnTop) => ipcRenderer.invoke('dw2:set-always-on-top', Boolean(alwaysOnTop)),
+  getRuntimeMode: () => ipcRenderer.invoke('dw2:get-runtime-mode'),
   onReaderOpenTab: (callback) => {
     const handler = (_event, payload) => {
       if (typeof callback === 'function') callback(payload);
