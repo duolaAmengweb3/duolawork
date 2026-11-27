@@ -1446,7 +1446,10 @@ html[lang="en"] .space-title > strong{min-width:0;font-size:15px}
 
 .chat-task-row { align-items: center; }
 .chat-task-row .chat-card-spacer { visibility: hidden; height: 0; }
-.chat-task-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chat-task-status { display: grid; grid-template-columns: minmax(0,auto) auto; justify-content: start; align-items: center; column-gap: 8px; row-gap: 3px; }
+.chat-task-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 9px; font-size: 12px; line-height: 1.6; }
+.chat-task-meta > .chat-task-state:not(:first-child)::before { content: "·"; margin-right: 8px; opacity: .65; }
+.chat-task-meta form { flex-basis: 100%; }
 .chat-task-title { text-align: left; min-width: 0; padding: 0; background: transparent; border: 0; color: inherit; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .chat-task-title:hover { text-decoration: underline; }
 .chat-task-state { color: var(--text-muted, #66758a); font-size: 12px; }

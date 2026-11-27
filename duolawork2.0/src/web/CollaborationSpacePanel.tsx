@@ -1,5 +1,6 @@
+import { useViewCache, useViewData } from './view-cache.js';
 import { outcomeStatus } from '../shared/task-progress.js';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -106,6 +107,7 @@ export interface CollaborationSpacePanelProps {
   docDraft: string;
   setDocDraft: (v: string) => void;
   docNotice: string;
+  onRetryDocument: () => void;
   onSaveArtifact: () => Promise<void>;
   onCopyArtifact: () => Promise<void>;
   onExportArtifact: () => void;
@@ -182,6 +184,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     docDraft,
     setDocDraft,
     docNotice,
+    onRetryDocument,
     onSaveArtifact,
     onCopyArtifact,
     onExportArtifact,
@@ -231,6 +234,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     folderId: string | null;
   } | null>(null);
 
+  const views = useViewCache();
+  const contextRequest = useRef(0);
+  const directoryRequest = useRef(0);
   const [materialContext, setMaterialContext] = useState<MaterialContextResult | null>(null);
   const [contextOpen, setContextOpen] = useState<boolean>(true);
   const [linkPickerOpen, setLinkPickerOpen] = useState<boolean>(false);
@@ -249,12 +255,22 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
   const [editingWsPath, setEditingWsPath] = useState<boolean>(false);
   const [wsPathInput, setWsPathInput] = useState<string>('');
   const [confirmPurgeKey, setConfirmPurgeKey] = useState<string | null>(null);
-  const [resSummary, setResSummary] = useState<{
-    connectorCount: number;
-    vaultCount: number | null;
-    activeConnectors: Array<{ id: string; name: string; provider?: string; toolCount?: number }>;
-  } | null>(null);
-  const [resBusy, setResBusy] = useState<boolean>(false);
+  const resourcesVisible = tab === 'resources' && duolabaseStatus.enabled && duolabaseStatus.hasToken;
+  type ConnectorSummary = {id: string; name?: string; provider?: string; toolCount?: number; status?: string};
+  const {data: service, read: readService} = useViewData<{systemInfo?: {connectorCount?: number; vaultCount?: number}}>(
+    '/api/v2/duolabase/status', 30000, resourcesVisible
+  );
+  const {data: connectors, read: readConnectors} = useViewData<ConnectorSummary[] | {items?: ConnectorSummary[]}>(
+    '/api/v2/duolabase/connectors?', 30000, resourcesVisible
+  );
+  const [resourcesFailed, setResourcesFailed] = useState(false);
+  const list = Array.isArray(connectors) ? connectors : connectors?.items;
+  const resSummary = service || list ? {
+    connectorCount: service?.systemInfo?.connectorCount ?? list?.length ?? '—',
+    vaultCount: service?.systemInfo?.vaultCount,
+    activeConnectors: (list || []).filter(c => c.status !== 'disabled' && c.status !== 'inactive').slice(0,6)
+  } : null;
+  const resBusy = resourcesVisible && !resSummary && !resourcesFailed;
 
   const memberById = useMemo(() => {
     const map = new Map<string, MemberRecord>();
@@ -296,7 +312,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     return () => clearTimeout(t);
   }, [undoTrash]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFileTextPreview('');
     setHtmlPreviewMode('render');
     if (!selection || selection.kind !== 'file' || selectedItem?.previewKind !== 'text') {
@@ -306,12 +322,16 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     const isHtml = /\.html?$/i.test(selectedItem.title || '') || (selectedItem.mimeType || '').includes('text/html');
     const maxChars = isHtml ? 4_000_000 : 64_000;
     let alive = true;
-    setFileTextState('loading');
-    fetch(`/api/v2/space/files/${encodeURIComponent(selection.id)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.text();
-      })
+    const url = '/api/v2/space/files/'+encodeURIComponent(selection.id);
+    const key = url+'#'+(selectedItem.sha256 ?? selectedItem.updatedAt);
+    const cached = views.peek<string>(key);
+    setFileTextPreview(cached ?? '');
+    setFileTextState(cached !== undefined ? 'ready' : 'loading');
+    views.read(key, async () => {
+      const response = await fetch(url);
+      if (!response.ok) throw Object.assign(new Error('文件读取失败'), {status:response.status});
+      return (await response.text()).slice(0,maxChars);
+    }, Infinity)
       .then((txt) => {
         if (!alive) return;
         setFileTextPreview(txt.slice(0, maxChars));
@@ -323,113 +343,61 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     return () => {
       alive = false;
     };
-  }, [selection, selectedItem?.previewKind, selectedItem?.title, selectedItem?.mimeType]);
+  }, [selection, selectedItem?.previewKind, selectedItem?.title, selectedItem?.mimeType, selectedItem?.sha256, selectedItem?.updatedAt, views]);
 
-  const loadMaterialContext = useCallback(async () => {
-    if (!thread?.id || !selection) {
-      setMaterialContext(null);
-      return;
-    }
+  const loadMaterialContext = useCallback(async (refresh = false) => {
+    const request = ++contextRequest.current;
+    if (!thread?.id || !selection) {setMaterialContext(null);return;}
+    const qs = new URLSearchParams({kind:selection.kind,id:selection.id});
+    const key = '/api/v2/threads/'+encodeURIComponent(thread.id)+'/space/context?'+qs;
+    if (refresh) views.expire(key);
+    setMaterialContext(views.peek<MaterialContextResult>(key) ?? null);
     try {
-      const qs = new URLSearchParams({ kind: selection.kind, id: selection.id });
-      const res = await fetch(
-        `/api/v2/threads/${encodeURIComponent(thread.id)}/space/context?${qs.toString()}`
-      );
-      if (res.ok) {
-        setMaterialContext(await res.json());
-      } else {
-        setMaterialContext(null);
-      }
-    } catch {
-      setMaterialContext(null);
-    }
-  }, [thread?.id, selection]);
-
-  useEffect(() => {
+      const data = await views.json<MaterialContextResult>(key,15000);
+      if (request === contextRequest.current) setMaterialContext(data);
+    } catch { if (request === contextRequest.current && !views.peek(key)) setMaterialContext(null); }
+  }, [thread?.id, selection, views]);
+  useLayoutEffect(() => {
     setLinkPickerOpen(false);
     void loadMaterialContext();
+    return () => { contextRequest.current++; };
   }, [loadMaterialContext, artifact?.headVersion]);
 
-  const loadWorkspaceFiles = useCallback(
-    async (sub = '') => {
-      if (!thread?.id || !thread.workspacePath) {
-        setWsEntries([]);
-        setWsError('');
-        return;
-      }
-      setWsBusy(true);
-      setWsError('');
-      try {
-        const q = sub ? `?subpath=${encodeURIComponent(sub)}` : '';
-        const res = await fetch(
-          `/api/v2/threads/${encodeURIComponent(thread.id)}/workspace-files${q}`
-        );
-        const data = await res.json();
-        if (!res.ok) {
-          setWsError(data.message || '目录读取失败');
-          setWsEntries([]);
-          return;
-        }
-        setWsEntries(data.entries || []);
-        setWsSubpath(data.subpath || '');
-      } catch {
-        setWsError('目录读取失败');
-      } finally {
-        setWsBusy(false);
-      }
-    },
-    [thread?.id, thread?.workspacePath]
-  );
-
-  useEffect(() => {
+  const loadWorkspaceFiles = useCallback(async (sub = '', force = false) => {
+    const request = ++directoryRequest.current;
+    if (!thread?.id || !thread.workspacePath) {setWsEntries([]);setWsError('');return;}
+    const url = '/api/v2/threads/'+encodeURIComponent(thread.id)+'/workspace-files'+(sub?'?subpath='+encodeURIComponent(sub):'');
+    const key = JSON.stringify([url,thread.workspaceNodeId,thread.workspacePath]);
+    type Directory = {entries:WorkspaceFileEntry[];subpath:string};
+    if (force) views.expire(key);
+    const cached = views.peek<Directory>(key);
+    setWsEntries(cached?.entries ?? []);setWsSubpath(sub);setWsBusy(!cached);setWsError('');
+    try {
+      const data = await views.read<Directory>(key,async()=>{
+        const res = await fetch(url);if (!res.ok) throw Object.assign(new Error('目录读取失败'),{status:res.status});return res.json();
+      },10000);
+      if (request === directoryRequest.current) {setWsEntries(data.entries || []);setWsSubpath(data.subpath || '');}
+    } catch { if (request === directoryRequest.current) {setWsError('目录读取失败');if (!views.peek(key)) setWsEntries([]);} }
+    finally { if (request === directoryRequest.current) setWsBusy(false); }
+  },[thread?.id,thread?.workspacePath,thread?.workspaceNodeId,views]);
+  useLayoutEffect(() => {
     if (tab === 'resources' && thread?.workspacePath) {
       void loadWorkspaceFiles('');
     } else {
       setWsEntries([]);
     }
+    return () => { directoryRequest.current++; };
   }, [tab, thread?.id, thread?.workspacePath, loadWorkspaceFiles]);
 
   useEffect(() => {
-    if (tab !== 'resources' || !duolabaseStatus.enabled || !duolabaseStatus.hasToken) {
-      return;
-    }
-    let alive = true;
-    setResBusy(true);
-    Promise.all([
-      fetch('/api/v2/duolabase/status').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      fetch('/api/v2/duolabase/connectors').then((r) => (r.ok ? r.json() : null)).catch(() => null)
-    ])
-      .then(([statusJson, connJson]) => {
-        if (!alive) return;
-        const rawList = Array.isArray(connJson?.items)
-          ? connJson.items
-          : Array.isArray(connJson)
-            ? connJson
-            : [];
-        const activeConnectors = rawList
-          .filter((c: any) => c && c.status !== 'disabled' && c.status !== 'inactive')
-          .slice(0, 6)
-          .map((c: any) => ({
-            id: String(c.id || ''),
-            name: String(c.name || c.provider || '连接器'),
-            provider: typeof c.provider === 'string' ? c.provider : undefined,
-            toolCount: typeof c.toolCount === 'number' ? c.toolCount : undefined
-          }));
-        const sys = statusJson?.systemInfo;
-        setResSummary({
-          connectorCount:
-            typeof sys?.connectorCount === 'number' ? sys.connectorCount : rawList.length,
-          vaultCount: typeof sys?.vaultCount === 'number' ? sys.vaultCount : null,
-          activeConnectors
-        });
-      })
-      .finally(() => {
-        if (alive) setResBusy(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [tab, duolabaseStatus.enabled, duolabaseStatus.hasToken]);
+    if (!resourcesVisible) return;
+    let active = true;
+    setResourcesFailed(false);
+    void Promise.allSettled([readService(),readConnectors()]).then(results => {
+      if (active) setResourcesFailed(results.every(r => r.status === 'rejected'));
+    });
+    return () => { active = false; };
+  }, [resourcesVisible, duolabaseStatus.endpoint, duolabaseStatus.tokenSource, readService, readConnectors]);
 
   const mutateItem = async (
     kind: SpaceItemKind,
@@ -643,7 +611,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     });
     if (res.ok) {
       setLinkPickerOpen(false);
-      await loadMaterialContext();
+      await loadMaterialContext(true);
     } else {
       const err = await res.json().catch(() => ({}));
       onNotify(err.message || '关联任务失败');
@@ -655,7 +623,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       method: 'DELETE'
     });
     if (res.ok) {
-      await loadMaterialContext();
+      await loadMaterialContext(true);
     } else {
       const err = await res.json().catch(() => ({}));
       onNotify(err.message || '取消关联失败');
@@ -1377,7 +1345,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             )}
           </div>
         ) : selection?.kind === 'document' && artifact?.id !== selection.id ? (
-          <p role="status">{docNotice || '正在加载文稿…'}</p>
+          <div role="status"><p>{docNotice || '正在加载文稿…'}</p>{docNotice && <button className="dw-btn" onClick={onRetryDocument}>重试</button>}</div>
         ) : selection?.kind === 'document' ? (
           <div className="flex flex-col h-full min-h-0">
             <div className="space-detail-heading">
@@ -2286,7 +2254,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           上级目录
                         </button>
                       )}
-                      <button type="button" onClick={() => void loadWorkspaceFiles(wsSubpath)} className="underline">
+                      <button type="button" onClick={() => void loadWorkspaceFiles(wsSubpath,true)} className="underline">
                         刷新
                       </button>
                     </div>
@@ -2382,7 +2350,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             title={c.toolCount ? `${c.toolCount} 个可用工具` : undefined}
                           >
                             <Plug size={10} />
-                            <span className="truncate max-w-[140px]">{c.name}</span>
+                            <span className="truncate max-w-[140px]">{c.name || c.provider || '连接器'}</span>
                           </button>
                         ))}
                       </div>

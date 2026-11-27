@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { useViewCache } from './view-cache.js';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import type { ModelCatalog, ModelPreference } from '../shared/types.js';
 
 const strengthNames: Record<string, string> = {
@@ -18,10 +19,26 @@ function effortLabel(effort: string) {
   return strengthNames[effort.toLowerCase()] ?? effort;
 }
 
-export function ModelPicker({ threadId, memberId }: { threadId: string; memberId: string }) {
+type ConfigView = { catalog: ModelCatalog; preference: ModelPreference | null };
+export function ModelPicker({
+  threadId,
+  memberId,
+  perModel
+}: {
+  threadId: string;
+  memberId: string;
+  perModel: boolean;
+}) {
+  const views = useViewCache();
   const url =
-    '/api/v2/threads/' + encodeURIComponent(threadId) + '/members/' + encodeURIComponent(memberId) + '/inference';
-  const [saved, setSaved] = useState<ModelPreference | null>(null);
+    '/api/v2/threads/' +
+    encodeURIComponent(threadId) +
+    '/members/' +
+    encodeURIComponent(memberId) +
+    '/inference';
+  const [saved, setSaved] = useState<ModelPreference | null>(
+    () => views.peek<{ preference: ModelPreference | null }>(url)?.preference ?? null
+  );
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [model, setModel] = useState('');
@@ -31,21 +48,41 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
   const request = useRef(0);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const anchor = root.current;
+    const menu = panel.current;
+    if (!open || !anchor || !menu) return;
+    const position = () => {
+      const x = anchor.getBoundingClientRect().left;
+      const left = Math.max(12, Math.min(x, document.documentElement.clientWidth - menu.offsetWidth - 12));
+      menu.style.left = left - x + 'px';
+    };
+    position();
+    const observer = new ResizeObserver(position);
+    const composer = anchor.closest('.chat-composer');
+    if (composer) observer.observe(composer);
+    window.addEventListener('resize', position);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', position);
+    };
+  }, [open]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     const seq = request.current;
-    fetch(url, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((v) => {
-        if (!controller.signal.aborted && v && seq === request.current) setSaved(v.preference);
+    void views
+      .json<{ preference: ModelPreference | null }>(url, 15000)
+      .then((data) => {
+        if (active && seq === request.current) setSaved(data.preference);
       })
       .catch(() => {});
     return () => {
-      controller.abort();
+      active = false;
       request.current++;
     };
-  }, [url]);
+  }, [url, views]);
   useEffect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => {
@@ -65,31 +102,52 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
     };
   }, [open]);
 
-  async function load(selected?: string) {
-    if (selected) {
-      setModel(selected);
+  const menuKey = url + '?catalog=1';
+  const catalogFor = (id?: string) => menuKey + (perModel && id ? '&model=' + encodeURIComponent(id) : '');
+  const warm = () => {
+    void views
+      .json<ConfigView>(
+        catalogFor(views.peek<{ preference: ModelPreference | null }>(url)?.preference?.model),
+        120000
+      )
+      .catch(() => {});
+  };
+
+  async function load(id?: string, retry = false) {
+    const seq = ++request.current;
+    const key = catalogFor(
+      id ??
+        (perModel ? views.peek<{ preference: ModelPreference | null }>(url)?.preference?.model : undefined)
+    );
+    const cached = views.peek<ConfigView>(key);
+    const preference = views.peek<{ preference: ModelPreference | null }>(url)?.preference;
+    const show = (data: ConfigView) => {
+      const pref = preference === undefined ? data.preference : preference;
+      const requested = id ?? pref?.model ?? data.catalog.defaultModel;
+      const item = data.catalog.models.find((m) => m.id === requested) ?? data.catalog.models[0];
+      setCatalog(data.catalog);
+      setModel(item?.id ?? '');
+      setSaved(pref);
+      setEffort(
+        item && pref?.model === item.id && item.efforts.includes(pref.effort || '')
+          ? pref.effort!
+          : (item?.defaultEffort ?? '')
+      );
+    };
+    if (cached) show(cached);
+    else if (id) {
+      setModel(id);
       setEffort('');
     }
-    const seq = ++request.current;
-    setBusy(true);
+    setBusy(!cached);
     setError('');
+    if (retry) views.invalidate(key);
     try {
-      const r = await fetch(url + '?catalog=1' + (selected ? '&model=' + encodeURIComponent(selected) : ''));
-      if (!r.ok) throw new Error();
-      const data = (await r.json()) as { catalog: ModelCatalog; preference: ModelPreference | null };
+      const data = await views.json<ConfigView>(key, 120000);
       if (seq !== request.current) return;
-      const id = selected || data.preference?.model || data.catalog.defaultModel || data.catalog.models[0]?.id;
-      const item = data.catalog.models.find((m) => m.id === id) ?? data.catalog.models[0];
-      setCatalog(data.catalog);
-      setSaved(data.preference);
-      setModel(item?.id || '');
-      setEffort(
-        item && data.preference?.model === item.id && item.efforts.includes(data.preference.effort || '')
-          ? data.preference.effort!
-          : item?.defaultEffort || ''
-      );
+      if (!cached || data !== cached) show(data);
     } catch {
-      if (seq === request.current) setError('暂时无法从执行端读取选项');
+      if (seq === request.current) setError('暂时无法更新模型列表');
     } finally {
       if (seq === request.current) setBusy(false);
     }
@@ -104,7 +162,14 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
         body: JSON.stringify({ model, effort: effort || null })
       });
       if (!r.ok) throw new Error();
-      setSaved((await r.json()).preference);
+      const { preference } = await r.json();
+      views.put(url, { preference });
+      if (catalog) {
+        const result = { catalog, preference };
+        views.put(menuKey, result);
+        views.put(catalogFor(model), result);
+      }
+      setSaved(preference);
       setOpen(false);
       trigger.current?.focus();
     } catch {
@@ -122,6 +187,8 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
         className="inference-trigger"
         aria-label="模型与推理强度"
         title={saved ? saved.model + ' · ' + (saved.effort || '默认强度') : '模型与推理强度'}
+        onPointerEnter={warm}
+        onFocus={warm}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
@@ -131,12 +198,26 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
       >
         <SlidersHorizontal size={14} />
         <span>{saved ? saved.model + (saved.effort ? ' · ' + effortLabel(saved.effort) : '') : '模型'}</span>
+        <ChevronDown size={12} aria-hidden="true" />
       </button>
       {open && (
-        <div role="dialog" aria-label="模型与推理强度" className="inference-panel">
+        <div ref={panel} role="dialog" aria-label="模型与推理强度" className="inference-panel">
+          <header>
+            <strong>模型</strong>
+            <button
+              type="button"
+              aria-label="关闭模型设置"
+              onClick={() => {
+                setOpen(false);
+                trigger.current?.focus();
+              }}
+            >
+              <X size={14} />
+            </button>
+          </header>
           {!!catalog?.models.length && (
             <fieldset disabled={busy} className="inference-models">
-              <legend>模型</legend>
+              <legend className="inference-sr-only">模型</legend>
               <div>
                 {catalog.models.map((item) => (
                   <label key={item.id}>
@@ -148,6 +229,7 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
                       onChange={() => void load(item.id)}
                     />
                     <span>{item.label}</span>
+                    <Check size={14} aria-hidden="true" />
                   </label>
                 ))}
               </div>
@@ -164,7 +246,10 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
                       name="inference-effort"
                       value={value}
                       checked={value === effort}
-                      onChange={() => setEffort(value)}
+                      onChange={() => {
+                        request.current++;
+                        setEffort(value);
+                      }}
                     />
                     <span>{effortLabel(value)}</span>
                   </label>
@@ -172,11 +257,15 @@ export function ModelPicker({ threadId, memberId }: { threadId: string; memberId
               </div>
             </fieldset>
           )}
-          {busy && <span role="status">正在与执行端同步…</span>}
+          {busy && !catalog && (
+            <span className="inference-pending" role="status">
+              正在读取模型…
+            </span>
+          )}
           {error && (
             <span role="alert">
               {error}{' '}
-              <button type="button" onClick={() => void load()}>
+              <button type="button" onClick={() => void load(model || undefined, true)}>
                 重试
               </button>
             </span>

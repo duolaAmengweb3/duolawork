@@ -1756,17 +1756,38 @@ button.turn-tool-row { cursor: pointer; }
 .task-outcome-question { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
 .task-outcome-question button { text-decoration: underline; text-underline-offset: 3px; }
 .inference-picker { position: relative; min-width: 0; }
-.composer-toolbar .inference-trigger { display: inline-flex; align-items: center; gap: 4px; width: auto; max-width: clamp(48px,12vw,160px); padding-inline: 5px; }
+.composer-toolbar .inference-trigger { display: inline-flex; align-items: center; gap: 5px; width: auto; max-width: clamp(66px,16vw,182px); padding: 0 6px; border-radius: 6px; }
 .inference-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.inference-panel { position: absolute; z-index: 6; bottom: calc(100% + 8px); left: 0; width: 232px; max-width: 78vw; padding: 12px; display: grid; gap: 10px; color: #26354c; background: white; border: 1px solid #d9e0eb; border-radius: 10px; box-shadow: 0 4px 16px #172c501c; font-size: 12px; }
-.inference-panel { max-height: min(64vh, 420px); overflow-y: auto; }
+.inference-trigger svg { flex: none; }
+.inference-trigger:hover, .inference-trigger[aria-expanded=true] { background: var(--surface-hover, #8997b018); }
+.inference-panel {
+  --picker-ink: #29364b; --picker-muted: #626e81; --picker-surface: #fff; --picker-line: #e5e8ed;
+  --picker-tint: #f0f2f5; --picker-active: #25344e; --picker-on-active: white;
+  position: absolute; z-index: 15; bottom: calc(100% + 9px); left: 0;
+  width: min(288px, calc(100vw - 32px)); max-height: min(58vh, 420px); overflow-y: auto;
+  display: grid; gap: 10px; padding: 12px; color: var(--picker-ink); background: var(--picker-surface);
+  border: 1px solid var(--picker-line); border-radius: 12px; box-shadow: 0 4px 10px #1c29300a, 0 14px 36px #1c29301a;
+  font-size: 13px; line-height: 1.4;
+}
+.dark .inference-panel { --picker-ink: #e4e9f3; --picker-muted: #a7b3c6; --picker-surface: #202735; --picker-line: #3a4557; --picker-tint: #303a4a; --picker-active: #d8e3f5; --picker-on-active: #1a2433; }
+.inference-panel header { display: flex; align-items: center; justify-content: space-between; padding-left: 6px; }
+.inference-panel header strong { font-size: 14px; }
+.composer-toolbar .inference-panel header button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; color: var(--picker-muted); }
 .inference-panel fieldset { margin: 0; padding: 0; min-width: 0; border: 0; }
-.inference-panel legend { margin-bottom: 4px; color: inherit; font-weight: 600; }
-.inference-models > div { max-height: 144px; overflow-y: auto; }
-.inference-panel label { display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 5px; }
-.inference-panel label:hover, .inference-panel label:focus-within { background: #8794ab20; }
-.inference-panel input[type=radio] { accent-color: #566cb4; width: 13px; height: 13px; margin: 0; flex: none; }
-.inference-efforts > div { display: flex; flex-wrap: wrap; gap: 2px 5px; }
-.composer-toolbar .inference-panel button { width: auto; height: auto; padding: 5px 8px; font-size: 12px; }
-.dark .inference-panel { background: #212838; border-color: #455066; color: #e6edf7; }
-@media (max-width: 650px) { .inference-panel { left: auto; right: -40px; } }
+.inference-models > div { max-height: min(182px,26vh); overflow-y: auto; scrollbar-width: thin; }
+.inference-panel label { position: relative; display: flex; align-items: center; color: var(--picker-ink); cursor: pointer; border-radius: 6px; }
+.inference-panel input[type=radio] { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.inference-sr-only { position: absolute; inline-size: 1px; block-size: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.inference-models label { min-height: 30px; justify-content: space-between; gap: 8px; padding: 4px 9px; }
+.inference-models label svg { opacity: 0; flex-shrink: 0; }
+.inference-models label:has(input:checked), .inference-models label:hover { background: var(--picker-tint); }
+.inference-models label:has(input:checked) svg { opacity: 1; }
+.inference-panel label:has(input:focus-visible) { outline: 2px solid var(--picker-muted); outline-offset: -2px; }
+.inference-efforts { border-top: 1px solid var(--picker-line) !important; }
+.inference-efforts legend { float: left; width: 100%; padding: 9px 5px 6px; font-size: 12px; font-weight: 600; color: var(--picker-muted); }
+.inference-efforts > div { clear: both; display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; background: var(--picker-tint); border-radius: 8px; }
+.inference-efforts label { flex: 1 0 auto; justify-content: center; min-height: 25px; padding: 1px 4px; font-size: 12px; }
+.inference-efforts label:has(input:checked) { background: var(--picker-surface); font-weight: 600; box-shadow: 0 1px 3px #0002; }
+.composer-toolbar .inference-save { justify-self: end; width: auto; height: 29px; padding: 0 11px; font-size: 12px; font-weight: 600; color: var(--picker-on-active); background: var(--picker-active); border-radius: 7px; }
+.inference-pending, .inference-panel [role=alert] { padding: 4px 6px; color: var(--picker-muted); }
+.inference-panel [role=alert] button { text-decoration: underline; }

@@ -1,3 +1,4 @@
+import { ViewCache, ViewCacheContext, useViewCache } from './view-cache.js';
 import { ModelPicker } from './ModelPicker.js';
 import { outcomeStatus } from '../shared/task-progress.js';
 import { readableTurnFailure } from '../shared/turn-timeout.js';
@@ -226,6 +227,18 @@ const DEFAULT_DB_STATUS: DuolaBasePublicStatus = {
 };
 
 export function App(): React.JSX.Element {
+  const [session, setSession] = useState(0);
+  const cache = useMemo(() => new ViewCache(), [session]);
+  const reset = useCallback(() => setSession(n => n + 1), []);
+  return <ViewCacheContext.Provider value={cache}><Workbench key={session} resetSession={reset}/></ViewCacheContext.Provider>;
+}
+
+const threadUrl = (id: string) => '/api/v2/threads/'+encodeURIComponent(id);
+type ThreadView = {messages: ThreadMessageRecord[]};
+type DocumentView = {artifact: ArtifactRecord; versions: ArtifactVersionRecord[]};
+
+function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Element {
+  const views = useViewCache();
   const [dark, setDark] = useState<boolean>(() => {
     try {
       return localStorage.getItem('dw2-theme') === 'dark';
@@ -240,6 +253,12 @@ export function App(): React.JSX.Element {
     authRequired: boolean;
     authenticated: boolean;
   }>({ checked: false, authRequired: false, authenticated: true });
+  const hadSession = useRef(false);
+  useLayoutEffect(() => {
+    if (!authState.checked) return;
+    if (authState.authenticated) hadSession.current = true;
+    else if (hadSession.current) {hadSession.current = false; resetSession();}
+  }, [authState, resetSession]);
   const [authTab, setAuthTab] = useState<'password' | 'code'>('password');
   const [authPassword, setAuthPassword] = useState<string>('');
   const [authCode, setAuthCode] = useState<string>('');
@@ -348,6 +367,7 @@ export function App(): React.JSX.Element {
   const loadedDocument = useRef<string | null>(null);
   const documentRequest = useRef(0);
   const taskRequest = useRef(0);
+  const [taskReadFailed, setTaskReadFailed] = useState(false);
   const setSpaceSelection = useCallback((next: typeof spaceSelection) => {
     if (
       isSameSpaceSelection(selectionRef.current, next) &&
@@ -355,13 +375,14 @@ export function App(): React.JSX.Element {
     ) {
       return;
     }
-    loadedDocument.current = null;
+    const cached = next?.kind === 'document' ? views.peek<DocumentView>('/api/v2/artifacts/'+encodeURIComponent(next.id)) : undefined;
+    loadedDocument.current = cached?.artifact.id ?? null;
     documentRequest.current++;
     selectionRef.current = next;
     updateSpaceSelection(next);
-    setArtifact(null);
-    setVersions([]);
-    setDocDraft('');
+    setArtifact(cached?.artifact ?? null);
+    setVersions(cached?.versions ?? []);
+    setDocDraft(cached?.artifact.content ?? '');
     setDocNotice('');
     setDocEditing(false);
   }, []);
@@ -484,6 +505,9 @@ export function App(): React.JSX.Element {
     });
   }, [threads, threadSearch, memberById]);
 
+  const serviceScope = (status: DuolaBasePublicStatus) =>
+    JSON.stringify([status.endpoint, status.enabled, status.hasToken, status.tokenSource]);
+  const previousServiceScope = useRef(serviceScope(DEFAULT_DB_STATUS));
   const bootstrapRequest = useRef(0);
   const loadBootstrap = useCallback(async (preserveSelection = true) => {
     const request = ++bootstrapRequest.current;
@@ -507,7 +531,13 @@ export function App(): React.JSX.Element {
     setThreads(data.threads || []);
     setTasks(data.tasks || []);
     if (data.duolabase) {
-      setDuolabaseStatus({ ...DEFAULT_DB_STATUS, ...data.duolabase });
+      const status = {...DEFAULT_DB_STATUS, ...data.duolabase};
+      const scope = serviceScope(status);
+      if (scope !== previousServiceScope.current) {
+        views.expire('/api/v2/duolabase/', true);
+        previousServiceScope.current = scope;
+      }
+      setDuolabaseStatus(status);
     }
     setArchives(data.archives || []);
     if (data.buildInfo?.id) {
@@ -528,31 +558,46 @@ export function App(): React.JSX.Element {
     }
   }, [newTaskLeadId]);
 
-  const loadSpace = useCallback(async (threadId: string) => {
+  const loadSpace = useCallback(async (threadId: string, navigation = false) => {
     if (!threadId || threadId !== requestedSpaceThread.current) return;
     const request = ++spaceRequest.current;
     setSpaceLoadError('');
     const current = () => request === spaceRequest.current && threadId === requestedSpaceThread.current;
     try {
-      const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}/space`);
-      if (!res.ok) throw new Error(String(res.status));
-      const data = await res.json();
+      const key = threadUrl(threadId)+'/space';
+      if (!navigation) views.invalidate(key);
+      const data = await views.json<ThreadSpaceData>(key, 15000);
       if (!current()) return;
+      for (const item of data.items || []) {
+        if (item.kind !== 'document') continue;
+        const docKey = '/api/v2/artifacts/' + encodeURIComponent(item.id);
+        const previous = views.peek<DocumentView>(docKey)?.artifact;
+        if (previous && (previous.headVersion !== item.version || previous.title !== item.title)) {
+          views.invalidate(docKey);
+        }
+      }
       setSpaceData({
         threadId,
         data: { folders: data.folders || [], items: data.items || [], trash: data.trash || [], tasks: data.tasks || [] }
       });
     } catch {
-      if (current()) setSpaceLoadError(threadId);
+      if (current()) {
+        if (!views.peek(threadUrl(threadId) + '/space')) setSpaceData(null);
+        setSpaceLoadError(threadId);
+      }
     }
   }, []);
 
-  useEffect(() => {
-    if (spaceThreadId && (viewMode === 'thread' || viewMode === 'task')) void loadSpace(spaceThreadId);
+  useLayoutEffect(() => {
+    if (spaceThreadId && (viewMode === 'thread' || viewMode === 'task')) {
+      const cached = views.peek<ThreadSpaceData>(threadUrl(spaceThreadId)+'/space');
+      if (cached) setSpaceData({threadId:spaceThreadId, data:cached});
+      void loadSpace(spaceThreadId, true);
+    }
   }, [spaceThreadId, viewMode, loadSpace]);
 
   const loadThread = useCallback(
-    async (threadId: string) => {
+    async (threadId: string, navigation = false) => {
       if (!threadId) return;
       const request = ++threadRequest.current;
       const toolsAtRequest = toolEventCount.current;
@@ -560,11 +605,14 @@ export function App(): React.JSX.Element {
       const current = () => request === threadRequest.current && activeThreadIdRef.current === threadId;
       let data;
       try {
-        const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`, { signal: AbortSignal.timeout(15_000) });
-        if (!res.ok) throw new Error(String(res.status));
-        data = await res.json();
+        const key = threadUrl(threadId);
+        if (!navigation) views.invalidate(key);
+        data = await views.json<ThreadView>(key, 15000);
       } catch {
-        if (current()) setThreadLoadError(threadId);
+        if (current()) {
+          if (!views.peek(threadUrl(threadId))) {setMessagesThreadId('');setMessages([]);}
+          setThreadLoadError(threadId);
+        }
         return;
       }
       if (!current()) return;
@@ -683,10 +731,10 @@ export function App(): React.JSX.Element {
     if (refresh && loadedDocument.current !== artifactId) return;
     const request = ++documentRequest.current;
     try {
-      const res = await fetch(`/api/v2/artifacts/${encodeURIComponent(artifactId)}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      if (request !== documentRequest.current || (refresh && documentEditingRef.current)) return;
+      const key = '/api/v2/artifacts/'+encodeURIComponent(artifactId);
+      if (refresh) views.invalidate(key);
+      const data = await views.json<DocumentView>(key, 15000);
+      if (request !== documentRequest.current || (documentEditingRef.current && loadedDocument.current === artifactId)) return;
       if (data.artifact?.id !== artifactId) throw new Error();
       loadedDocument.current = artifactId;
       setArtifact(data.artifact);
@@ -694,41 +742,46 @@ export function App(): React.JSX.Element {
       setDocDraft(data.artifact.content);
       setDocNotice('');
     } catch {
-      if (request === documentRequest.current) setDocNotice('文稿加载失败，请返回列表重新打开');
+      if (request === documentRequest.current) {
+        if (!views.peek('/api/v2/artifacts/'+encodeURIComponent(artifactId))) {
+          setArtifact(null);
+          setVersions([]);
+          loadedDocument.current = null;
+        }
+        setDocNotice('暂时无法读取文稿，请重试');
+      }
     }
   }, []);
 
+  const archiveRequest = useRef(0);
   const loadArchiveDetail = useCallback(async (channelId: string) => {
     if (!channelId) return;
-    setArchiveLoading(true);
+    const request = ++archiveRequest.current;
+    const key = '/api/v2/legacy-archives/'+encodeURIComponent(channelId);
+    const cached = views.peek<NonNullable<typeof archiveDetail>>(key);
+    setArchiveDetail(cached ?? null);
+    setArchiveLoading(!cached);
     try {
-      const res = await fetch(`/api/v2/legacy-archives/${encodeURIComponent(channelId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setArchiveDetail(data);
-    } finally {
-      setArchiveLoading(false);
-    }
-  }, []);
+      const data = await views.json<NonNullable<typeof archiveDetail>>(key, 60000);
+      if (request === archiveRequest.current) setArchiveDetail(data);
+    } catch { if (request === archiveRequest.current && !views.peek(key)) setArchiveDetail(null); }
+    finally { if (request === archiveRequest.current) setArchiveLoading(false); }
+  }, [views]);
 
-  const loadTaskDetail = useCallback(async (taskId: string, runId?: string) => {
+  const loadTaskDetail = useCallback(async (taskId: string, runId?: string, navigation = false) => {
     if (!taskId) return;
     const request = ++taskRequest.current;
-    const q = runId ? `?runId=${encodeURIComponent(runId)}` : '';
-    const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}${q}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    if (request !== taskRequest.current) return;
-    setTaskDetail({
-      task: data.task,
-      runs: data.runs || [],
-      activeRun: data.activeRun || null,
-      steps: data.steps || []
-    });
-    if (data.task?.sourceThreadId) {
-      void loadSpace(data.task.sourceThreadId);
+    const key = '/api/v2/tasks/'+encodeURIComponent(taskId)+(runId ? '?runId='+encodeURIComponent(runId) : '');
+    setTaskReadFailed(false);
+    if (navigation) setTaskDetail(views.peek<NonNullable<typeof taskDetail>>(key) ?? null);
+    else views.invalidate(key);
+    try {
+      const data = await views.json<NonNullable<typeof taskDetail>>(key, 10000);
+      if (request === taskRequest.current) setTaskDetail(data);
+    } catch {
+      if (request === taskRequest.current && !views.peek(key)) {setTaskDetail(null);setTaskReadFailed(true);}
     }
-  }, [loadSpace]);
+  }, [views]);
 
   const taskArtifactId = taskDetail?.activeRun?.finalArtifactId;
   useEffect(() => {
@@ -757,20 +810,22 @@ export function App(): React.JSX.Element {
     return () => { disposed = true; window.clearTimeout(retry); };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (viewMode === 'thread' && activeThreadId) {
-      void loadThread(activeThreadId);
+      const cached = views.peek<ThreadView>(threadUrl(activeThreadId));
+      if (cached) {setMessagesThreadId(activeThreadId);setMessages(cached.messages);}
+      void loadThread(activeThreadId, true);
     }
   }, [viewMode, activeThreadId, loadThread]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (viewMode === 'task' && activeTaskId) {
-      void loadTaskDetail(activeTaskId, requestedRunRef.current);
+      void loadTaskDetail(activeTaskId, requestedRunRef.current, true);
       requestedRunRef.current = undefined;
     }
   }, [viewMode, activeTaskId, loadTaskDetail]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (viewMode === 'archive' && activeArchiveId) {
       void loadArchiveDetail(activeArchiveId);
     }
@@ -825,6 +880,7 @@ export function App(): React.JSX.Element {
     if (!authState.checked || (authState.authRequired && !authState.authenticated)) return;
 
     const syncAllActiveViews = () => {
+      views.expire('/api/v2/');
       const cur = liveViewRef.current;
       void cur.loadBootstrap(true);
       if (cur.viewMode === 'thread' && cur.activeThreadId) {
@@ -932,9 +988,16 @@ export function App(): React.JSX.Element {
           }
           return;
         }
+        if (parsed.threadId && (parsed.type?.startsWith('thread.') || parsed.type?.startsWith('task.'))) {
+          const key = threadUrl(parsed.threadId);
+          if (parsed.type !== 'thread.space_updated') views.invalidate(key);
+          if (parsed.type === 'thread.space_updated' || parsed.type.startsWith('task.')) views.expire(key + '/space');
+        }
+        if (parsed.taskId && parsed.type?.startsWith('task.')) views.expire('/api/v2/tasks/'+encodeURIComponent(parsed.taskId));
         if (parsed.type === 'thread.space_updated') {
           if (parsed.threadId === cur.activeThreadId) {
             void cur.loadSpace(cur.activeThreadId);
+            if (cur.spaceSelection?.kind === 'document') void cur.loadArtifactDetail(cur.spaceSelection.id, true);
           }
           return;
         }
@@ -1139,6 +1202,7 @@ export function App(): React.JSX.Element {
       if (activeThreadIdRef.current === targetThreadId) {
         setPendingHandoffPreviews({});
         setMessagesThreadId(targetThreadId);
+        views.put(threadUrl(targetThreadId),{messages:data.messages || []});
         setMessages(data.messages || []);
       }
       await loadBootstrap(true);
@@ -1199,7 +1263,8 @@ export function App(): React.JSX.Element {
         if (res.status === 202) await loadThread(targetThreadId);
         if (data.messages) {
           setMessagesThreadId(targetThreadId);
-          setMessages(data.messages);
+          views.put(threadUrl(targetThreadId),{messages:data.messages});
+        setMessages(data.messages);
           setStreamingDeltas({});
         }
         if (data.artifact && selectionRef.current?.id === data.artifact.id && !documentEditingRef.current) {
@@ -1375,6 +1440,7 @@ export function App(): React.JSX.Element {
       const data = await res.json();
       if (activeThreadIdRef.current === targetThreadId && data.messages) {
         setMessagesThreadId(targetThreadId);
+        views.put(threadUrl(targetThreadId),{messages:data.messages});
         setMessages(data.messages);
       }
       setStreamingDeltas({});
@@ -1513,6 +1579,7 @@ export function App(): React.JSX.Element {
     const data = await res.json();
     if (!isSameSpaceSelection(selectionRef.current, selected)) return;
     documentRequest.current++;
+    views.put('/api/v2/artifacts/'+encodeURIComponent(data.artifact.id),{artifact:data.artifact, versions:data.versions || []});
     setArtifact(data.artifact);
     setVersions(data.versions || []);
     setDocDraft(data.artifact.content);
@@ -1776,7 +1843,8 @@ export function App(): React.JSX.Element {
         if (!isSameSpaceSelection(selectionRef.current, selected)) return;
         documentRequest.current++;
         latestArt = data.artifact;
-        setArtifact(data.artifact);
+        views.put('/api/v2/artifacts/'+encodeURIComponent(data.artifact.id),{artifact:data.artifact, versions:data.versions || []});
+    setArtifact(data.artifact);
         setVersions(data.versions || []);
       }
     }
@@ -1990,6 +2058,7 @@ export function App(): React.JSX.Element {
     });
     if (!res.ok) return;
     const data = await res.json();
+    views.expire('/api/v2/duolabase/', true);
     setDuolabaseStatus({ ...DEFAULT_DB_STATUS, ...data });
   };
 
@@ -2047,6 +2116,7 @@ export function App(): React.JSX.Element {
         docDraft={docDraft}
         setDocDraft={setDocDraft}
         docNotice={docNotice}
+        onRetryDocument={() => {if (spaceSelection?.kind === 'document') void loadArtifactDetail(spaceSelection.id);}}
         onSaveArtifact={handleSaveArtifact}
         onCopyArtifact={handleCopyArtifact}
         onExportArtifact={handleExportArtifact}
@@ -2653,13 +2723,13 @@ export function App(): React.JSX.Element {
             onSyncProtocolMemory={handleSyncProtocolMemory}
           />
         ) : viewMode === 'connectors' ? (
-          <ConnectorsPage
+          <ConnectorsPage key={serviceScope(duolabaseStatus)}
             duolabaseStatus={duolabaseStatus}
             onToggleDuolabase={handleToggleDuolabase}
             onReloadStatus={() => loadBootstrap(true)}
           />
         ) : viewMode === 'vault' ? (
-          <VaultPage duolabaseStatus={duolabaseStatus} />
+          <VaultPage key={serviceScope(duolabaseStatus)} duolabaseStatus={duolabaseStatus} />
         ) : viewMode === 'schedules' ? (
           <SchedulesPage
             tasks={tasks}
@@ -3066,6 +3136,12 @@ export function App(): React.JSX.Element {
                                 setViewMode('task');
                                 requestedRunRef.current = event.runId;
                               }}>{event.runId && task.kind === 'scheduled' ? m.body : task.title}</button>
+                              {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
+                                aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
+                                onClick={() => void handlePauseTask(task.id, !paused)}>
+                                {paused ? <Play size={14} /> : <Pause size={14} />}
+                              </button>}
+                              <div className="chat-task-meta">
                               {routing && <span className="chat-task-route">{routing}</span>}
                               {current?.status==='waiting_user' && (renderOutcomeQuestion(current) || (
                                 <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(current.id); }}>
@@ -3082,11 +3158,8 @@ export function App(): React.JSX.Element {
                                 }}>{status}</button>
                               ) : <span className="chat-task-state" role="status">{status}</span>}
                               {back && <span className="chat-task-state" role="status">{back}</span>}
-                              {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
-                                aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
-                                onClick={() => void handlePauseTask(task.id, !paused)}>
-                                {paused ? <Play size={14} /> : <Pause size={14} />}
-                              </button>}
+                              </div>
+
                             </div>
                           </div>
                         );
@@ -3551,7 +3624,7 @@ export function App(): React.JSX.Element {
                         </div>
                       )}
                       {switchingThreads.has(activeThread.id) ? <small role="status">正在切换成员…</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
-                        <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id}/>}
+                        <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id} perModel={(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)==='acp-stdio'}/>}
                       <small>Enter 发送 · Shift + Enter 换行</small>
                     </div>
 
@@ -3837,6 +3910,10 @@ export function App(): React.JSX.Element {
               {renderRightSpace()}
             </div>
           </>
+        ) : viewMode === 'task' && activeTaskId ? (
+          <div className="channel-intro" role="status">
+            {taskReadFailed ? <><p>暂时无法读取任务</p><button className="dw-btn" onClick={() => void loadTaskDetail(activeTaskId)}>重试</button></> : <p>正在读取任务…</p>}
+          </div>
         ) : null}
       </main>
     </WorkbenchColumns>
