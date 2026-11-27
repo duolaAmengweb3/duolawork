@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -112,6 +113,66 @@ export class ClaudeCliDriver implements AgentDriver {
       return configured;
     }
     return findLocalBinaryOnPath('claude');
+  }
+
+  public async listModels(member: MemberRecord): Promise<import('../../shared/types.js').ModelCatalog> {
+    const bin = this.resolveBinary(member);
+    if (!bin) throw new Error('Claude CLI 未安装');
+    const child = spawn(
+      bin,
+      [
+        '-p',
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--no-session-persistence'
+      ],
+      { cwd: os.tmpdir(), env: resolveLocalProxyEnv(), stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+    const lines = createInterface({ input: child.stdout });
+    try {
+      return await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('读取 Claude 模型超时')), 12000);
+        child.once('close', () => {
+          clearTimeout(timeout);
+          reject(new Error('Claude 未返回模型列表'));
+        });
+        child.once('error', (e) => {
+          clearTimeout(timeout);
+          reject(e);
+        });
+        child.stdin.once('error', reject);
+        lines.on('line', (line) => {
+          let msg;
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            return;
+          }
+          if (msg.type !== 'control_response' || msg.response?.request_id !== 'models') return;
+          clearTimeout(timeout);
+          const catalog = msg.response?.response?.models;
+          if (!Array.isArray(catalog)) return reject(new Error('Claude 暂时无法提供模型'));
+          resolve({
+            defaultModel: 'default',
+            models: catalog.map((m) => ({
+              id: m.value,
+              label: m.displayName || m.value,
+              efforts: m.supportsEffort ? (m.supportedEffortLevels ?? []) : []
+            }))
+          });
+        });
+        child.stdin.write(
+          JSON.stringify({ type: 'control_request', request_id: 'models', request: { subtype: 'initialize' } }) +
+            '\n'
+        );
+      });
+    } finally {
+      lines.close();
+      child.kill();
+    }
   }
 
   public async checkHealth(
@@ -288,6 +349,8 @@ export class ClaudeCliDriver implements AgentDriver {
         'stream-json',
         '--verbose',
         '--include-partial-messages',
+        ...(input.member.inference ? ['--model',input.member.inference.model] : []),
+        ...(input.member.inference?.effort ? ['--effort',input.member.inference.effort] : []),
         '--permission-mode',
         'bypassPermissions',
         ...(tmpMcpPath ? ['--mcp-config', tmpMcpPath] : []),

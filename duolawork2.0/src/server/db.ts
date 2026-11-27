@@ -221,6 +221,25 @@ export class DuolaWorkDatabase {
         UNIQUE(step_id, version)
       );
 
+      CREATE TABLE IF NOT EXISTS v2_step_outcomes (
+        step_id TEXT PRIMARY KEY REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        spec_json TEXT NOT NULL,
+        verified_resource_id TEXT,
+        state TEXT NOT NULL DEFAULT 'open',
+        checks INTEGER NOT NULL DEFAULT 0,
+        next_check_at INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS v2_step_material_receipts (
+        step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL, resource_id TEXT NOT NULL, name TEXT NOT NULL, folder_path TEXT NOT NULL,
+        revision TEXT NOT NULL,
+        PRIMARY KEY (step_id, kind, resource_id)
+      );
+      CREATE TABLE IF NOT EXISTS v2_step_external_calls (
+        step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
+        signature TEXT NOT NULL,
+        PRIMARY KEY (step_id, signature)
+      );
       CREATE TABLE IF NOT EXISTS v2_step_reviews (
         id TEXT PRIMARY KEY,
         step_id TEXT NOT NULL REFERENCES v2_task_steps(id) ON DELETE CASCADE,
@@ -409,6 +428,9 @@ export class DuolaWorkDatabase {
       );
     `);
 
+    if (!this.sqlite.prepare("SELECT 1 FROM pragma_table_info('v2_dispatch_attempts') WHERE name='inference_json'").get()) {
+      this.sqlite.exec('ALTER TABLE v2_dispatch_attempts ADD COLUMN inference_json TEXT');
+    }
     const threadCols = this.sqlite.prepare(`PRAGMA table_info(v2_threads)`).all() as Array<{ name: string }>;
     if (!threadCols.some((c) => c.name === 'pinned_at')) {
       this.sqlite.exec(`ALTER TABLE v2_threads ADD COLUMN pinned_at TEXT`);

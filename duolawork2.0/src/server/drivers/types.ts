@@ -314,6 +314,7 @@ export interface ReconcileResult {
 
 export interface AgentDriver {
   readonly kind: DriverKind;
+  listModels?(member: MemberRecord, selectedModel?: string): Promise<import('../../shared/types.js').ModelCatalog>;
   checkHealth(member: MemberRecord): Promise<{ status: MemberStatus; message: string }>;
   ensureSession(input: SessionBindingInput): Promise<EnsuredSession>;
   runTurn(

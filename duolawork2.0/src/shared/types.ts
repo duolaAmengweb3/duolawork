@@ -84,7 +84,11 @@ export interface MemberCapabilities {
 
 export type MemberStatus = 'ready' | 'busy' | 'offline' | 'auth_required';
 
+export interface ModelPreference { model: string; effort: string | null }
+export interface RuntimeModel { id: string; label: string; efforts: string[]; defaultEffort?: string }
+export interface ModelCatalog { models: RuntimeModel[]; defaultModel?: string }
 export interface MemberRecord {
+  inference?: ModelPreference;
   id: string;
   name: string;
   platformId: string;
@@ -239,7 +243,9 @@ export interface ThreadMessageRecord {
   taskCard: {
     taskId: string;
     runId?: string;
-    kind: 'created' | 'waiting_user' | 'delivered' | 'failed';
+    kind: 'created' | 'started' | 'waiting_user' | 'delivered' | 'failed';
+    outcomeLabel?: string;
+    material?: StepProgress['material'];
   } | null;
   turnStatus: TurnStatus;
   usage: ThreeTierUsage | null;
@@ -261,7 +267,31 @@ export interface HandoffCursorRecord {
 export type TaskKind = 'once' | 'scheduled';
 export type MisfirePolicy = 'skip_stale' | 'catch_up_once';
 
+export interface ExternalResultCheck {
+  credentialId: string;
+  url: string;
+  field: string;
+  equals: string | number | boolean;
+}
+
+export type TaskOutcome =
+  | { kind: 'reply' }
+  | { kind: 'material'; materialKind: 'file' | 'document'; name: string; folderPath?: string }
+  | { kind: 'external'; readback?: ExternalResultCheck };
+
+export interface StepProgress {
+  stepId: string;
+  canReadBack?: boolean;
+  memberId: string;
+  title: string;
+  status: TaskStepStatus;
+  result: 'reply' | 'material' | 'external';
+  confirmation?: 'checking' | 'manual' | 'verified' | 'attested';
+  material?: { kind: 'file' | 'document'; id: string; name: string };
+}
+
 export interface TaskStepTemplate {
+  outcome?: TaskOutcome;
   stepOrder: number;
   title: string;
   assigneeMemberId: string;
@@ -317,6 +347,7 @@ export type TaskRunStatus =
 export type DeliveryStage = 'steps_running' | 'lead_final_review' | 'delivered';
 
 export interface TaskRunRecord {
+  progress?: StepProgress[];
   returnMemberId?: string | null;
   returnTurnStatus?: TurnStatus | null;
   id: string;
@@ -439,6 +470,7 @@ export type DispatchAttemptStatus =
   | 'late_ignored';
 
 export interface DispatchAttemptRecord {
+  inference?: ModelPreference | null;
   id: string;
   targetKind: 'thread_message' | 'task_step' | 'lead_review' | 'lead_final';
   targetId: string;

@@ -655,6 +655,18 @@ export class ExecutionNodeHub {
     });
   }
 
+  public listMemberModels(nodeId: string, member: MemberRecord, selectedModel?: string) {
+    return this.sendRpc<import('../shared/types.js').ModelCatalog>(
+      nodeId,
+      'member.models',
+      {
+        member: { ...member, driverKind: member.config.localDriverKind || 'acp-stdio', location: 'local' },
+        selectedModel
+      },
+      20000
+    );
+  }
+
   public async ensureSession(nodeId: string, input: SessionBindingInput): Promise<EnsuredSession> {
     return this.sendRpc<EnsuredSession>(
       nodeId,
@@ -664,6 +676,7 @@ export class ExecutionNodeHub {
           id: input.member.id,
           name: input.member.name,
           platformId: input.member.platformId,
+          inference: input.member.inference,
           driverKind: input.member.config.localDriverKind || 'acp-stdio',
           location: 'local',
           capabilities: input.member.capabilities,
@@ -713,6 +726,7 @@ export class ExecutionNodeHub {
           id: input.member.id,
           name: input.member.name,
           platformId: input.member.platformId,
+          inference: input.member.inference,
           driverKind: input.member.config.localDriverKind || 'acp-stdio',
           location: 'local',
           capabilities: input.member.capabilities,

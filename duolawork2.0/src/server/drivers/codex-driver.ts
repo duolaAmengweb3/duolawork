@@ -160,6 +160,47 @@ export class CodexAppServerDriver implements AgentDriver {
     }
   }
 
+  public async listModels(member: MemberRecord) {
+    const rpc = await this.openInitializedClient(member, os.tmpdir());
+    try {
+      const models: import('../../shared/types.js').RuntimeModel[] = [];
+      let cursor: string | null = null;
+      let defaultModel: string | undefined;
+      const seen = new Set<string>();
+      do {
+        const page: {
+          data: Array<{
+            model: string;
+            displayName: string;
+            hidden: boolean;
+            isDefault: boolean;
+            supportedReasoningEfforts: Array<{ reasoningEffort: string }>;
+            defaultReasoningEffort: string;
+          }>;
+          nextCursor?: string;
+        } = await rpc.call('model/list', { cursor, limit: 100 }, 12000);
+        for (const model of page.data ?? []) {
+          if (model.hidden || !model.model) continue;
+          models.push({
+            id: model.model,
+            label: model.displayName || model.model,
+            efforts: (model.supportedReasoningEfforts ?? []).map(
+              (e: { reasoningEffort: string }) => e.reasoningEffort
+            ),
+            defaultEffort: model.defaultReasoningEffort
+          });
+          if (model.isDefault) defaultModel = model.model;
+        }
+        cursor = page.nextCursor ?? null;
+        if (cursor && seen.has(cursor)) break;
+        if (cursor) seen.add(cursor);
+      } while (cursor && models.length < 500);
+      return { models, defaultModel };
+    } finally {
+      await rpc.stop();
+    }
+  }
+
   public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
     const bin = this.resolveBinary(member);
     if (!fs.existsSync(bin)) {
@@ -425,6 +466,7 @@ export class CodexAppServerDriver implements AgentDriver {
         }
         const started = await rpc.call('turn/start', {
           threadId: sessionId,
+          ...(input.member.inference ? {model:input.member.inference.model,effort:input.member.inference.effort} : {}),
           input: turnInputs
         });
         turnId = String(started?.turn?.id || '');

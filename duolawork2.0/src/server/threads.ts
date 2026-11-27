@@ -1,3 +1,5 @@
+import { actionBlocks } from './action-blocks.js';
+import { outcomeSchema } from './task-outcomes.js';
 import { chatTimeoutMessage } from '../shared/turn-timeout.js';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -939,7 +941,7 @@ export class ThreadEngine {
             }在回复末尾附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"简明问题","options":["推荐选项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>（严格限 1～3 个关键问题，每题给 2～4 个短选项，首项放默认推荐），弹卡片让用户一键确认后再派单；` +
             `（2）若用户需求已十分明确（目标范围、执行对象、时间/频率清楚，或刚通过确认卡片回复了选择，或明确说直接执行），则无需追问，直接${
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
-                ? '调用 task_create_or_update 工具或'
+                ? '按实际成果设置 outcome（reply、material 或 external），调用 task_create_or_update 工具或'
                 : ''
             }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, steps 可选。单次任务自动启动，定时任务默认按计划执行）。`,
           targetMember.driverKind === 'remote-bridge'
@@ -2224,10 +2226,11 @@ export class ThreadEngine {
       },
       {
         name: 'task_create_or_update',
-        description: '在需求已明确或用户确认后，在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
+        description: '按用户需要声明 outcome。外部动作必须用 external，生成资料用 material，纯文字回复用 reply。在需求已明确或用户确认后，在当前对话立项创建单次任务或定时任务，可指派一个或多个步骤给指定执行成员；省略 steps 时默认由负责人独立执行。',
         inputSchema: {
           type: 'object',
           properties: {
+            outcome: outcomeSchema,
             title: { type: 'string' },
             kind: { type: 'string', enum: ['once', 'scheduled'] },
             cronExpr: { type: 'string' },
@@ -2241,6 +2244,7 @@ export class ThreadEngine {
               items: {
                 type: 'object',
                 properties: {
+                  outcome: outcomeSchema,
                   stepOrder: { type: 'integer' },
                   title: { type: 'string' },
                   assigneeMemberId: { type: 'string' },
@@ -2298,28 +2302,7 @@ export class ThreadEngine {
   }
 }
 
-function actionBlocks(text: string, pattern: RegExp) {
-  let fence = '';
-  const masked = text.split('\n').map(line => {
-    const delimiter = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (fence || delimiter) {
-      if (!fence) fence = delimiter![1];
-      else if (delimiter && delimiter[1][0] === fence[0] && delimiter[1].length >= fence.length && !delimiter[2].trim()) fence = '';
-      return line.replace(/</g, '\x00');
-    }
-    return line.replace(/(`+)(.+?)\1/g, span => span.replace(/</g, '\x00'));
-  }).join('\n');
-  const matches = Array.from(masked.matchAll(new RegExp(pattern.source, pattern.flags + 'd')));
-  const pieces: string[] = [];
-  let offset = 0;
-  for (const match of matches) {
-    pieces.push(text.slice(offset, match.index));
-    offset = match.index + match[0].length;
-    match.indices!.forEach((range, i) => { if (range) match[i] = text.slice(...range); });
-  }
-  pieces.push(text.slice(offset));
-  return { matches, cleaned: pieces.join('').trim() };
-}
+
 
 function parseTagAttrs(rawAttrs: string): Record<string, string> {
   const attrs: Record<string, string> = {};

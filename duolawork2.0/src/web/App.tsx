@@ -1,3 +1,5 @@
+import { ModelPicker } from './ModelPicker.js';
+import { outcomeStatus } from '../shared/task-progress.js';
 import { readableTurnFailure } from '../shared/turn-timeout.js';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -597,12 +599,22 @@ export function App(): React.JSX.Element {
   const visibleMessages = useMemo(
     () => {
       if (messagesThreadId !== activeThreadId) return [];
-      const latest = new Map<string, string>();
+      const anchors = new Map<string, number>();
+      const timeline: ThreadMessageRecord[] = [];
       const scheduled = new Set(tasks.filter(t => t.kind === 'scheduled').map(t => t.id));
-      const key = (card: NonNullable<ThreadMessageRecord['taskCard']>) =>
-        scheduled.has(card.taskId) ? card.taskId + '/' + (card.runId ?? 'schedule') : card.taskId;
-      for (const m of messages) if (m.taskCard) latest.set(key(m.taskCard), m.id);
-      return messages.filter(m => m.authorKind !== 'task_receipt' && (!m.taskCard || latest.get(key(m.taskCard)) === m.id));
+      for (const message of messages) {
+        if (message.authorKind==='task_receipt') continue;
+        const card=message.taskCard;
+        if (!card) { timeline.push(message); continue; }
+        const key=scheduled.has(card.taskId) ? card.taskId+'/'+(card.runId ?? 'schedule') : card.taskId;
+        const index=anchors.get(key);
+        if (index===undefined) { anchors.set(key,timeline.length); timeline.push(message); }
+        else {
+          const anchor=timeline[index];
+          timeline[index]={...anchor,taskCard:card,artifactRefs:message.artifactRefs,body:message.body};
+        }
+      }
+      return timeline;
     },
     [messagesThreadId, activeThreadId, messages, tasks]
   );
@@ -1921,6 +1933,24 @@ export function App(): React.JSX.Element {
     return { version: String(data.version || ''), memberCount: Number(data.memberCount || members.length) };
   };
 
+  const renderOutcomeQuestion = (run: TaskRunRecord) => {
+    const step=run.progress?.find(s=>s.confirmation==='manual');
+    if (!step) return null;
+    const verify=async(confirmedByUser:boolean) => {
+      try {
+        const res=await fetch('/api/v2/runs/'+encodeURIComponent(run.id)+'/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stepId:step.stepId,confirmedByUser})});
+        if (!res.ok) throw new Error();
+        await loadBootstrap(true);
+        if (viewMode==='task' && activeTaskId) await loadTaskDetail(activeTaskId,run.id);
+      } catch { showChatNotice('核对状态暂未更新，请稍后再试'); }
+    };
+    return <div className="task-outcome-question">
+      <span>{run.waitingQuestion}</span>
+      {step.canReadBack && <button type="button" onClick={()=>void verify(false)}>重新核对</button>}
+      <button type="button" onClick={()=>void verify(true)}>我已核实结果</button>
+    </div>;
+  };
+
   const handleReplyWaitingRun = async (runId: string) => {
     const waitingReplyText = waitingReplies[runId] ?? '';
     if (!waitingReplyText.trim()) return;
@@ -2994,26 +3024,26 @@ export function App(): React.JSX.Element {
                         const run = task.latestRun;
                         const paused = task.status === 'paused';
                         const canPause = task.kind === 'scheduled' || run?.status === 'running' || run?.status === 'paused';
-                        const requester = run?.returnMemberId && memberById.get(run.returnMemberId);
-                        const returnStatus = requester && run?.status === 'completed' && (
-                          run.returnTurnStatus === 'completed' ? requester.name + ' 已跟进'
-                          : run.returnTurnStatus === 'failed' || run.returnTurnStatus === 'canceled' ? requester.name + ' 跟进中断'
-                          : run.returnTurnStatus ? requester.name + ' 正在接手' : '等待 ' + requester.name + ' 接手'
-                        );
-                        const event = m.taskCard;
-                        const scheduleEntry = task.kind === 'scheduled' && !event.runId;
-                        const pastRun = event.runId && event.runId !== run?.id;
-                        const status = scheduleEntry ? (paused ? '已暂停' : '按计划执行')
-                          : pastRun ? (event.kind === 'delivered' ? '本期已交付' : event.kind === 'failed' ? '执行中断' : '查看本期记录')
-                          : paused
-                          ? run?.status === 'running' ? '当前步骤结束后暂停' : '已暂停'
-                          : run?.status === 'running' ? '执行中'
-                          : run?.status === 'waiting_user' ? '等你回复'
-                          : run?.status === 'waiting_node_online' ? '等待成员上线'
-                          : run?.status === 'failed' || run?.status === 'timed_out' ? '执行中断'
-                          : run?.status === 'canceled' ? '已停止'
+                        const event=m.taskCard;
+                        const scheduleEntry=task.kind==='scheduled' && !event.runId;
+                        const pastRun=Boolean(event.runId && event.runId!==run?.id);
+                        const current=!pastRun && !scheduleEntry ? run : null;
+                        const requesterId=current?.returnMemberId ?? task.requesterMemberId;
+                        const memberName=(id:string)=>memberById.get(id)?.name ?? '执行成员';
+                        const active=current?.progress?.filter(s=>['running','submitted'].includes(s.status)) ?? [];
+                        const workers=[...new Set((active.length?active.map(s=>s.memberId):current?.spec?.steps.map(s=>s.assigneeMemberId) ?? task.spec.steps.map(s=>s.assigneeMemberId)).map(memberName))].join('、');
+                        const delegated=requesterId && (current?.returnMemberId || task.spec.steps.some(s=>s.assigneeMemberId!==requesterId));
+                        const routing=!pastRun && delegated ? memberName(requesterId)+' 委派给 '+workers : '';
+                        const phase=current?.returnTurnStatus;
+                        const back=current?.returnMemberId && ['completed','failed','timed_out'].includes(current.status)
+                          ? memberName(current.returnMemberId)+(phase==='completed'?' 已跟进':phase==='failed'||phase==='canceled'?' 跟进中断':phase==='running'?' 正在跟进':' 等待接手') : '';
+                        const status=pastRun ? event.outcomeLabel || (event.kind==='delivered'?'本期已交付':event.kind==='failed'?'执行中断':'查看本期记录')
+                          : paused && (!current || current.status!=='completed') ? (current?.status==='running'?'当前步骤结束后暂停':'已暂停')
                           : scheduleEntry ? '按计划执行'
-                          : run?.status === 'completed' ? (returnStatus || '已交付') : '待启动';
+                          : outcomeStatus(current) ?? (current?.status==='running' ? (active.length ? workers+' 正在执行':'执行中')
+                          : current?.status==='waiting_user'?'等你回复':current?.status==='waiting_node_online'?'等待成员上线'
+                          : current?.status==='failed'||current?.status==='timed_out'?'执行中断':current?.status==='canceled'?'已停止':'待启动');
+                        const selection=event.material || (m.artifactRefs[0] ? {kind:'document' as const,id:m.artifactRefs[0]} : null);
                         return (
                           <div key={m.id} className="chat-message chat-task-row">
                             <span aria-hidden="true" className="chat-face agent-avatar chat-card-spacer" />
@@ -3023,20 +3053,22 @@ export function App(): React.JSX.Element {
                                 setViewMode('task');
                                 requestedRunRef.current = event.runId;
                               }}>{event.runId && task.kind === 'scheduled' ? m.body : task.title}</button>
-                              {event.kind === 'waiting_user' && run && run.id === event.runId && run.status === 'waiting_user' && (
-                                <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(run.id); }}>
-                                  <label>{run.waitingQuestion}<input className="dw-input" value={waitingReplies[run.id] ?? ''} onChange={e=>updateWaitingReply(run.id,e.target.value)} placeholder="回复任务负责人" /></label>
-                                  <button type="submit" disabled={!waitingReplies[run.id]?.trim()}>答复并继续</button>
+                              {routing && <span className="chat-task-route">{routing}</span>}
+                              {current?.status==='waiting_user' && (renderOutcomeQuestion(current) || (
+                                <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(current.id); }}>
+                                  <label>{current.waitingQuestion}<input className="dw-input" value={waitingReplies[current.id] ?? ''} onChange={e=>updateWaitingReply(current.id,e.target.value)} placeholder="回复任务负责人" /></label>
+                                  <button type="submit" disabled={!waitingReplies[current.id]?.trim()}>答复并继续</button>
                                 </form>
-                              )}
-                               {event.kind === 'delivered' && m.artifactRefs?.[0] ? (
+                              ))}
+                               {event.kind === 'delivered' && selection ? (
                                 <button className="chat-task-delivery" type="button" title="打开本期交付文档" onClick={() => {
                                   setDocEditing(false);
                                   setSpaceTab('documents');
-                                  setSpaceSelection({kind:'document', id:m.artifactRefs![0]});
+                                  setSpaceSelection({kind:selection.kind,id:selection.id});
                                   setSpaceOpen(true);
                                 }}>{status}</button>
                               ) : <span className="chat-task-state" role="status">{status}</span>}
+                              {back && <span className="chat-task-state" role="status">{back}</span>}
                               {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
                                 aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
                                 onClick={() => void handlePauseTask(task.id, !paused)}>
@@ -3504,6 +3536,8 @@ export function App(): React.JSX.Element {
                           ))}
                         </div>
                       )}
+                      {currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
+                        <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id}/>}
                       <small>Enter 发送 · Shift + Enter 换行</small>
                     </div>
 
@@ -3697,7 +3731,7 @@ export function App(): React.JSX.Element {
                       >
                         第 {r.runNumber} 期 (
                         {r.status === 'completed'
-                          ? '已完成'
+                          ? outcomeStatus(r)
                           : r.status === 'failed'
                             ? '失败'
                             : r.status === 'timed_out'
@@ -3713,7 +3747,7 @@ export function App(): React.JSX.Element {
                   </div>
                 )}
 
-                {taskDetail.activeRun?.status === 'waiting_user' && (
+                {taskDetail.activeRun?.status === 'waiting_user' && (renderOutcomeQuestion(taskDetail.activeRun) || (
                   <form className="mx-7 mt-4" onSubmit={e => {
                     e.preventDefault();
                     void handleReplyWaitingRun(taskDetail.activeRun!.id);
@@ -3722,7 +3756,7 @@ export function App(): React.JSX.Element {
                       <input className="dw-input" value={waitingReplies[taskDetail.activeRun.id] ?? ''} onChange={e => updateWaitingReply(taskDetail.activeRun!.id,e.target.value)} placeholder="回复任务负责人" />
                     </label>
                     <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplies[taskDetail.activeRun.id]?.trim()}>答复并继续</button>
-                  </form>
+                  </form>)
                 )}
                 {taskDetail.activeRun?.summary &&
                   (taskDetail.activeRun.status === 'failed' ||

@@ -6,6 +6,8 @@ import {
   type DispatchAttemptRecord,
   type DriverKind,
   type MemberRecord,
+  type ModelCatalog,
+  type ModelPreference,
   ThreeTierUsage
 } from '../../shared/types.js';
 import { AcpStdioDriver } from './acp-driver.js';
@@ -81,6 +83,34 @@ export class DriverRegistry {
     const d = this.drivers.get(kind);
     if (!d) throw new Error(`未注册驱动类型: ${kind}`);
     return d;
+  }
+
+  private readonly catalogs = new Map<string, { expires: number; catalog: ModelCatalog }>();
+
+  public async modelCatalog(member: MemberRecord, selectedModel?: string) {
+    if (isExcludedClaudeVps(member)) throw new Error('此成员未开放模型设置');
+    const key = JSON.stringify([member.id, member.nodeId, member.driverKind, selectedModel]);
+    const cached = this.catalogs.get(key);
+    if (cached && cached.expires > Date.now()) return cached.catalog;
+    const driver = this.getDriver(member.driverKind);
+    const catalog = (await driver.listModels?.(member, selectedModel)) ?? { models: [] };
+    for (const [k, entry] of this.catalogs) if (entry.expires <= Date.now()) this.catalogs.delete(k);
+    this.catalogs.set(key, { expires: Date.now() + 300000, catalog });
+    return catalog;
+  }
+
+  public getPreference(threadId: string, memberId: string) {
+    return this.db.getSetting<ModelPreference | null>('inference:' + JSON.stringify([threadId, memberId]), null);
+  }
+
+  public async savePreference(threadId: string, member: MemberRecord, model: string, effort: string | null) {
+    const catalog = await this.modelCatalog(member, model);
+    const selected = catalog.models.find((m) => m.id === model);
+    if (!selected || (effort && !selected.efforts.includes(effort)))
+      throw Object.assign(new Error('执行端不支持所选模型或推理强度'), { statusCode: 400 });
+    const pref = { model, effort: effort || selected.defaultEffort || null };
+    this.db.setSetting('inference:' + JSON.stringify([threadId, member.id]), pref);
+    return pref;
   }
 
   private async acquireSlot(member: MemberRecord, attemptId: string, onEvent?: (ev: TurnStreamEvent) => void): Promise<void> {
@@ -307,6 +337,8 @@ export class DriverRegistry {
     }
 
     const existing = this.getAttemptByIdempotencyKey(input.idempotencyKey);
+    const inference = existing ? existing.inference : this.getPreference(input.threadId, input.member.id);
+    input = {...input, member: {...input.member, inference: inference ?? undefined}};
     if (existing && existing.status === 'succeeded' && existing.responseText !== null) {
       return {
         attempt: existing,
@@ -338,8 +370,8 @@ export class DriverRegistry {
             member_id, idempotency_key, scope_key, native_session_id, native_turn_id,
             bridge_meta_json, status, slot_held, base_artifact_id, base_artifact_version,
             prompt_digest, prompt_bytes, handoff_bytes, response_text, usage_json,
-            error_message, dispatched_at, settled_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'prepared', 1, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL)`
+            error_message, dispatched_at, settled_at, inference_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'prepared', 1, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL, ?)`
         )
         .run(
           attemptId,
@@ -360,7 +392,8 @@ export class DriverRegistry {
           promptBytes,
           input.handoffBytes ?? 0,
           JSON.stringify(initialUsage),
-          new Date().toISOString()
+          new Date().toISOString(),
+          inference ? JSON.stringify(inference) : null
         );
     }
 
@@ -825,6 +858,7 @@ export class DriverRegistry {
 function mapAttemptRow(row: Record<string, unknown>): DispatchAttemptRecord {
   return {
     id: String(row.id),
+    inference: row.inference_json ? JSON.parse(String(row.inference_json)) as ModelPreference : null,
     targetKind: row.target_kind as DispatchAttemptRecord['targetKind'],
     targetId: String(row.target_id),
     threadId: String(row.thread_id),

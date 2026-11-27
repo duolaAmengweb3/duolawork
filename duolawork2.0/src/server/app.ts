@@ -1,3 +1,4 @@
+import { parseOutcome } from './task-outcomes.js';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import https from 'node:https';
@@ -10,7 +11,7 @@ import path from 'node:path';
 import { ArtifactStore } from './artifacts.js';
 import { CloudAuthManager, hashPassword, type CloudAuthOptions } from './auth.js';
 export { hashPassword };
-import { AuthSandbox, SandboxForbiddenError } from './auth-sandbox.js';
+import { AuthSandbox, SandboxForbiddenError, isReadOnlyConnectorTool } from './auth-sandbox.js';
 import { DuolaWorkDatabase } from './db.js';
 import { DriverRegistry } from './drivers/registry.js';
 import {
@@ -574,6 +575,7 @@ export class DuolaWorkApp {
         typeof args.timezone === 'string' && args.timezone.trim() ? args.timezone.trim() : 'Asia/Shanghai',
       leadMemberId: !rawLead || rawLead === 'self' ? claims.memberId : rawLead,
       spec: {
+        outcome: parseOutcome(args.outcome),
         goal: String(args.goal || args.title || ''),
         acceptanceCriteria:
           typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
@@ -595,6 +597,7 @@ export class DuolaWorkApp {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
+    const step = claims.principalKind === 'task_worker' ? claims.stepId : null;
     if (toolName === 'artifact_read') {
       const artId = String(args.artifactId || '');
       const art = this.artifacts.getArtifact(artId);
@@ -753,6 +756,7 @@ export class DuolaWorkApp {
         ])).update(bytes).digest('hex')
       };
       if (Buffer.byteLength(JSON.stringify(payload)) + 256 > maxBody) throw new Error('文件及元数据超过连接器单次请求大小');
+      if (step && !this.tasks.outcomes.claimWrite(step,toolName,args)) return {alreadySubmitted:true, message:'已提交本次上传，请核对原结果。'};
       return this.duolabase.callTool('connector_call', payload, 60_000);
     }
 
@@ -787,6 +791,17 @@ export class DuolaWorkApp {
         replaceExisting: args.replaceExisting !== false
       });
       this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
+      if (step) {
+        const file = this.space.getFileWithPath(saved.file.id);
+        if (!file) throw new Error('写入后的文件未找到，请重新保存');
+        const digest = createHash('sha256');
+        for await (const chunk of fs.createReadStream(file.absPath)) digest.update(chunk);
+        if (digest.digest('hex') !== saved.file.sha256) throw new Error('写入后的文件与提交内容不一致，请重新保存');
+        this.tasks.outcomes.recordMaterial(step, {
+          kind: 'file', resource_id: saved.file.id, name: saved.file.name,
+          folder_path: saved.folderPath.replace(/^\/+|\/+$/g, ''), revision: saved.file.sha256
+        });
+      }
       const previewUrl = `/api/v2/space/files/${encodeURIComponent(saved.file.id)}`;
       return {
         ok: true,
@@ -864,6 +879,7 @@ export class DuolaWorkApp {
         writerId: claims.memberId,
         attemptId: claims.attemptId
       });
+      if (step) this.tasks.outcomes.recordMaterial(step,{kind:'document',resource_id:saved.artifact.id,name:saved.artifact.title,folder_path:saved.folderPath.replace(/^\/+|\/+$/g,''),revision:String(saved.artifact.headVersion)});
       this.threads.emit({ type: 'thread.space_updated', threadId: claims.threadId });
       return {
         ok: true,
@@ -949,6 +965,13 @@ export class DuolaWorkApp {
     if (toolName.startsWith('duolabase:')) {
       const mcpTool = toolName.slice('duolabase:'.length);
       this.sandbox.assertExternalToolAllowed(claims, mcpTool, args);
+      if (step) {
+        const httpWrite = mcpTool==='vault_http_proxy' && !['GET','HEAD','OPTIONS'].includes(String(args.method || 'GET').toUpperCase());
+        const connectorWrite = mcpTool==='connector_call' && this.tasks.outcomes.get(step)?.spec.kind==='external' && !isReadOnlyConnectorTool(String(args.toolName || ''));
+        if ((httpWrite || connectorWrite) && !this.tasks.outcomes.claimWrite(step,toolName,args)) {
+          return {alreadySubmitted:true, message:'本步已提交同一操作，请只读核对原结果。'};
+        }
+      }
       if (this.externalMcpCaller) {
         return this.externalMcpCaller(mcpTool, args);
       }
@@ -1448,7 +1471,7 @@ export class DuolaWorkApp {
         }
         const tasks = this.tasks.listTasks().map((t) => ({
           ...t,
-          latestRun: this.tasks.listRuns(t.id)[0] ?? null
+          latestRun: this.tasks.listRuns(t.id, true)[0] ?? null
         }));
         const duolabase = this.duolabase.getPublicStatus();
         const archives = this.db.sqlite
@@ -1938,7 +1961,7 @@ export class DuolaWorkApp {
         const tasks = this.tasks
           .listTasks({ sourceThreadId: threadId })
           .map((t) => {
-            const latestRun = this.tasks.listRuns(t.id)[0] ?? null;
+            const latestRun = this.tasks.listRuns(t.id, true)[0] ?? null;
             const steps = latestRun ? this.tasks.listSteps(latestRun.id) : [];
             return { ...t, latestRun, steps };
           });
@@ -2521,6 +2544,28 @@ export class DuolaWorkApp {
         const run = await this.tasks.cancelRun(runId);
         sendJson(res, 200, { run });
         return;
+      }
+
+      const inferenceRoute = pathname.match(/^\/api\/v2\/threads\/([^/]+)\/members\/([^/]+)\/inference$/);
+      if (inferenceRoute && (method==='GET' || method==='PUT')) {
+        const thread=this.threads.getThread(decodeURIComponent(inferenceRoute[1]));
+        const member=this.db.getMember(decodeURIComponent(inferenceRoute[2]));
+        if (!thread || !member) return sendJson(res,404,{error:'未找到对话或成员'});
+        if (method==='PUT') {
+          const body=await readJsonBody(req);
+          const preference=await this.registry.savePreference(thread.id,member,String(body.model || ''),body.effort ? String(body.effort) : null);
+          return sendJson(res,200,{preference});
+        }
+        const preference=this.registry.getPreference(thread.id,member.id);
+        const catalog=url.searchParams.has('catalog') ? await this.registry.modelCatalog(member,url.searchParams.get('model') || preference?.model || undefined) : undefined;
+        return sendJson(res,200,{preference,catalog});
+      }
+
+      const verifyRun = pathname.match(/^\/api\/v2\/runs\/([^/]+)\/verify$/);
+      if (verifyRun && method === 'POST') {
+        const body = await readJsonBody(req);
+        const run = await this.tasks.resolveExternalCheck(decodeURIComponent(verifyRun[1]),String(body.stepId || ''),body.confirmedByUser===true);
+        return sendJson(res,200,{run});
       }
 
       const waitingReplyMatch = pathname.match(/^\/api\/v2\/runs\/([^/]+)\/reply$/);

@@ -65,6 +65,8 @@ const READONLY_CONNECTOR_TOOLS = new Set([
   'issue_read'
 ]);
 
+export function isReadOnlyConnectorTool(name: string): boolean { return READONLY_CONNECTOR_TOOLS.has(name); }
+
 export class AuthSandbox {
   constructor(private readonly db: DuolaWorkDatabase) {}
 

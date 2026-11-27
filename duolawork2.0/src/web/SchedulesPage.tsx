@@ -1,3 +1,4 @@
+import { outcomeStatus } from '../shared/task-progress.js';
 import React, { useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarClock, Clock, Pause, Play, RefreshCw, Square, Trash2 } from 'lucide-react';
 import type { MemberRecord, TaskRecord, TaskRunRecord, ThreadRecord } from '../shared/types.js';
@@ -90,7 +91,7 @@ export function SchedulesPage({
             const leadName = members.find((m) => m.id === task.leadMemberId)?.name || task.leadMemberId;
             const originThread = threads.find((t) => t.id === task.sourceThreadId);
             const latest = task.latestRun;
-            const statusText = task.status === 'paused' ? (latest?.status === 'running' ? '当前步骤结束后暂停' : '已暂停') : !latest
+            const statusText = outcomeStatus(latest) ?? (task.status === 'paused' ? (latest?.status === 'running' ? '当前步骤结束后暂停' : '已暂停') : !latest
               ? task.kind === 'scheduled'
                 ? task.scheduleEnabled
                   ? '等待定时触发'
@@ -108,7 +109,7 @@ export function SchedulesPage({
                       ? '最近一期超时'
                       : latest.status === 'canceled'
                         ? '已取消'
-                        : '进行中';
+                        : '进行中');
 
             const pillClass =
               latest?.status === 'completed'
@@ -185,7 +186,7 @@ export function SchedulesPage({
                         <span>停止</span>
                       </button>
                     )}
-                    {task.status === 'active' && (!latest || (task.kind === 'once' && ['failed','timed_out'].includes(latest.status)) || (task.kind === 'scheduled' && !['running','waiting_user','waiting_node_online','paused'].includes(latest.status))) && (
+                    {task.status === 'active' && (!latest || (task.kind === 'once' && !latest.progress?.some(s=>s.result==='external') && ['failed','timed_out'].includes(latest.status)) || (task.kind === 'scheduled' && !['running','waiting_user','waiting_node_online','paused'].includes(latest.status))) && (
                     <button
                       type="button"
                       disabled={busyId === task.id}

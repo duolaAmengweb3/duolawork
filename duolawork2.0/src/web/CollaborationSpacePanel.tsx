@@ -1,3 +1,4 @@
+import { outcomeStatus } from '../shared/task-progress.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -2122,7 +2123,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
                         ? ''
                         : 'working';
-                const statusLabel = t.status === 'paused' ? (runStatus === 'running' ? '当前步骤结束后暂停' : '已暂停') : !runStatus
+                const statusLabel = outcomeStatus(t.latestRun) ?? (t.status === 'paused' ? (runStatus === 'running' ? '当前步骤结束后暂停' : '已暂停') : !runStatus
                   ? t.kind === 'scheduled'
                     ? t.scheduleEnabled
                       ? '等待定时触发'
@@ -2140,7 +2141,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           ? '超时未完成'
                           : runStatus === 'canceled'
                             ? '已取消'
-                            : '进行中';
+                            : '进行中');
                 return (
                   <div key={t.id} className="task-group">
                     <div className="task-group-heading">

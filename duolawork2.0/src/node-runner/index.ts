@@ -509,6 +509,16 @@ export class DuolaWorkNodeRunner {
       return;
     }
 
+    if (type === 'member.models') {
+      try {
+        const member=msg.member as MemberRecord;
+        if (isExcludedClaudeVps(member)) throw new Error('此成员未开放模型设置');
+        const driver=this.resolveDriver(member.driverKind);
+        const result=await driver.listModels?.(member,msg.selectedModel) ?? {models:[]};
+        this.send({type:'rpc.result',reqId:msg.reqId,ok:true,result});
+      } catch { this.send({type:'rpc.result',reqId:msg.reqId,ok:false,error:'执行端暂时无法读取模型列表'}); }
+      return;
+    }
     if (type === 'member.check_health') {
       const reqId = String(msg.reqId || '');
       try {

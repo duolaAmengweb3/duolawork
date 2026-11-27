@@ -19,6 +19,27 @@ import {
   type TurnStreamEvent
 } from './types.js';
 
+type AcpOption = {
+  id: string;
+  category?: string;
+  currentValue?: string;
+  options?: Array<{ value?: string; name?: string; options?: Array<{ value: string; name: string }> }>;
+};
+function acpOptions(data: any): AcpOption[] {
+  return Array.isArray(data?.configOptions) ? data.configOptions : [];
+}
+function optionValues(option?: AcpOption) {
+  return (option?.options ?? []).flatMap(
+    (o) => o.options ?? (o.value ? [{ value: o.value, name: o.name || o.value }] : [])
+  );
+}
+async function selectAcpModel(rpc: JsonRpcStdioClient, sessionId: string, data: any, model: string) {
+  const option = acpOptions(data).find((o) => o.category === 'model');
+  if (option)
+    return rpc.call('session/set_config_option', { sessionId, configId: option.id, value: model }, 12000);
+  return rpc.call('session/set_model', { sessionId, modelId: model }, 12000);
+}
+
 function buildAcpMcpServers(list?: McpHttpServerConfig[]) {
   if (!list || list.length === 0) return [];
   return list.map((s) => ({
@@ -102,6 +123,42 @@ export class AcpStdioDriver implements AgentDriver {
     }
   }
 
+  public async listModels(member: MemberRecord, selectedModel?: string) {
+    const { rpc } = await this.openInitializedAcp(member, os.tmpdir());
+    try {
+      const fresh = await rpc.call('session/new', { cwd: os.tmpdir(), mcpServers: [] }, 15000);
+      const opt = acpOptions(fresh).find((o) => o.category === 'model');
+      const models = opt
+        ? optionValues(opt).map((o) => ({
+            id: o.value,
+            label: o.name,
+            efforts: [] as string[],
+            defaultEffort: undefined as string | undefined
+          }))
+        : (fresh.models?.availableModels ?? []).map((m: any) => ({
+            id: m.modelId,
+            label: m.name,
+            efforts: [] as string[],
+            defaultEffort: undefined
+          }));
+      const defaultModel = opt?.currentValue ?? fresh.models?.currentModelId;
+      const current = selectedModel || defaultModel;
+      const target = models.find((m: { id: string }) => m.id === current);
+      if (target && opt) {
+        const values =
+          selectedModel && current !== defaultModel
+            ? await selectAcpModel(rpc, fresh.sessionId, fresh, current)
+            : fresh;
+        const effort = acpOptions(values).find((o) => o.category === 'thought_level');
+        target.efforts = optionValues(effort).map((o) => o.value);
+        target.defaultEffort = effort?.currentValue;
+      }
+      return { models, defaultModel };
+    } finally {
+      await rpc.stop();
+    }
+  }
+
   public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
     const bin = this.resolveBinary(member);
     if (!fs.existsSync(bin)) {
@@ -174,12 +231,21 @@ export class AcpStdioDriver implements AgentDriver {
     rpc.onRequest = async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } });
 
     try {
+      let session;
       try {
-        await callSessionWithMcpFallback(rpc, 'session/resume', { sessionId, cwd: input.cwd }, mcpServers);
+        session=await callSessionWithMcpFallback(rpc, 'session/resume', {sessionId,cwd:input.cwd}, mcpServers);
       } catch {
-        const fresh = await callSessionWithMcpFallback(rpc, 'session/new', { cwd: input.cwd }, mcpServers);
-        sessionId = String(fresh?.sessionId || sessionId);
-        sessionReset = true;
+        session=await callSessionWithMcpFallback(rpc, 'session/new', {cwd:input.cwd}, mcpServers);
+        sessionId=String(session?.sessionId || sessionId);
+        sessionReset=true;
+      }
+      if (input.member.inference) {
+        const selected=await selectAcpModel(rpc,sessionId,session,input.member.inference.model);
+        if (input.member.inference.effort) {
+          const effort=acpOptions(selected).find(o=>o.category==='thought_level');
+          if (!effort || !optionValues(effort).some(o=>o.value===input.member.inference!.effort)) throw new Error('执行端已调整此模型支持的推理强度，请重新选择');
+          await rpc.call('session/set_config_option',{sessionId,configId:effort.id,value:input.member.inference.effort},12000);
+        }
       }
 
       this.activeClients.set(input.attemptId, { rpc, sessionId });
