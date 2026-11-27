@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -5,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import tls from 'node:tls';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import WebSocket from 'ws';
 import { AcpStdioDriver } from '../server/drivers/acp-driver.js';
 import { ClaudeCliDriver } from '../server/drivers/claude-cli-driver.js';
@@ -609,6 +611,61 @@ export class DuolaWorkNodeRunner {
   }
 }
 
+const execFileAsync = promisify(execFile);
+
+async function isMacProcessRunning(pattern: string): Promise<boolean> {
+  try {
+    await execFileAsync('/usr/bin/pgrep', ['-f', pattern], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureMacCompanionApps(): Promise<void> {
+  if (process.platform !== 'darwin') return;
+  const proxyEnv = resolveLocalProxyEnv();
+  const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
+  delete cleanEnv.ELECTRON_RUN_AS_NODE;
+
+  const grokApp = '/Applications/Grok Bot.app';
+  if (fs.existsSync(grokApp)) {
+    const running = await isMacProcessRunning('/Applications/Grok Bot.app/Contents/MacOS/Grok Bot');
+    if (!running) {
+      try {
+        await execFileAsync('/usr/bin/open', ['-g', '-j', grokApp], { env: cleanEnv, timeout: 10_000 });
+        console.log('[duolawork-node] companion keepalive launched Grok Bot.app in background');
+      } catch {
+        // non-fatal
+      }
+    }
+  }
+
+  const dshApp = '/Applications/DeepSeek Harness.app';
+  if (fs.existsSync(dshApp)) {
+    const running = await isMacProcessRunning('/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness');
+    if (!running) {
+      try {
+        const openArgs = ['-g', '-j'];
+        const httpProxy = proxyEnv.HTTP_PROXY || proxyEnv.http_proxy || '';
+        const httpsProxy = proxyEnv.HTTPS_PROXY || proxyEnv.https_proxy || httpProxy;
+        if (httpProxy) {
+          openArgs.push('--env', `HTTP_PROXY=${httpProxy}`);
+        }
+        if (httpsProxy) {
+          openArgs.push('--env', `HTTPS_PROXY=${httpsProxy}`);
+        }
+        openArgs.push('--env', 'NO_PROXY=127.0.0.1,localhost,::1');
+        openArgs.push(dshApp);
+        await execFileAsync('/usr/bin/open', openArgs, { env: cleanEnv, timeout: 10_000 });
+        console.log('[duolawork-node] companion keepalive launched DeepSeek Harness.app in background');
+      } catch {
+        // non-fatal
+      }
+    }
+  }
+}
+
 // Standalone CLI entrypoint: `node dist/node-runner/index.mjs [--config /path/to/node.json]`
 async function runCliIfMain(): Promise<void> {
   let isMain = false;
@@ -681,8 +738,17 @@ async function runCliIfMain(): Promise<void> {
   const runner = new DuolaWorkNodeRunner(cfg);
   await runner.start();
   console.log(`[duolawork-node] connected to ${cfg.serverUrl} as "${cfg.name}" (${cfg.kind})`);
+  let companionTimer: NodeJS.Timeout | null = null;
+  if (process.platform === 'darwin' && cfg.kind === 'local') {
+    void ensureMacCompanionApps();
+    companionTimer = setInterval(() => {
+      void ensureMacCompanionApps();
+    }, 3 * 60_000);
+    companionTimer.unref?.();
+  }
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
+      if (companionTimer) clearInterval(companionTimer);
       runner.stop();
       process.exit(0);
     });

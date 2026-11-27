@@ -303,6 +303,26 @@ export class RemoteBridgeDriver implements AgentDriver {
           bridgeMeta: { bridgeChannelId: existingChannelId, remoteMode: 'hub-channel' }
         };
       }
+      // DeepSeek Harness desktop connector only polls channels explicitly bound to its local sessions
+      // (such as the member's existing `direct: true` DM channel), so reuse it when present.
+      if (input.member.platformId === 'deepseek-harness') {
+        const listed = await this.hubRequest<any>(creds, '/v2/channels').catch(() => null);
+        const items: any[] = Array.isArray(listed?.items) ? listed.items : [];
+        const boundDirect = items.find(
+          (c) =>
+            c?.direct === true &&
+            Array.isArray(c.memberIds) &&
+            c.memberIds.includes(input.member.id) &&
+            typeof c.id === 'string'
+        );
+        if (boundDirect?.id) {
+          return {
+            nativeSessionId: `hub-channel:${boundDirect.id}`,
+            resumed: true,
+            bridgeMeta: { bridgeChannelId: String(boundDirect.id), remoteMode: 'hub-channel' }
+          };
+        }
+      }
       const channelRes = await this.hubRequest<any>(creds, '/v2/commands', {
         type: 'channel.create',
         requestId: randomUUID(),
