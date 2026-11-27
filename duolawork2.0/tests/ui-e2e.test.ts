@@ -304,6 +304,12 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
       ...oldMeta, fromMemberId: 'unrelated-member', reason: 'late_arrival',
       lateArrivalSeqs: [own.seq, foreign.seq], includedFromSeq: own.seq, includedToSeq: foreign.seq
     });
+    const staleSwitch = app.threads.appendSystemMessage({
+      threadId: threadB.id, authorKind: 'switch_notice', authorId: 'system', body: '已切换至 Codex',
+      handoffMeta: { ...oldMeta, status: 'pending', reason: 'member_switch' }
+    });
+    assert.equal(app.threads.listMessages(threadB.id, { fromSeq: staleSwitch.seq }).length, 0);
+    assert.equal(app.threads.previewPendingHandoff(threadB.id).meta.fromMemberId, null);
     await page.getByText('已收到另一位成员的补充', { exact: true }).waitFor();
     await page.reload();
     await page.getByRole('button', { name: /每日早晚报选题/ }).first().click();

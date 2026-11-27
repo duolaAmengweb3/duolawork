@@ -59,6 +59,12 @@ export interface StructuredActionHandler {
   ) => string;
 }
 
+const previousRecipientSql = `(
+  SELECT u.target_member_id FROM v2_thread_messages u
+  WHERE u.thread_id = m.thread_id AND u.seq < m.seq AND u.author_kind = 'user'
+  ORDER BY u.seq DESC LIMIT 1
+)`;
+
 function pendingOwnerSwitch(messages: ThreadMessageRecord[], targetMemberId: string) {
   const latest = messages.findLast((m) => m.authorKind === 'switch_notice');
   return latest?.handoffMeta?.status === 'pending' && latest.handoffMeta.toMemberId === targetMemberId
@@ -223,9 +229,20 @@ export class ThreadEngine {
       args.push(range.toSeq);
     }
     const rows = this.db.sqlite
-      .prepare(`SELECT * FROM v2_thread_messages WHERE ${clauses.join(' AND ')} ORDER BY seq ASC`)
+      .prepare(
+        `SELECT m.*, CASE WHEN m.author_kind = 'switch_notice' AND m.handoff_meta_json IS NOT NULL THEN ${previousRecipientSql} END AS previous_recipient
+         FROM v2_thread_messages m WHERE ${clauses.join(' AND ')} ORDER BY seq ASC`
+      )
       .all(...args) as Record<string, unknown>[];
-    return rows.map(mapMessageRow);
+    return rows.flatMap((row) => {
+      const msg = mapMessageRow(row);
+      // Older collapsed switches recorded the last selected member, even when they received no turn.
+      if (msg.handoffMeta && typeof row.previous_recipient === 'string') {
+        if (msg.handoffMeta.toMemberId === row.previous_recipient) return [];
+        msg.handoffMeta.fromMemberId = row.previous_recipient;
+      }
+      return [msg];
+    });
   }
 
   public appendSystemMessage(input: {
@@ -294,12 +311,12 @@ export class ThreadEngine {
 
     const latest = this.db.sqlite
       .prepare(
-        `SELECT id, author_kind, handoff_meta_json FROM v2_thread_messages
-         WHERE thread_id = ?
+        `SELECT id, author_kind, handoff_meta_json, ${previousRecipientSql} AS previous_recipient
+         FROM v2_thread_messages m WHERE thread_id = ?
          ORDER BY seq DESC LIMIT 1`
       )
       .get(threadId) as
-      | { id: string; author_kind: string; handoff_meta_json: string | null }
+      | { id: string; author_kind: string; handoff_meta_json: string | null; previous_recipient: string | null }
       | undefined;
 
     let existingMeta: HandoffNoticeMeta | null = null;
@@ -311,15 +328,15 @@ export class ThreadEngine {
       }
     }
 
+    const originalOwnerId = latest?.previous_recipient ?? existingMeta?.fromMemberId ?? previousOwnerId;
     if (latest?.author_kind === 'switch_notice' && existingMeta?.status === 'pending' &&
-        existingMeta.fromMemberId === nextOwnerMemberId) {
+        originalOwnerId === nextOwnerMemberId) {
       // No turn was sent to an intermediate owner. Withdraw the outstanding handoff.
       this.db.sqlite.prepare('DELETE FROM v2_thread_messages WHERE id = ?').run(latest.id);
     } else if (latest?.author_kind === 'switch_notice' && existingMeta?.status !== 'delivered') {
-      const preservedFromId = existingMeta?.fromMemberId ?? previousOwnerId;
       const pendingMeta: HandoffNoticeMeta = {
         status: 'pending',
-        fromMemberId: preservedFromId,
+        fromMemberId: originalOwnerId,
         toMemberId: nextOwnerMemberId,
         reason: 'member_switch'
       };
@@ -1318,34 +1335,21 @@ export class ThreadEngine {
         deliveredRevisionsPatch,
         this.getProtocolVersion()
       );
-      const pendingNoticeRow = this.db.sqlite
-        .prepare(
-          `SELECT id, handoff_meta_json FROM v2_thread_messages
-           WHERE thread_id = ? AND seq < ? AND author_kind = 'switch_notice'
-           ORDER BY seq DESC LIMIT 1`
-        )
-        .get(threadId, seqNum) as { id: string; handoff_meta_json: string | null } | undefined;
-      if (pendingNoticeRow?.handoff_meta_json) {
-        try {
-          const prevMeta = JSON.parse(pendingNoticeRow.handoff_meta_json) as HandoffNoticeMeta;
-          if (prevMeta.status === 'pending' && prevMeta.toMemberId === memberId) {
-            const settledMeta: HandoffNoticeMeta = {
-              ...prevMeta,
-              status: 'delivered',
-              strategy: prevMeta.strategy ?? 'delta_since_target_last_seen',
-              reason: prevMeta.reason ?? 'member_switch',
-              deliveredAt: now
-            };
-            this.db.sqlite
-              .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
-              .run(JSON.stringify(settledMeta), now, pendingNoticeRow.id);
-            const updatedNotice = this.getMessage(pendingNoticeRow.id);
-            if (updatedNotice) {
-              this.emit({ type: 'thread.message_updated', threadId, payload: updatedNotice });
-            }
-          }
-        } catch {
-          // ignore malformed legacy handoff meta
+      const pendingNotice = pendingOwnerSwitch(threadMsgs, memberId);
+      if (pendingNotice?.handoffMeta) {
+        const settledMeta: HandoffNoticeMeta = {
+          ...pendingNotice.handoffMeta,
+          status: 'delivered',
+          strategy: pendingNotice.handoffMeta.strategy ?? 'delta_since_target_last_seen',
+          reason: 'member_switch',
+          deliveredAt: now
+        };
+        this.db.sqlite
+          .prepare(`UPDATE v2_thread_messages SET handoff_meta_json = ?, updated_at = ? WHERE id = ?`)
+          .run(JSON.stringify(settledMeta), now, pendingNotice.id);
+        const updatedNotice = this.getMessage(pendingNotice.id);
+        if (updatedNotice) {
+          this.emit({ type: 'thread.message_updated', threadId, payload: updatedNotice });
         }
       }
       this.emit({ type: 'thread.message_updated', threadId, payload: reconciledMsg });
