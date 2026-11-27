@@ -796,7 +796,8 @@ export class DuolaWorkApp {
         name,
         mimeType: typeof args.mimeType === 'string' ? args.mimeType : undefined,
         buffer: buf,
-        uploaderId: claims.memberId
+        uploaderId: claims.memberId,
+        reuseIdentical: true
       });
       const alt = typeof args.alt === 'string' && args.alt.trim() ? args.alt.trim() : saved.name;
       return {

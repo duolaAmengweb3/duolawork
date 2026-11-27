@@ -257,7 +257,14 @@ export interface TurnDispatchInput {
   onToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
+export interface GeneratedImage {
+  id: string;
+  dataBase64?: string;
+  localPath?: string;
+}
+
 export interface TurnExecutionResult {
+  generatedImages?: GeneratedImage[];
   text: string;
   nativeSessionId: string;
   nativeTurnId: string | null;

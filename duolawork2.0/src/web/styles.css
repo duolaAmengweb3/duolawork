@@ -479,6 +479,9 @@ html.dark {
   background: #f8fafd;
 }
 .dw-chat-image-stage {
+  width: 100%;
+  padding: 0;
+  border: 0;
   position: relative;
   cursor: zoom-in;
   background: #f1f4f9;

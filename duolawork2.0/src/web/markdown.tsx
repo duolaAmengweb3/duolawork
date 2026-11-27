@@ -242,12 +242,12 @@ function ChatImageCard({
   return (
     <>
       <figure className="dw-chat-image-card" data-testid="chat-image-card">
-        <div className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} title="点击查看大图">
+        <button type="button" className="dw-chat-image-stage" onClick={() => setLightboxOpen(true)} aria-label={`查看大图：${label || '图片'}`} title="点击查看大图">
           <img src={src} alt={label || '图片'} loading="lazy" />
           <span className="dw-chat-image-zoom" aria-hidden="true">
             <Maximize2 size={12} />
           </span>
-        </div>
+        </button>
         {(actions || label) && (
           <figcaption className="dw-chat-image-bar">
             {label && (

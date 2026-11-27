@@ -512,6 +512,15 @@ test('SPACE-IMG-05: Bidirectional chat images (user send -> agent multimodal rec
 
     // 3. Click "保存到资料区" on the Agent's generated image card -> verify it lands in Space
     const agentCard = page.getByTestId('chat-image-card').nth(1);
+    await agentCard.getByRole('button', { name: /查看大图/ }).click();
+    const preview = page.getByRole('dialog', { name: '大图预览' });
+    await preview.waitFor();
+    assert.ok(await preview.locator('img').evaluate(async img => {
+      if (!(img instanceof HTMLImageElement)) return false;
+      await img.decode();
+      return img.naturalWidth > 0;
+    }));
+    await preview.getByRole('button', { name: '关闭大图预览' }).click();
     await agentCard.getByRole('button', { name: '保存到资料区' }).click();
     await agentCard.getByRole('button', { name: '已存入资料区' }).waitFor({ timeout: 5000 });
 

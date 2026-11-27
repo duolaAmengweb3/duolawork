@@ -1,3 +1,4 @@
+import { runWithChatImages } from './chat-image-delivery.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DuolaWorkDatabase } from '../db.js';
 import {
@@ -443,7 +444,7 @@ export class DriverRegistry {
         timeoutHandle.unref?.();
       });
 
-      const execPromise = driver.runTurn(
+      const execPromise = runWithChatImages(driver,
         {
           attemptId,
           member: input.member,
@@ -569,7 +570,7 @@ export class DriverRegistry {
 
       return {
         attempt: this.getAttempt(attemptId)!,
-        result: res,
+        result: { ...res, bridgeMeta: res.bridgeMeta ?? currentBridgeMeta },
         deduplicated: false
       };
     } catch (err) {

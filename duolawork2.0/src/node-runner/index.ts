@@ -1,3 +1,4 @@
+import { runWithChatImages, type ChatImageDelivery } from '../server/drivers/chat-image-delivery.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -66,7 +67,7 @@ export class DuolaWorkNodeRunner {
   private readonly pendingToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private readonly activeMcpAttempts = new Map<
     string,
-    { token: string; tools: DynamicToolDefinition[] }
+    { token: string; tools: DynamicToolDefinition[]; delivery?: ChatImageDelivery }
   >();
   private loopbackMcpServer: http.Server | null = null;
   private loopbackMcpPort: number | null = null;
@@ -255,6 +256,7 @@ export class DuolaWorkNodeRunner {
         }
         try {
           const out = await this.invokeCloudTool(attemptId, toolName, toolArgs);
+          this.activeMcpAttempts.get(attemptId)?.delivery?.toolResult(toolName, toolArgs, out);
           return {
             jsonrpc: '2.0',
             id,
@@ -527,6 +529,7 @@ export class DuolaWorkNodeRunner {
           scopeKey: String(msg.scopeKey || ''),
           cwd: String(msg.cwd || os.tmpdir()),
           existingNativeSessionId: msg.existingNativeSessionId ?? null,
+          existingBridgeMeta: msg.existingBridgeMeta ?? null,
           dynamicTools: Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [],
           mcpServers: Array.isArray(msg.mcpServers) ? (msg.mcpServers as McpHttpServerConfig[]) : []
         });
@@ -627,14 +630,14 @@ export class DuolaWorkNodeRunner {
         }
       };
 
-      void driver
-        .runTurn(
+      void runWithChatImages(driver,
           {
             attemptId,
             member,
             scopeKey: String(msg.scopeKey || ''),
             cwd: String(msg.cwd || os.tmpdir()),
             nativeSessionId: String(msg.nativeSessionId || ''),
+            bridgeMeta: msg.bridgeMeta ?? null,
             prompt: promptWithImages,
             fallbackFullPrompt: fallbackWithImages,
             timeoutMs: typeof msg.timeoutMs === 'number' ? msg.timeoutMs : 900_000,
@@ -658,6 +661,10 @@ export class DuolaWorkNodeRunner {
                 status: ev.toolStatus
               });
             }
+          },
+          (delivery) => {
+            const mcp = this.activeMcpAttempts.get(attemptId);
+            if (mcp) mcp.delivery = delivery;
           }
         )
         .then((res) => {

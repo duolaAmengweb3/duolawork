@@ -622,6 +622,7 @@ export class ExecutionNodeHub {
         scopeKey: input.scopeKey,
         cwd: input.cwd,
         existingNativeSessionId: input.existingNativeSessionId ?? null,
+        existingBridgeMeta: input.existingBridgeMeta ?? null,
         dynamicTools: input.dynamicTools ?? [],
         mcpServers: input.mcpServers ?? []
       },
@@ -668,6 +669,7 @@ export class ExecutionNodeHub {
         scopeKey: input.scopeKey,
         cwd: input.cwd,
         nativeSessionId: input.nativeSessionId,
+        bridgeMeta: input.bridgeMeta ?? null,
         prompt: input.prompt,
         fallbackFullPrompt: input.fallbackFullPrompt ?? null,
         timeoutMs: input.timeoutMs ?? 900_000,

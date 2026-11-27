@@ -617,6 +617,7 @@ export class SpaceStore {
     mimeType?: string;
     buffer: Buffer;
     uploaderId?: string;
+    reuseIdentical?: boolean;
   }): {
     id: string;
     threadId: string;
@@ -634,6 +635,15 @@ export class SpaceStore {
     if (!buf || buf.length === 0) throw new Error('图片内容为空');
     if (buf.length > 24 * 1024 * 1024) throw new Error('单张图片不能超过 24 MiB');
 
+    const sha256 = createHash('sha256').update(buf).digest('hex');
+    if (input.reuseIdentical) {
+      const row = this.db.sqlite.prepare(
+        'SELECT id FROM v2_chat_images WHERE thread_id = ? AND uploader_id = ? AND sha256 = ? LIMIT 1'
+      ).get(input.threadId, input.uploaderId ?? 'owner', sha256) as { id: string } | undefined;
+      const existing = row && this.getChatImageWithPath(row.id);
+      if (existing) return { ...existing.image, absPath: existing.absPath, url: `/api/v2/chat-images/${existing.image.id}` };
+    }
+
     const id = 'img_' + randomUUID().slice(0, 12);
     const dir = path.join(this.filesRoot, '_chat_images', safePathSegment(input.threadId));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -644,7 +654,6 @@ export class SpaceStore {
       throw new Error('非法图片存储路径');
     }
 
-    const sha256 = createHash('sha256').update(buf).digest('hex');
     fs.writeFileSync(absPath, buf, { mode: 0o600 });
 
     const now = new Date().toISOString();
