@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type PointerEvent } from 'react';
 
 type Side = 'sidebar' | 'space';
 type Widths = Record<Side, number | null>;
@@ -99,6 +99,22 @@ export function ColumnDivider({ side }: { side: Side }) {
   const sign = side === 'sidebar' ? 1 : -1;
   const clamp = (v: number) => Math.min(maximum[side], Math.max(minimum[side], Math.round(v)));
 
+  function move(event: PointerEvent<HTMLDivElement>) {
+    const active = drag.current;
+    if (!active || active.id !== event.pointerId) return;
+    const next = clamp(active.start + sign * (event.clientX - active.x));
+    if (next === (active.last ?? active.start)) return;
+    active.last = next;
+    change(side, next);
+  }
+
+  function finish(event: PointerEvent<HTMLDivElement>) {
+    if (drag.current?.id !== event.pointerId) return;
+    if (drag.current.last !== null) save();
+    drag.current = null;
+    delete event.currentTarget.dataset.dragging;
+  }
+
   return (
     <div
       className="workbench-divider" role="separator" tabIndex={0} aria-orientation="vertical"
@@ -113,20 +129,10 @@ export function ColumnDivider({ side }: { side: Side }) {
         event.currentTarget.dataset.dragging = '';
         drag.current = { id: event.pointerId, x: event.clientX, start: current[side], last: null };
       }}
-      onPointerMove={(event) => {
-        const active = drag.current;
-        if (!active || active.id !== event.pointerId) return;
-        const next = clamp(active.start + sign * (event.clientX - active.x));
-        if (next === (active.last ?? active.start)) return;
-        active.last = next;
-        change(side, next);
-      }}
-      onLostPointerCapture={(event) => {
-        if (drag.current?.id !== event.pointerId) return;
-        if (drag.current.last !== null) save();
-        drag.current = null;
-        delete event.currentTarget.dataset.dragging;
-      }}
+      onPointerMove={(event) => { if (event.buttons & 1) move(event); }}
+      onPointerUp={(event) => { move(event); finish(event); }}
+      onPointerCancel={finish}
+      onLostPointerCapture={finish}
       onDoubleClick={() => { change(side, null); save(); }}
       onKeyDown={(event) => {
         let value: number;

@@ -156,7 +156,16 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     const [left, center, right] = await widths();
     await dragBy(leftDivider, 60);
     assert.deepEqual(await widths(), [left + 60, center - 60, right]);
-    await dragBy(rightDivider, -48);
+    // A quick native drag may release at a new coordinate without a final mousemove.
+    const rightHit = await rightDivider.boundingBox();
+    assert.ok(rightHit);
+    const input = await context.newCDPSession(page);
+    const hit = { x: rightHit.x + rightHit.width / 2, y: rightHit.y + 14, button: 'left' as const, clickCount: 1 };
+    await input.send('Input.dispatchMouseEvent', { ...hit, type: 'mousePressed', buttons: 1 });
+    await input.send('Input.dispatchMouseEvent', { ...hit, type: 'mouseReleased', x: hit.x - 24, buttons: 0 });
+    await input.detach();
+    assert.equal((await widths())[2], right + 24);
+    await dragBy(rightDivider, -24);
     const custom = [left + 60, center - 108, right + 48];
     assert.deepEqual(await widths(), custom);
     for (const thread of [threadA, threadB]) {
