@@ -138,6 +138,70 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     assert.ok(loadedLogos.some((i) => i.alt === 'Codex' && i.complete && i.naturalWidth > 0), 'Codex agent logo must load');
     assert.ok(loadedLogos.some((i) => i.alt === 'Antigravity' && i.complete && i.naturalWidth > 0), 'Antigravity agent logo must load');
 
+    const leftDivider = page.getByRole('separator', { name: '对话列表宽度' });
+    const rightDivider = page.getByRole('separator', { name: '协作空间宽度' });
+    const widths = () => page.evaluate(() =>
+      ['.comm-sidebar', '.conversation-column', '.collaboration-space'].map((selector) =>
+        Math.round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0)));
+    const dragBy = async (divider: typeof leftDivider, dx: number) => {
+      const box = await divider.boundingBox();
+      assert.ok(box);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + dx, y, { steps: 5 });
+      await page.mouse.up();
+    };
+    const [left, center, right] = await widths();
+    await dragBy(leftDivider, 60);
+    assert.deepEqual(await widths(), [left + 60, center - 60, right]);
+    await dragBy(rightDivider, -48);
+    const custom = [left + 60, center - 108, right + 48];
+    assert.deepEqual(await widths(), custom);
+    for (const thread of [threadA, threadB]) {
+      await page.locator('.channel-open-btn').filter({ hasText: thread.title }).click();
+      await page.getByRole('heading', { name: thread.title, exact: true }).waitFor();
+      assert.deepEqual(await widths(), custom);
+    }
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.deepEqual(await widths(), custom);
+    await page.getByRole('button', { name: '隐藏协作空间' }).click();
+    assert.deepEqual(await widths(), [custom[0], custom[1] + custom[2], 0]);
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    assert.deepEqual(await widths(), custom);
+    await page.getByRole('button', { name: '展开协作空间宽度' }).click();
+    assert.ok((await widths())[2] > custom[2]);
+    await page.getByRole('button', { name: '标准协作空间宽度' }).click();
+    assert.deepEqual(await widths(), custom);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await rightDivider.press('End');
+    const constrained = await widths();
+    assert.equal(constrained.reduce((sum, n) => sum + n, 0), 900, 'All three panes fit the window');
+    assert.equal(constrained[1], 360, 'The composer keeps usable room even at the drag limit');
+    await rightDivider.press('Home');
+    await rightDivider.press('ArrowLeft');
+    assert.equal((await widths())[2], Number(await rightDivider.getAttribute('aria-valuemin')) + 16);
+    await page.setViewportSize({ width: 390, height: 800 });
+    assert.equal(await leftDivider.isVisible(), false);
+    assert.equal(await rightDivider.isVisible(), false);
+    await page.getByRole('button', { name: '打开侧边导航' }).click();
+    const mobileThread = page.locator('.comm-sidebar .channel-copy').first();
+    await mobileThread.waitFor({ state: 'visible', timeout: 2500 });
+    await page.getByRole('button', { name: '成员与用量' }).click();
+    await page.getByRole('heading', { name: '成员与用量统计' }).waitFor();
+    await page.getByRole('button', { name: '打开侧边导航' }).click();
+    await mobileThread.click();
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    const mobilePanel = await page.locator('.collaboration-space').boundingBox();
+    assert.ok(mobilePanel && mobilePanel.x >= 0 && mobilePanel.x + mobilePanel.width <= 391);
+    await page.getByRole('button', { name: '收起协作空间' }).click();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole('button', { name: '展开协作空间', exact: true }).click();
+    await leftDivider.dblclick();
+    await rightDivider.dblclick();
+    assert.deepEqual(await widths(), [left, center, right]);
+
     // 1. Verify unified 4 compact nav entries & clean navigation across Management Views
     for (const [navLabel, expectedHeading] of [
       ['成员与用量', '成员与用量统计'],
@@ -255,6 +319,10 @@ test('P4-04 & Audit Pitfall #5: Real Browser E2E verifies unified + 新对话, p
     await page.waitForSelector('h1:has-text("每日 AI 与链上早晚报")');
     await page.waitForSelector('text=(第2期).md');
     assert.ok(await page.locator('text=(第2期).md').isVisible(), 'Run #2 artifact shown initially');
+    const taskWidths = await widths();
+    await dragBy(rightDivider, 28);
+    assert.deepEqual(await widths(), [taskWidths[0], taskWidths[1] + 28, taskWidths[2] - 28]);
+    await rightDivider.dblclick();
 
     await page.getByRole('button', { name: /第 1 期/ }).click();
     await page.waitForSelector('text=(第1期).md');

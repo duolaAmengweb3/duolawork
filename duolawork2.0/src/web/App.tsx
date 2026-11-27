@@ -59,6 +59,7 @@ import {
   type ThreadRecord,
   type ToolTraceItem
 } from '../shared/types.js';
+import { ColumnDivider, WorkbenchColumns } from './WorkbenchColumns.js';
 import { AgentAvatar, BrandLogo } from './AgentAvatar.js';
 import {
   CollaborationSpacePanel,
@@ -2158,8 +2159,24 @@ export function App(): React.JSX.Element {
     );
   }
 
+  const mobileNavigation = (
+    <button
+      type="button"
+      onClick={() => setMobileSidebarOpen(true)}
+      className="dw-btn dw-btn-ghost dw-btn-icon mobile-nav-trigger"
+      aria-label="打开侧边导航"
+      aria-controls="workbench-sidebar"
+      aria-expanded={mobileSidebarOpen}
+    >
+      <Menu size={18} />
+    </button>
+  );
+
   return (
-    <div
+    <WorkbenchColumns
+      spaceVisible={showRightSpace && (viewMode === 'thread' ? Boolean(activeThread) : Boolean(taskDetail))}
+      wideSpace={wideSpace}
+      leaveWideSpace={() => setWideSpace(false)}
       data-build-id={buildId}
       className={`communication${mobileSidebarOpen ? ' mobile-sidebar-open' : ''}`}
       onClick={() => {
@@ -2169,7 +2186,7 @@ export function App(): React.JSX.Element {
       }}
     >
       {/* Left Sidebar: Exact 1.9.6 DuolaWork Brand + Nav + Spacious Conversations */}
-      <aside className="comm-sidebar">
+      <aside id="workbench-sidebar" className="comm-sidebar">
         <div className="comm-brand">
           <div className="comm-brand-id">
             <BrandLogo size={38} loop />
@@ -2360,6 +2377,7 @@ export function App(): React.JSX.Element {
           </div>
         </div>
       </aside>
+      <ColumnDivider side="sidebar" />
       {mobileSidebarOpen && (
         <div
           className="mobile-sidebar-backdrop"
@@ -2391,6 +2409,9 @@ export function App(): React.JSX.Element {
           }
         }}
       >
+        {(viewMode !== 'thread' || !activeThread) && (
+          <div className="mobile-nav-bar">{mobileNavigation}</div>
+        )}
         {chatNotice && (
           <div className="comm-toast" role="status">
             <Check size={15} />
@@ -2455,18 +2476,7 @@ export function App(): React.JSX.Element {
           <>
             <header className="comm-header">
               <div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMobileSidebarOpen((v) => !v);
-                  }}
-                  className="dw-btn dw-btn-ghost dw-btn-icon mobile-nav-trigger"
-                  aria-label="打开侧边导航"
-                  title="导航菜单"
-                >
-                  <Menu size={18} />
-                </button>
+                {mobileNavigation}
                 <AgentAvatar
                   small
                   name={currentOwner?.name || activeThread.activeOwnerMemberId}
@@ -3386,6 +3396,7 @@ export function App(): React.JSX.Element {
                 </footer>
               </section>
 
+              {showRightSpace && <ColumnDivider side="space" />}
               {renderRightSpace()}
             </div>
           </>
@@ -3622,11 +3633,12 @@ export function App(): React.JSX.Element {
                 </div>
               </section>
 
+              {showRightSpace && <ColumnDivider side="space" />}
               {renderRightSpace()}
             </div>
           </>
         ) : null}
       </main>
-    </div>
+    </WorkbenchColumns>
   );
 }

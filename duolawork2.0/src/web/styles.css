@@ -134,6 +134,10 @@
   min-width: 0;
 }
 .comm-brand-id strong {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 18px;
   letter-spacing: -0.4px;
   color: #1f2b3f;
@@ -1494,6 +1498,7 @@ html.dark {
 .mobile-nav-trigger {
   display: none;
 }
+.mobile-nav-bar,
 .mobile-sidebar-backdrop {
   display: none;
 }
@@ -1503,6 +1508,11 @@ html.dark {
   #root {
     height: 100dvh;
     overflow: hidden;
+  }
+  .mobile-nav-bar {
+    display: flex;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border, #e4e8ef);
   }
   .mobile-nav-trigger {
     display: inline-flex;
@@ -1523,11 +1533,13 @@ html.dark {
     inset: 0 auto 0 0;
     width: min(84vw, 300px) !important;
     z-index: 60;
+    visibility: hidden;
     transform: translateX(-105%);
     transition: transform 0.2s ease;
     box-shadow: 8px 0 30px rgba(0, 0, 0, 0.18);
   }
   .communication.mobile-sidebar-open .comm-sidebar {
+    visibility: visible;
     transform: translateX(0);
   }
   .artifact-pane,
@@ -1718,4 +1730,48 @@ html.dark {
 }
 .dark .clarify-answered-bar {
   color: #6bcf9f;
+}
+
+.workbench-divider {
+  display: none;
+}
+
+@media (min-width: 851px) {
+  .communication > .comm-sidebar {
+    width: clamp(var(--dw-sidebar-min), var(--dw-sidebar-width), calc(100% - var(--dw-center-min) - var(--dw-reserved-space)));
+  }
+
+  .comm-body > .collaboration-space.space-redesign {
+    width: clamp(var(--dw-space-min), var(--dw-space-width), calc(100% - var(--dw-center-min)));
+    min-width: 0;
+    transition: none;
+  }
+
+  .workbench-divider {
+    display: block;
+    position: relative;
+    z-index: 3;
+    align-self: stretch;
+    flex: 0 0 10px;
+    margin-inline: -5px;
+    outline: none;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .workbench-divider::after {
+    content: '';
+    position: absolute;
+    inset: 0 4px;
+    background: transparent;
+  }
+
+  .workbench-divider:is(:hover, :focus-visible, [data-dragging])::after {
+    background: #6889dd;
+  }
+
+  .communication:has(.workbench-divider[data-dragging]) {
+    user-select: none;
+    cursor: col-resize;
+  }
 }

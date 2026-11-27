@@ -1225,6 +1225,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         }
       }}
       onDrop={(e) => void handleDropFiles(e)}
+      id="workbench-space"
       className={`collaboration-space space-redesign ${wideSpace ? 'space-expanded' : ''}`}
     >
       {dragging && (
