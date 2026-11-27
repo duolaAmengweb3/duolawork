@@ -1347,6 +1347,7 @@ export class DuolaWorkApp {
           `id: ${this.eventSeq}\ndata: ${JSON.stringify({
             type: 'connected',
             bootId: this.bootId,
+            buildId: this.buildInfo.id,
             eventSeq: this.eventSeq
           })}\n\n`
         );

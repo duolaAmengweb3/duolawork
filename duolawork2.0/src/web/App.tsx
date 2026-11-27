@@ -323,6 +323,7 @@ export function App(): React.JSX.Element {
   const pendingClientReqByThreadRef = useRef<Record<string, { key: string; text: string }>>({});
   const lastSseEventIdRef = useRef<string>('');
   const sseBootIdRef = useRef<string | null>(null);
+  const sseBuildIdRef = useRef<string | null>(null);
   const sseHadDisconnectRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -680,6 +681,19 @@ export function App(): React.JSX.Element {
         }
         if (parsed.type === 'connected') {
           const nextBootId = typeof parsed.bootId === 'string' ? parsed.bootId : null;
+          const nextBuildId = typeof parsed.buildId === 'string' ? parsed.buildId : null;
+          if (
+            nextBuildId &&
+            nextBuildId !== 'dev' &&
+            sseBuildIdRef.current &&
+            sseBuildIdRef.current !== nextBuildId
+          ) {
+            window.location.reload();
+            return;
+          }
+          if (nextBuildId) {
+            sseBuildIdRef.current = nextBuildId;
+          }
           const bootChanged = Boolean(
             sseBootIdRef.current && nextBootId && sseBootIdRef.current !== nextBootId
           );
