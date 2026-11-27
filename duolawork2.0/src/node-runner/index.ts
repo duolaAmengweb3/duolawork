@@ -1,4 +1,5 @@
-import { runWithChatImages, type ChatImageDelivery } from '../server/drivers/chat-image-delivery.js';
+import https from 'node:https';
+import { readTurnExport, runWithChatImages, type ChatImageDelivery } from '../server/drivers/chat-image-delivery.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -63,7 +64,7 @@ const OUTBOX_TTL_MS = 24 * 3600 * 1000;
 export class DuolaWorkNodeRunner {
   private readonly drivers = new Map<string, AgentDriver>();
   private readonly outbox = new Map<string, OutboxEntry>();
-  private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver }>();
+  private readonly runningAttempts = new Map<string, { member: MemberRecord; driver: AgentDriver; cwd: string }>();
   private canResumeTools = false;
   private readonly pendingToolCalls = new Map<string, { frame: Record<string, unknown>; sent: boolean; resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private readonly activeMcpAttempts = new Map<
@@ -88,14 +89,22 @@ export class DuolaWorkNodeRunner {
     this.loadOutbox();
   }
 
+  private rejectPendingStart?: (err: Error) => void;
+
   public async start(): Promise<void> {
     this.stopped = false;
     await this.ensureLoopbackMcpServer();
+    if (this.stopped) {
+      this.stop();
+      throw new Error('NODE_STOPPED');
+    }
     return new Promise<void>((resolve, reject) => {
+      this.rejectPendingStart = reject;
       let settled = false;
       this.connect((err) => {
         if (settled) return;
         settled = true;
+        this.rejectPendingStart = undefined;
         if (err) reject(err);
         else resolve();
       });
@@ -104,6 +113,8 @@ export class DuolaWorkNodeRunner {
 
   public stop(): void {
     this.stopped = true;
+    this.rejectPendingStart?.(new Error('NODE_STOPPED'));
+    this.rejectPendingStart = undefined;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -337,13 +348,14 @@ export class DuolaWorkNodeRunner {
     const connectHost = `${parsed.hostname}:${targetPort}`;
 
     return new Promise<WebSocket>((resolve, reject) => {
-      const req = http.request({
+      const req = (proxy.protocol === 'https:' ? https : http).request({
         host: proxy.hostname,
-        port: Number(proxy.port || 80),
+        port: Number(proxy.port || (proxy.protocol === 'https:' ? 443 : 80)),
         method: 'CONNECT',
         path: connectHost,
         headers: { Host: connectHost }
       });
+      req.setTimeout(15000, () => req.destroy(new Error('Proxy connection timeout')));
       req.once('error', reject);
       req.once('connect', (res, tunnelSocket) => {
         if (res.statusCode !== 200) {
@@ -351,15 +363,22 @@ export class DuolaWorkNodeRunner {
           reject(new Error(`Proxy CONNECT failed: HTTP ${res.statusCode}`));
           return;
         }
+        tunnelSocket.setTimeout(0);
         const transport =
           parsed.protocol === 'wss:'
             ? tls.connect({ socket: tunnelSocket, servername: parsed.hostname })
             : tunnelSocket;
-        const ws = new WebSocket(wsUrl, {
-          headers,
-          createConnection: () => transport
-        });
-        resolve(ws);
+        const connected = () => {
+          try {
+            const ws = new WebSocket(wsUrl, { headers, createConnection: () => transport, handshakeTimeout: 15000 });
+            resolve(ws);
+          } catch (error) { transport.destroy(); reject(error); }
+        };
+        transport.once('error', reject);
+        if (parsed.protocol === 'wss:') {
+          transport.setTimeout(15000, () => transport.destroy(new Error('TLS handshake timeout')));
+          transport.once('secureConnect', () => { transport.setTimeout(0); connected(); });
+        } else connected();
       });
       req.end();
     });
@@ -370,17 +389,14 @@ export class DuolaWorkNodeRunner {
     void this.openWsSocket(this.buildWsUrl())
       .then((ws) => {
         if (this.stopped) {
+          ws.once('error', () => {});
           ws.close();
           return;
         }
         this.bindSocket(ws, onFirstWelcome);
       })
-      .catch((err) => {
-        if (onFirstWelcome) {
-          onFirstWelcome(err instanceof Error ? err : new Error(String(err)));
-        } else if (!this.stopped) {
-          this.scheduleReconnect();
-        }
+      .catch(() => {
+        if (!this.stopped) this.scheduleReconnect(onFirstWelcome);
       });
   }
 
@@ -432,6 +448,7 @@ export class DuolaWorkNodeRunner {
         }
         this.flushOutbox();
         onFirstWelcome?.();
+        onFirstWelcome = undefined;
         return;
       }
       void this.handleServerFrame(msg).catch(() => {});
@@ -444,26 +461,21 @@ export class DuolaWorkNodeRunner {
         this.pingTimer = null;
       }
       if (!this.stopped) {
-        this.scheduleReconnect();
+        this.scheduleReconnect(onFirstWelcome);
       }
     });
 
-    ws.on('error', (err) => {
-      if (onFirstWelcome) {
-        onFirstWelcome(err instanceof Error ? err : new Error(String(err)));
-        onFirstWelcome = undefined;
-      }
-    });
+    ws.on('error', () => { /* ws emits close after transport errors; reconnect there. */ });
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(onFirstWelcome?: (err?: Error) => void): void {
     if (this.stopped || this.reconnectTimer) return;
     const delays = [1000, 2000, 5000, 10000, 15000];
     const delay = delays[Math.min(this.reconnectAttempt, delays.length - 1)];
     this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      this.connect(onFirstWelcome);
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -574,7 +586,7 @@ export class DuolaWorkNodeRunner {
       }
 
       const driver = this.resolveDriver(member.driverKind);
-      this.runningAttempts.set(attemptId, { member, driver });
+      this.runningAttempts.set(attemptId, { member, driver, cwd: String(msg.cwd || os.tmpdir()) });
 
       const dynamicTools: DynamicToolDefinition[] = Array.isArray(msg.dynamicTools) ? msg.dynamicTools : [];
       const incomingMcpServers: McpHttpServerConfig[] = Array.isArray(msg.mcpServers)
@@ -814,18 +826,10 @@ export class DuolaWorkNodeRunner {
       args.content === undefined
     ) {
       try {
-        const resolved = path.resolve(args.localPath.trim());
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          return Promise.reject(new Error(`执行节点上找不到指定文件: ${args.localPath}`));
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) {
-          return Promise.reject(new Error(`本地文件为空: ${args.localPath}`));
-        }
-        if (st.size > 24 * 1024 * 1024) {
-          return Promise.reject(new Error(`文件超过 24 MiB 传输上限: ${args.localPath}`));
-        }
-        const b64 = fs.readFileSync(resolved).toString('base64');
+        const cwd = this.runningAttempts.get(attemptId)?.cwd;
+        if (!cwd) throw new Error('回合工作目录不可用');
+        const resolved = path.resolve(cwd, args.localPath.trim());
+        const b64 = readTurnExport(resolved, cwd).toString('base64');
         const nextArgs: Record<string, unknown> = {
           ...args,
           name: typeof args.name === 'string' && args.name.trim() ? args.name.trim() : path.basename(resolved),

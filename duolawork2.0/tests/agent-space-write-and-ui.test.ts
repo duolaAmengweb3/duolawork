@@ -44,7 +44,7 @@ test('SPACE-AGENT-01: Scoped agent space tools create nested folders, save arbit
       config: {}
     });
 
-    const threadA = app.threads.createThread({ title: '空间测试 A', activeOwnerMemberId: 'mem_agent_space' });
+    const threadA = app.threads.createThread({ title: '空间测试 A', workspacePath:tmpDir, activeOwnerMemberId: 'mem_agent_space' });
     const threadB = app.threads.createThread({ title: '空间测试 B', activeOwnerMemberId: 'mem_agent_space' });
     const foreignDoc = app.space.createDocument({ threadId: threadB.id, title: '机密.md', content: 'Secret' });
 
@@ -96,6 +96,10 @@ test('SPACE-AGENT-01: Scoped agent space tools create nested folders, save arbit
         content: '# 第二版更新',
         folderPath: '调研素材'
       })) as any;
+      await input.onToolCall!('space_read_material', {kind:'document', id:docV2.id});
+      const human = app.artifacts.writeArtifact({artifactId:docV2.id, expectedBaseVersion:docV2.version, content:'人工编辑', writerKind:'user', writerId:'owner'});
+      await assert.rejects(input.onToolCall!('space_save_document', {documentId:docV2.id, title:'周报.md',content:'旧稿'}), /文档已更新/);
+      assert.equal(app.artifacts.getArtifact(docV2.id)?.headVersion,human.artifact.headVersion);
       assert.equal(docV2.created, false);
       assert.equal(docV2.id, docV1.id);
       assert.equal(docV2.version, 2);
@@ -212,6 +216,11 @@ test('SPACE-AGENT-02: Universal inline tags (<duolawork_folder>, <duolawork_file
     const docItem = space.items.find((i) => i.title === '执行总结.md');
     assert.ok(docItem && app.space.getFolderPath(thread.id, docItem.folderId) === '交付包');
 
+    const example = ['~~~~markdown','<duolawork_file name="example.txt">demo</duolawork_file>', '~~~~'].join('\n');
+    app.registry.mockDriver.handlers.set('mem_inline', async () => ({text:example}));
+    const documented = await app.threads.sendUserMessage({threadId: thread.id, body:'给出文档示例'});
+    assert.equal(documented.agentMessage.body, example);
+    assert.ok(!app.space.listSpace(thread.id).items.some(it => it.title === 'example.txt'));
     const linkItem = space.items.find((i) => i.title === '文档站');
     assert.ok(linkItem && linkItem.url === 'https://work.manyaitool.com');
   } finally {
@@ -307,7 +316,7 @@ test('SPACE-AGENT-03: Remote ExecutionNodeRunner hydrates localPath and transfer
     await runner.start();
 
     const thread = app.threads.createThread({
-      title: '远端节点写空间测试',
+      title: '远端节点写空间测试', workspacePath:tmpDir,
       activeOwnerMemberId: 'mem_remote_space'
     });
     const out = await app.threads.sendUserMessage({
@@ -482,7 +491,7 @@ test('SPACE-IMG-05: Bidirectional chat images (user send -> agent multimodal rec
     });
 
     const thread = app.threads.createThread({
-      title: '对话图片双向测试',
+      title: '对话图片双向测试', workspacePath:tmpDir,
       activeOwnerMemberId: 'mem_img_agent'
     });
 

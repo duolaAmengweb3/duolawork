@@ -45,6 +45,9 @@ interface SlotWaiter {
  * - Persists every dispatch attempt BEFORE invoking the underlying driver and supports crash/disconnect `reconcileInFlightAttempts`.
  */
 export class DriverRegistry {
+  private readonly turnDirectories = new Map<string, string>();
+  public localTurnDirectory(attemptId: string) { return this.turnDirectories.get(attemptId); }
+
   private readonly drivers = new Map<DriverKind, AgentDriver>();
   public readonly webhookDriver: WebhookBotDriver;
   public readonly mockDriver: MockDriver;
@@ -474,8 +477,6 @@ export class DriverRegistry {
             // Read the existing receipt once. Looking it up must never post the original prompt again.
             void driver.reconcileAttempt(input.member, attempt).then(receipt => {
               if (receipt.state === 'completed') this.recoverLateThreadReply(attempt, receipt);
-            }).catch(() => {}).finally(() => {
-              if (this.getAttempt(attemptId)?.status === 'timed_out') void driver.abortTurn(input.member, attempt).catch(() => {});
             }).catch(() => {});
           } else {
             void driver.abortTurn(input.member, attempt).catch(() => {});
@@ -495,6 +496,7 @@ export class DriverRegistry {
         timeoutHandle.unref?.();
       });
 
+      this.turnDirectories.set(attemptId, input.cwd);
       const execPromise = runWithChatImages(driver,
         {
           attemptId,
@@ -669,6 +671,7 @@ export class DriverRegistry {
       }
       throw err;
     } finally {
+      this.turnDirectories.delete(attemptId);
       this.liveDispatches.delete(attemptId);
       this.activeAttemptCancels.delete(attemptId);
       clearTimeout(idleHandle);

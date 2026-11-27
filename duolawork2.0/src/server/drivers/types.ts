@@ -114,6 +114,7 @@ export const SPACE_AND_DUOLABASE_TOOLS: DynamicToolDefinition[] = [
         title: { type: 'string', description: '文档标题（如 方案评审.md）' },
         content: { type: 'string', description: '完整 Markdown 正文' },
         documentId: { type: 'string', description: '可选：更新指定已有文档 ID' },
+        expectedBaseVersion: { type: 'integer', description: '更新已有文档时传入读取到的 headVersion' },
         folderId: { type: 'string', description: '可选目标文件夹 ID' },
         folderPath: { type: 'string', description: '可选目标文件夹路径（如 "周报/2026-11"），不存在会自动创建' }
       },

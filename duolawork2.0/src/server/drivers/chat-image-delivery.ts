@@ -18,20 +18,21 @@ function localPath(src: string, cwd: string): string | null {
 }
 
 // Resolve Markdown on the executing machine, confined to its assigned workspace.
-function readExport(file: string, cwd: string): Buffer | null {
+export function readTurnExport(file: string, cwd: string, maxBytes = 24 * 1024 * 1024): Buffer {
   const root = fs.realpathSync(cwd);
-  if (root === path.parse(root).root || root === os.homedir() || root === fs.realpathSync(os.tmpdir())) return null;
-  const real = fs.realpathSync(file);
-  if (!real.startsWith(root + path.sep)) return null;
+  const real = fs.realpathSync(path.resolve(root, file));
+  if (root === path.parse(root).root || root === os.homedir() || root === fs.realpathSync(os.tmpdir()) || !real.startsWith(root + path.sep)) {
+    throw new Error('请将文件保存到本回合工作目录后上传');
+  }
   const fd = fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const stat = fs.fstatSync(fd);
-    if (!stat.isFile() || stat.size === 0 || stat.size > maxImageBytes) return null;
+    if (!stat.isFile() || stat.size === 0 || stat.size > maxBytes) throw new Error('文件为空、过大或不是普通文件');
     const data = Buffer.alloc(stat.size);
     let offset = 0;
     while (offset < data.length) {
       const n = fs.readSync(fd, data, offset, data.length - offset, offset);
-      if (!n) return null;
+      if (!n) throw new Error('读取时文件已变化');
       offset += n;
     }
     return data;
@@ -66,8 +67,11 @@ export class ChatImageDelivery {
     if (!match) return;
     const url = match[1];
     const alt = String(args.alt || args.name || '图片');
-    this.uploaded.set(url, { url, alt });
-    if (typeof args.localPath === 'string') this.byPath.set(path.resolve(this.input.cwd, args.localPath), url);
+    if (tool === 'chat_attach_image') this.uploaded.set(url, { url, alt });
+    if (typeof args.localPath === 'string') {
+      const file = path.resolve(this.input.cwd, args.localPath);
+      if (tool === 'chat_attach_image' || !this.byPath.has(file)) this.byPath.set(file, url);
+    }
   }
 
   private async upload(data: Buffer | null, name: string, alt: string): Promise<string | null> {
@@ -109,7 +113,7 @@ export class ChatImageDelivery {
       const native = nodes.find(item => item.localPath === file);
       if (!url) {
         try {
-          const data = native ? this.nativeBytes(native) : readExport(file, this.input.cwd);
+          const data = native ? this.nativeBytes(native) : readTurnExport(file, this.input.cwd);
           url = await this.upload(data, path.basename(file), alt) || undefined;
         } catch { /* Keep the reply and report the undelivered image. */ }
       }
@@ -129,7 +133,8 @@ export class ChatImageDelivery {
       represented.add(url);
     }
     for (const item of remaining) {
-      if (item.localPath && this.byPath.has(item.localPath)) remaining.delete(item);
+      const receipt = item.localPath && this.byPath.get(item.localPath);
+      if (receipt && represented.has(receipt)) remaining.delete(item);
     }
     // Compare actual receipts, so one successful image cannot hide a missing sibling.
     for (const item of remaining) {
@@ -146,7 +151,13 @@ export class ChatImageDelivery {
   }
 
   private nativeBytes(item: GeneratedImage): Buffer | null {
-    if (!item.dataBase64) return item.localPath ? readExport(item.localPath, this.input.cwd) : null;
+    if (!item.dataBase64) {
+      if (!item.localPath) return null;
+      // A native Codex event can refer to its own generated-image store outside the workspace.
+      const store = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'generated_images');
+      if (path.resolve(item.localPath).startsWith(store + path.sep)) return readTurnExport(item.localPath, store);
+      return readTurnExport(item.localPath, this.input.cwd);
+    }
     if (item.dataBase64.length > 4 * Math.ceil(maxImageBytes / 3)) return null;
     return Buffer.from(item.dataBase64, 'base64');
   }

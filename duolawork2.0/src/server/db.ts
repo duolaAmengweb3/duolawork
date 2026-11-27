@@ -125,6 +125,10 @@ export class DuolaWorkDatabase {
         UNIQUE(thread_id, seq)
       );
 
+      CREATE TABLE IF NOT EXISTS v2_document_observations (
+        attempt_id TEXT NOT NULL, artifact_id TEXT NOT NULL REFERENCES v2_artifacts(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL, PRIMARY KEY(attempt_id,artifact_id)
+      );
       CREATE TABLE IF NOT EXISTS v2_handoff_cursors (
         thread_id TEXT NOT NULL REFERENCES v2_threads(id) ON DELETE CASCADE,
         member_id TEXT NOT NULL REFERENCES v2_members(id),
@@ -575,7 +579,9 @@ export class DuolaWorkDatabase {
 
   public listMembers(): MemberRecord[] {
     const rows = this.sqlite
-      .prepare(`SELECT * FROM v2_members ORDER BY created_at ASC, id ASC`)
+      .prepare(`SELECT * FROM v2_members WHERE id NOT IN (
+        SELECT value FROM json_each(COALESCE((SELECT value_json FROM v2_settings WHERE key='archived_member_ids'),'[]'))
+      ) ORDER BY created_at ASC, id ASC`)
       .all() as Record<string, unknown>[];
     return rows.map(mapMemberRow);
   }

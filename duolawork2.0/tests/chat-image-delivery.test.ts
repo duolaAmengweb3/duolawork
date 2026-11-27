@@ -36,6 +36,9 @@ test('Chat delivery preserves workspace exports, multiple native outputs, tool r
     const replay = await new ChatImageDelivery(inputs).finish('已生成', sources);
     assert.ok(urls.every(url => replay.includes(url)));
     assert.equal(count(), 2);
+    const archiveOnly = new ChatImageDelivery(inputs);
+    archiveOnly.toolResult('space_save_file', {name:'已归档.png'}, {markdownEmbed:'![归档](/api/v2/space/files/file_archived)'});
+    assert.equal(await archiveOnly.finish('已归档'), '已归档');
     const explicit = new ChatImageDelivery(inputs);
     explicit.toolResult('chat_attach_image', { name: '已交付.png' }, { markdownEmbed: '![完成]('+urls[0]+')' });
     assert.ok((await explicit.finish('上传完成')).includes(urls[0]));

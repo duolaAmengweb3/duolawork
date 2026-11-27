@@ -452,7 +452,9 @@ export class ExecutionNodeHub {
         for (const id of msg.activeAttempts) {
           const stopped = this.db.sqlite.prepare(
             `SELECT 1 FROM v2_dispatch_attempts a JOIN v2_members m ON m.id=a.member_id
-             WHERE a.id=? AND m.node_id=? AND a.status IN ('failed','timed_out','late_ignored')`
+             WHERE a.id=? AND m.node_id=? AND a.status IN ('failed','timed_out','late_ignored')
+             AND (a.target_kind <> 'thread_message' OR EXISTS (SELECT 1 FROM v2_thread_messages msg
+               WHERE msg.id=a.target_id AND msg.turn_status='canceled'))`
           ).get(String(id), nodeId);
           if (stopped) this.sendFrame(ws, { type: 'turn.abort', attemptId: id });
         }

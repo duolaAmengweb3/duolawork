@@ -250,6 +250,7 @@ export function App(): React.JSX.Element {
   const [duolabaseStatus, setDuolabaseStatus] = useState<DuolaBasePublicStatus>(DEFAULT_DB_STATUS);
   const [archivesOpen, setArchivesOpen] = useState<boolean>(false);
   const [archives, setArchives] = useState<Array<{ id: string; name: string }>>([]);
+  const [cloudMode, setCloudMode] = useState(false);
   const [buildId, setBuildId] = useState<string>('dev');
   const [hasDesktopDialog, setHasDesktopDialog] = useState<boolean>(() => Boolean(getDesktopBridge()));
   const [refreshingMembers, setRefreshingMembers] = useState<boolean>(false);
@@ -302,6 +303,7 @@ export function App(): React.JSX.Element {
   const [stepWorkerMenuIdx, setStepWorkerMenuIdx] = useState<number | null>(null);
 
   // Task detail state
+  const requestedRunRef = useRef<string | undefined>(undefined);
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [taskDetail, setTaskDetail] = useState<{
     task: TaskRecord;
@@ -372,7 +374,8 @@ export function App(): React.JSX.Element {
   >([
     { title: '执行调研与产出初稿', assigneeMemberId: '', brief: '产出初稿供审阅', dependsOnPrev: false }
   ]);
-  const [waitingReplyText, setWaitingReplyText] = useState<string>('');
+  const [waitingReplies, setWaitingReplies] = useState<Record<string,string>>({});
+  const updateWaitingReply = (runId: string, reply: string) => setWaitingReplies(old => ({...old,[runId]:reply}));
   const [draftImagesByThread, setDraftImagesByThread] = useState<
     Record<string, Array<{ id: string; name: string; url: string }>>
   >({});
@@ -449,14 +452,14 @@ export function App(): React.JSX.Element {
     const bridge = getDesktopBridge();
     if (bridge?.setTheme) {
       void bridge.setTheme(dark ? 'dark' : 'light').catch(() => {});
-    } else {
+    } else if (authState.checked && authState.authenticated && !cloudMode) {
       void fetch('/api/v2/desktop/theme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ theme: dark ? 'dark' : 'light' })
       }).catch(() => {});
     }
-  }, [dark]);
+  }, [dark, cloudMode, authState.checked, authState.authenticated]);
 
   const memberById = useMemo(() => {
     const map = new Map<string, MemberRecord>();
@@ -491,6 +494,7 @@ export function App(): React.JSX.Element {
       authRequired: Boolean(data.auth?.authRequired),
       authenticated: data.auth?.authenticated !== false
     });
+    setCloudMode(data.cloudMode === true);
     setMembers(data.members || []);
     setNodes(data.nodes || []);
     setThreads(data.threads || []);
@@ -593,18 +597,17 @@ export function App(): React.JSX.Element {
   const visibleMessages = useMemo(
     () => {
       if (messagesThreadId !== activeThreadId) return [];
-      const seenTasks = new Set<string>();
-      return messages.filter(message => {
-        if (message.authorKind === 'task_receipt') return false;
-        if (message.authorKind !== 'system_task_card' || !message.taskCard) return true;
-        if (seenTasks.has(message.taskCard.taskId)) return false;
-        seenTasks.add(message.taskCard.taskId);
-        return true;
-      });
+      const latest = new Map<string, string>();
+      const scheduled = new Set(tasks.filter(t => t.kind === 'scheduled').map(t => t.id));
+      const key = (card: NonNullable<ThreadMessageRecord['taskCard']>) =>
+        scheduled.has(card.taskId) ? card.taskId + '/' + (card.runId ?? 'schedule') : card.taskId;
+      for (const m of messages) if (m.taskCard) latest.set(key(m.taskCard), m.id);
+      return messages.filter(m => m.authorKind !== 'task_receipt' && (!m.taskCard || latest.get(key(m.taskCard)) === m.id));
     },
-    [messagesThreadId, activeThreadId, messages]
+    [messagesThreadId, activeThreadId, messages, tasks]
   );
 
+  const lastConversationTurn = visibleMessages.findLast(m => m.authorKind === 'user' || m.authorKind === 'agent');
   const waitingForTurn = visibleMessages.some(message => message.turnStatus === 'running');
   useEffect(() => {
     if (!streamDisconnected || !waitingForTurn || viewMode !== 'thread' || !activeThreadId) return;
@@ -718,7 +721,23 @@ export function App(): React.JSX.Element {
   }, [viewMode, activeTaskId, taskDetail?.task.id, taskArtifactId, setSpaceSelection]);
 
   useEffect(() => {
-    void loadBootstrap(false);
+    let disposed = false;
+    let retry: number;
+    const initialize = async () => {
+      try {
+        const response = await fetch('/api/v2/auth/status');
+        if (!response.ok) throw new Error();
+        const status = await response.json();
+        if (disposed) return;
+        if (status.authRequired && !status.authenticated) {
+          setAuthState({checked:true, authRequired:true, authenticated:false});
+        } else await loadBootstrap(false);
+      } catch {
+        if (!disposed) retry = window.setTimeout(initialize, 2500);
+      }
+    };
+    void initialize();
+    return () => { disposed = true; window.clearTimeout(retry); };
   }, []);
 
   useEffect(() => {
@@ -729,7 +748,8 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     if (viewMode === 'task' && activeTaskId) {
-      void loadTaskDetail(activeTaskId);
+      void loadTaskDetail(activeTaskId, requestedRunRef.current);
+      requestedRunRef.current = undefined;
     }
   }, [viewMode, activeTaskId, loadTaskDetail]);
 
@@ -785,7 +805,7 @@ export function App(): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    if (authState.authRequired && !authState.authenticated) return;
+    if (!authState.checked || (authState.authRequired && !authState.authenticated)) return;
 
     const syncAllActiveViews = () => {
       const cur = liveViewRef.current;
@@ -974,7 +994,7 @@ export function App(): React.JSX.Element {
       window.removeEventListener('offline', handleOffline);
       es.close();
     };
-  }, [authState.authRequired, authState.authenticated]);
+  }, [authState.checked, authState.authRequired, authState.authenticated]);
 
   const handleCloudLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1311,6 +1331,7 @@ export function App(): React.JSX.Element {
         stopping: '执行节点正在停止原任务，结束后可以继续',
         unreachable: '暂时连不上原执行节点。可以等待重连，也可以切换在线成员后继续',
         unavailable: '当前成员离线，恢复后可继续，也可以切换成员',
+        superseded: '这段对话已经有了新的处理记录',
         busy: '这段对话还有任务正在执行'
       };
       if (notices[result.status]) showChatNotice(notices[result.status]);
@@ -1819,8 +1840,8 @@ export function App(): React.JSX.Element {
     await loadBootstrap(true);
   };
 
-  const handleRunTaskNowById = async (taskId: string) => {
-    const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/run`, {
+  const handleRunTaskNowById = async (taskId: string, retryFromRunId?: string) => {
+    const res = await fetch(`/api/v2/tasks/${encodeURIComponent(taskId)}/run` + (retryFromRunId ? '?retryFromRunId=' + encodeURIComponent(retryFromRunId) : ''), {
       method: 'POST'
     });
     const data = await res.json().catch(() => ({}));
@@ -1901,6 +1922,7 @@ export function App(): React.JSX.Element {
   };
 
   const handleReplyWaitingRun = async (runId: string) => {
+    const waitingReplyText = waitingReplies[runId] ?? '';
     if (!waitingReplyText.trim()) return;
     const res = await fetch(`/api/v2/runs/${encodeURIComponent(runId)}/reply`, {
       method: 'POST',
@@ -1908,7 +1930,7 @@ export function App(): React.JSX.Element {
       body: JSON.stringify({ reply: waitingReplyText.trim() })
     });
     if (!res.ok) return;
-    setWaitingReplyText('');
+    updateWaitingReply(runId, '');
     if (viewMode === 'task' && activeTaskId) {
       await loadTaskDetail(activeTaskId, runId);
     }
@@ -2515,7 +2537,7 @@ export function App(): React.JSX.Element {
             </div>
           )}
           <div>
-            <i />本机工作区<span title={buildId}>本地版</span>
+            <i />{cloudMode ? '云端工作区' : '本机工作区'}<span title={buildId}>{cloudMode ? '云端版' : '本地版'}</span>
           </div>
         </div>
       </aside>
@@ -2609,7 +2631,7 @@ export function App(): React.JSX.Element {
               setViewMode('thread');
             }}
             onToggleSchedule={(tid, enabled) => handleToggleScheduleById(tid, enabled)}
-            onRunTaskNow={(tid) => handleRunTaskNowById(tid)}
+            onRunTaskNow={handleRunTaskNowById}
             onCancelRun={(rid) => handleCancelRun(rid)}
             onDeleteTask={(tid) => handleDeleteTask(tid)}
             onRefresh={() => loadBootstrap(true)}
@@ -2978,14 +3000,19 @@ export function App(): React.JSX.Element {
                           : run.returnTurnStatus === 'failed' || run.returnTurnStatus === 'canceled' ? requester.name + ' 跟进中断'
                           : run.returnTurnStatus ? requester.name + ' 正在接手' : '等待 ' + requester.name + ' 接手'
                         );
-                        const status = paused
+                        const event = m.taskCard;
+                        const scheduleEntry = task.kind === 'scheduled' && !event.runId;
+                        const pastRun = event.runId && event.runId !== run?.id;
+                        const status = scheduleEntry ? (paused ? '已暂停' : '按计划执行')
+                          : pastRun ? (event.kind === 'delivered' ? '本期已交付' : event.kind === 'failed' ? '执行中断' : '查看本期记录')
+                          : paused
                           ? run?.status === 'running' ? '当前步骤结束后暂停' : '已暂停'
                           : run?.status === 'running' ? '执行中'
                           : run?.status === 'waiting_user' ? '等你回复'
                           : run?.status === 'waiting_node_online' ? '等待成员上线'
                           : run?.status === 'failed' || run?.status === 'timed_out' ? '执行中断'
                           : run?.status === 'canceled' ? '已停止'
-                          : task.kind === 'scheduled' ? '按计划执行'
+                          : scheduleEntry ? '按计划执行'
                           : run?.status === 'completed' ? (returnStatus || '已交付') : '待启动';
                         return (
                           <div key={m.id} className="chat-message chat-task-row">
@@ -2994,9 +3021,23 @@ export function App(): React.JSX.Element {
                               <button type="button" className="chat-task-title" onClick={() => {
                                 setActiveTaskId(task.id);
                                 setViewMode('task');
-                              }}>{task.title}</button>
-                              <span className="chat-task-state" role="status">{status}</span>
-                              {canPause && <button type="button" className="chat-task-control"
+                                requestedRunRef.current = event.runId;
+                              }}>{event.runId && task.kind === 'scheduled' ? m.body : task.title}</button>
+                              {event.kind === 'waiting_user' && run && run.id === event.runId && run.status === 'waiting_user' && (
+                                <form onSubmit={e => { e.preventDefault(); void handleReplyWaitingRun(run.id); }}>
+                                  <label>{run.waitingQuestion}<input className="dw-input" value={waitingReplies[run.id] ?? ''} onChange={e=>updateWaitingReply(run.id,e.target.value)} placeholder="回复任务负责人" /></label>
+                                  <button type="submit" disabled={!waitingReplies[run.id]?.trim()}>答复并继续</button>
+                                </form>
+                              )}
+                               {event.kind === 'delivered' && m.artifactRefs?.[0] ? (
+                                <button className="chat-task-delivery" type="button" title="打开本期交付文档" onClick={() => {
+                                  setDocEditing(false);
+                                  setSpaceTab('documents');
+                                  setSpaceSelection({kind:'document', id:m.artifactRefs![0]});
+                                  setSpaceOpen(true);
+                                }}>{status}</button>
+                              ) : <span className="chat-task-state" role="status">{status}</span>}
+                              {canPause && !pastRun && (!event.runId || run?.status === 'running' || paused) && <button type="button" className="chat-task-control"
                                 aria-label={paused ? '继续任务' : '暂停任务'} title={paused ? '继续任务' : '暂停任务'}
                                 onClick={() => void handlePauseTask(task.id, !paused)}>
                                 {paused ? <Play size={14} /> : <Pause size={14} />}
@@ -3120,7 +3161,7 @@ export function App(): React.JSX.Element {
                                 <MarkdownView text={displayBody} imageActions={chatImageActions} spaceResolver={chatSpaceResolver} />
                               </div>
                             )}
-                            {['failed', 'canceled'].includes(m.turnStatus) && !isUser && !m.continuedByMessageId && !hasRunningTurn && (
+                            {['failed', 'canceled'].includes(m.turnStatus) && m.id === lastConversationTurn?.id && !isUser && !m.continuedByMessageId && !hasRunningTurn && (
                               <button type="button" className="turn-materials-link turn-resume" disabled={Boolean(resumingMessage)}
                                 onClick={() => void continueTurn(m)}>
                                 <Play size={13} />{resumingMessage === m.id ? '正在核对进度…' : '继续处理'}
@@ -3491,7 +3532,7 @@ export function App(): React.JSX.Element {
                 </form>
 
                 <footer className="chat-bottom-note">
-                  <span>本机工作区已同步</span>
+                  <span>{streamDisconnected ? '正在重新连接' : cloudMode ? '云端工作区已同步' : '本机工作区已同步'}</span>
                   <span>原生 Agent 协同执行</span>
                 </footer>
               </section>
@@ -3595,13 +3636,13 @@ export function App(): React.JSX.Element {
                     <span>停止执行</span>
                   </button>
                 )}
-                {taskDetail.task.status === 'active' && (!taskDetail.runs.length || (taskDetail.task.kind === 'scheduled' && !taskDetail.runs.some(run => ['running','waiting_user','waiting_node_online','paused'].includes(run.status)))) && <button
+                {taskDetail.task.status === 'active' && (!taskDetail.runs.length || (taskDetail.task.kind === 'once' && ['failed','timed_out'].includes(taskDetail.runs[0].status)) || (taskDetail.task.kind === 'scheduled' && !taskDetail.runs.some(run => ['running','waiting_user','waiting_node_online','paused'].includes(run.status)))) && <button
                   type="button"
-                  onClick={() => void handleRunTaskNowById(taskDetail.task.id)}
+                  onClick={() => void handleRunTaskNowById(taskDetail.task.id, taskDetail.task.kind === 'once' ? taskDetail.runs[0]?.id : undefined)}
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <Play size={12} />
-                  <span>立即执行一次</span>
+                  <span>{taskDetail.task.kind === 'once' && taskDetail.runs.length ? '重新运行整项任务' : '立即执行一次'}</span>
                 </button>}
                 {(taskDetail.task.kind === 'scheduled' || taskDetail.activeRun?.status === 'running' || taskDetail.task.status === 'paused') && (
                   <button
@@ -3678,9 +3719,9 @@ export function App(): React.JSX.Element {
                     void handleReplyWaitingRun(taskDetail.activeRun!.id);
                   }}>
                     <label>{taskDetail.activeRun.waitingQuestion}
-                      <input className="dw-input" value={waitingReplyText} onChange={e => setWaitingReplyText(e.target.value)} placeholder="回复任务负责人" />
+                      <input className="dw-input" value={waitingReplies[taskDetail.activeRun.id] ?? ''} onChange={e => updateWaitingReply(taskDetail.activeRun!.id,e.target.value)} placeholder="回复任务负责人" />
                     </label>
-                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplyText.trim()}>答复并继续</button>
+                    <button className="dw-btn dw-btn-primary dw-btn-sm" disabled={!waitingReplies[taskDetail.activeRun.id]?.trim()}>答复并继续</button>
                   </form>
                 )}
                 {taskDetail.activeRun?.summary &&

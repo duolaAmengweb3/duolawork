@@ -1,3 +1,7 @@
+import dns from 'node:dns/promises';
+import net from 'node:net';
+import https from 'node:https';
+import { readTurnExport } from './drivers/chat-image-delivery.js';
 import { createHash, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -697,7 +701,9 @@ export class DuolaWorkApp {
       if (!['document', 'file', 'link'].includes(kind) || !id) {
         throw new Error('请指定有效的资料类型 (document/file/link) 与 ID');
       }
-      return this.space.readMaterialForAgent(claims.threadId, kind, id);
+      const material = this.space.readMaterialForAgent(claims.threadId, kind, id);
+      if (kind === 'document') this.space.observeDocument(claims.attemptId, id, Number(material.headVersion));
+      return material;
     }
 
     if (toolName === 'space_create_folder') {
@@ -758,15 +764,12 @@ export class DuolaWorkApp {
 
       // If running directly on the same host (without remote node-runner hydration), hydrate localPath here
       if (localPath && !dataBase64 && content === undefined) {
-        const resolved = path.resolve(localPath);
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          throw new Error(`找不到本地文件: ${localPath}`);
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) throw new Error(`本地文件为空: ${localPath}`);
-        if (st.size > 24 * 1024 * 1024) throw new Error(`单个文件超过 24 MiB 限制: ${localPath}`);
-        dataBase64 = fs.readFileSync(resolved).toString('base64');
-        if (!name) name = path.basename(resolved);
+        const member = this.db.getMember(claims.memberId);
+        if (member?.driverKind === 'remote-node') throw new Error('请由执行节点读取本回合文件再上传');
+        const cwd = this.registry.localTurnDirectory(claims.attemptId);
+        if (!cwd) throw new Error('本回合工作目录已关闭');
+        dataBase64 = readTurnExport(localPath, cwd).toString('base64');
+        if (!name) name = path.basename(localPath);
       }
 
       if (!name) {
@@ -809,15 +812,12 @@ export class DuolaWorkApp {
       const localPath = typeof args.localPath === 'string' ? args.localPath.trim() : '';
 
       if (localPath && !dataBase64) {
-        const resolved = path.resolve(localPath);
-        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-          throw new Error(`找不到本地图片: ${localPath}`);
-        }
-        const st = fs.statSync(resolved);
-        if (st.size === 0) throw new Error(`本地图片为空: ${localPath}`);
-        if (st.size > 24 * 1024 * 1024) throw new Error(`图片超过 24 MiB 限制: ${localPath}`);
-        dataBase64 = fs.readFileSync(resolved).toString('base64');
-        if (!name) name = path.basename(resolved);
+        const member = this.db.getMember(claims.memberId);
+        if (member?.driverKind === 'remote-node') throw new Error('请由执行节点读取本回合文件再上传');
+        const cwd = this.registry.localTurnDirectory(claims.attemptId);
+        if (!cwd) throw new Error('本回合工作目录已关闭');
+        dataBase64 = readTurnExport(localPath, cwd).toString('base64');
+        if (!name) name = path.basename(localPath);
       }
 
       if (!dataBase64) throw new Error('请提供图片内容 (localPath 或 dataBase64)');
@@ -849,6 +849,7 @@ export class DuolaWorkApp {
       const content = typeof args.content === 'string' ? args.content : '';
       if (!title) throw new Error('请提供文档标题 (title)');
       const saved = this.space.saveOrUpdateDocumentForAgent({
+        expectedBaseVersion: typeof args.expectedBaseVersion === "number" ? args.expectedBaseVersion : undefined,
         threadId: claims.threadId,
         title,
         content,
@@ -1456,6 +1457,7 @@ export class DuolaWorkApp {
 
         sendJson(res, 200, {
           members,
+          cloudMode: ['1','true'].includes(process.env.DUOLAWORK_CLOUD_MODE ?? ''),
           nodes: this.nodeHub.listNodes(),
           threads,
           tasks,
@@ -2059,6 +2061,7 @@ export class DuolaWorkApp {
         const disp = download ? 'attachment' : 'inline';
         const encodedName = encodeURIComponent(found.file.name);
         res.writeHead(200, {
+          'Content-Security-Policy': "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
           'Content-Type': found.file.mimeType || 'application/octet-stream',
           'Content-Length': String(found.file.sizeBytes),
           'X-Content-Type-Options': 'nosniff',
@@ -2134,6 +2137,7 @@ export class DuolaWorkApp {
         const disp = download ? 'attachment' : 'inline';
         const encodedName = encodeURIComponent(found.image.name);
         res.writeHead(200, {
+          'Content-Security-Policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'",
           'Content-Type': found.image.mimeType || 'image/png',
           'Content-Length': String(found.image.sizeBytes),
           'X-Content-Type-Options': 'nosniff',
@@ -2237,7 +2241,8 @@ export class DuolaWorkApp {
           if (!found) return sendJson(res, 404, { error: '文件不存在' });
           const dlName = encodeURIComponent(preferredName || found.file.name);
           res.writeHead(200, {
-            'Content-Type': found.file.mimeType || 'application/octet-stream',
+            'Content-Security-Policy': "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+          'Content-Type': found.file.mimeType || 'application/octet-stream',
             'Content-Length': String(found.file.sizeBytes),
             'X-Content-Type-Options': 'nosniff',
             'Content-Disposition': `attachment; filename*=UTF-8''${dlName}`
@@ -2504,7 +2509,7 @@ export class DuolaWorkApp {
       const runNowMatch = pathname.match(/^\/api\/v2\/tasks\/([^/]+)\/run$/);
       if (runNowMatch && method === 'POST') {
         const taskId = decodeURIComponent(runNowMatch[1]);
-        const { run, created } = this.tasks.requestManualRun(taskId);
+        const { run, created } = this.tasks.requestManualRun(taskId, url.searchParams.get('retryFromRunId') || undefined);
         if (created) void this.tasks.driveRun(run.id).catch(() => {});
         sendJson(res, created ? 201 : 200, { run });
         return;
@@ -2711,65 +2716,60 @@ function contentTypeFor(filePath: string): string {
   return 'application/octet-stream';
 }
 
-function isBlockedPrivateHost(hostname: string): boolean {
-  const h = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
-  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === '::1') {
-    return true;
-  }
-  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-  }
-  if (/^(?:fc|fd|fe80)/i.test(h)) return true;
-  return false;
+// Permit globally routed media hosts. Check every DNS answer and pin the chosen one for each hop.
+const excludedMediaHosts = new net.BlockList();
+for (const [base, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+  ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
+  ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]
+] as const) excludedMediaHosts.addSubnet(base, prefix, 'ipv4');
+for (const [base, prefix] of [
+  ['2001::', 23], ['2001:db8::', 32], ['2002::', 16], ['3fff::', 20]
+] as const) excludedMediaHosts.addSubnet(base, prefix, 'ipv6');
+
+function publicMediaAddress(address: string): boolean {
+  if (net.isIPv4(address)) return !excludedMediaHosts.check(address, 'ipv4');
+  return net.isIPv6(address) && /^[23]/.test(address) && !excludedMediaHosts.check(address, 'ipv6');
 }
 
 async function fetchSafeExternalMedia(rawUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error('无效的图片链接地址');
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error('仅支持 http 或 https 图片地址');
-  }
-  if (isBlockedPrivateHost(parsed.hostname)) {
-    throw new Error('禁止访问内网或本机地址');
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(parsed.toString(), {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': 'DuolaWork/2.0' }
+  const signal = AbortSignal.timeout(15000);
+  const max = 20 * 1024 * 1024;
+  let url = new URL(rawUrl);
+  for (let hop = 0; hop <= 5; hop++) {
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('无效的图片地址');
+    const host = url.hostname.replace(/^\\[|\\]$/g, '');
+    const addresses = net.isIP(host) ? [{ address:host, family:net.isIP(host) }] : await dns.lookup(host, { all:true });
+    if (!addresses.length || !addresses.every(item => publicMediaAddress(item.address))) throw new Error('图片需要公开的网络地址');
+    const first = addresses[0];
+    const response = await new Promise<http.IncomingMessage>((resolve,reject) => {
+      (url.protocol === 'https:' ? https : http).get(url, {
+        signal, agent:false, family:first.family,
+        lookup: (_host, _options, cb) => cb(null, first.address, first.family),
+        headers: { 'User-Agent':'DuolaWork/2.0' }
+      }, resolve).on('error',reject);
     });
-    if (!res.ok) {
-      throw new Error(`远端图片拉取失败 (HTTP ${res.status})`);
-    }
-    const finalParsed = new URL(res.url || parsed.toString());
-    if (isBlockedPrivateHost(finalParsed.hostname)) {
-      throw new Error('禁止重定向至内网地址');
-    }
-    const contentLength = Number(res.headers.get('content-length') || 0);
-    if (contentLength > 20 * 1024 * 1024) {
-      throw new Error('远端图片超过 20 MiB 限制');
-    }
-    const arr = await res.arrayBuffer();
-    if (arr.byteLength === 0) throw new Error('远端图片内容为空');
-    if (arr.byteLength > 20 * 1024 * 1024) throw new Error('远端图片超过 20 MiB 限制');
-    const rawCt = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    const mimeType = rawCt || 'image/png';
-    return { buffer: Buffer.from(arr), mimeType };
-  } finally {
-    clearTimeout(timer);
+    try {
+      const status = response.statusCode ?? 0;
+      if ([301,302,303,307,308].includes(status) && response.headers.location) {
+        url = new URL(response.headers.location, url);
+        continue;
+      }
+      if (status < 200 || status >= 300) throw new Error('远端图片拉取失败 (HTTP ' + status + ')');
+      if (Number(response.headers['content-length']) > max) throw new Error('远端图片超过 20 MiB 限制');
+      const chunks: Buffer[] = [];
+      let size=0;
+      for await (const chunk of response) {
+        size += chunk.length;
+        if (size > max) throw new Error('远端图片超过 20 MiB 限制');
+        chunks.push(chunk);
+      }
+      if (!size) throw new Error('远端图片为空');
+      return {buffer:Buffer.concat(chunks,size), mimeType:(response.headers['content-type'] || 'image/png').split(';')[0].trim().toLowerCase()};
+    } finally { response.destroy(); }
   }
+  throw new Error('图片地址重定向过多');
 }
 
 function mimeToImageExt(mime: string): string {

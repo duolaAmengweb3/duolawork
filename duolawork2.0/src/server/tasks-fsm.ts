@@ -426,13 +426,17 @@ export class TaskEngine {
     };
   }
 
-  public requestManualRun(taskId: string) {
+  public requestManualRun(taskId: string, retryFromRunId?: string) {
     return this.db.inTransaction(() => {
       const task = this.getTask(taskId);
       if (!task) throw badRequest('任务不存在');
       const runs = this.listRuns(taskId);
       const existing = task.kind === 'once' ? runs[0] : runs.find(r =>
         ['running', 'paused', 'waiting_user', 'waiting_node_online'].includes(r.status));
+      if (retryFromRunId && task.kind === 'once' && existing?.id === retryFromRunId &&
+          ['failed','timed_out'].includes(existing.status) && task.status === 'active') {
+        return this.instantiateRun({taskId, plannedSlotAt: 'retry:' + existing.id, triggerType:'manual'});
+      }
       if (existing) return { run: existing, created: false };
       if (task.status === 'paused') throw badRequest('任务已暂停');
       return this.instantiateRun({ taskId, plannedSlotAt: 'manual:' + randomUUID(), triggerType: 'manual' });

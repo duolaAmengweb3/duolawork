@@ -1660,6 +1660,11 @@ test('DW2-24: invalid cron rejected 400, non-timeout step error marks run failed
       .filter((m) => m.taskCard?.taskId === failData.task.id && m.taskCard?.kind === 'failed');
     assert.equal(failCards.length, 1, 'Posted failed task card back to thread');
 
+    const retried = app.tasks.requestManualRun(failData.task.id, settledFailRun.id);
+    assert.equal(retried.created,true);
+    assert.equal(app.tasks.requestManualRun(failData.task.id, settledFailRun.id).run.id, retried.run.id);
+    await app.tasks.cancelRun(retried.run.id);
+
     // 3. Solo single-step task owned & executed by same member uses strictly 1 LLM turn (no double self-review)
     const beforePrompts = app.registry.mockDriver.recordedPrompts.length;
     app.registry.mockDriver.handlers.set('mem_codex', async () => ({

@@ -271,7 +271,12 @@ export class SpaceStore {
     return null;
   }
 
+  public observeDocument(attempt: string, artifact: string, version: number): void {
+    this.db.sqlite.prepare('INSERT OR REPLACE INTO v2_document_observations (attempt_id,artifact_id,version) VALUES (?,?,?)').run(attempt,artifact,version);
+  }
+
   public saveOrUpdateDocumentForAgent(input: {
+    expectedBaseVersion?: number;
     threadId: string;
     title: string;
     content: string;
@@ -319,15 +324,19 @@ export class SpaceStore {
 
     if (existingId) {
       const existing = this.artifacts.getArtifact(existingId)!;
+      const observed = input.attemptId && this.db.sqlite.prepare('SELECT version FROM v2_document_observations WHERE attempt_id=? AND artifact_id=?').get(input.attemptId,existing.id) as {version:number} | undefined;
+      const base = input.expectedBaseVersion ?? (observed ? observed.version : undefined);
+      if (base !== existing.headVersion) throw new Error('文档已更新或尚未读取，请读取最新内容再合并保存');
       const written = this.artifacts.writeArtifact({
         artifactId: existing.id,
-        expectedBaseVersion: existing.headVersion,
+        expectedBaseVersion: base,
         title: cleanTitle,
         content: input.content,
         writerKind: 'agent',
         writerId: input.writerId,
         attemptId: input.attemptId ?? null
       });
+      if (input.attemptId) this.observeDocument(input.attemptId, existing.id, written.artifact.headVersion);
       if (targetFolderId !== undefined) {
         this.upsertItemMeta('document', written.artifact.id, input.threadId, { folderId: targetFolderId });
       }
@@ -352,6 +361,7 @@ export class SpaceStore {
       writerId: input.writerId,
       attemptId: input.attemptId ?? null
     });
+    if (input.attemptId) this.observeDocument(input.attemptId, created.id, created.headVersion);
     const finalFolderId = targetFolderId ?? null;
     this.upsertItemMeta('document', created.id, input.threadId, { folderId: finalFolderId });
     this.db.sqlite

@@ -461,3 +461,29 @@ test('CLOUD-04: Universal Execution NodeHub + outbound DuolaWorkNodeRunner (stre
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('runner retries the initial connection when a proxy drops TLS before welcome', async (t) => {
+  const http = await import('node:http');
+  const proxy = http.createServer();
+  let connections = 0;
+  proxy.on('connect', (_req, socket) => {
+    connections++;
+    socket.end('HTTP/1.1 200 Connection Established\r\n\r\n', () => socket.destroy());
+  });
+  await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
+  const proxyUrl = 'http://127.0.0.1:' + (proxy.address() as { port: number }).port;
+  const runner = new DuolaWorkNodeRunner({
+    serverUrl: 'https://fixture.invalid', nodeToken: 'fixture', name: 'retry', kind: 'local', members: []
+  });
+  t.mock.method(runner as unknown as { resolveProxyUrl: (url: URL) => string }, 'resolveProxyUrl', () => proxyUrl);
+  const started = runner.start().then(() => 'connected', (error: Error) => error.message);
+  try {
+    const deadline = Date.now() + 5000;
+    while (connections < 2 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(connections >= 2, 'proxy should see a second connection in the same process');
+  } finally {
+    runner.stop();
+    await new Promise<void>(resolve => proxy.close(() => resolve()));
+  }
+  assert.equal(await started, 'NODE_STOPPED');
+});

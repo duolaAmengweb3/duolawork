@@ -550,6 +550,8 @@ export class ThreadEngine {
     if (source.turnStatus === 'completed') return { status: 'completed' };
     if (!['failed', 'canceled'].includes(source.turnStatus)) return { status: 'waiting' };
 
+    const superseded = () => Boolean(this.db.sqlite.prepare("SELECT 1 FROM v2_thread_messages WHERE thread_id=? AND seq>? AND author_kind IN ('user','agent') LIMIT 1").get(threadId, source.seq));
+    if (superseded()) return { status: 'superseded' };
     const attempt = source.attemptId && this.registry.getAttempt(source.attemptId);
     const executor = this.db.getMember(source.authorId);
     if (attempt && executor && ['remote-node', 'webhook-bot', 'remote-bridge'].includes(executor.driverKind)) {
@@ -576,6 +578,7 @@ export class ThreadEngine {
       return { status: 'busy' };
     }
 
+    if (superseded()) return { status: 'superseded' };
     // Follow earlier continuation requests to retain the user's original goal and image references.
     let preceding = source;
     let requestText = '';
@@ -1658,6 +1661,7 @@ export class ThreadEngine {
     let currentArtifactId = pinnedArtifactId;
     let currentBaseVer = pinnedArtifactVersion;
     let spaceChanged = false;
+    const unsavedDocuments: string[] = [];
     let blockIndex = 0;
     let folderIndex = 0;
     let fileIndex = 0;
@@ -1777,8 +1781,8 @@ export class ThreadEngine {
             spaceChanged = true;
           }
         });
-      } catch {
-        hadUnhandledError = true;
+      } catch (error) {
+        unsavedDocuments.push('文档「' + (title || '对话文稿') + '」未能保存：' + (error as Error).message + '\n\n' + content);
       }
     });
 
@@ -1834,7 +1838,7 @@ export class ThreadEngine {
     if (spaceChanged) {
       this.emit({ type: 'thread.space_updated', threadId: claims.threadId });
     }
-    return { cleaned, hadUnhandledError };
+    return { cleaned: [cleaned,...unsavedDocuments].filter(Boolean).join('\n\n'), hadUnhandledError };
   }
 
   private applyInlineArtifactAndActionsSync(
@@ -2054,14 +2058,12 @@ export class ThreadEngine {
     cleaned: string;
     card: ClarificationCardData | null;
   } {
-    const matches = [...text.matchAll(/<duolawork_ask>([\s\S]*?)<\/duolawork_ask>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_ask>([\s\S]*?)<\/duolawork_ask>/gi);
     if (matches.length === 0) {
       return { cleaned: text, card: null };
     }
-    let cleaned = text;
     let card: ClarificationCardData | null = null;
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       if (card) continue;
       const rawPayload = match[1]
         .trim()
@@ -2083,16 +2085,14 @@ export class ThreadEngine {
     items: Array<Record<string, unknown>>;
     errors: string[];
   } {
-    const matches = [...text.matchAll(/<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi);
     if (matches.length === 0) {
       return { cleaned: text, items: [], errors: [] };
     }
-    let cleaned = text;
     const items: Array<Record<string, unknown>> = [];
     const errors: string[] = [];
 
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       const rawPayload = match[1]
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
@@ -2119,16 +2119,14 @@ export class ThreadEngine {
     text: string,
     claims: ScopedTurnClaims
   ): Promise<{ cleaned: string; createdCount: number; errors: string[] }> {
-    const matches = [...text.matchAll(/<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi)];
+    const { matches, cleaned } = actionBlocks(text, /<duolawork_task>([\s\S]*?)<\/duolawork_task>/gi);
     if (matches.length === 0 || !this.actionHandler) {
       return { cleaned: text, createdCount: 0, errors: [] };
     }
-    let cleaned = text;
     let createdCount = 0;
     const errors: string[] = [];
 
     for (const match of matches) {
-      cleaned = cleaned.replace(match[0], '').trim();
       const rawPayload = match[1]
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
@@ -2300,6 +2298,29 @@ export class ThreadEngine {
   }
 }
 
+function actionBlocks(text: string, pattern: RegExp) {
+  let fence = '';
+  const masked = text.split('\n').map(line => {
+    const delimiter = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence || delimiter) {
+      if (!fence) fence = delimiter![1];
+      else if (delimiter && delimiter[1][0] === fence[0] && delimiter[1].length >= fence.length && !delimiter[2].trim()) fence = '';
+      return line.replace(/</g, '\x00');
+    }
+    return line.replace(/(`+)(.+?)\1/g, span => span.replace(/</g, '\x00'));
+  }).join('\n');
+  const matches = Array.from(masked.matchAll(new RegExp(pattern.source, pattern.flags + 'd')));
+  const pieces: string[] = [];
+  let offset = 0;
+  for (const match of matches) {
+    pieces.push(text.slice(offset, match.index));
+    offset = match.index + match[0].length;
+    match.indices!.forEach((range, i) => { if (range) match[i] = text.slice(...range); });
+  }
+  pieces.push(text.slice(offset));
+  return { matches, cleaned: pieces.join('').trim() };
+}
+
 function parseTagAttrs(rawAttrs: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const attrRegex = /([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
@@ -2315,16 +2336,14 @@ function stripInlineArtifactBlock(
   onBlock: (title: string | undefined, content: string, folderPath?: string) => void
 ): string {
   const regex = /<duolawork_artifact(\s+[^>]*)?>([\s\S]*?)<\/duolawork_artifact>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     onBlock(
       attrs.title || undefined,
       match[2].trim(),
       attrs.folder || attrs.folderpath || attrs.dir || undefined
     );
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2335,19 +2354,17 @@ function stripInlineFolderBlocks(
 ): string {
   const selfClosing = /<duolawork_folder(\s+[^>]*)\/>/gi;
   const paired = /<duolawork_folder(\s+[^>]*)?>([\s\S]*?)<\/duolawork_folder>/gi;
-  let cleaned = text;
-  let match: RegExpExecArray | null;
-  while ((match = selfClosing.exec(text)) !== null) {
+  const singles = actionBlocks(text, selfClosing);
+  for (const match of singles.matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const p = attrs.path || attrs.title || attrs.name || '';
     if (p) onBlock(p);
-    cleaned = cleaned.replace(match[0], '').trim();
   }
-  while ((match = paired.exec(cleaned)) !== null) {
+  const { matches, cleaned } = actionBlocks(singles.cleaned, paired);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const p = attrs.path || attrs.title || attrs.name || match[2].trim();
     if (p) onBlock(p);
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2363,9 +2380,8 @@ function stripInlineFileBlocks(
   }) => void
 ): string {
   const regex = /<duolawork_file(\s+[^>]*)?>([\s\S]*?)<\/duolawork_file>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const name = attrs.name || attrs.title || attrs.filename || '';
     if (name) {
@@ -2377,7 +2393,6 @@ function stripInlineFileBlocks(
         encoding: attrs.encoding || 'utf8'
       });
     }
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }
@@ -2387,9 +2402,8 @@ function stripInlineLinkBlocks(
   onBlock: (spec: { title?: string; url: string; note: string; folderPath?: string }) => void
 ): string {
   const regex = /<duolawork_link(\s+[^>]*)?>([\s\S]*?)<\/duolawork_link>/gi;
-  let match: RegExpExecArray | null;
-  let cleaned = text;
-  while ((match = regex.exec(text)) !== null) {
+  const { matches, cleaned } = actionBlocks(text, regex);
+  for (const match of matches) {
     const attrs = parseTagAttrs(match[1] || '');
     const url = attrs.url || attrs.href || '';
     if (url) {
@@ -2400,7 +2414,6 @@ function stripInlineLinkBlocks(
         folderPath: attrs.folder || attrs.folderpath || attrs.dir || undefined
       });
     }
-    cleaned = cleaned.replace(match[0], '').trim();
   }
   return cleaned;
 }

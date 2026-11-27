@@ -1729,3 +1729,20 @@ button.turn-tool-row { cursor: pointer; }
     cursor: col-resize;
   }
 }
+
+.members-page { min-width: 0; max-width: 100%; }
+.members-page .members-table-wrap { max-width: 100%; overflow-x: auto; }
+.members-table:has(.member-identity) { table-layout: fixed; }
+.members-table:has(.member-identity) th:first-child { width: 30%; }
+.members-table:has(.member-identity) th:last-child { width: 20%; }
+.members-table:has(.member-identity) td { overflow-wrap: anywhere; }
+.members-table:has(.member-identity) td:last-child > div { flex-wrap: wrap; justify-content: flex-end; }
+.dark .material-library .space-search input::placeholder { color: #a8b5c9; opacity: 1; }
+.composer-toolbar small { white-space: nowrap; }
+@media (min-width: 761px) and (max-width: 1000px) {
+  .comm-brand { gap: 4px; }
+  .comm-brand-id strong { font-size: 14px; }
+  .comm-brand-id small, .composer-toolbar small { display: none; }
+}
+
+.chat-task-delivery { color: inherit; font-size: 12px; padding: 0; background: transparent; border: 0; text-decoration: underline; text-underline-offset: 3px; }
