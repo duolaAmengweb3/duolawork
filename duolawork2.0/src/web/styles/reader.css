@@ -1,0 +1,327 @@
+/* Editorial Markdown typography & rich document reader styles */
+
+.dw-md-frontmatter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+.dw-md-fm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+.dw-md-fm-chip b {
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+/* Framed code block with language badge & copy button */
+.dw-code-block {
+  margin: 12px 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 65%, var(--card));
+  overflow: hidden;
+}
+.dw-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 85%, transparent);
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.dw-code-lang {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.dw-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.dw-code-copy:hover {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.dw-prose .dw-code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.65;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* GFM Tables */
+.dw-md-table-wrap {
+  margin: 14px 0;
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.dw-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dw-md-table thead th {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.dw-md-table tbody td {
+  padding: 8px 12px;
+  color: var(--foreground);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.dw-md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dw-md-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+/* Task Checklists */
+.dw-prose ul.dw-md-checklist {
+  list-style: none;
+  padding-left: 2px;
+}
+.dw-md-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+.dw-md-check-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-top: 4px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: #fff;
+}
+.dw-md-check-box.is-checked {
+  border-color: #10b981;
+  background: #10b981;
+}
+.dw-md-check-item.is-checked > span:last-child {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+}
+
+/* GitHub / Obsidian Callouts */
+.dw-callout {
+  margin: 14px 0;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+}
+.dw-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.dw-callout-body p {
+  margin: 0 0 4px;
+}
+.dw-callout-body p:last-child {
+  margin-bottom: 0;
+}
+.dw-callout.is-note {
+  border-left-color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 6%, var(--card));
+}
+.dw-callout.is-note .dw-callout-title {
+  color: #2563eb;
+}
+.dw-callout.is-tip {
+  border-left-color: #10b981;
+  background: color-mix(in srgb, #10b981 6%, var(--card));
+}
+.dw-callout.is-tip .dw-callout-title {
+  color: #059669;
+}
+.dw-callout.is-important {
+  border-left-color: #8b5cf6;
+  background: color-mix(in srgb, #8b5cf6 6%, var(--card));
+}
+.dw-callout.is-important .dw-callout-title {
+  color: #7c3aed;
+}
+.dw-callout.is-warning {
+  border-left-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 8%, var(--card));
+}
+.dw-callout.is-warning .dw-callout-title {
+  color: #d97706;
+}
+.dw-callout.is-caution {
+  border-left-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 7%, var(--card));
+}
+.dw-callout.is-caution .dw-callout-title {
+  color: #dc2626;
+}
+.dark .dw-callout.is-note .dw-callout-title { color: #60a5fa; }
+.dark .dw-callout.is-tip .dw-callout-title { color: #34d399; }
+.dark .dw-callout.is-important .dw-callout-title { color: #a78bfa; }
+.dark .dw-callout.is-warning .dw-callout-title { color: #fbbf24; }
+.dark .dw-callout.is-caution .dw-callout-title { color: #f87171; }
+
+.dw-prose del {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* Standalone Editorial Reader Typography (Typora / Notion / Bear inspired) */
+.dw-reader-prose {
+  font-size: var(--dw-reader-size, 15px);
+  line-height: 1.88;
+  color: var(--foreground);
+  letter-spacing: 0.006em;
+  word-break: break-word;
+}
+.dw-reader-prose h1 {
+  font-size: 1.82em;
+  font-weight: 700;
+  line-height: 1.32;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.9em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  scroll-margin-top: 24px;
+}
+.dw-reader-prose h2 {
+  font-size: 1.38em;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  margin: 1.8em 0 0.7em;
+  padding-bottom: 0.28em;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  color: var(--foreground);
+  scroll-margin-top: 24px;
+}
+.dw-reader-prose h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.45em 0 0.55em;
+  color: var(--foreground);
+  scroll-margin-top: 24px;
+}
+.dw-reader-prose h4,
+.dw-reader-prose h5,
+.dw-reader-prose h6 {
+  font-size: 1.02em;
+  font-weight: 600;
+  margin: 1.2em 0 0.4em;
+  color: var(--foreground);
+  scroll-margin-top: 24px;
+}
+.dw-reader-prose p {
+  margin: 0 0 1.05em;
+  color: color-mix(in srgb, var(--foreground) 90%, var(--muted-foreground));
+}
+.dw-reader-prose ul,
+.dw-reader-prose ol {
+  margin: 0.8em 0 1.1em;
+  padding-left: 1.55em;
+}
+.dw-reader-prose li {
+  margin: 0.35em 0;
+}
+.dw-reader-prose li > ul,
+.dw-reader-prose li > ol {
+  margin: 0.3em 0;
+}
+.dw-reader-prose blockquote {
+  margin: 1.1em 0;
+  padding: 10px 16px;
+  border-left: 3px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+}
+.dw-reader-prose code {
+  font-size: 0.86em;
+  padding: 0.14em 0.42em;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--muted) 80%, transparent);
+  color: var(--foreground);
+}
+.dw-reader-prose pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.dw-reader-prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+.dw-reader-prose img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+.dw-reader-prose a {
+  color: var(--info-foreground);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--info-foreground) 40%, transparent);
+  text-underline-offset: 3px;
+}
+.dw-reader-prose a:hover {
+  text-decoration-color: var(--info-foreground);
+}

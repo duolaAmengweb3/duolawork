@@ -744,6 +744,30 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    let ch: BroadcastChannel | null = null;
+    try {
+      ch = new BroadcastChannel('dw2-space-sync');
+      ch.onmessage = (ev) => {
+        const msg = ev.data;
+        if (msg?.type === 'artifact_saved' && typeof msg.artifactId === 'string') {
+          views.invalidate('/api/v2/artifacts/' + encodeURIComponent(msg.artifactId));
+          if (selectionRef.current?.kind === 'document' && selectionRef.current.id === msg.artifactId) {
+            void loadArtifactDetail(msg.artifactId, true);
+          }
+          const tid = msg.threadId || activeThreadIdRef.current;
+          if (tid) void loadSpace(tid);
+        }
+      };
+    } catch {
+      // ignore unsupported BroadcastChannel
+    }
+    return () => {
+      ch?.close();
+    };
+  }, [loadArtifactDetail, loadSpace, views]);
+
   const archiveRequest = useRef(0);
   const loadArchiveDetail = useCallback(async (channelId: string) => {
     if (!channelId) return;
