@@ -1680,6 +1680,8 @@ test('Audit-R5-1: grok-webhook and dots-events stay ready when verified, and lon
     summary: idx % 3 === 2 ? '"hunterweb303" "2026年11月" OR "Nov 2026" site:x.com' : '',
     status: idx === 9 ? 'running' : 'done'
   }));
+  Object.assign(hugeTools[0], { name: '执行命令', summary: 'python3 report.py' });
+  Object.assign(hugeTools[1], { name: '编辑文件', summary: '/workspace/' + 'project/'.repeat(30) + 'report.py' });
   app.db.sqlite
     .prepare(
       `INSERT INTO v2_thread_messages
@@ -1724,6 +1726,27 @@ test('Audit-R5-1: grok-webhook and dots-events stay ready when verified, and lon
     });
     assert.ok(overflowAfterExpand.boxOverflow <= 1, `Expanded box overflowed horizontally: ${JSON.stringify(overflowAfterExpand)}`);
     assert.ok(overflowAfterExpand.listHeight <= 235, `Expanded list should scroll within max-height 220px, got ${overflowAfterExpand.listHeight}`);
+
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 860 });
+      const rows = await page.locator('.turn-tool-item:has(.turn-tool-detail)').evaluateAll((items) =>
+        items.map((item) => {
+          const label = item.querySelector('.turn-tool-label')!;
+          const detail = item.querySelector('.turn-tool-detail')!;
+          const text = document.createRange();
+          text.selectNodeContents(label);
+          return {
+            gap: detail.getBoundingClientRect().left - text.getBoundingClientRect().right,
+            overflow: item.scrollWidth - item.clientWidth
+          };
+        })
+      );
+      assert.equal(rows.length, 2);
+      for (const row of rows) {
+        assert.ok(row.gap >= 0 && row.gap <= 8, `Expected adjacent label and detail at ${width}px, gap was ${row.gap}px`);
+        assert.ok(row.overflow <= 1, `Tool row overflowed at ${width}px`);
+      }
+    }
   } finally {
     await browser.close();
     await app.close();

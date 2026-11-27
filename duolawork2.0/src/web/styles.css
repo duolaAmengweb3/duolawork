@@ -1004,7 +1004,7 @@ html.dark {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: #3b4b63;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1013,8 +1013,8 @@ html.dark {
 .turn-tool-detail {
   color: #8493aa;
   font-size: 11px;
-  flex: 0 1 40%;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min(25%, 12ch);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
