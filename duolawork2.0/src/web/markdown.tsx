@@ -66,6 +66,35 @@ export function extractMarkdownHeadings(text: string): MarkdownHeadingItem[] {
   return out;
 }
 
+const CODE_TOKEN_RE =
+  /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|return|async|await|import|export|from|default|if|else|for|while|switch|case|break|continue|try|catch|finally|throw|new|class|extends|interface|type|enum|true|false|null|undefined|def|elif|pass|with|as|in|not|and|or|None|True|False|SELECT|FROM|WHERE|JOIN|ORDER|GROUP|BY|INSERT|INTO|UPDATE|DELETE|CREATE|TABLE|VALUES|SET|LIMIT)\b|\b\d+(?:\.\d+)?\b|\b[A-Z][A-Za-z0-9_]{2,}\b)/g;
+
+function highlightCodeLine(code: string): React.ReactNode {
+  if (code.length > 18000) return code;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  CODE_TOKEN_RE.lastIndex = 0;
+  while ((m = CODE_TOKEN_RE.exec(code)) !== null) {
+    if (m.index > last) parts.push(code.slice(last, m.index));
+    const tok = m[0];
+    let cls = 'dw-tok-kw';
+    if (tok.startsWith('//') || tok.startsWith('/*') || tok.startsWith('#')) cls = 'dw-tok-cmt';
+    else if (tok.startsWith('"') || tok.startsWith("'") || tok.startsWith('`')) cls = 'dw-tok-str';
+    else if (/^\d/.test(tok)) cls = 'dw-tok-num';
+    else if (/^[A-Z][a-z]/.test(tok)) cls = 'dw-tok-type';
+    parts.push(
+      <span key={k++} className={cls}>
+        {tok}
+      </span>
+    );
+    last = m.index + tok.length;
+  }
+  if (last < code.length) parts.push(code.slice(last));
+  return parts.length > 0 ? parts : code;
+}
+
 function CodeBlockCard({
   lang,
   code
@@ -90,7 +119,7 @@ function CodeBlockCard({
         </button>
       </div>
       <pre className="coss-scroll">
-        <code>{code}</code>
+        <code>{highlightCodeLine(code)}</code>
       </pre>
     </div>
   );
@@ -822,14 +851,14 @@ export function MarkdownView({
       continue;
     }
 
-    // Unordered list & Task checklists (with indentation support)
-    if (/^\s*[-*+]\s+/.test(line)) {
+    // Unordered list & Task checklists (with indentation & Chinese bullet • / · support)
+    if (/^\s*(?:[-*+•▪]\s+)/.test(line)) {
       const items: Array<{ indent: number; text: string; checked: boolean | null }> = [];
       let hasTaskCheck = false;
-      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+      while (i < lines.length && /^\s*(?:[-*+•▪]\s+)/.test(lines[i])) {
         const indentMatch = lines[i].match(/^(\s*)/);
         const indent = Math.min(3, Math.floor((indentMatch?.[1]?.length ?? 0) / 2));
-        const stripped = lines[i].replace(/^\s*[-*+]\s+/, '');
+        const stripped = lines[i].replace(/^\s*[-*+•▪]\s+/, '');
         const checkMatch = stripped.match(/^\[([ xX])\]\s+(.*)$/);
         if (checkMatch) {
           hasTaskCheck = true;
@@ -904,7 +933,7 @@ export function MarkdownView({
       !/^\s*(?:---+|===+|\*\*\*+)\s*$/.test(lines[i]) &&
       !/^(#{1,6})\s+/.test(lines[i]) &&
       !lines[i].trimStart().startsWith('>') &&
-      !/^\s*[-*+]\s+/.test(lines[i]) &&
+      !/^\s*[-*+•▪]\s+/.test(lines[i]) &&
       !/^\s*\d+\.\s+/.test(lines[i])
     ) {
       pLines.push(lines[i]);
