@@ -1,4 +1,5 @@
 import { actionBlocks } from './action-blocks.js';
+import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { DuolaWorkDatabase } from './db.js';
 import type { SpaceStore } from './space.js';
@@ -22,6 +23,11 @@ export const outcomeSchema = {
     materialKind: { type: 'string', enum: ['file', 'document'] },
     name: { type: 'string' },
     folderPath: { type: 'string' },
+    expectedText: {
+      type: 'string',
+      maxLength: 32000,
+      description: '用户明确给出完整文本时，逐字填写要保存的正文，可用于任意文本格式。不推测或代写预期内容。'
+    },
     readback: {
       type: 'object',
       properties: {
@@ -47,11 +53,17 @@ export function parseOutcome(raw: unknown): TaskOutcome | undefined {
   if (spec.kind === 'material') {
     if (!['file', 'document'].includes(spec.materialKind) || typeof spec.name !== 'string' || !spec.name.trim())
       return fail();
+    if (
+      spec.expectedText !== undefined &&
+      (typeof spec.expectedText !== 'string' || spec.expectedText.length > 32000)
+    )
+      return fail();
     if (spec.folderPath !== undefined && typeof spec.folderPath !== 'string') return fail();
     return {
       kind: 'material',
       materialKind: spec.materialKind,
       name: spec.name.trim(),
+      expectedText: spec.expectedText,
       folderPath: spec.folderPath?.trim().replace(/^\/+|\/+$/g, '')
     };
   }
@@ -114,14 +126,32 @@ export function matchesReadback(
   return value === spec.equals;
 }
 
+function normalizeText(value: string) {
+  return value
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n$/, '');
+}
+
 export class StepOutcomes {
   constructor(private db: DuolaWorkDatabase) {}
 
   declare(stepId: string, spec?: TaskOutcome) {
     if (!spec) return;
     const old = this.get(stepId);
-    // A worker may supply a concrete readback once the remote resource has been allocated.
+    // A worker can add missing evidence requirements while preserving the original contract.
     if (
+      old?.spec.kind === 'material' &&
+      spec.kind === 'material' &&
+      old.spec.materialKind === spec.materialKind &&
+      old.spec.name === spec.name
+    ) {
+      spec = {
+        ...old.spec,
+        folderPath: old.spec.folderPath ?? spec.folderPath,
+        expectedText: old.spec.expectedText ?? spec.expectedText
+      };
+    } else if (
       old &&
       old.spec.kind !== 'reply' &&
       !(old.spec.kind === 'external' && !old.spec.readback && spec.kind === 'external' && spec.readback)
@@ -200,8 +230,25 @@ export class StepOutcomes {
       )
         continue;
       const version = r.kind === 'file' ? space.getFileWithPath(item.id)?.file.sha256 : item.version;
-      if (version != null && String(version) === r.revision)
-        return { kind: r.kind, id: item.id, name: item.title };
+      if (version == null || String(version) !== r.revision) continue;
+      if (spec.expectedText !== undefined) {
+        let actual: string;
+        if (r.kind === 'document') {
+          const doc = space.readMaterialForAgent(threadId, 'document', item.id);
+          if (doc.truncated || typeof doc.content !== 'string') continue;
+          actual = doc.content;
+        } else {
+          const file = space.getFileWithPath(item.id);
+          if (!file || file.file.sizeBytes > Buffer.byteLength(spec.expectedText) * 2 + 5) continue;
+          try {
+            actual = fs.readFileSync(file.absPath, 'utf8');
+          } catch {
+            continue;
+          }
+        }
+        if (normalizeText(actual) !== normalizeText(spec.expectedText)) continue;
+      }
+      return { kind: r.kind, id: item.id, name: item.title };
     }
   }
 

@@ -496,7 +496,8 @@ export class TaskEngine {
         '按发起本次委派时的用户请求判断范围。已完成的操作不要重复执行或重新派单。没有剩余授权工作就向用户简短汇报。回执不授权新的发布、发送等外部操作。',
         !row.requester_member_id && '这是补送的历史交付，只核对并回复本次交付结果。不要改动、上传、发布或群发任何内容。',
         '原对话已有执行人的成果。只汇报新核对的结果或剩余工作，不复述已展示的全文。',
-        '任务：' + row.title, '结果：' + run.summary,
+        '任务：' + row.title, run.spec?.goal && '原定目标：' + run.spec.goal,
+        '有具体文件要求时请打开实际交付资料，核对目录和内容。发现遗漏时按原授权补齐。', '结果：' + run.summary,
         artifact && run.status === 'completed' && '交付文档 ' + artifact.id + '\n' + artifact.content.slice(0, 18000)
       ].filter(Boolean).join('\n');
       void this.threads.receiveTaskResult(row.source_thread_id, row.return_member_id, run.id, context)
@@ -673,10 +674,12 @@ export class TaskEngine {
 
       const promptLines = [
         `你正在执行任务《${task.title}》的独立分工步骤（第 ${submissionNumber} 版提交）：`,
+        `- 委派的总目标（用于理解要求，只执行分配给你的步骤）：${task.spec.goal}`,
+        `- 整体验收要求：${task.spec.acceptanceCriteria}`,
         `- 步骤名称：${step.title}`,
         `- 本步要求：${step.brief}`,
         `- 验收标准：${step.acceptanceCriteria}`,
-        '请按实际成果提交。交付文件请先保存到协作空间；外部操作请在 step_submit_result 的 outcome 中声明 external，可提供目标资源只读 GET 和预期字段以便系统核对。外部操作结果未知时勿再次执行。无法调用提交工具时，在正文后另起一行用 <duolawork_outcome> 包含同一份 JSON 结果要求，再以 </duolawork_outcome> 结束。',
+        '请按实际成果提交。交付文件请先保存到约定目录；总目标明确给出完整文本时，在 step_submit_result 的 material 结果中用 expectedText 保留原文供系统读回核对；外部操作请在 step_submit_result 的 outcome 中声明 external，可提供目标资源只读 GET 和预期字段以便系统核对。外部操作结果未知时勿再次执行。无法调用提交工具时，在正文后另起一行用 <duolawork_outcome> 包含同一份 JSON 结果要求，再以 </duolawork_outcome> 结束。',
         ...(this.outcomes.get(step.id) ? ['本步约定的交付要求：'+JSON.stringify(this.outcomes.get(step.id)!.spec)] : [])
       ];
       const linkedMaterialsDigest =
@@ -1071,6 +1074,7 @@ export class TaskEngine {
     const reviewPrompt = [
       `你是任务《${task.title}》的负责人，请核验以下执行步骤提交（第 ${submission.version} 版）：`,
       `- 步骤：${step.title}`,
+      `- 委派总目标：${task.spec.goal}。整体验收要求：${task.spec.acceptanceCriteria}`,
       `- 原定验收标准：${step.acceptanceCriteria}`,
       `- 执行人提交内容：\n${submission.content}`,
       `\n请严格只输出一段 JSON 裁决：{"verdict":"accept"|"changes_requested"|"ask_user","comments":"具体核验意见或需向用户确认的问题"}`
@@ -1198,7 +1202,7 @@ export class TaskEngine {
         effectiveComments='已核对本步保存的资料：'+receipt.name;
       } else {
         effectiveVerdict='changes_requested';
-        effectiveComments='尚未找到本步交付的「'+outcome.spec.name+'」，请保存目标文件或文档后提交。';
+        effectiveComments='「'+outcome.spec.name+'」尚未符合交付要求。请核对名称、目录和约定的内容，重新保存后提交。';
       }
     }
     if (outcome?.spec.kind==='external' && verdict==='accept') effectiveComments=outcome.state==='attested'?'用户已核实外部结果':'已从外部系统读回目标结果';

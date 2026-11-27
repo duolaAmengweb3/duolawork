@@ -943,7 +943,7 @@ export class ThreadEngine {
               effectiveDriverKind === 'codex-app-server' || effectiveDriverKind === 'mock'
                 ? '按实际成果设置 outcome（reply、material 或 external），调用 task_create_or_update 工具或'
                 : ''
-            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, steps 可选。单次任务自动启动，定时任务默认按计划执行）。`,
+            }在回复中附带一个或多个 <duolawork_task>{...}</duolawork_task> JSON 块立项派单（支持单对象或数组；文件或文档步骤的 outcome 必须包含 kind:"material"、materialKind、name 和约定的 folderPath；用户给出精确正文时填 expectedText。外部写入用 kind:"external" 并提供可用的只读核对条件。字段：title, kind:"once"|"scheduled", cronExpr 如 "0 8 * * *", timezone:"Asia/Shanghai", leadMemberId 可填成员名或ID, goal, steps 可选。单次任务自动启动，定时任务默认按计划执行）。`,
           targetMember.driverKind === 'remote-bridge'
             ? `- 关键禁令：严禁调用旧版 Agent Hub (1.9.6) 的频道定时任务 (schedule) 或看板任务 (board_task) 工具！该桥接频道对用户完全不可见，立项与定时任务必须通过 <duolawork_task>...</duolawork_task> 写入 DuolaWork 2.0。`
             : `- 安全规范：绝不索要或输出明文密钥，外部服务通过 DuolaBase 连接器与 Vault HTTP 代理按授权访问。`,
@@ -965,7 +965,7 @@ export class ThreadEngine {
       effectiveDriverKind === 'remote-bridge' ||
       effectiveDriverKind === 'acp-stdio' ||
       effectiveDriverKind === 'claude-cli'
-        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略，当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
+        ? `[结构化指令说明：① 派单前确认（若需求存在模糊/分叉，或用户点名的执行成员显示状态:offline/auth_required 不可用时，必须先确认，切勿直接派单）：附带 <duolawork_ask>{"title":"派单前需求确认","targetMemberName":"拟指派成员名","questions":[{"question":"问题（共1~3题；若原指派人offline，第1题请提供改派给在线成员如Gemini2VPS/Codex/Gemini (本机)的选项）","options":["推荐项A","选项B","选项C"],"multiSelect":false}]}</duolawork_ask>；② 正式创建任务（仅在需求已明确且指派成员状态正常，或用户已确认后使用）：附带一个或多个 <duolawork_task>{"title":"任务名称","kind":"once"|"scheduled","cronExpr":"0 8 * * *","timezone":"Asia/Shanghai","leadMemberId":"${targetMember.name}","goal":"执行说明"}</duolawork_task>（支持 JSON 数组，steps 可省略。资料步骤填 outcome 的 kind:"material"、materialKind、name、folderPath，以及用户给定的完整正文 expectedText；外部动作填写 kind:"external"。当前团队成员及状态：${memberNamesSummary || targetMember.name}）；③ 写入右侧协作空间（支持任意格式文件与文件夹）：${
             hasNativeSpaceTools
               ? '向外部连接器上传图片或文件时，先用 space_save_file(localPath) 保存，再用 space_upload_to_connector 传文件 ID，让工作台传输原始字节。优先直接调用已挂载的 space_create_folder / space_save_file(支持content/dataBase64/localPath) / space_save_document / space_save_link / space_move_item 工具，也'
               : ''

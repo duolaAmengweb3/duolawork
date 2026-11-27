@@ -42,25 +42,45 @@ test('A missing or unrelated material cannot pass. A fresh scoped document or fi
   try {
     app.space.createDocument({ threadId: thread.id, title: '结果.md', content: '上一期的文稿' });
     let attempts = 0;
+    let documentId = '';
     app.registry.mockDriver.handlers.set('Worker', async (input) => {
+      assert.ok(input.prompt.includes('委派时约定的原始正文'));
       attempts++;
-      if (attempts === 2)
-        await input.onToolCall!('space_save_document', {
+      if (documentId) await input.onToolCall!('space_read_material',{kind:'document',id:documentId});
+      if (attempts >= 2) {
+        const saved = await input.onToolCall!('space_save_document', {
           title: '结果.md',
           folderPath: '本期',
-          content: '本期正文'
-        });
+          content: attempts === 2 ? '示例正文' : '本期正文'
+        }) as {id: string};
+        documentId = saved.id;
+      }
       return { text: '已经保存' };
     });
     const { task, initialRun } = app.tasks.createOrUpdateTask({
       sourceThreadId: thread.id,
       leadMemberId: 'Worker',
       title: '本期文稿',
-      spec: { outcome: { kind: 'material', materialKind: 'document', name: '结果.md', folderPath: '本期' } }
+      spec: {
+        goal: '委派时约定的原始正文',
+        steps: [
+          {
+            title: '保存文档',
+            brief: '准备文件',
+            outcome: {
+              kind: 'material',
+              materialKind: 'document',
+              name: '结果.md',
+              folderPath: '本期',
+              expectedText: '本期正文'
+            }
+          }
+        ]
+      }
     });
     const done = await app.tasks.driveRun(initialRun!.id);
     assert.equal(done.status, 'completed');
-    assert.equal(attempts, 2);
+    assert.equal(attempts, 3);
     const receipt = app.tasks.listRuns(task.id)[0].progress![0];
     assert.equal(receipt.confirmation, 'verified');
     assert.equal(app.artifacts.getArtifact(receipt.material!.id)?.content, '本期正文');
@@ -147,7 +167,13 @@ test('Browser: delegate, refresh, open the exact result, and confirm an unverifi
     const external = inp.prompt.includes('请处理外部记录');
     const outcome: TaskOutcome = external
       ? { kind: 'external' }
-      : { kind: 'material', materialKind: 'file', name: '清单.csv', folderPath: '结果' };
+      : {
+          kind: 'material',
+          materialKind: 'file',
+          name: '清单.csv',
+          folderPath: '结果',
+          expectedText: 'item,value\na,7'
+        };
     await inp.onToolCall!('task_create_or_update', {
       title: external ? '核对外部记录' : '交付清单',
       goal: external ? '核对更改' : '制作清单',

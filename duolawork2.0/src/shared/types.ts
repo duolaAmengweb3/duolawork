@@ -276,7 +276,7 @@ export interface ExternalResultCheck {
 
 export type TaskOutcome =
   | { kind: 'reply' }
-  | { kind: 'material'; materialKind: 'file' | 'document'; name: string; folderPath?: string }
+  | { kind: 'material'; materialKind: 'file' | 'document'; name: string; folderPath?: string; expectedText?: string }
   | { kind: 'external'; readback?: ExternalResultCheck };
 
 export interface StepProgress {
