@@ -2658,13 +2658,17 @@ export class DuolaWorkApp {
         const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
         const candidate = path.resolve(this.staticWebDir, rel);
         if (candidate.startsWith(path.resolve(this.staticWebDir)) && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-          res.writeHead(200, { 'Content-Type': contentTypeFor(candidate) });
+          const fingerprinted = /^assets\/[\w.-]+-[\w-]{8}\.(?:js|css|png|jpe?g|svg|webp|gif|woff2?)$/.test(rel);
+          res.writeHead(200, {
+            'Content-Type': contentTypeFor(candidate),
+            'Cache-Control': fingerprinted ? 'public, max-age=31536000, immutable' : 'no-cache'
+          });
           fs.createReadStream(candidate).pipe(res);
           return;
         }
         const indexHtml = path.join(this.staticWebDir, 'index.html');
         if (fs.existsSync(indexHtml)) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
           fs.createReadStream(indexHtml).pipe(res);
           return;
         }

@@ -41,6 +41,11 @@ test('Reader protects edits during save, follows remote changes and restores the
     const api = '/api/v2/artifacts/' + docs[0].id;
     await page.goto(url + '/?popout=document&id=' + docs[0].id + '&threadId=' + thread.id);
     await page.getByRole('heading', {name: 'Page 0'}).waitFor();
+    const script = await page.locator('script[type="module"][src]').getAttribute('src');
+    assert.ok(script);
+    assert.match((await page.request.get(url + script)).headers()['cache-control'], /immutable/);
+    assert.equal((await page.request.get(url)).headers()['cache-control'], 'no-cache');
+
     const update = await page.request.post(url + api, {data: {expectedBaseVersion: 1, content: '# External'}});
     assert.ok(update.ok());
     await page.getByRole('heading', {name: 'External'}).waitFor();
