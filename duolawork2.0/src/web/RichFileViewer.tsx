@@ -2,39 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { highlightCodeLine, MarkdownView } from './markdown.js';
 
-export type RichTextFormat = 'markdown' | 'html' | 'csv' | 'json' | 'code' | 'plain';
-
-const CODE_EXTS = new Set([
-  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'go', 'rs', 'java', 'kt', 'swift',
-  'c', 'cpp', 'h', 'cs', 'rb', 'php', 'sql', 'css', 'scss', 'less', 'sh', 'bash',
-  'zsh', 'yaml', 'yml', 'toml', 'xml', 'ini', 'env', 'dockerfile', 'graphql'
-]);
-
-export function detectTextFileFormat(title: string, mimeType?: string): {
-  format: RichTextFormat;
-  lang: string;
-} {
-  const lower = (title || '').trim().toLowerCase();
-  const mime = (mimeType || '').toLowerCase();
-  const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.') + 1) : '';
-
-  if (ext === 'md' || ext === 'markdown' || ext === 'mdx' || mime.includes('markdown')) {
-    return { format: 'markdown', lang: 'markdown' };
-  }
-  if (ext === 'html' || ext === 'htm' || mime.includes('text/html')) {
-    return { format: 'html', lang: 'html' };
-  }
-  if (ext === 'csv' || ext === 'tsv' || mime.includes('csv') || mime.includes('tab-separated')) {
-    return { format: 'csv', lang: ext === 'tsv' ? 'tsv' : 'csv' };
-  }
-  if (ext === 'json' || ext === 'jsonl' || mime.includes('json')) {
-    return { format: 'json', lang: 'json' };
-  }
-  if (CODE_EXTS.has(ext)) {
-    return { format: 'code', lang: ext };
-  }
-  return { format: 'plain', lang: ext || 'text' };
-}
+import { detectTextFileFormat } from '../shared/file-format.js';
+export { detectTextFileFormat } from '../shared/file-format.js';
 
 function parseDelimitedRows(raw: string, delimiter: ',' | '\t'): string[][] {
   const rows: string[][] = [];
@@ -66,7 +35,7 @@ function parseDelimitedRows(raw: string, delimiter: ',' | '\t'): string[][] {
       if (row.some((c) => c.trim() !== '')) rows.push(row);
       row = [];
       cell = '';
-      if (rows.length >= 500) break;
+      if (rows.length >= 502) break;
     } else {
       cell += ch;
     }
@@ -100,11 +69,16 @@ export function RichTextFileViewer({
   const prettyJson = useMemo(() => {
     if (format !== 'json' || !content.trim()) return null;
     try {
+      if (lang === 'jsonl') {
+        return content.split(/\r?\n/).filter(line => line.trim()).map(line =>
+          JSON.stringify(JSON.parse(line), null, 2)
+        ).join('\n');
+      }
       return JSON.stringify(JSON.parse(content), null, 2);
     } catch {
       return null;
     }
-  }, [format, content]);
+  }, [format, lang, content]);
 
   const csvRows = useMemo(() => {
     if (format !== 'csv' || !content.trim()) return [];
@@ -141,7 +115,7 @@ export function RichTextFileViewer({
     <div className="mb-2 flex items-center justify-between gap-2">
       <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
         {lang}
-        {format === 'csv' && csvRows.length > 0 ? ` · ${Math.max(0, csvRows.length - 1)} 行` : ''}
+        {format === 'csv' && csvRows.length > 0 ? ` · ${csvRows.length > 501 ? '仅显示前 500 行，完整内容可下载' : (csvRows.length - 1) + ' 行'}` : ''}
       </span>
       <div className="flex items-center gap-1.5">
         {canToggleRendered && (
@@ -230,7 +204,7 @@ export function RichTextFileViewer({
               </tr>
             </thead>
             <tbody>
-              {body.map((r, ri) => (
+              {body.slice(0, 500).map((r, ri) => (
                 <tr key={ri}>
                   {header.map((_, ci) => (
                     <td key={ci}>{r[ci] ?? ''}</td>

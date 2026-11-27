@@ -67,7 +67,7 @@ export function extractMarkdownHeadings(text: string): MarkdownHeadingItem[] {
 }
 
 const CODE_TOKEN_RE =
-  /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|return|async|await|import|export|from|default|if|else|for|while|switch|case|break|continue|try|catch|finally|throw|new|class|extends|interface|type|enum|true|false|null|undefined|def|elif|pass|with|as|in|not|and|or|None|True|False|SELECT|FROM|WHERE|JOIN|ORDER|GROUP|BY|INSERT|INTO|UPDATE|DELETE|CREATE|TABLE|VALUES|SET|LIMIT)\b|\b\d+(?:\.\d+)?\b|\b[A-Z][A-Za-z0-9_]{2,}\b)/g;
+  /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|package|func|struct|defer|range|go|chan|fn|impl|pub|mut|trait|match|use|mod|return|async|await|import|export|from|default|if|else|for|while|switch|case|break|continue|try|catch|finally|throw|new|class|extends|interface|type|enum|true|false|null|undefined|def|elif|pass|with|as|in|not|and|or|None|True|False|SELECT|FROM|WHERE|JOIN|ORDER|GROUP|BY|INSERT|INTO|UPDATE|DELETE|CREATE|TABLE|VALUES|SET|LIMIT)\b|\b\d+(?:\.\d+)?\b|\b[A-Z][A-Za-z0-9_]{2,}\b)/g;
 
 export function highlightCodeLine(code: string): React.ReactNode {
   if (code.length > 18000) return code;

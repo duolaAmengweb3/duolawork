@@ -221,16 +221,6 @@ function createMainWindow(url, buildInfo, initialTheme = 'light') {
 async function shutdownCleanly() {
   if (shuttingDown) return;
   shuttingDown = true;
-  for (const w of popoutWindows.values()) {
-    if (w && !w.isDestroyed()) {
-      try {
-        w.close();
-      } catch {
-        // ignore popout close errors
-      }
-    }
-  }
-  popoutWindows.clear();
   if (duolaApp) {
     try {
       await Promise.race([
@@ -262,7 +252,8 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', async (event) => {
+// Let reader windows finish their unsaved-edit checks before stopping the local service.
+app.on('will-quit', async (event) => {
   if (!shuttingDown) {
     event.preventDefault();
     await shutdownCleanly();
@@ -272,7 +263,7 @@ app.on('before-quit', async (event) => {
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
-    void shutdownCleanly().finally(() => app.exit(0));
+    app.quit();
   });
 }
 
@@ -404,6 +395,24 @@ app.whenReady().then(async () => {
         void shell.openExternal(extUrl);
       }
       return { action: 'deny' };
+    });
+
+    // The reader handles Cmd/Ctrl+W itself so only the active tab closes.
+    win.webContents.on('before-input-event', (_event, input) => {
+      const closeTab = (input.meta || input.control) && !input.shift && !input.alt && input.key.toLowerCase() === 'w';
+      win.webContents.setIgnoreMenuShortcuts(closeTab);
+    });
+
+    win.webContents.on('will-prevent-unload', event => {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'question',
+        message: '文档还有未保存的修改',
+        detail: '关闭或重新载入窗口会放弃这些修改。',
+        buttons: ['继续编辑', '放弃修改'],
+        defaultId: 0,
+        cancelId: 0
+      });
+      if (choice === 1) event.preventDefault();
     });
 
     win.once('ready-to-show', () => {

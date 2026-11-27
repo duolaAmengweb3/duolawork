@@ -1,3 +1,4 @@
+import { detectPreviewKind } from '../shared/file-format.js';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -1387,27 +1388,6 @@ function guessMimeByExt(name: string): string {
     '.wav': 'audio/wav'
   };
   return map[ext] || 'application/octet-stream';
-}
-
-function detectPreviewKind(
-  name: string,
-  mimeType: string
-): SpaceItemView['previewKind'] {
-  const lower = name.toLowerCase();
-  if (mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(lower)) return 'image';
-  if (mimeType.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(lower)) return 'video';
-  if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(lower)) return 'audio';
-  if (mimeType === 'application/pdf' || /\.pdf$/i.test(lower)) return 'pdf';
-  if (
-    mimeType.startsWith('text/') ||
-    mimeType.includes('json') ||
-    mimeType.includes('xml') ||
-    mimeType.includes('sql') ||
-    /\.(txt|md|csv|json|log|html?|css|xml|sql|sh|toml|ts|tsx|js|jsx|py|yml|yaml)$/i.test(lower)
-  ) {
-    return 'text';
-  }
-  return 'binary';
 }
 
 function mapFolderRow(row: Record<string, unknown>): SpaceFolderRecord {
