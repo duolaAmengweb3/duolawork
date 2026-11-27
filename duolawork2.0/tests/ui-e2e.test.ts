@@ -827,6 +827,9 @@ test('chat shows one animated status for the current turn, restores live phases 
     assert.equal(await dot.evaluate(el => el.getAnimations().length), 0);
     emit({kind:'activity', phase:'thinking'});
     await shows('正在思考');
+    const other = app.threads.createThread({ title: '另一个置顶对话', activeOwnerMemberId: member.id });
+    app.db.sqlite.prepare('UPDATE v2_threads SET pinned_at=? WHERE id=?').run(new Date().toISOString(), other.id);
+    assert.equal(app.threads.listThreads()[0]?.id, other.id);
     await page.reload();
     await shows('正在思考');
     emit({kind:'tool', toolId:'read', toolName:'Read', toolStatus:'running'});

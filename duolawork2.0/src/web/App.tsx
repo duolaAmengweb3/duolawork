@@ -378,6 +378,9 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
+    if (activeThreadId) {
+      try { sessionStorage.setItem('dw2-thread', activeThreadId); } catch { /* Storage is optional. */ }
+    }
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -483,10 +486,11 @@ export function App(): React.JSX.Element {
     }
     setHasDesktopDialog(Boolean(data.hasDesktopDialog || getDesktopBridge()));
 
-    const firstId = data.threads?.[0]?.id || '';
-    if (firstId) {
-      setActiveThreadId((prev) => (preserveSelection && prev ? prev : firstId));
-    }
+    const activeThreads: ThreadRecord[] = data.threads || [];
+    let savedId: string | null = null;
+    try { savedId = sessionStorage.getItem('dw2-thread'); } catch { /* Fall back to the first conversation. */ }
+    const initialId = activeThreads.find(thread => thread.id === savedId)?.id || activeThreads[0]?.id || '';
+    setActiveThreadId(prev => preserveSelection && prev ? prev : initialId);
     if (data.members?.length > 0 && !newTaskLeadId) {
       setNewTaskLeadId(data.members[0].id);
       setNewTaskSteps((prev) =>
