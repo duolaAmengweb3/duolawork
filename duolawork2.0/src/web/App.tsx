@@ -2561,7 +2561,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
           </button>
         </div>
 
-        <div className="channel-list">
+        <div className="channel-list coss-scroll">
           {visibleThreads.map((t) => {
             const owner = memberById.get(t.activeOwnerMemberId);
             const ownerName = owner?.name || t.activeOwnerMemberId;
@@ -2627,7 +2627,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
             </span>
           </button>
           {archivesOpen && (
-            <div className="mb-2 flex flex-col gap-0.5 max-h-32 overflow-y-auto">
+            <div className="mb-2 flex flex-col gap-0.5 max-h-32 overflow-y-auto coss-scroll">
               {archives.length === 0 ? (
                 <small style={{ color: '#9aa4b7' }}>暂无旧版只读归档记录</small>
               ) : (

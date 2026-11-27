@@ -68,6 +68,7 @@ import { Button } from './components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
 import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
+import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { formatCronHuman } from './lib/format.js';
 
 export interface SpaceTaskSummary extends TaskRecord {
@@ -827,6 +828,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     });
   }, [threadTasks, taskFilter]);
 
+  const tasksPager = usePagination(filteredTasks, 4, `${thread?.id || ''}:${taskFilter}`);
+
   const conflictVersionsCount = versions.filter((v) => v.branchKind === 'conflict_branch').length;
 
   const renderItemRow = (
@@ -1347,43 +1350,46 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 <p>移出列表的资料会暂存于此并可随时恢复。</p>
               </div>
             ) : (
-              trash.map((it) => {
-                const trashKey = `${it.kind}:${it.id}`;
-                const confirming = confirmPurgeKey === trashKey;
-                return (
-                  <div key={trashKey} className="space-trash-row">
-                    <span>
-                      <strong>{it.title}</strong>
-                      <small>{kindLabel(it)}</small>
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => void mutateItem(it.kind, it.id, { action: 'restore' })}
-                        className="dw-btn dw-btn-outline dw-btn-sm"
-                      >
-                        <RotateCcw size={12} />
-                        <span>恢复</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirming) {
-                            void handlePurgeTrashItem(it.kind, it.id);
-                          } else {
-                            setConfirmPurgeKey(trashKey);
-                          }
-                        }}
-                        className="dw-btn dw-btn-outline dw-btn-sm"
-                        style={confirming ? { borderColor: '#be4343', color: '#be4343' } : { color: '#a75229' }}
-                      >
-                        <Trash2 size={12} />
-                        <span>{confirming ? '确认删除' : '彻底删除'}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+              <Frame className="rounded-xl">
+                <FramePanel className="max-h-[460px] divide-y divide-border overflow-y-auto rounded-lg px-3 py-1 coss-scroll">
+                  {trash.map((it) => {
+                    const trashKey = `${it.kind}:${it.id}`;
+                    const confirming = confirmPurgeKey === trashKey;
+                    return (
+                      <div key={trashKey} className="space-trash-row">
+                        <span>
+                          <strong>{it.title}</strong>
+                          <small>{kindLabel(it)}</small>
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => void mutateItem(it.kind, it.id, { action: 'restore' })}
+                          >
+                            <RotateCcw size={12} />
+                            <span>恢复</span>
+                          </Button>
+                          <Button
+                            variant={confirming ? 'destructive' : 'outline'}
+                            size="xs"
+                            onClick={() => {
+                              if (confirming) {
+                                void handlePurgeTrashItem(it.kind, it.id);
+                              } else {
+                                setConfirmPurgeKey(trashKey);
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>{confirming ? '确认删除' : '彻底删除'}</span>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </FramePanel>
+              </Frame>
             )}
           </div>
         ) : selection?.kind === 'document' && artifact?.id !== selection.id ? (
@@ -1946,7 +1952,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     清除筛选
                   </button>
                 </FrameHeader>
-                <FramePanel className="rounded-lg p-1">
+                <FramePanel className="max-h-[420px] overflow-y-auto rounded-lg p-1 coss-scroll">
                   {filteredItems.length === 0 ? (
                     <p className="py-6 text-center text-xs text-muted-foreground">没有找到匹配资料</p>
                   ) : (
@@ -1994,7 +2000,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         )}
                       </FrameHeader>
                       <FramePanel className="rounded-lg p-1">
-                        <div className={`material-recent-list ${expandedRecent ? 'expanded' : ''}`}>
+                        <div
+                          className={`material-recent-list coss-scroll ${
+                            expandedRecent ? 'expanded max-h-[260px] overflow-y-auto pr-0.5' : ''
+                          }`}
+                        >
                           {(expandedRecent ? recentItems : recentItems.slice(0, 6)).map((it) =>
                             renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'recent' })
                           )}
@@ -2080,10 +2090,12 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         </div>
                       )}
 
-                      {currentChildFolders.map((fld) => renderFolderRow(fld))}
-                      {currentFolderItems.map((it) =>
-                        renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
-                      )}
+                      <div className="max-h-[340px] overflow-y-auto pr-0.5 coss-scroll">
+                        {currentChildFolders.map((fld) => renderFolderRow(fld))}
+                        {currentFolderItems.map((it) =>
+                          renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
+                        )}
+                      </div>
 
                       {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
                         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-3 py-5 text-center text-[11.5px] text-muted-foreground">
@@ -2179,7 +2191,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </Empty>
             ) : (
               <div className="flex flex-col gap-2.5">
-                {filteredTasks.map((t) => {
+                {tasksPager.pageItems.map((t) => {
                   const leadName = memberById.get(t.leadMemberId)?.name || t.leadMemberId;
                   const runStatus = t.latestRun?.status;
                   const badgeVariant =
@@ -2252,7 +2264,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         </div>
 
                         {t.steps && t.steps.length > 0 && (
-                          <div className="space-y-1.5 border-t border-border/60 pt-2">
+                          <div className="max-h-[168px] space-y-1.5 overflow-y-auto border-t border-border/60 pt-2 pr-1 coss-scroll">
                             {t.steps.map((st) => (
                               <div key={st.id} className="flex items-start gap-2 text-xs">
                                 <span
@@ -2310,6 +2322,15 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     </Frame>
                   );
                 })}
+                <PaginationBar
+                  compact
+                  page={tasksPager.page}
+                  totalPages={tasksPager.totalPages}
+                  startIndex={tasksPager.startIndex}
+                  endIndex={tasksPager.endIndex}
+                  total={tasksPager.total}
+                  onPageChange={tasksPager.setPage}
+                />
               </div>
             )}
           </div>
@@ -2411,7 +2432,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       ) : wsBusy ? (
                         <div className="text-[11px] text-muted-foreground">读取目录中…</div>
                       ) : (
-                        <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                        <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto coss-scroll">
                           {wsEntries.map((ent) => (
                             <div
                               key={ent.relPath}
@@ -2517,7 +2538,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             : null}
                       </div>
                       {resSummary && resSummary.activeConnectors.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
+                        <div className="mt-2 flex max-h-[88px] flex-wrap gap-1.5 overflow-y-auto pr-0.5 coss-scroll">
                           {resSummary.activeConnectors.map((c) => (
                             <button
                               key={c.id || c.name}
@@ -2565,7 +2586,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   </button>
                 </FrameHeader>
                 <FramePanel className="flex flex-col gap-1 rounded-lg p-1.5">
-                  <div className="divide-y divide-border/50">
+                  <div className="max-h-[220px] divide-y divide-border/50 overflow-y-auto pr-0.5 coss-scroll">
                     {members.map((m) => (
                       <div key={m.id} className="flex items-center gap-2.5 px-2 py-2">
                         <AgentAvatar small name={m.name} platformId={m.platformId} status={m.status} />

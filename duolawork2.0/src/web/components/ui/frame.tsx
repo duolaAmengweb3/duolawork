@@ -79,7 +79,7 @@ export function FrameFooter({
 }: React.ComponentProps<"footer">): React.ReactElement {
   return (
     <footer
-      className={cn("px-5 py-4", className)}
+      className={cn("px-4 py-2.5", className)}
       data-slot="frame-panel-footer"
       {...props}
     />
