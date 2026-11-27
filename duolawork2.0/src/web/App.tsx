@@ -67,7 +67,11 @@ import {
   type WorkbenchNavPage
 } from './CollaborationSpacePanel.js';
 import { ConnectorsPage } from './ConnectorsPage.js';
-import { MarkdownView, type MarkdownImageActions } from './markdown.js';
+import {
+  MarkdownView,
+  type MarkdownImageActions,
+  type MarkdownSpaceResolver
+} from './markdown.js';
 import { MembersUsagePage } from './MembersUsagePage.js';
 import { SchedulesPage } from './SchedulesPage.js';
 import { VaultPage } from './VaultPage.js';
@@ -313,6 +317,10 @@ export function App(): React.JSX.Element {
     Record<string, Array<{ id: string; name: string; url: string }>>
   >({});
   const [uploadingChatImages, setUploadingChatImages] = useState<boolean>(false);
+  const [spaceFocusFolderReq, setSpaceFocusFolderReq] = useState<{
+    folderId: string | null;
+    seq: number;
+  } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerFileRef = useRef<HTMLInputElement | null>(null);
   const composerImageRef = useRef<HTMLInputElement | null>(null);
@@ -1418,6 +1426,48 @@ export function App(): React.JSX.Element {
     [activeThreadId, loadSpace, setSpaceSelection, showChatNotice]
   );
 
+  const chatSpaceResolver = useMemo<MarkdownSpaceResolver>(() => {
+    const folderById = new Map(spaceFolders.map((f) => [f.id, f]));
+    const folderPathById = new Map<string, string>();
+    for (const f of spaceFolders) {
+      const parts: string[] = [];
+      const seen = new Set<string>();
+      let cur: SpaceFolderRecord | undefined = f;
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        parts.unshift(cur.title);
+        cur = cur.parentFolderId ? folderById.get(cur.parentFolderId) : undefined;
+      }
+      folderPathById.set(f.id, parts.join('/'));
+    }
+    return {
+      folders: spaceFolders.map((f) => ({
+        id: f.id,
+        title: f.title,
+        path: folderPathById.get(f.id) || f.title
+      })),
+      items: spaceItems.map((it) => ({
+        kind: it.kind,
+        id: it.id,
+        title: it.title,
+        folderPath: it.folderId ? folderPathById.get(it.folderId) || '' : '',
+        previewKind: it.previewKind,
+        url: it.url
+      })),
+      onOpenItem: (it) => {
+        setSpaceOpen(true);
+        setSpaceTab('documents');
+        setSpaceSelection({ kind: it.kind, id: it.id });
+      },
+      onOpenFolder: (folderId) => {
+        setSpaceOpen(true);
+        setSpaceTab('documents');
+        setSpaceSelection(null);
+        setSpaceFocusFolderReq({ folderId, seq: Date.now() });
+      }
+    };
+  }, [spaceFolders, spaceItems, setSpaceSelection]);
+
   const uploadFilesToThreadSpace = async (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
     let uploaded = 0;
@@ -1723,6 +1773,7 @@ export function App(): React.JSX.Element {
         onTabChange={setSpaceTab}
         selection={spaceSelection}
         onSelectItem={setSpaceSelection}
+        focusFolderRequest={spaceFocusFolderReq}
         folders={spaceFolders}
         items={spaceItems}
         trash={spaceTrash}
@@ -2917,7 +2968,11 @@ export function App(): React.JSX.Element {
                                 );
                               })()}
                             <div className="message-markdown">
-                              <MarkdownView text={displayBody} imageActions={chatImageActions} />
+                              <MarkdownView
+                                text={displayBody}
+                                imageActions={chatImageActions}
+                                spaceResolver={chatSpaceResolver}
+                              />
                             </div>
                             {!isUser && m.clarificationCard && (() => {
                               const card = m.clarificationCard;

@@ -1,10 +1,173 @@
 import React, { useState } from 'react';
-import { Check, Download, ExternalLink, FolderPlus, Maximize2, X } from 'lucide-react';
+import {
+  Check,
+  Download,
+  ExternalLink,
+  File,
+  FileText,
+  Folder,
+  FolderPlus,
+  Image as ImageIcon,
+  Link2,
+  Maximize2,
+  X
+} from 'lucide-react';
 
 export interface MarkdownImageActions {
   onSaveToSpace?: (src: string, alt: string) => Promise<'saved' | 'already' | 'error'>;
   onOpenInSpace?: (fileId: string) => void;
   onDownloadLocal?: (src: string, alt: string) => void;
+}
+
+export interface MarkdownSpaceItemRef {
+  kind: 'document' | 'file' | 'link';
+  id: string;
+  title: string;
+  folderPath?: string;
+  previewKind?: string;
+  url?: string;
+}
+
+export interface MarkdownSpaceFolderRef {
+  id: string;
+  title: string;
+  path: string;
+}
+
+export interface MarkdownSpaceResolver {
+  items: MarkdownSpaceItemRef[];
+  folders: MarkdownSpaceFolderRef[];
+  onOpenItem: (item: MarkdownSpaceItemRef) => void;
+  onOpenFolder: (folderId: string) => void;
+}
+
+type ResolvedSpaceTarget =
+  | { type: 'item'; item: MarkdownSpaceItemRef }
+  | { type: 'folder'; folder: MarkdownSpaceFolderRef };
+
+function normalizeRefPath(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.?\//, '')
+    .replace(/^资料\//, '')
+    .replace(/\/+$/, '');
+}
+
+function resolveSpaceRef(
+  rawToken: string,
+  resolver?: MarkdownSpaceResolver
+): ResolvedSpaceTarget | null {
+  if (!resolver) return null;
+  const trimmed = rawToken.trim();
+  if (!trimmed || trimmed.length > 220) return null;
+  const explicitlyFolder = trimmed.endsWith('/');
+  const norm = normalizeRefPath(trimmed);
+  if (!norm) return null;
+  const lower = norm.toLowerCase();
+
+  // 1. Folder match first if token explicitly ends with `/`
+  if (explicitlyFolder) {
+    const byPath = resolver.folders.find((f) => normalizeRefPath(f.path).toLowerCase() === lower);
+    if (byPath) return { type: 'folder', folder: byPath };
+    const byTitle = resolver.folders.find((f) => f.title.trim().toLowerCase() === lower);
+    if (byTitle) return { type: 'folder', folder: byTitle };
+    return null;
+  }
+
+  // 2. Match explicit item ID (`art_...`, `fil_...`, `lnk_...`)
+  if (/^(?:art|fil|lnk)_[a-zA-Z0-9_-]{6,}$/.test(norm)) {
+    const byId = resolver.items.find((it) => it.id === norm);
+    if (byId) return { type: 'item', item: byId };
+  }
+
+  // 3. Exact full path match (`folderPath/title`)
+  for (const it of resolver.items) {
+    const fullPath = it.folderPath ? `${normalizeRefPath(it.folderPath)}/${it.title}` : it.title;
+    if (fullPath.toLowerCase() === lower) {
+      return { type: 'item', item: it };
+    }
+  }
+
+  // 4. Exact title match (or basename match when path prefix differs, e.g. moved out of subfolder)
+  const baseName = norm.includes('/') ? norm.slice(norm.lastIndexOf('/') + 1).toLowerCase() : lower;
+  for (const it of resolver.items) {
+    if (it.title.trim().toLowerCase() === lower) {
+      return { type: 'item', item: it };
+    }
+  }
+  if (baseName !== lower && baseName.length >= 3) {
+    for (const it of resolver.items) {
+      if (it.title.trim().toLowerCase() === baseName) {
+        return { type: 'item', item: it };
+      }
+    }
+  }
+
+  // 5. Match document title without `.md` extension (avoid short generic words)
+  if (lower.length >= 4) {
+    for (const it of resolver.items) {
+      const noExt = it.title.trim().toLowerCase().replace(/\.md$/i, '');
+      if (noExt.length >= 4 && noExt === lower) {
+        return { type: 'item', item: it };
+      }
+    }
+  }
+
+  // 6. Match folder by path or title
+  const fldByPath = resolver.folders.find((f) => normalizeRefPath(f.path).toLowerCase() === lower);
+  if (fldByPath) return { type: 'folder', folder: fldByPath };
+  if (lower.length >= 2) {
+    const fldByTitle = resolver.folders.find((f) => f.title.trim().toLowerCase() === lower);
+    if (fldByTitle) return { type: 'folder', folder: fldByTitle };
+  }
+
+  return null;
+}
+
+function renderSpaceRefChip(
+  target: ResolvedSpaceTarget,
+  displayText: string,
+  resolver: MarkdownSpaceResolver,
+  key: string
+): React.JSX.Element {
+  if (target.type === 'folder') {
+    return (
+      <button
+        key={key}
+        type="button"
+        className="dw-space-ref-chip is-folder"
+        data-space-ref-folder={target.folder.id}
+        onClick={() => resolver.onOpenFolder(target.folder.id)}
+        title={`点击在右侧文档管理打开文件夹「${target.folder.path}」`}
+      >
+        <Folder size={12} />
+        <span>{displayText}</span>
+      </button>
+    );
+  }
+  const it = target.item;
+  const Icon =
+    it.kind === 'document'
+      ? FileText
+      : it.kind === 'link'
+        ? Link2
+        : it.previewKind === 'image'
+          ? ImageIcon
+          : File;
+  return (
+    <button
+      key={key}
+      type="button"
+      className="dw-space-ref-chip"
+      data-space-ref-item={`${it.kind}:${it.id}`}
+      onClick={() => resolver.onOpenItem(it)}
+      title={`点击在右侧协作空间直接打开「${it.title}」`}
+    >
+      <Icon size={12} />
+      <span>{displayText}</span>
+    </button>
+  );
 }
 
 function isAllowedImageSrc(raw: string): boolean {
@@ -192,11 +355,13 @@ function ChatImageCard({
 function renderInline(
   text: string,
   keyPrefix: string,
-  imageActions?: MarkdownImageActions
+  imageActions?: MarkdownImageActions,
+  spaceResolver?: MarkdownSpaceResolver,
+  depth = 0
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   const tokenRegex =
-    /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[([^\]]*)\]\(([^\s)]+)\)|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
+    /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[([^\]]*)\]\(([^\s)]+)\)|\[([^\]]+)\]\(((?:https?:\/\/|\/api\/v2\/(?:space\/files|chat-images)\/)[^\s)]+)\)|《([^《》\n]{2,140})》|「([^「」\n]{2,140})」|(https?:\/\/[^\s<>()[\]"'，。；、！？）】》]+))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let part = 0;
@@ -207,9 +372,22 @@ function renderInline(
     }
     const token = match[0];
     if (token.startsWith('`') && token.endsWith('`')) {
-      out.push(<code key={`${keyPrefix}-c-${part++}`}>{token.slice(1, -1)}</code>);
+      const inner = token.slice(1, -1);
+      const resolved = resolveSpaceRef(inner, spaceResolver);
+      if (resolved && spaceResolver) {
+        out.push(renderSpaceRefChip(resolved, inner, spaceResolver, `${keyPrefix}-sr-${part++}`));
+      } else {
+        out.push(<code key={`${keyPrefix}-c-${part++}`}>{inner}</code>);
+      }
     } else if (token.startsWith('**') && token.endsWith('**')) {
-      out.push(<strong key={`${keyPrefix}-b-${part++}`}>{token.slice(2, -2)}</strong>);
+      const inner = token.slice(2, -2);
+      out.push(
+        <strong key={`${keyPrefix}-b-${part++}`}>
+          {depth < 2
+            ? renderInline(inner, `${keyPrefix}-bi-${part}`, imageActions, spaceResolver, depth + 1)
+            : inner}
+        </strong>
+      );
     } else if (token.startsWith('*') && token.endsWith('*')) {
       out.push(<em key={`${keyPrefix}-i-${part++}`}>{token.slice(1, -1)}</em>);
     } else if (token.startsWith('![') && match[3] && isAllowedImageSrc(match[3])) {
@@ -222,11 +400,56 @@ function renderInline(
         />
       );
     } else if (match[4] && match[5]) {
+      const href = match[5];
+      const spaceFileId = extractSpaceFileId(href);
+      if (spaceFileId && spaceResolver) {
+        const matchedItem = spaceResolver.items.find((it) => it.kind === 'file' && it.id === spaceFileId);
+        if (matchedItem) {
+          out.push(
+            renderSpaceRefChip(
+              { type: 'item', item: matchedItem },
+              match[4],
+              spaceResolver,
+              `${keyPrefix}-ml-${part++}`
+            )
+          );
+        } else {
+          out.push(
+            <a key={`${keyPrefix}-a-${part++}`} href={href} target="_blank" rel="noreferrer">
+              {match[4]}
+            </a>
+          );
+        }
+      } else {
+        out.push(
+          <a key={`${keyPrefix}-a-${part++}`} href={href} target="_blank" rel="noreferrer">
+            {match[4]}
+          </a>
+        );
+      }
+    } else if (match[6] || match[7]) {
+      const quoted = (match[6] || match[7] || '').trim();
+      const resolved = resolveSpaceRef(quoted, spaceResolver);
+      if (resolved && spaceResolver) {
+        out.push(renderSpaceRefChip(resolved, quoted, spaceResolver, `${keyPrefix}-qr-${part++}`));
+      } else {
+        out.push(token);
+      }
+    } else if (match[8]) {
+      const cleanedUrl = match[8].replace(/[.,;:!?)]+$/, '');
+      const trailing = match[8].slice(cleanedUrl.length);
       out.push(
-        <a key={`${keyPrefix}-a-${part++}`} href={match[5]} target="_blank" rel="noreferrer">
-          {match[4]}
+        <a
+          key={`${keyPrefix}-u-${part++}`}
+          href={cleanedUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="dw-bare-link"
+        >
+          {cleanedUrl}
         </a>
       );
+      if (trailing) out.push(trailing);
     } else {
       out.push(token);
     }
@@ -242,11 +465,13 @@ function renderInline(
 export function MarkdownView({
   text,
   className = '',
-  imageActions
+  imageActions,
+  spaceResolver
 }: {
   text: string;
   className?: string;
   imageActions?: MarkdownImageActions;
+  spaceResolver?: MarkdownSpaceResolver;
 }): React.JSX.Element {
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
@@ -299,7 +524,7 @@ export function MarkdownView({
     const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      const body = renderInline(headingMatch[2].trim(), `h-${key}`, imageActions);
+      const body = renderInline(headingMatch[2].trim(), `h-${key}`, imageActions, spaceResolver);
       if (level === 1) blocks.push(<h1 key={`blk-${key++}`}>{body}</h1>);
       else if (level === 2) blocks.push(<h2 key={`blk-${key++}`}>{body}</h2>);
       else blocks.push(<h3 key={`blk-${key++}`}>{body}</h3>);
@@ -317,7 +542,7 @@ export function MarkdownView({
       blocks.push(
         <blockquote key={`blk-${key++}`}>
           {qLines.map((ql, idx) => (
-            <p key={idx}>{renderInline(ql, `q-${key}-${idx}`, imageActions)}</p>
+            <p key={idx}>{renderInline(ql, `q-${key}-${idx}`, imageActions, spaceResolver)}</p>
           ))}
         </blockquote>
       );
@@ -334,7 +559,7 @@ export function MarkdownView({
       blocks.push(
         <ul key={`blk-${key++}`}>
           {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `ul-${key}-${idx}`, imageActions)}</li>
+            <li key={idx}>{renderInline(it, `ul-${key}-${idx}`, imageActions, spaceResolver)}</li>
           ))}
         </ul>
       );
@@ -351,7 +576,7 @@ export function MarkdownView({
       blocks.push(
         <ol key={`blk-${key++}`}>
           {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it, `ol-${key}-${idx}`, imageActions)}</li>
+            <li key={idx}>{renderInline(it, `ol-${key}-${idx}`, imageActions, spaceResolver)}</li>
           ))}
         </ol>
       );
@@ -381,7 +606,7 @@ export function MarkdownView({
     }
     blocks.push(
       <p key={`blk-${key++}`}>
-        {renderInline(pLines.join(' '), `p-${key}`, imageActions)}
+        {renderInline(pLines.join(' '), `p-${key}`, imageActions, spaceResolver)}
       </p>
     );
   }
