@@ -316,7 +316,7 @@ export class ExecutionNodeHub {
         .prepare(
           `UPDATE v2_members
            SET status = 'offline', status_message = '所属执行节点离线', updated_at = ?
-           WHERE node_id = ? AND driver_kind = 'remote-node'`
+           WHERE node_id = ? AND driver_kind = 'remote-node' AND status != 'auth_required'`
         )
         .run(nowIso, nodeId);
     } catch {
@@ -340,7 +340,8 @@ export class ExecutionNodeHub {
   private async handleNodeFrame(nodeId: string, ws: WebSocket, msg: any): Promise<void> {
     const type = String(msg?.type || '');
     const live = this.liveSockets.get(nodeId);
-    if (live) live.lastPongAt = Date.now();
+    if (live?.ws !== ws) return;
+    live.lastPongAt = Date.now();
 
     if (type === 'node.ping') {
       this.db.sqlite
@@ -397,6 +398,9 @@ export class ExecutionNodeHub {
           continue;
         }
         const existing = this.db.getMember(m.id);
+        // A hello advertises configured members. Only a checked login or a new
+        // successful turn clears a credential failure for the same node.
+        const keepAuthFailure = existing?.nodeId === nodeId && existing.status === 'auth_required';
         this.db.upsertMember({
           id: m.id,
           name: m.name,
@@ -410,8 +414,8 @@ export class ExecutionNodeHub {
             supportsCancel: m.capabilities?.supportsCancel ?? true,
             maxConcurrentRuns: m.capabilities?.maxConcurrentRuns ?? 2
           },
-          status: m.status ?? 'ready',
-          statusMessage: m.statusMessage || `在线 (${node?.name || nodeId})`,
+          status: keepAuthFailure ? 'auth_required' : m.status ?? 'ready',
+          statusMessage: keepAuthFailure ? existing.statusMessage : m.statusMessage || `在线 (${node?.name || nodeId})`,
           config: {
             ...(existing?.config ?? {}),
             ...(m.config ?? {}),
@@ -507,6 +511,14 @@ export class ExecutionNodeHub {
       const turn = this.activeTurns.get(attemptId);
       const usage: ProviderUsageMetrics = msg.providerUsage ?? emptyUnobservableUsage();
       if (turn) {
+        const recovered = this.db.sqlite.prepare(
+          `UPDATE v2_members SET status = 'ready', status_message = '成员已实际回传结果', updated_at = ?
+           WHERE node_id = ? AND status = 'auth_required' AND EXISTS (
+             SELECT 1 FROM v2_dispatch_attempts a WHERE a.id = ? AND a.member_id = v2_members.id
+             AND a.dispatched_at >= v2_members.updated_at
+           )`
+        ).run(new Date().toISOString(), nodeId, attemptId);
+        if (recovered.changes) this.onMembersChanged?.();
         this.activeTurns.delete(attemptId);
         turn.resolve({
           text: String(msg.text ?? ''),
@@ -721,7 +733,7 @@ export class ExecutionNodeHub {
           message: res.message ? `${res.message} (${node.name})` : `在线 (${node.name})`
         };
       }
-      return { status: 'ready', message: `在线 (${node.name})` };
+      return { status: 'offline', message: `节点已连接，未取得成员健康状态 (${node.name})` };
     } catch {
       return { status: 'offline', message: `成员健康探测超时 (${node.name})` };
     }
