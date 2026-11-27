@@ -1275,7 +1275,7 @@ export function App(): React.JSX.Element {
     if (resumingMessage) return;
     setResumingMessage(message.id);
     try {
-      const res = await fetch(`/api/v2/threads/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}/continue`, { method: 'POST' });
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(message.threadId)}/messages/${encodeURIComponent(message.id)}/continue`, { method: 'POST', signal: AbortSignal.timeout(30_000) });
       if (!res.ok) throw new Error();
       const result = await res.json();
       if (activeThreadIdRef.current !== message.threadId) return;

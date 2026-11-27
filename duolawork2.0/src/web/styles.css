@@ -939,6 +939,8 @@ html.dark {
   cursor: pointer;
 }
 .turn-tool-chevron {
+  width: 15px;
+  justify-content: center;
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
