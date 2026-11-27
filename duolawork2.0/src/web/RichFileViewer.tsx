@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { highlightCodeLine, MarkdownView } from './markdown.js';
+import { useI18n } from './lib/i18n.js';
 
 import { detectTextFileFormat } from '../shared/file-format.js';
 export { detectTextFileFormat } from '../shared/file-format.js';
@@ -62,6 +63,7 @@ export function RichTextFileViewer({
   error?: boolean;
   readerStyle?: boolean;
 }): React.JSX.Element {
+  const { L } = useI18n();
   const { format, lang } = useMemo(() => detectTextFileFormat(title, mimeType), [title, mimeType]);
   const [viewMode, setViewMode] = useState<'rendered' | 'source'>('rendered');
   const [copied, setCopied] = useState(false);
@@ -95,27 +97,33 @@ export function RichTextFileViewer({
   };
 
   if (loading) {
-    return <pre className="material-file-text">正在读取文件内容…</pre>;
+    return <pre className="material-file-text">{L('正在读取文件内容…', 'Loading file content…')}</pre>;
   }
   if (error) {
-    return <pre className="material-file-text">读取文件内容失败</pre>;
+    return <pre className="material-file-text">{L('读取文件内容失败', 'Failed to read file content')}</pre>;
   }
 
   const canToggleRendered = format === 'markdown' || format === 'html' || format === 'csv' || (format === 'json' && Boolean(prettyJson));
   const renderedLabel =
     format === 'markdown'
-      ? '排版预览'
+      ? L('排版预览', 'Formatted')
       : format === 'html'
-        ? '网页预览'
+        ? L('网页预览', 'Preview')
         : format === 'csv'
-          ? '表格预览'
-          : '格式化';
+          ? L('表格预览', 'Table')
+          : L('格式化', 'Formatted');
 
   const renderToolbar = () => (
     <div className="mb-2 flex items-center justify-between gap-2">
       <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
         {lang}
-        {format === 'csv' && csvRows.length > 0 ? ` · ${csvRows.length > 501 ? '仅显示前 500 行，完整内容可下载' : (csvRows.length - 1) + ' 行'}` : ''}
+        {format === 'csv' && csvRows.length > 0
+          ? ` · ${
+              csvRows.length > 501
+                ? L('仅显示前 500 行，完整内容可下载', 'Showing first 500 rows; download for full file')
+                : `${csvRows.length - 1} ${L('行', 'rows')}`
+            }`
+          : ''}
       </span>
       <div className="flex items-center gap-1.5">
         {canToggleRendered && (
@@ -140,7 +148,7 @@ export function RichTextFileViewer({
                   : 'rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground'
               }
             >
-              源码
+              {L('源码', 'Source')}
             </button>
           </div>
         )}
@@ -150,7 +158,7 @@ export function RichTextFileViewer({
           className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           {copied ? <Check size={11} /> : <Copy size={11} />}
-          <span>{copied ? '已复制' : '复制'}</span>
+          <span>{copied ? L('已复制', 'Copied') : L('复制', 'Copy')}</span>
         </button>
       </div>
     </div>
@@ -163,7 +171,7 @@ export function RichTextFileViewer({
         {renderToolbar()}
         <div className={readerStyle ? '' : 'rounded-xl border border-border bg-card p-4'}>
           <MarkdownView
-            text={content || '(空文档)'}
+            text={content || L('(空文档)', '(Empty document)')}
             className={readerStyle ? 'dw-reader-prose' : ''}
           />
         </div>
@@ -198,7 +206,7 @@ export function RichTextFileViewer({
               <tr>
                 {header.map((col, idx) => (
                   <th key={idx} className="text-left">
-                    {col || `列 ${idx + 1}`}
+                    {col || L(`列 ${idx + 1}`, `Col ${idx + 1}`)}
                   </th>
                 ))}
               </tr>
@@ -220,7 +228,7 @@ export function RichTextFileViewer({
 
   // 4. JSON pretty-printed or Code file with line numbers
   if ((format === 'json' && viewMode === 'rendered' && prettyJson) || format === 'code') {
-    const displayText = format === 'json' && prettyJson ? prettyJson : content || '(空文件)';
+    const displayText = format === 'json' && prettyJson ? prettyJson : content || L('(空文件)', '(Empty file)');
     const lines = displayText.replace(/\r\n/g, '\n').split('\n');
     return (
       <div className="flex flex-col">
@@ -249,7 +257,7 @@ export function RichTextFileViewer({
   return (
     <div className="flex flex-col">
       {renderToolbar()}
-      <pre className="material-file-text coss-scroll">{content || '(空文件)'}</pre>
+      <pre className="material-file-text coss-scroll">{content || L('(空文件)', '(Empty file)')}</pre>
     </div>
   );
 }

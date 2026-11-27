@@ -62,22 +62,22 @@ interface RecentAttempt {
   dispatchedAt: string;
 }
 
-const ATTEMPT_KIND_LABELS: Record<string, string> = {
-  thread_message: '对话',
-  task_step: '任务步骤',
-  lead_review: '负责人核验',
-  lead_final: '最终汇总'
+const ATTEMPT_KIND_LABELS: Record<string, { zh: string; en: string }> = {
+  thread_message: { zh: '对话', en: 'Chat' },
+  task_step: { zh: '任务步骤', en: 'Task Step' },
+  lead_review: { zh: '负责人核验', en: 'Lead Review' },
+  lead_final: { zh: '最终汇总', en: 'Final Summary' }
 };
 
-const ATTEMPT_STATUS_LABELS: Record<string, string> = {
-  succeeded: '成功',
-  failed: '失败',
-  timed_out: '超时',
-  running: '执行中',
-  dispatched: '已派发',
-  prepared: '准备中',
-  reconciling: '对账中',
-  late_ignored: '超时后忽略'
+const ATTEMPT_STATUS_LABELS: Record<string, { zh: string; en: string }> = {
+  succeeded: { zh: '成功', en: 'Succeeded' },
+  failed: { zh: '失败', en: 'Failed' },
+  timed_out: { zh: '超时', en: 'Timed out' },
+  running: { zh: '执行中', en: 'Running' },
+  dispatched: { zh: '已派发', en: 'Dispatched' },
+  prepared: { zh: '准备中', en: 'Prepared' },
+  reconciling: { zh: '对账中', en: 'Reconciling' },
+  late_ignored: { zh: '超时后忽略', en: 'Late (ignored)' }
 };
 
 const USAGE_BAR_COLORS = [
@@ -141,7 +141,7 @@ export function MembersUsagePage({
   const [error, setError] = useState<string>('');
   const [memoryNotice, setMemoryNotice] = useState<string>('');
   const [syncingMemory, setSyncingMemory] = useState<boolean>(false);
-  const { t } = useI18n();
+  const { locale, t, L } = useI18n();
   const [discoverData, setDiscoverData] = useState<{
     mode: 'local' | 'cloud';
     candidates: DiscoveredAgentCandidate[];
@@ -175,7 +175,7 @@ export function MembersUsagePage({
   useEffect(() => {
     let active = true;
     const report = () => {
-      if (active) setError('暂时无法更新成员信息');
+      if (active) setError(L('暂时无法更新成员信息', 'Unable to refresh member info'));
     };
     void loadUsage().catch(report);
     void loadSessions().catch(report);
@@ -187,7 +187,7 @@ export function MembersUsagePage({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadUsage, loadSessions, loadDiscover, members.length]);
+  }, [loadUsage, loadSessions, loadDiscover, members.length, L]);
 
   const handleActivateDiscovered = async (candidate: DiscoveredAgentCandidate) => {
     setActivatingId(candidate.id);
@@ -200,10 +200,10 @@ export function MembersUsagePage({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.message || '激活成员失败');
+        setError(data.message || L('激活成员失败', 'Failed to activate member'));
         return;
       }
-      toast.success(`已接入 ${candidate.name}`);
+      toast.success(L(`已接入 ${candidate.name}`, `Connected ${candidate.name}`));
       await Promise.all([onReloadBootstrap(), loadDiscover(), loadUsage(true)]);
     } finally {
       setActivatingId(null);
@@ -219,21 +219,21 @@ export function MembersUsagePage({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.message || '生成节点配对码失败');
+      setError(data.message || L('生成节点配对码失败', 'Failed to generate pairing code'));
       return;
     }
     setNodePairInfo({ code: data.code, expiresAt: data.expiresAt, kind });
-    toast.success('已生成 5 分钟有效的节点配对码');
+    toast.success(L('已生成 5 分钟有效的节点配对码', 'Generated 5-min node pairing code'));
   };
 
   const handleRevokeNode = async (nodeId: string) => {
     setError('');
     const res = await fetch(`/api/v2/nodes/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
     if (!res.ok) {
-      setError('移除节点失败');
+      setError(L('移除节点失败', 'Failed to revoke node'));
       return;
     }
-    toast.success('已吊销执行节点');
+    toast.success(L('已吊销执行节点', 'Revoked execution node'));
     await onReloadBootstrap();
   };
 
@@ -241,12 +241,12 @@ export function MembersUsagePage({
     const res = await fetch('/api/v2/auth/magic-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceName: '移动端/新设备' })
+      body: JSON.stringify({ deviceName: L('移动端/新设备', 'Mobile / New Device') })
     });
     if (!res.ok) return;
     const data = await res.json();
     setLoginMagicInfo({ code: data.code, expiresAt: data.expiresAt });
-    toast.success('已生成新设备一次性登录码');
+    toast.success(L('已生成新设备一次性登录码', 'Generated one-time login code'));
   };
 
   const handleRevokeSession = async (sessionId: string) => {
@@ -256,7 +256,7 @@ export function MembersUsagePage({
     if (!res.ok) return;
     const data = await res.json();
     views.put('/api/v2/auth/sessions', { sessions: data.sessions || [] });
-    toast.success('设备会话已下线');
+    toast.success(L('设备会话已下线', 'Signed out device session'));
   };
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -291,13 +291,13 @@ export function MembersUsagePage({
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.message || '接入成员失败');
+      setError(data.message || L('接入成员失败', 'Failed to add member'));
       return;
     }
     setShowAdd(false);
     setName('');
     setCommandOrUrl('');
-    toast.success(`已接入成员 ${name.trim()}`);
+    toast.success(L(`已接入成员 ${name.trim()}`, `Added member ${name.trim()}`));
     await onReloadBootstrap();
     await loadUsage(true);
   };
@@ -309,39 +309,39 @@ export function MembersUsagePage({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(data.message || '移除成员失败');
+      setError(data.message || L('移除成员失败', 'Failed to remove member'));
       return;
     }
-    toast.success(`已移除成员 ${member.name}`);
+    toast.success(L(`已移除成员 ${member.name}`, `Removed member ${member.name}`));
     await onReloadBootstrap();
   };
 
   const driverLabels: Record<string, string> = {
-    'codex-app-server': '本机 Codex',
-    'acp-stdio': '本机 ACP',
-    'claude-cli': '本机 Claude Code',
-    'remote-node': '跨机节点',
-    'remote-bridge': '远端桥接',
+    'codex-app-server': L('本机 Codex', 'Local Codex'),
+    'acp-stdio': L('本机 ACP', 'Local ACP'),
+    'claude-cli': L('本机 Claude Code', 'Local Claude Code'),
+    'remote-node': L('跨机节点', 'Remote Node'),
+    'remote-bridge': L('远端桥接', 'Remote Bridge'),
     'webhook-bot': 'Webhook',
-    mock: '模拟运行端'
+    mock: L('模拟运行端', 'Mock Runtime')
   };
 
   const statusLabels: Record<string, string> = {
-    ready: '在线就绪',
-    busy: '执行中',
-    auth_required: '待验证',
-    offline: '离线'
+    ready: L('在线就绪', 'Online'),
+    busy: L('执行中', 'Busy'),
+    auth_required: L('待验证', 'Needs auth'),
+    offline: L('离线', 'Offline')
   };
 
   const dispatchLabels: Record<string, string> = {
-    succeeded: '已收到回执',
-    failed: '失败',
-    timed_out: '等待超时',
-    late_ignored: '迟到回执已忽略',
-    prepared: '准备中',
-    dispatched: '已投递',
-    running: '执行中',
-    reconciling: '正在核对回执'
+    succeeded: L('已收到回执', 'Receipt received'),
+    failed: L('失败', 'Failed'),
+    timed_out: L('等待超时', 'Timed out'),
+    late_ignored: L('迟到回执已忽略', 'Late receipt ignored'),
+    prepared: L('准备中', 'Prepared'),
+    dispatched: L('已投递', 'Dispatched'),
+    running: L('执行中', 'Running'),
+    reconciling: L('正在核对回执', 'Reconciling')
   };
 
   const readyCount = members.filter((m) => m.status === 'ready').length;
@@ -373,8 +373,11 @@ export function MembersUsagePage({
       }));
       const top =
         ranked[0] && tok > 0
-          ? `${ranked[0].name} 占比 ${Math.round((ranked[0].tokens / tok) * 100)}%`
-          : '按成员实时汇总';
+          ? L(
+              `${ranked[0].name} 占比 ${Math.round((ranked[0].tokens / tok) * 100)}%`,
+              `${ranked[0].name} share ${Math.round((ranked[0].tokens / tok) * 100)}%`
+            )
+          : L('按成员实时汇总', 'Live per-member rollup');
       return {
         totalTokens: tok,
         totalDispatches: disp,
@@ -412,7 +415,7 @@ export function MembersUsagePage({
                 {t('membersPageTitle')}
               </h1>
               <Badge variant="outline" size="sm" className="font-mono tabular-nums">
-                {readyCount} / {members.length} 就绪
+                {L(`${readyCount} / ${members.length} 就绪`, `${readyCount} / ${members.length} Ready`)}
               </Badge>
             </div>
             <p className="m-0 text-[13px] text-muted-foreground">
@@ -432,9 +435,12 @@ export function MembersUsagePage({
                   try {
                     const res = await onSyncProtocolMemory();
                     if (res) {
-                      const msg = `已触发全员协作记忆更新（${res.memberCount} 位成员 · 协议版本 ${res.version}），将在下次对话响应时自动注入最新规范。`;
+                      const msg = L(
+                        `已触发全员协作记忆更新（${res.memberCount} 位成员 · 协议版本 ${res.version}），将在下次对话响应时自动注入最新规范。`,
+                        `Synced collaboration memory for ${res.memberCount} members (protocol ${res.version}). Updates inject on next reply.`
+                      );
                       setMemoryNotice(msg);
-                      toast.success(`已同步 ${res.memberCount} 位成员协作记忆 (${res.version})`);
+                      toast.success(L(`已同步 ${res.memberCount} 位成员协作记忆 (${res.version})`, `Synced ${res.memberCount} members (${res.version})`));
                     }
                   } finally {
                     setSyncingMemory(false);
@@ -442,7 +448,7 @@ export function MembersUsagePage({
                 }}
               >
                 <Sparkles size={13} />
-                <span>{syncingMemory ? '更新中…' : '同步全员新版协作记忆'}</span>
+                <span>{syncingMemory ? L('更新中…', 'Syncing…') : L('同步全员新版协作记忆', 'Sync Protocol Memory')}</span>
               </Button>
             )}
             <Button
@@ -450,16 +456,16 @@ export function MembersUsagePage({
               size="sm"
               onClick={() => {
                 void onRefreshMembers();
-                void loadUsage(true).catch(() => setError('暂时无法更新成员信息'));
+                void loadUsage(true).catch(() => setError(L('暂时无法更新成员信息', 'Unable to refresh member info')));
               }}
               disabled={refreshingMembers}
             >
               <RefreshCw size={13} className={refreshingMembers ? 'is-refreshing' : ''} />
-              <span>刷新检测</span>
+              <span>{L('刷新检测', 'Refresh')}</span>
             </Button>
             <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
               <Plus size={14} />
-              <span>接入新成员</span>
+              <span>{L('接入新成员', 'Add Member')}</span>
             </Button>
           </div>
         </header>
@@ -470,7 +476,7 @@ export function MembersUsagePage({
             className="flex items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-2.5 text-xs text-destructive-foreground"
           >
             <span>{error}</span>
-            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label="关闭错误">
+            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label={L('关闭错误', 'Dismiss error')}>
               <X size={13} />
             </Button>
           </div>
@@ -486,7 +492,7 @@ export function MembersUsagePage({
               variant="ghost"
               size="icon-xs"
               onClick={() => setMemoryNotice('')}
-              aria-label="关闭提示"
+              aria-label={L('关闭提示', 'Dismiss notice')}
             >
               <X size={13} />
             </Button>
@@ -498,31 +504,31 @@ export function MembersUsagePage({
             <FramePanel className="p-4 sm:p-5">
               <form onSubmit={handleAddMember} className="flex flex-col gap-4 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">登记新 Agent / Bot 成员</span>
+                  <span className="text-sm font-semibold text-foreground">{L('登记新 Agent / Bot 成员', 'Register Agent / Bot Member')}</span>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => setShowAdd(false)}
-                    aria-label="关闭接入表单"
+                    aria-label={L('关闭接入表单', 'Close form')}
                   >
                     <X size={14} />
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">成员备注名称</span>
+                    <span className="text-muted-foreground">{L('成员备注名称', 'Display Name')}</span>
                     <Input
                       nativeInput
                       type="text"
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="例如：DeepSeek 研发"
+                      placeholder={L('例如：DeepSeek 研发', 'e.g., Codex Engineer')}
                       className="dw-input-coss"
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">驱动协议</span>
+                    <span className="text-muted-foreground">{L('驱动协议', 'Runtime Driver')}</span>
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {(
                         [
@@ -559,7 +565,7 @@ export function MembersUsagePage({
                   </label>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-muted-foreground">
-                      {driverKind === 'webhook-bot' ? 'Webhook URL' : '可执行命令路径（可选）'}
+                      {driverKind === 'webhook-bot' ? 'Webhook URL' : L('可执行命令路径（可选）', 'Executable path (optional)')}
                     </span>
                     <Input
                       nativeInput
@@ -574,10 +580,10 @@ export function MembersUsagePage({
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>
-                    取消
+                    {L('取消', 'Cancel')}
                   </Button>
                   <Button type="submit" size="sm">
-                    确认接入
+                    {L('确认接入', 'Add Member')}
                   </Button>
                 </div>
               </form>
@@ -641,14 +647,22 @@ export function MembersUsagePage({
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <AgentAvatar small name={c.name} platformId={c.platformId} />
-                            <span className="truncate font-semibold text-foreground">{c.name}</span>
+                            <span className="truncate font-semibold text-foreground">
+                              {locale === 'en' ? c.name.replace(' (本机)', ' (Local)') : c.name}
+                            </span>
                           </div>
                           <Badge variant={statusBadgeVariant} size="sm">
                             {statusLabel}
                           </Badge>
                         </div>
                         <p className="m-0 text-[11.5px] leading-relaxed text-muted-foreground">
-                          {c.hint}
+                          {locale === 'en'
+                            ? c.status === 'ready'
+                              ? `Detected locally (${c.binaryName}) and authenticated — ready to activate.`
+                              : c.status === 'needs_login'
+                                ? `Installed (${c.binaryName}); run ${c.loginCommand} to finish authentication.`
+                                : `Not detected on this machine; install via ${c.installCommand} and refresh.`
+                            : c.hint}
                         </p>
                         {c.binaryPath && (
                           <div className="truncate font-mono text-[10.5px] text-muted-foreground/85" title={c.binaryPath}>
@@ -663,7 +677,7 @@ export function MembersUsagePage({
                             type="button"
                             onClick={() => {
                               void navigator.clipboard?.writeText(cmdToCopy);
-                              toast.success(`已复制命令: ${cmdToCopy}`);
+                              toast.success(L(`已复制命令: ${cmdToCopy}`, `Copied command: ${cmdToCopy}`));
                             }}
                             className="inline-flex min-w-0 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-1 font-mono text-[10.5px] text-foreground hover:bg-muted"
                             title={cmdToCopy}
@@ -705,29 +719,29 @@ export function MembersUsagePage({
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
             <FramePanel className="flex flex-col justify-between gap-2.5 p-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>在线可派单</span>
+                <span>{L('在线可派单', 'Online & Ready')}</span>
                 <Badge variant={readyCount > 0 ? 'success' : 'secondary'} size="sm">
-                  {readyCount === members.length ? '全员就绪' : `待处理 ${attentionCount}`}
+                  {readyCount === members.length ? L('全员就绪', 'All ready') : L(`待处理 ${attentionCount}`, `${attentionCount} attention`)}
                 </Badge>
               </div>
               <div className="flex items-baseline gap-1.5 font-mono tabular-nums">
                 <span className="text-2xl font-semibold tracking-tight text-foreground">
                   {readyCount}
                 </span>
-                <span className="text-xs text-muted-foreground">/ {members.length} 位成员</span>
+                <span className="text-xs text-muted-foreground">/ {L(`${members.length} 位成员`, `${members.length} members`)}</span>
               </div>
               <CategoryBar
                 segments={[
-                  { value: readyCount, color: 'bg-emerald-500', label: `在线 ${readyCount}` },
-                  { value: authReqCount, color: 'bg-amber-500', label: `待验证 ${authReqCount}` },
-                  { value: offlineCount, color: 'bg-neutral-400/50', label: `离线 ${offlineCount}` }
+                  { value: readyCount, color: 'bg-emerald-500', label: L(`在线 ${readyCount}`, `Ready ${readyCount}`) },
+                  { value: authReqCount, color: 'bg-amber-500', label: L(`待验证 ${authReqCount}`, `Auth ${authReqCount}`) },
+                  { value: offlineCount, color: 'bg-neutral-400/50', label: L(`离线 ${offlineCount}`, `Offline ${offlineCount}`) }
                 ]}
               />
             </FramePanel>
 
             <FramePanel className="flex flex-col justify-between gap-2.5 p-4">
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>累计可观测 Token</span>
+                <span>{L('累计可观测 Token', 'Observed Tokens')}</span>
                 <span className="truncate text-[11px]">{topConsumerLabel}</span>
               </div>
               <div className="flex items-baseline gap-2 font-mono tabular-nums">
@@ -735,35 +749,35 @@ export function MembersUsagePage({
                   {totalTokens > 0 ? formatCompactTokens(totalTokens) : '—'}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {totalDispatches} 派发 · {totalTurns} 轮
+                  {L(`${totalDispatches} 派发 · ${totalTurns} 轮`, `${totalDispatches} dispatches · ${totalTurns} turns`)}
                 </span>
               </div>
               <CategoryBar
                 segments={
                   tokenSegments.length > 0
                     ? tokenSegments
-                    : [{ value: 1, color: 'bg-foreground/10', label: '暂无 Token 消耗' }]
+                    : [{ value: 1, color: 'bg-foreground/10', label: L('暂无 Token 消耗', 'No token usage yet') }]
                 }
               />
             </FramePanel>
 
             <FramePanel className="flex flex-col justify-between gap-2.5 p-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>跨机执行节点</span>
+                <span>{L('跨机执行节点', 'Remote Nodes')}</span>
                 <Badge variant={onlineNodesCount > 0 ? 'success' : 'secondary'} size="sm">
-                  {onlineNodesCount > 0 ? '心跳正常' : '未连接'}
+                  {onlineNodesCount > 0 ? L('心跳正常', 'Healthy') : L('未连接', 'Disconnected')}
                 </Badge>
               </div>
               <div className="flex items-baseline gap-1.5 font-mono tabular-nums">
                 <span className="text-2xl font-semibold tracking-tight text-foreground">
                   {onlineNodesCount}
                 </span>
-                <span className="text-xs text-muted-foreground">/ {nodes.length} 在线</span>
+                <span className="text-xs text-muted-foreground">/ {L(`${nodes.length} 在线`, `${nodes.length} online`)}</span>
               </div>
               <div className="truncate text-[11px] text-muted-foreground">
                 {nodes.length > 0
                   ? nodes.map((n) => n.name).join(' · ')
-                  : '支持配对 VPS 或个人电脑节点'}
+                  : L('支持配对 VPS 或个人电脑节点', 'Supports pairing VPS or personal computers')}
               </div>
             </FramePanel>
           </div>
@@ -777,9 +791,9 @@ export function MembersUsagePage({
               onValueChange={(v) => setStatusFilter(v as 'all' | 'ready' | 'attention')}
             >
               <TabsList size="sm">
-                <TabsTab value="all">全部 ({members.length})</TabsTab>
-                <TabsTab value="ready">在线 ({readyCount})</TabsTab>
-                <TabsTab value="attention">待处理 ({attentionCount})</TabsTab>
+                <TabsTab value="all">{L(`全部 (${members.length})`, `All (${members.length})`)}</TabsTab>
+                <TabsTab value="ready">{L(`在线 (${readyCount})`, `Ready (${readyCount})`)}</TabsTab>
+                <TabsTab value="attention">{L(`待处理 (${attentionCount})`, `Attention (${attentionCount})`)}</TabsTab>
               </TabsList>
             </Tabs>
 
@@ -794,14 +808,14 @@ export function MembersUsagePage({
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索成员名称或平台…"
+                placeholder={L('搜索成员名称或平台…', 'Search members or platforms…')}
                 className="pl-7 [&_input]:pl-7"
               />
               {query && (
                 <button
                   type="button"
                   onClick={() => setQuery('')}
-                  aria-label="清空搜索"
+                  aria-label={L('清空搜索', 'Clear search')}
                   className="absolute right-2 z-10 text-muted-foreground hover:text-foreground"
                 >
                   <X size={13} />
@@ -817,19 +831,19 @@ export function MembersUsagePage({
                   <EmptyMedia variant="icon">
                     <Users />
                   </EmptyMedia>
-                  <EmptyTitle className="text-base">没有找到匹配的成员</EmptyTitle>
+                  <EmptyTitle className="text-base">{L('没有找到匹配的成员', 'No matching members')}</EmptyTitle>
                   <EmptyDescription>
-                    调整筛选条件或点击右上角「接入新成员」添加协作 Agent。
+                    {L('调整筛选条件或点击右上角「接入新成员」添加协作 Agent。', 'Adjust your filters or click Add Member above.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : (
               <div className="divide-y divide-border">
                 <div className="hidden grid-cols-[minmax(0,2fr)_110px_minmax(150px,1.1fr)_124px] items-center gap-3 bg-muted/40 px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
-                  <span>成员与运行端</span>
-                  <span>连接状态</span>
-                  <span>派发与 Token 用量</span>
-                  <span className="text-right">操作</span>
+                  <span>{L('成员与运行端', 'Member & Runtime')}</span>
+                  <span>{L('连接状态', 'Status')}</span>
+                  <span>{L('派发与 Token 用量', 'Dispatches & Tokens')}</span>
+                  <span className="text-right">{L('操作', 'Actions')}</span>
                 </div>
 
                 {membersPager.pageItems.map((m, idx) => {
@@ -858,15 +872,18 @@ export function MembersUsagePage({
                             </Badge>
                           </div>
                           <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
-                            {m.statusMessage} · 并发上限 {m.capabilities.maxConcurrentRuns}
+                            {m.statusMessage} · {L(`并发上限 ${m.capabilities.maxConcurrentRuns}`, `Max concurrency ${m.capabilities.maxConcurrentRuns}`)}
                           </div>
                           {m.config.hubTransport === 'grok-webhook' && (
                             <div className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
                               {sum?.lastDispatchStatus && sum.lastActiveAt
-                                ? `最近派单 ${new Date(sum.lastActiveAt).toLocaleString('zh-CN')} · ${dispatchLabels[sum.lastDispatchStatus] || sum.lastDispatchStatus}`
+                                ? L(
+                                    `最近派单 ${new Date(sum.lastActiveAt).toLocaleString('zh-CN')} · ${dispatchLabels[sum.lastDispatchStatus] || sum.lastDispatchStatus}`,
+                                    `Last dispatch ${new Date(sum.lastActiveAt).toLocaleString('en-US')} · ${dispatchLabels[sum.lastDispatchStatus] || sum.lastDispatchStatus}`
+                                  )
                                 : sum
-                                  ? '暂无派单记录'
-                                  : '正在读取派单记录…'}
+                                  ? L('暂无派单记录', 'No dispatch history')
+                                  : L('正在读取派单记录…', 'Loading dispatch history…')}
                             </div>
                           )}
                         </div>
@@ -889,7 +906,7 @@ export function MembersUsagePage({
                           />
                           <span>
                             {isReady && m.config.hubTransport === 'grok-webhook'
-                              ? '按需投递'
+                              ? L('按需投递', 'On demand')
                               : statusLabels[m.status] || m.status}
                           </span>
                         </Badge>
@@ -898,10 +915,10 @@ export function MembersUsagePage({
                       <div className="flex min-w-0 flex-col gap-1.5">
                         <div className="flex items-baseline justify-between gap-2 font-mono text-[11.5px] tabular-nums">
                           <strong className="font-semibold text-foreground">
-                            {memberTokens > 0 ? formatCompactTokens(memberTokens) : '未暴露'}
+                            {memberTokens > 0 ? formatCompactTokens(memberTokens) : L('未暴露', 'N/A')}
                           </strong>
                           <span className="text-[11px] text-muted-foreground">
-                            {sum?.workbenchDispatches ?? 0} 派发 · {sum?.nativeTurns ?? 0} 轮
+                            {L(`${sum?.workbenchDispatches ?? 0} 派发 · ${sum?.nativeTurns ?? 0} 轮`, `${sum?.workbenchDispatches ?? 0} runs · ${sum?.nativeTurns ?? 0} turns`)}
                           </span>
                         </div>
                         <UsageProportionBar
@@ -918,14 +935,14 @@ export function MembersUsagePage({
                           onClick={() => void onStartChatWithMember(m.id)}
                         >
                           <MessageSquare size={12} />
-                          <span>发起对话</span>
+                          <span>{L('发起对话', 'Chat')}</span>
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => void handleRemoveMember(m)}
-                          aria-label={`移除 ${m.name}`}
-                          title="移除成员"
+                          aria-label={L(`移除 ${m.name}`, `Remove ${m.name}`)}
+                          title={L('移除成员', 'Remove member')}
                           className="text-muted-foreground hover:text-destructive-foreground"
                         >
                           <Trash2 size={13} />
@@ -958,10 +975,10 @@ export function MembersUsagePage({
               <div className="min-w-0">
                 <FrameTitle className="flex items-center gap-1.5 text-[13px]">
                   <Server size={14} className="text-muted-foreground" />
-                  <span>执行节点</span>
+                  <span>{L('执行节点', 'Execution Nodes')}</span>
                 </FrameTitle>
                 <FrameDescription className="text-[11.5px]">
-                  接入 VPS 或个人电脑节点运行本地 Agent
+                  {L('接入 VPS 或个人电脑节点运行本地 Agent', 'Pair VPS or local machine nodes to run Agents')}
                 </FrameDescription>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -971,7 +988,7 @@ export function MembersUsagePage({
                 </Button>
                 <Button variant="outline" size="xs" onClick={() => void handleGenerateNodePair('local')}>
                   <Laptop size={11} />
-                  <span>本机</span>
+                  <span>{L('本机', 'Local')}</span>
                 </Button>
               </div>
             </FrameHeader>
@@ -980,7 +997,8 @@ export function MembersUsagePage({
                 <div className="border-b border-border bg-info/6 px-4 py-3 text-xs">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="font-medium text-foreground">
-                      {nodePairInfo.kind === 'cloud' ? '云端节点' : '本地电脑'}配对码（5 分钟有效）：
+                      {nodePairInfo.kind === 'cloud' ? L('云端节点', 'Cloud Node') : L('本地电脑', 'Local Machine')}
+                      {L('配对码（5 分钟有效）：', ' pairing code (5 min TTL): ')}
                       <code className="ml-1.5 rounded bg-background px-1.5 py-0.5 font-mono text-[13px] font-semibold">
                         {nodePairInfo.code}
                       </code>
@@ -995,11 +1013,11 @@ export function MembersUsagePage({
                             : 'https://work.manyaitool.com';
                         const cmd = `node dist/node-runner/index.mjs pair --server ${origin} --code ${nodePairInfo.code} --kind ${nodePairInfo.kind}`;
                         void navigator.clipboard?.writeText(cmd);
-                        toast.success('已复制节点配对命令');
+                        toast.success(L('已复制节点配对命令', 'Copied pairing command'));
                       }}
                     >
                       <Copy size={11} />
-                      <span>复制命令</span>
+                      <span>{L('复制命令', 'Copy Command')}</span>
                     </Button>
                   </div>
                   <code className="block break-all font-mono text-[11px] text-muted-foreground">
@@ -1009,7 +1027,7 @@ export function MembersUsagePage({
               )}
               {nodes.length === 0 ? (
                 <div className="px-4 py-7 text-center text-xs text-muted-foreground">
-                  暂无已配对的执行节点，点击右上角按钮生成配对码即可接入。
+                  {L('暂无已配对的执行节点，点击右上角按钮生成配对码即可接入。', 'No paired nodes yet. Generate a pairing code above to connect.')}
                 </div>
               ) : (
                 <div className="max-h-[260px] divide-y divide-border overflow-y-auto coss-scroll">
@@ -1021,18 +1039,18 @@ export function MembersUsagePage({
                             {n.name}
                           </span>
                           <Badge variant={n.status === 'online' ? 'success' : 'warning'} size="sm">
-                            {n.status === 'online' ? '在线' : '离线'}
+                            {n.status === 'online' ? L('在线', 'Online') : L('离线', 'Offline')}
                           </Badge>
                         </div>
                         <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                          {n.kind === 'cloud' ? '云端节点' : '本地电脑'} · {n.platform} ·{' '}
+                          {n.kind === 'cloud' ? L('云端节点', 'Cloud') : L('本地电脑', 'Local')} · {n.platform} ·{' '}
                           {n.lastHeartbeatAt
-                            ? new Date(n.lastHeartbeatAt).toLocaleTimeString('zh-CN', {
+                            ? new Date(n.lastHeartbeatAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                                 second: '2-digit'
                               })
-                            : '尚未连入'}
+                            : L('尚未连入', 'Not connected yet')}
                         </div>
                       </div>
                       <Button
@@ -1042,7 +1060,7 @@ export function MembersUsagePage({
                         className="text-destructive-foreground hover:bg-destructive/8"
                       >
                         <Trash2 size={12} />
-                        <span>吊销</span>
+                        <span>{L('吊销', 'Revoke')}</span>
                       </Button>
                     </div>
                   ))}
@@ -1057,15 +1075,15 @@ export function MembersUsagePage({
                 <div className="min-w-0">
                   <FrameTitle className="flex items-center gap-1.5 text-[13px]">
                     <ShieldCheck size={14} className="text-muted-foreground" />
-                    <span>跨设备登录安全</span>
+                    <span>{L('跨设备登录安全', 'Cross-Device Sessions')}</span>
                   </FrameTitle>
                   <FrameDescription className="text-[11.5px]">
-                    管理已授权终端会话与一次性免密登录码
+                    {L('管理已授权终端会话与一次性免密登录码', 'Manage authorized devices and one-time login codes')}
                   </FrameDescription>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <Button variant="outline" size="xs" onClick={() => void handleGenerateLoginCode()}>
-                    <span>手机登录码</span>
+                    <span>{L('手机登录码', 'Mobile Code')}</span>
                   </Button>
                   {onLogout && (
                     <Button
@@ -1075,7 +1093,7 @@ export function MembersUsagePage({
                       className="text-destructive-foreground hover:bg-destructive/8"
                     >
                       <LogOut size={12} />
-                      <span>退出</span>
+                      <span>{L('退出', 'Sign Out')}</span>
                     </Button>
                   )}
                 </div>
@@ -1083,7 +1101,7 @@ export function MembersUsagePage({
               <FramePanel className="overflow-hidden p-0">
                 {loginMagicInfo && (
                   <div className="border-b border-border bg-info/6 px-4 py-2.5 text-xs">
-                    一次性登录码（5 分钟有效）：
+                    {L('一次性登录码（5 分钟有效）：', 'One-time code (5 min TTL): ')}
                     <strong className="ml-1 font-mono text-sm text-foreground">
                       {loginMagicInfo.code}
                     </strong>
@@ -1091,7 +1109,7 @@ export function MembersUsagePage({
                 )}
                 {sessions.length === 0 ? (
                   <div className="px-4 py-7 text-center text-xs text-muted-foreground">
-                    暂无其他活跃设备会话。
+                    {L('暂无其他活跃设备会话。', 'No other active device sessions.')}
                   </div>
                 ) : (
                   <div className="max-h-[260px] divide-y divide-border overflow-y-auto coss-scroll">
@@ -1104,12 +1122,12 @@ export function MembersUsagePage({
                             </span>
                             {s.current && (
                               <Badge variant="secondary" size="sm">
-                                当前设备
+                                {L('当前设备', 'Current Device')}
                               </Badge>
                             )}
                           </div>
                           <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                            {s.ip} · {new Date(s.lastSeenAt).toLocaleString('zh-CN')}
+                            {s.ip} · {new Date(s.lastSeenAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')}
                           </div>
                         </div>
                         <Button
@@ -1117,7 +1135,7 @@ export function MembersUsagePage({
                           size="xs"
                           onClick={() => void handleRevokeSession(s.id)}
                         >
-                          下线
+                          {L('下线', 'Revoke')}
                         </Button>
                       </div>
                     ))}
@@ -1134,41 +1152,46 @@ export function MembersUsagePage({
             <div>
               <FrameTitle className="flex items-center gap-1.5 text-[13px]">
                 <Activity size={14} className="text-muted-foreground" />
-                <span>近期派发与三层用量流水</span>
+                <span>{L('近期派发与三层用量流水', 'Recent Dispatches & Token Ledger')}</span>
               </FrameTitle>
               <FrameDescription className="text-[11.5px]">
-                记录每次工作台派发、原生回合与 Token / 上下文开销
+                {L('记录每次工作台派发、原生回合与 Token / 上下文开销', 'Logs workbench dispatches, native turns, and token/context usage')}
               </FrameDescription>
             </div>
             <Badge variant="outline" size="sm" className="font-mono tabular-nums">
-              {recent.length} 条记录
+              {L(`${recent.length} 条记录`, `${recent.length} entries`)}
             </Badge>
           </FrameHeader>
 
           <FramePanel className="max-h-[420px] overflow-auto p-0 coss-scroll">
             {recent.length === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                暂无调用流水，发送一条对话或执行任务后此处将记录实时调度耗费。
+                {L('暂无调用流水，发送一条对话或执行任务后此处将记录实时调度耗费。', 'No dispatch logs yet. Send a message or run a task to record usage.')}
               </div>
             ) : (
               <table className="members-table w-full border-collapse text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
                   <tr className="border-b border-border bg-muted/40 text-[11px] font-medium text-muted-foreground">
-                    <th className="px-4 py-2.5 font-medium">执行成员</th>
-                    <th className="px-4 py-2.5 font-medium">调用类型</th>
-                    <th className="px-4 py-2.5 font-medium">状态</th>
-                    <th className="px-4 py-2.5 font-medium">消耗与上下文</th>
-                    <th className="px-4 py-2.5 text-right font-medium">时间</th>
+                    <th className="px-4 py-2.5 font-medium">{L('执行成员', 'Member')}</th>
+                    <th className="px-4 py-2.5 font-medium">{L('调用类型', 'Kind')}</th>
+                    <th className="px-4 py-2.5 font-medium">{L('状态', 'Status')}</th>
+                    <th className="px-4 py-2.5 font-medium">{L('消耗与上下文', 'Tokens / Context')}</th>
+                    <th className="px-4 py-2.5 text-right font-medium">{L('时间', 'Time')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {recentPager.pageItems.map((r) => {
                     const memName = members.find((m) => m.id === r.memberId)?.name || r.memberId;
-                    const kindText = ATTEMPT_KIND_LABELS[r.targetKind] || r.targetKind;
-                    const statusText = ATTEMPT_STATUS_LABELS[r.status] || r.status;
+                    const kindEntry = ATTEMPT_KIND_LABELS[r.targetKind];
+                    const kindText = kindEntry ? (locale === 'en' ? kindEntry.en : kindEntry.zh) : r.targetKind;
+                    const statusEntry = ATTEMPT_STATUS_LABELS[r.status];
+                    const statusText = statusEntry ? (locale === 'en' ? statusEntry.en : statusEntry.zh) : r.status;
                     const tokens = r.usage?.providerUsage?.observable
-                      ? `${r.usage.providerUsage.totalTokens?.toLocaleString() || 0} tok（缓存 ${r.usage.providerUsage.cachedInputTokens ?? 0}）`
-                      : `${(r.promptBytes / 1024).toFixed(1)} KB 上下文`;
+                      ? L(
+                          `${r.usage.providerUsage.totalTokens?.toLocaleString() || 0} tok（缓存 ${r.usage.providerUsage.cachedInputTokens ?? 0}）`,
+                          `${r.usage.providerUsage.totalTokens?.toLocaleString() || 0} tok (cached ${r.usage.providerUsage.cachedInputTokens ?? 0})`
+                        )
+                      : L(`${(r.promptBytes / 1024).toFixed(1)} KB 上下文`, `${(r.promptBytes / 1024).toFixed(1)} KB ctx`);
                     const badgeVariant =
                       r.status === 'succeeded'
                         ? 'success'
@@ -1196,7 +1219,7 @@ export function MembersUsagePage({
                           {tokens}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-[11.5px] text-muted-foreground tabular-nums">
-                          {new Date(r.dispatchedAt).toLocaleTimeString('zh-CN', {
+                          {new Date(r.dispatchedAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', {
                             hour: '2-digit',
                             minute: '2-digit',
                             second: '2-digit'

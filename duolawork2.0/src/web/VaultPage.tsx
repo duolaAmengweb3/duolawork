@@ -27,6 +27,7 @@ import { Input } from './components/ui/input.js';
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from './components/ui/menu.js';
 import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { Tabs, TabsList, TabsTab } from './components/ui/tabs.js';
+import { useI18n } from './lib/i18n.js';
 
 interface VaultItem {
   id: string;
@@ -62,19 +63,19 @@ function normalizeVaultFields(item: VaultItem): Array<{ name: string; reference:
   return [];
 }
 
-const STATUS_TABS: Array<{ id: 'active' | 'disabled' | 'deleted'; label: string }> = [
-  { id: 'active', label: '可使用' },
-  { id: 'disabled', label: '已停用' },
-  { id: 'deleted', label: '回收站' }
+const STATUS_TABS: Array<{ id: 'active' | 'disabled' | 'deleted'; zh: string; en: string }> = [
+  { id: 'active', zh: '可使用', en: 'Active' },
+  { id: 'disabled', zh: '已停用', en: 'Disabled' },
+  { id: 'deleted', zh: '回收站', en: 'Trash' }
 ];
 
-const CREDENTIAL_TYPES: Array<{ id: string; label: string; defaultFields: string[] }> = [
-  { id: 'api_key', label: 'API Key', defaultFields: ['token'] },
-  { id: 'token', label: '访问令牌', defaultFields: ['token'] },
-  { id: 'login', label: '账号密码', defaultFields: ['username', 'password'] },
-  { id: 'app_secret', label: '应用密钥', defaultFields: ['app_id', 'app_secret'] },
-  { id: 'ssh', label: 'SSH 私钥', defaultFields: ['username', 'private_key'] },
-  { id: 'custom', label: '自定义', defaultFields: ['value'] }
+const CREDENTIAL_TYPES: Array<{ id: string; zh: string; en: string; defaultFields: string[] }> = [
+  { id: 'api_key', zh: 'API Key', en: 'API Key', defaultFields: ['token'] },
+  { id: 'token', zh: '访问令牌', en: 'Access Token', defaultFields: ['token'] },
+  { id: 'login', zh: '账号密码', en: 'Username & Password', defaultFields: ['username', 'password'] },
+  { id: 'app_secret', zh: '应用密钥', en: 'App Secret', defaultFields: ['app_id', 'app_secret'] },
+  { id: 'ssh', zh: 'SSH 私钥', en: 'SSH Key', defaultFields: ['username', 'private_key'] },
+  { id: 'custom', zh: '自定义', en: 'Custom', defaultFields: ['value'] }
 ];
 
 export function VaultPage({
@@ -82,6 +83,7 @@ export function VaultPage({
 }: {
   duolabaseStatus: DuolaBasePublicStatus;
 }): React.JSX.Element {
+  const { locale, L } = useI18n();
   const views = useViewCache();
   const [statusFilter, setStatusFilter] = useState<'active' | 'disabled' | 'deleted'>('active');
   const [query, setQuery] = useState<string>('');
@@ -174,9 +176,9 @@ export function VaultPage({
         })
       });
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '保存凭证失败');
+      if (!res.ok) throw new Error(out.message || L('保存凭证失败', 'Failed to save secret'));
       setEditorOpen(false);
-      toast.success('凭证已加密保存到 DuolaBase Vault');
+      toast.success(L('凭证已加密保存到 DuolaBase Vault', 'Secret encrypted & saved to DuolaBase Vault'));
       await loadVault();
     } catch (err) {
       setError((err as Error).message);
@@ -200,9 +202,14 @@ export function VaultPage({
         })
       });
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '状态更新失败');
-      const labels = { disable: '已停用凭证', enable: '已启用凭证', delete: '已移入回收站', restore: '已恢复凭证' };
-      toast.success(`${labels[action]}：${item.name}`);
+      if (!res.ok) throw new Error(out.message || L('状态更新失败', 'Failed to update status'));
+      const labels = {
+        disable: L('已停用凭证', 'Disabled secret'),
+        enable: L('已启用凭证', 'Enabled secret'),
+        delete: L('已移入回收站', 'Moved to trash'),
+        restore: L('已恢复凭证', 'Restored secret')
+      };
+      toast.success(`${labels[action]}${locale === 'en' ? ': ' : '：'}${item.name}`);
       await loadVault();
     } catch (err) {
       setError((err as Error).message);
@@ -222,8 +229,8 @@ export function VaultPage({
         }
       );
       const out = await res.json();
-      if (!res.ok) throw new Error(out.message || '添加项目标签失败');
-      toast.success(`已添加项目标签 #${tagDraft.trim()}`);
+      if (!res.ok) throw new Error(out.message || L('添加项目标签失败', 'Failed to add project tag'));
+      toast.success(L(`已添加项目标签 #${tagDraft.trim()}`, `Added project tag #${tagDraft.trim()}`));
       setTaggingItem(null);
       setTagDraft('');
       await loadVault();
@@ -236,10 +243,10 @@ export function VaultPage({
     try {
       await navigator.clipboard.writeText(refText);
       setCopiedId(id);
-      toast.success('已复制 Vault 引用地址');
+      toast.success(L('已复制 Vault 引用地址', 'Copied Vault reference'));
       setTimeout(() => setCopiedId(''), 1800);
     } catch {
-      toast.info(`引用地址：${refText}`);
+      toast.info(L(`引用地址：${refText}`, `Reference: ${refText}`));
     }
   };
 
@@ -251,23 +258,23 @@ export function VaultPage({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="m-0 text-xl font-semibold tracking-tight text-foreground">
-                全局凭证库 (Vault)
+                {L('全局凭证库 (Vault)', 'Vault Secrets')}
               </h1>
               <Badge variant={enabled ? 'success' : 'secondary'} size="sm">
-                {enabled ? '端到端托管' : '未启用'}
+                {enabled ? L('端到端托管', 'Managed E2E') : L('未启用', 'Disabled')}
               </Badge>
             </div>
             <p className="m-0 text-[13px] text-muted-foreground">
-              所有密钥加密保存于 DuolaBase，桌面端仅管理元数据与{' '}
+              {L('所有密钥加密保存于 DuolaBase，桌面端仅管理元数据与 ', 'Encrypted in DuolaBase; the workbench stores metadata & ')}
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11.5px]">vault://</code>{' '}
-              引用，不回显明文密钥。
+              {L('引用，不回显明文密钥。', 'references without exposing plaintext secrets.')}
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="outline" size="sm" onClick={() => void loadVault()} disabled={loading}>
               <RefreshCw size={13} className={loading ? 'is-refreshing' : ''} />
-              <span>刷新</span>
+              <span>{L('刷新', 'Refresh')}</span>
             </Button>
             <Button
               size="sm"
@@ -284,7 +291,7 @@ export function VaultPage({
               }}
             >
               <Plus size={14} />
-              <span>添加凭证</span>
+              <span>{L('添加凭证', 'Add Secret')}</span>
             </Button>
           </div>
         </header>
@@ -294,12 +301,12 @@ export function VaultPage({
           <span className="inline-flex items-center gap-2">
             <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
             <span>
-              <strong className="font-medium text-foreground">零明文泄露保护</strong> · Agent 仅通过
-              Vault HTTP 代理与连接器间接使用凭证
+              <strong className="font-medium text-foreground">{L('零明文泄露保护', 'Zero-plaintext exposure')}</strong> ·{' '}
+              {L('Agent 仅通过 Vault HTTP 代理与连接器间接使用凭证', 'Agents use secrets only through Vault HTTP proxy and connectors')}
             </span>
           </span>
           <Badge variant="outline" size="sm" className="font-mono text-[10.5px]">
-            点击引用即复制
+            {L('点击引用即复制', 'Click reference to copy')}
           </Badge>
         </div>
 
@@ -309,7 +316,7 @@ export function VaultPage({
             className="flex items-center justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-2.5 text-xs text-destructive-foreground"
           >
             <span>{error}</span>
-            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label="关闭错误">
+            <Button variant="ghost" size="icon-xs" onClick={() => setError('')} aria-label={L('关闭错误', 'Dismiss error')}>
               <X size={13} />
             </Button>
           </div>
@@ -321,13 +328,13 @@ export function VaultPage({
               <form onSubmit={handleSaveVault} className="flex flex-col gap-4 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-foreground">
-                    {editId ? `轮换 / 编辑凭证 (v${editVersion})` : '加密保存新凭证'}
+                    {editId ? L(`轮换 / 编辑凭证 (v${editVersion})`, `Rotate / Edit Secret (v${editVersion})`) : L('加密保存新凭证', 'Save Encrypted Secret')}
                   </span>
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => setEditorOpen(false)}
-                    aria-label="关闭编辑"
+                    aria-label={L('关闭编辑', 'Close editor')}
                   >
                     <X size={14} />
                   </Button>
@@ -335,31 +342,31 @@ export function VaultPage({
 
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">凭证名称</span>
+                    <span className="text-muted-foreground">{L('凭证名称', 'Secret Name')}</span>
                     <Input
                       nativeInput
                       type="text"
                       required
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      placeholder="例如：Cloudflare DNS 主账号"
+                      placeholder={L('例如：Cloudflare DNS 主账号', 'e.g., Cloudflare DNS Admin')}
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">所属服务 / 平台</span>
+                    <span className="text-muted-foreground">{L('所属服务 / 平台', 'Service / Platform')}</span>
                     <Input
                       nativeInput
                       type="text"
                       value={editService}
                       onChange={(e) => setEditService(e.target.value)}
-                      placeholder="例如：cloudflare、github"
+                      placeholder={L('例如：cloudflare、github', 'e.g., cloudflare, github')}
                     />
                   </label>
                 </div>
 
                 {!editId && (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-muted-foreground mr-1">凭证类型：</span>
+                    <span className="text-muted-foreground mr-1">{L('凭证类型：', 'Type: ')}</span>
                     {CREDENTIAL_TYPES.map((ct) => (
                       <Button
                         key={ct.id}
@@ -370,21 +377,21 @@ export function VaultPage({
                           setEditFields(ct.defaultFields.map((n) => ({ name: n, value: '' })));
                         }}
                       >
-                        {ct.label}
+                        {locale === 'en' ? ct.en : ct.zh}
                       </Button>
                     ))}
                   </div>
                 )}
 
                 <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-muted/30 p-3.5">
-                  <span className="font-medium text-foreground">密钥字段</span>
+                  <span className="font-medium text-foreground">{L('密钥字段', 'Secret Fields')}</span>
                   {editFields.map((row, idx) => (
                     <div
                       key={idx}
                       className="grid grid-cols-[120px_minmax(0,1fr)_30px] items-end gap-2 sm:grid-cols-[150px_minmax(0,1fr)_32px]"
                     >
                       <label className="flex flex-col gap-1">
-                        <span className="text-[11px] text-muted-foreground">字段名</span>
+                        <span className="text-[11px] text-muted-foreground">{L('字段名', 'Field')}</span>
                         <Input
                           nativeInput
                           size="sm"
@@ -398,7 +405,7 @@ export function VaultPage({
                         />
                       </label>
                       <label className="flex flex-col gap-1">
-                        <span className="text-[11px] text-muted-foreground">密钥值</span>
+                        <span className="text-[11px] text-muted-foreground">{L('密钥值', 'Value')}</span>
                         <Input
                           nativeInput
                           size="sm"
@@ -409,7 +416,7 @@ export function VaultPage({
                               arr.map((x, i) => (i === idx ? { ...x, value: e.target.value } : x))
                             )
                           }
-                          placeholder={editId ? '留空保持原值' : '输入敏感值（提交即加密）'}
+                          placeholder={editId ? L('留空保持原值', 'Leave blank to keep value') : L('输入敏感值（提交即加密）', 'Enter secret (encrypted on submit)')}
                         />
                       </label>
                       <Button
@@ -417,7 +424,7 @@ export function VaultPage({
                         size="icon-xs"
                         onClick={() => setEditFields((arr) => arr.filter((_, i) => i !== idx))}
                         disabled={editFields.length <= 1}
-                        aria-label="删除字段"
+                        aria-label={L('删除字段', 'Remove field')}
                       >
                         <Trash2 size={13} />
                       </Button>
@@ -430,14 +437,14 @@ export function VaultPage({
                       onClick={() => setEditFields((arr) => [...arr, { name: 'key', value: '' }])}
                     >
                       <Plus size={12} />
-                      <span>新增字段</span>
+                      <span>{L('新增字段', 'Add Field')}</span>
                     </Button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">关联项目标签（逗号或空格分隔）</span>
+                    <span className="text-muted-foreground">{L('关联项目标签（逗号或空格分隔）', 'Project tags (comma or space separated)')}</span>
                     <Input
                       nativeInput
                       type="text"
@@ -447,23 +454,23 @@ export function VaultPage({
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-muted-foreground">使用说明（勿填密钥本身）</span>
+                    <span className="text-muted-foreground">{L('使用说明（勿填密钥本身）', 'Usage notes (never include secret)')}</span>
                     <Input
                       nativeInput
                       type="text"
                       value={editNotes}
                       onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="账号、环境及使用限制"
+                      placeholder={L('账号、环境及使用限制', 'Account, environment & scope')}
                     />
                   </label>
                 </div>
 
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setEditorOpen(false)}>
-                    取消
+                    {L('取消', 'Cancel')}
                   </Button>
                   <Button type="submit" size="sm" loading={saving}>
-                    {saving ? '保存中…' : '保存凭证'}
+                    {saving ? L('保存中…', 'Saving…') : L('保存凭证', 'Save Secret')}
                   </Button>
                 </div>
               </form>
@@ -477,7 +484,7 @@ export function VaultPage({
               <form onSubmit={handleAddTag} className="flex flex-wrap items-center gap-2 text-xs">
                 <Tag size={14} className="text-muted-foreground shrink-0" />
                 <span className="font-medium text-foreground shrink-0">
-                  为「{taggingItem.name}」追加项目标签：
+                  {L(`为「${taggingItem.name}」追加项目标签：`, `Add project tag for "${taggingItem.name}":`)}
                 </span>
                 <div className="flex-1 min-w-[160px]">
                   <Input
@@ -488,14 +495,14 @@ export function VaultPage({
                     autoFocus
                     value={tagDraft}
                     onChange={(e) => setTagDraft(e.target.value)}
-                    placeholder="输入项目标识（如 duolawork）"
+                    placeholder={L('输入项目标识（如 duolawork）', 'Project tag (e.g., duolawork)')}
                   />
                 </div>
                 <Button type="submit" size="xs">
-                  确认
+                  {L('确认', 'Confirm')}
                 </Button>
                 <Button variant="outline" size="xs" onClick={() => setTaggingItem(null)}>
-                  取消
+                  {L('取消', 'Cancel')}
                 </Button>
               </form>
             </FramePanel>
@@ -512,7 +519,7 @@ export function VaultPage({
               <TabsList size="sm">
                 {STATUS_TABS.map((t) => (
                   <TabsTab key={t.id} value={t.id}>
-                    {t.label}
+                    {locale === 'en' ? t.en : t.zh}
                   </TabsTab>
                 ))}
               </TabsList>
@@ -530,7 +537,7 @@ export function VaultPage({
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="搜索凭证名称或服务…"
+                  placeholder={L('搜索凭证名称或服务…', 'Search secrets or services…')}
                   className="pl-7 [&_input]:pl-7"
                 />
               </div>
@@ -541,7 +548,7 @@ export function VaultPage({
                   type="text"
                   value={projectFilter}
                   onChange={(e) => setProjectFilter(e.target.value)}
-                  placeholder="按 #项目 筛选…"
+                  placeholder={L('按 #项目 筛选…', 'Filter by #project…')}
                 />
               </div>
             </div>
@@ -554,16 +561,16 @@ export function VaultPage({
                   <EmptyMedia variant="icon">
                     <ShieldCheck />
                   </EmptyMedia>
-                  <EmptyTitle className="text-base">需要启用并授权 DuolaBase 后查看凭证</EmptyTitle>
+                  <EmptyTitle className="text-base">{L('需要启用并授权 DuolaBase 后查看凭证', 'Enable & authorize DuolaBase to view Vault')}</EmptyTitle>
                   <EmptyDescription>
-                    可在左侧「连接器」页顶部的「服务设置」里查看或配置 DuolaBase 连接状态。
+                    {L('可在左侧「连接器」页顶部的「服务设置」里查看或配置 DuolaBase 连接状态。', 'Open Connectors → Settings in the sidebar to configure DuolaBase.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : data === undefined ? (
               error ? null : (
                 <div className="px-4 py-12 text-center text-xs text-muted-foreground" role="status">
-                  正在读取凭证列表…
+                  {L('正在读取凭证列表…', 'Loading secrets…')}
                 </div>
               )
             ) : items.length === 0 ? (
@@ -572,18 +579,18 @@ export function VaultPage({
                   <EmptyMedia variant="icon">
                     {statusFilter === 'deleted' ? <Archive /> : <KeyRound />}
                   </EmptyMedia>
-                  <EmptyTitle className="text-base">当前筛选条件下暂无凭证</EmptyTitle>
+                  <EmptyTitle className="text-base">{L('当前筛选条件下暂无凭证', 'No secrets match your filter')}</EmptyTitle>
                   <EmptyDescription>
-                    切换状态标签或点击右上角「添加凭证」写入新密钥。
+                    {L('切换状态标签或点击右上角「添加凭证」写入新密钥。', 'Switch tabs or click Add Secret above to store a credential.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : (
               <div className="divide-y divide-border">
                 <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1.35fr)_116px] items-center gap-3 bg-muted/40 px-4 py-2 text-[11px] font-medium text-muted-foreground md:grid">
-                  <span>凭证与归属</span>
-                  <span>安全引用与项目标签</span>
-                  <span className="text-right">生命周期</span>
+                  <span>{L('凭证与归属', 'Secret & Service')}</span>
+                  <span>{L('安全引用与项目标签', 'Reference & Project Tags')}</span>
+                  <span className="text-right">{L('生命周期', 'Actions')}</span>
                 </div>
 
                 {vaultPager.pageItems.map((item) => {
@@ -627,10 +634,10 @@ export function VaultPage({
                               size="sm"
                             >
                               {item.status === 'active'
-                                ? '可使用'
+                                ? L('可使用', 'Active')
                                 : item.status === 'disabled'
-                                  ? '已停用'
-                                  : '回收站'}
+                                  ? L('已停用', 'Disabled')
+                                  : L('回收站', 'Trash')}
                             </Badge>
                           </div>
                           <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
@@ -644,7 +651,7 @@ export function VaultPage({
                         <button
                           type="button"
                           onClick={() => void copyReference(firstRef, item.id)}
-                          title={`点击复制 ${firstRef}`}
+                          title={L(`点击复制 ${firstRef}`, `Copy ${firstRef}`)}
                           className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/45 px-2 py-1 font-mono text-[11px] text-foreground transition-colors hover:border-ring hover:bg-muted"
                         >
                           {isCopied ? (
@@ -652,7 +659,7 @@ export function VaultPage({
                           ) : (
                             <Copy size={11} className="shrink-0 text-muted-foreground" />
                           )}
-                          <span className="truncate">{isCopied ? '已复制引用' : firstRef}</span>
+                          <span className="truncate">{isCopied ? L('已复制引用', 'Copied ref') : firstRef}</span>
                         </button>
                         {(item.projectTags || []).length > 0 && (
                           <div className="flex flex-wrap gap-1">
@@ -688,7 +695,7 @@ export function VaultPage({
                                 setEditorOpen(true);
                               }}
                             >
-                              轮换
+                              {L('轮换', 'Rotate')}
                             </Button>
 
                             <Menu>
@@ -697,7 +704,7 @@ export function VaultPage({
                                   <Button
                                     variant="ghost"
                                     size="icon-xs"
-                                    aria-label={`更多操作 ${item.name}`}
+                                    aria-label={L(`更多操作 ${item.name}`, `Actions for ${item.name}`)}
                                   >
                                     <Ellipsis size={14} />
                                   </Button>
@@ -711,7 +718,7 @@ export function VaultPage({
                                   }}
                                 >
                                   <Tag size={13} />
-                                  <span>添加项目标签</span>
+                                  <span>{L('添加项目标签', 'Add Project Tag')}</span>
                                 </MenuItem>
                                 <MenuItem
                                   onClick={() =>
@@ -722,7 +729,7 @@ export function VaultPage({
                                   }
                                 >
                                   <Lock size={13} />
-                                  <span>{item.status === 'active' ? '停用凭证' : '重新启用'}</span>
+                                  <span>{item.status === 'active' ? L('停用凭证', 'Disable') : L('重新启用', 'Re-enable')}</span>
                                 </MenuItem>
                                 <MenuSeparator />
                                 <MenuItem
@@ -730,7 +737,7 @@ export function VaultPage({
                                   onClick={() => void handleLifecycle(item, 'delete')}
                                 >
                                   <Trash2 size={13} />
-                                  <span>移入回收站</span>
+                                  <span>{L('移入回收站', 'Move to Trash')}</span>
                                 </MenuItem>
                               </MenuPopup>
                             </Menu>
@@ -742,7 +749,7 @@ export function VaultPage({
                             onClick={() => void handleLifecycle(item, 'restore')}
                           >
                             <RotateCcw size={12} />
-                            <span>恢复</span>
+                            <span>{L('恢复', 'Restore')}</span>
                           </Button>
                         )}
                       </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/cn.js';
+import { useI18n } from '../../lib/i18n.js';
 import { Button } from './button.js';
 
 export function usePagination<T>(
@@ -70,6 +71,7 @@ export function PaginationBar({
   compact?: boolean;
   className?: string;
 }): React.JSX.Element | null {
+  const { L } = useI18n();
   if (totalPages <= 1) return null;
 
   return (
@@ -81,7 +83,9 @@ export function PaginationBar({
       )}
     >
       <span className="font-mono tabular-nums">
-        {compact ? `${startIndex}–${endIndex} / ${total}` : `显示 ${startIndex}–${endIndex} 条，共 ${total} 条`}
+        {compact
+          ? `${startIndex}–${endIndex} / ${total}`
+          : L(`显示 ${startIndex}–${endIndex} 条，共 ${total} 条`, `Showing ${startIndex}–${endIndex} of ${total}`)}
       </span>
       <div className="flex items-center gap-1.5">
         <Button
@@ -89,10 +93,10 @@ export function PaginationBar({
           size="xs"
           disabled={page <= 1}
           onClick={() => onPageChange(Math.max(1, page - 1))}
-          aria-label="上一页"
+          aria-label={L('上一页', 'Previous page')}
         >
           <ChevronLeft size={12} />
-          {!compact && <span>上一页</span>}
+          {!compact && <span>{L('上一页', 'Prev')}</span>}
         </Button>
         <span className="min-w-[44px] text-center font-mono text-[11px] font-medium text-foreground tabular-nums">
           {page} / {totalPages}
@@ -102,9 +106,9 @@ export function PaginationBar({
           size="xs"
           disabled={page >= totalPages}
           onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          aria-label="下一页"
+          aria-label={L('下一页', 'Next page')}
         >
-          {!compact && <span>下一页</span>}
+          {!compact && <span>{L('下一页', 'Next')}</span>}
           <ChevronRight size={12} />
         </Button>
       </div>

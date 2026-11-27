@@ -71,6 +71,7 @@ import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
 import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { formatCronHuman } from './lib/format.js';
+import { useI18n, type Locale } from './lib/i18n.js';
 import { openMaterialPopout } from './lib/popout.js';
 
 export interface SpaceTaskSummary extends TaskRecord {
@@ -151,23 +152,25 @@ function itemIcon(item: SpaceItemView) {
   return File;
 }
 
-function kindLabel(item: SpaceItemView): string {
-  if (item.kind === 'link') return '链接';
+function kindLabel(item: SpaceItemView, locale: Locale): string {
+  const en = locale === 'en';
+  if (item.kind === 'link') return en ? 'Link' : '链接';
   if (item.kind === 'document') return `v${item.version ?? 1}`;
-  if (item.previewKind === 'image') return `图片 · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'image') return `${en ? 'Image' : '图片'} · ${formatBytes(item.sizeBytes)}`;
   if (item.previewKind === 'pdf') return `PDF · ${formatBytes(item.sizeBytes)}`;
-  if (item.previewKind === 'video') return `视频 · ${formatBytes(item.sizeBytes)}`;
-  if (item.previewKind === 'audio') return `音频 · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'video') return `${en ? 'Video' : '视频'} · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'audio') return `${en ? 'Audio' : '音频'} · ${formatBytes(item.sizeBytes)}`;
   return formatBytes(item.sizeBytes);
 }
 
-const ROLE_META: Record<MaterialTaskRole, { label: string; badgeClass: string }> = {
-  input: { label: '输入材料', badgeClass: 'working' },
-  output: { label: '工作成果', badgeClass: 'done' },
-  reference: { label: '相关资料', badgeClass: '' }
+const ROLE_META: Record<MaterialTaskRole, { zh: string; en: string; badgeClass: string }> = {
+  input: { zh: '输入材料', en: 'Input', badgeClass: 'working' },
+  output: { zh: '工作成果', en: 'Deliverable', badgeClass: 'done' },
+  reference: { zh: '相关资料', en: 'Reference', badgeClass: '' }
 };
 
 export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): React.JSX.Element {
+  const { locale, L } = useI18n();
   const {
     thread,
     members,
@@ -338,7 +341,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     setFileTextState(cached !== undefined ? 'ready' : 'loading');
     views.read(key, async () => {
       const response = await fetch(url);
-      if (!response.ok) throw Object.assign(new Error('文件读取失败'), {status:response.status});
+      if (!response.ok) throw Object.assign(new Error(L('文件读取失败', 'Failed to read file')), {status:response.status});
       return (await response.text()).slice(0,maxChars);
     }, Infinity)
       .then((txt) => {
@@ -383,10 +386,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     setWsEntries(cached?.entries ?? []);setWsSubpath(sub);setWsBusy(!cached);setWsError('');
     try {
       const data = await views.read<Directory>(key,async()=>{
-        const res = await fetch(url);if (!res.ok) throw Object.assign(new Error('目录读取失败'),{status:res.status});return res.json();
+        const res = await fetch(url);if (!res.ok) throw Object.assign(new Error(L('目录读取失败', 'Failed to read directory')),{status:res.status});return res.json();
       },10000);
       if (request === directoryRequest.current) {setWsEntries(data.entries || []);setWsSubpath(data.subpath || '');}
-    } catch { if (request === directoryRequest.current) {setWsError('目录读取失败');if (!views.peek(key)) setWsEntries([]);} }
+    } catch { if (request === directoryRequest.current) {setWsError(L('目录读取失败', 'Failed to read directory'));if (!views.peek(key)) setWsEntries([]);} }
     finally { if (request === directoryRequest.current) setWsBusy(false); }
   },[thread?.id,thread?.workspacePath,thread?.workspaceNodeId,views]);
   useLayoutEffect(() => {
@@ -425,7 +428,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      onNotify(err.message || err.error || '操作资料失败');
+      onNotify(err.message || err.error || L('操作资料失败', 'Material action failed'));
       return;
     }
     if (payload.action === 'delete') {
@@ -435,7 +438,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       setUndoTrash({
         kind,
         id,
-        title: itemTitle || items.find((i) => i.kind === kind && i.id === id)?.title || '资料'
+        title: itemTitle || items.find((i) => i.kind === kind && i.id === id)?.title || L('资料', 'Material')
       });
     } else if (payload.action === 'restore') {
       setUndoTrash(null);
@@ -449,13 +452,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     try {
       for (const file of files) {
         if (file.size > 16 * 1024 * 1024) {
-          onNotify(`文件 ${file.name} 超过 16 MiB 限制`);
+          onNotify(L(`文件 ${file.name} 超过 16 MiB 限制`, `File ${file.name} exceeds 16 MiB limit`));
           continue;
         }
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(new Error('文件读取失败'));
+          reader.onerror = () => reject(new Error(L('文件读取失败', 'Failed to read file')));
           reader.readAsDataURL(file);
         });
         const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
@@ -471,7 +474,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          onNotify(err.message || `上传 ${file.name} 失败`);
+          onNotify(err.message || L(`上传 ${file.name} 失败`, `Failed to upload ${file.name}`));
         }
       }
       await onRefreshSpace();
@@ -514,7 +517,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         await onRefreshSpace();
       } else {
         const err = await res.json().catch(() => ({}));
-        onNotify(err.message || '新建文件夹失败');
+        onNotify(err.message || L('新建文件夹失败', 'Failed to create folder'));
       }
       return;
     }
@@ -539,7 +542,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        onNotify(err.message || '新建文档失败');
+        onNotify(err.message || L('新建文档失败', 'Failed to create document'));
       }
       return;
     }
@@ -560,7 +563,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         await onRefreshSpace();
       } else {
         const err = await res.json().catch(() => ({}));
-        onNotify(err.message || '添加链接失败');
+        onNotify(err.message || L('添加链接失败', 'Failed to add link'));
       }
     }
   };
@@ -578,7 +581,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        onNotify(err.message || '重命名文件夹失败');
+        onNotify(err.message || L('重命名文件夹失败', 'Failed to rename folder'));
         return;
       }
       await onRefreshSpace();
@@ -600,7 +603,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       await onRefreshSpace();
     } else {
       const err = await res.json().catch(() => ({}));
-      onNotify(err.message || '删除文件夹失败');
+      onNotify(err.message || L('删除文件夹失败', 'Failed to delete folder'));
     }
   };
 
@@ -623,7 +626,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       await loadMaterialContext(true);
     } else {
       const err = await res.json().catch(() => ({}));
-      onNotify(err.message || '关联任务失败');
+      onNotify(err.message || L('关联任务失败', 'Failed to link task'));
     }
   };
 
@@ -635,7 +638,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       await loadMaterialContext(true);
     } else {
       const err = await res.json().catch(() => ({}));
-      onNotify(err.message || '取消关联失败');
+      onNotify(err.message || L('取消关联失败', 'Failed to unlink task'));
     }
   };
 
@@ -645,7 +648,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      onNotify(err.message || '彻底删除失败');
+      onNotify(err.message || L('彻底删除失败', 'Failed to permanently delete'));
       return;
     }
     setConfirmPurgeKey(null);
@@ -661,7 +664,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         title: item.title,
         version: item.version ?? 1,
         subLabel: `v${item.version ?? 1}`,
-        snippet: `参考文档《${item.title}》(id=${item.id}, v${item.version ?? 1})`
+        snippet: L(
+          `参考文档《${item.title}》(id=${item.id}, v${item.version ?? 1})`,
+          `Reference document "${item.title}" (id=${item.id}, v${item.version ?? 1})`
+        )
       };
     }
     if (item.kind === 'link') {
@@ -670,8 +676,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         kind: 'link',
         title: item.title,
         url: item.url,
-        subLabel: '链接',
-        snippet: `参考链接《${item.title}》(${item.url})`
+        subLabel: L('链接', 'Link'),
+        snippet: L(`参考链接《${item.title}》(${item.url})`, `Reference link "${item.title}" (${item.url})`)
       };
     }
     return {
@@ -679,7 +685,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       kind: 'file',
       title: item.title,
       subLabel: formatBytes(item.sizeBytes),
-      snippet: `参考文件「${item.title}」(id=${item.id})`
+      snippet: L(`参考文件「${item.title}」(id=${item.id})`, `Reference file "${item.title}" (id=${item.id})`)
     };
   };
 
@@ -799,11 +805,14 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
     const ts = Date.parse(iso);
     if (!Number.isFinite(ts)) return '';
     const diffMs = Date.now() - ts;
-    if (diffMs >= 0 && diffMs < 60_000) return '刚刚';
-    if (diffMs >= 60_000 && diffMs < 3600_000) return `${Math.floor(diffMs / 60_000)}分钟前`;
+    if (diffMs >= 0 && diffMs < 60_000) return L('刚刚', 'just now');
+    if (diffMs >= 60_000 && diffMs < 3600_000) {
+      const mins = Math.floor(diffMs / 60_000);
+      return L(`${mins}分钟前`, `${mins}m ago`);
+    }
     const d = new Date(ts);
     const now = new Date();
-    const hhmm = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const hhmm = d.toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
     if (
       d.getFullYear() === now.getFullYear() &&
       d.getMonth() === now.getMonth() &&
@@ -857,7 +866,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             onSelectItem({ kind: item.kind, id: item.id });
           }}
           className="material-item-open flex min-w-0 flex-1 items-start gap-2.5 p-1 text-left"
-          title={`${item.title} · ${kindLabel(item)}${folderLabel ? ` · 目录：${folderLabel}` : ''}`}
+          title={`${item.title} · ${kindLabel(item, locale)}${folderLabel ? ` · ${L('目录：', 'Folder: ')}${folderLabel}` : ''}`}
         >
           <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground">
             <Icon size={13.5} />
@@ -865,14 +874,14 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
           <span className="material-item-title block min-w-0 flex-1">
             <span className="block break-words text-[12.5px] font-medium leading-snug text-foreground">
               {item.pinnedAt && (
-                <span className="material-pin-badge mr-1 inline-flex align-middle text-info-foreground" title="已置顶">
+                <span className="material-pin-badge mr-1 inline-flex align-middle text-info-foreground" title={L('已置顶', 'Pinned')}>
                   <Pin size={10} />
                 </span>
               )}
               {item.title}
             </span>
             <span className="material-item-meta mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-foreground">
-              <span className="font-mono">{kindLabel(item)}</span>
+              <span className="font-mono">{kindLabel(item, locale)}</span>
               {opts?.showFolderChip && folderLabel && (
                 <span
                   className="material-folder-chip inline-flex max-w-[130px] items-center gap-1 truncate rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground"
@@ -882,7 +891,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   <span className="truncate">{folderLabel}</span>
                 </span>
               )}
-              {item.taskId && <span>· 任务产物</span>}
+              {item.taskId && <span>· {L('任务产物', 'Deliverable')}</span>}
               {timeLabel && <span className="font-mono">· {timeLabel}</span>}
             </span>
           </span>
@@ -893,7 +902,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             type="button"
             onClick={() => setRowMenuKey(menuOpen ? null : key)}
             className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
-            aria-label={`操作资料 ${item.title}`}
+            aria-label={L(`操作资料 ${item.title}`, `Actions for ${item.title}`)}
           >
             <MoreHorizontal size={14} />
           </button>
@@ -915,7 +924,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   }}
                 >
                   <ExternalLink size={13} />
-                  <span>独立窗口打开</span>
+                  <span>{L('独立窗口打开', 'Open in Popout')}</span>
                 </button>
               )}
               <button
@@ -926,7 +935,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 {item.pinnedAt ? <PinOff size={13} /> : <Pin size={13} />}
-                <span>{item.pinnedAt ? '取消置顶' : '置顶'}</span>
+                <span>{item.pinnedAt ? L('取消置顶', 'Unpin') : L('置顶', 'Pin')}</span>
               </button>
               <button
                 type="button"
@@ -936,7 +945,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <MessageSquare size={13} />
-                <span>引用到对话</span>
+                <span>{L('引用到对话', 'Cite in Chat')}</span>
               </button>
               <button
                 type="button"
@@ -946,7 +955,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <Pencil size={13} />
-                <span>重命名</span>
+                <span>{L('重命名', 'Rename')}</span>
               </button>
               <button
                 type="button"
@@ -956,7 +965,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <FolderInput size={13} />
-                <span>移动到文件夹</span>
+                <span>{L('移动到文件夹', 'Move to Folder')}</span>
               </button>
               <button
                 type="button"
@@ -967,7 +976,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <Trash2 size={13} />
-                <span>移到回收站</span>
+                <span>{L('移到回收站', 'Move to Trash')}</span>
               </button>
             </div>
           )}
@@ -990,7 +999,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
           type="button"
           onClick={() => setActiveFolderId(folder.id)}
           className="material-folder-open flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1.5 text-left"
-          title={`打开文件夹「${folder.title}」`}
+          title={L(`打开文件夹「${folder.title}」`, `Open folder "${folder.title}"`)}
         >
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-amber-500/10 text-amber-600 dark:text-amber-400">
             <Folder size={13.5} />
@@ -999,7 +1008,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             {folder.title}
           </span>
           <Badge variant="secondary" size="sm" className="material-folder-count font-mono text-[10px]">
-            {entryCount > 0 ? `${entryCount} 项` : '空'}
+            {entryCount > 0 ? L(`${entryCount} 项`, `${entryCount}`) : L('空', 'Empty')}
           </Badge>
           <ChevronRight size={13} className="material-folder-chevron shrink-0 text-muted-foreground" />
         </button>
@@ -1009,7 +1018,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             type="button"
             onClick={() => setFolderMenuId(menuOpen ? null : folder.id)}
             className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
-            aria-label={`管理文件夹 ${folder.title}`}
+            aria-label={L(`管理文件夹 ${folder.title}`, `Manage folder ${folder.title}`)}
           >
             <MoreHorizontal size={14} />
           </button>
@@ -1023,7 +1032,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <FolderOpen size={13} />
-                <span>打开文件夹</span>
+                <span>{L('打开文件夹', 'Open Folder')}</span>
               </button>
               <button
                 type="button"
@@ -1036,7 +1045,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <FileText size={13} />
-                <span>在此新建文档</span>
+                <span>{L('在此新建文档', 'New Document Here')}</span>
               </button>
               <button
                 type="button"
@@ -1048,7 +1057,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <Folder size={13} />
-                <span>在此新建子文件夹</span>
+                <span>{L('在此新建子文件夹', 'New Subfolder Here')}</span>
               </button>
               <button
                 type="button"
@@ -1058,7 +1067,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <Pencil size={13} />
-                <span>重命名文件夹</span>
+                <span>{L('重命名文件夹', 'Rename Folder')}</span>
               </button>
               <button
                 type="button"
@@ -1069,7 +1078,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 }}
               >
                 <Trash2 size={13} />
-                <span>删除文件夹</span>
+                <span>{L('删除文件夹', 'Delete Folder')}</span>
               </button>
             </div>
           )}
@@ -1092,7 +1101,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             style={{ color: '#4f627f' }}
           >
             {contextOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            <span>关联任务与来源 ({linkedTasks.length + sources.length})</span>
+            <span>{L(`关联任务与来源 (${linkedTasks.length + sources.length})`, `Linked Tasks & Sources (${linkedTasks.length + sources.length})`)}</span>
           </button>
           {threadTasks.length > 0 && (
             <button
@@ -1105,7 +1114,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               style={{ height: 24, fontSize: 11, padding: '0 8px' }}
             >
               <Plus size={11} />
-              <span>关联任务</span>
+              <span>{L('关联任务', 'Link Task')}</span>
             </button>
           )}
         </div>
@@ -1113,7 +1122,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         {linkPickerOpen && (
           <div className="material-associate-form p-2.5 rounded-lg border" style={{ borderColor: '#dce3f0', background: '#fff' }}>
             <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-[11px]" style={{ color: '#8795aa' }}>关系：</span>
+              <span className="text-[11px]" style={{ color: '#8795aa' }}>{L('关系：', 'Role: ')}</span>
               {(['input', 'output', 'reference'] as const).map((r) => (
                 <button
                   key={r}
@@ -1122,7 +1131,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   className={`task-overview-state ${linkRole === r ? ROLE_META[r].badgeClass : ''}`}
                   style={linkRole === r ? { outline: '1.5px solid #416ee6' } : undefined}
                 >
-                  {ROLE_META[r].label}
+                  {locale === 'en' ? ROLE_META[r].en : ROLE_META[r].zh}
                 </button>
               ))}
             </div>
@@ -1145,7 +1154,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         {contextOpen && (
           <>
             {linkedTasks.length === 0 && sources.length === 0 ? (
-              <p className="mt-2">暂未绑定任务，点击右上角“关联任务”可标记为输入材料或成果。</p>
+              <p className="mt-2">{L('暂未绑定任务，点击右上角“关联任务”可标记为输入材料或成果。', 'No linked tasks yet. Click "Link Task" to mark as input or deliverable.')}</p>
             ) : (
               <>
                 {linkedTasks.length > 0 && (
@@ -1156,7 +1165,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         <div key={lk.id}>
                           <button type="button" onClick={() => onOpenTask(lk.taskId)}>
                             <div className="flex items-center justify-between gap-2">
-                              <span className={`task-overview-state ${meta.badgeClass}`}>{meta.label}</span>
+                              <span className={`task-overview-state ${meta.badgeClass}`}>{locale === 'en' ? meta.en : meta.zh}</span>
                               {lk.versionChanged && (
                                 <span
                                   className="inline-flex items-center gap-1 text-[10px]"
@@ -1174,9 +1183,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               type="button"
                               onClick={() => void handleUnlinkTask(lk.id)}
                               className="material-unlink"
-                              aria-label={`取消关联 ${lk.taskTitle}`}
+                              aria-label={L(`取消关联 ${lk.taskTitle}`, `Unlink ${lk.taskTitle}`)}
                             >
-                              取消关联
+                              {L('取消关联', 'Unlink')}
                             </button>
                           )}
                         </div>
@@ -1198,11 +1207,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             onSelectItem(null);
                           }
                         }}
-                        title="回到左侧对话区域"
+                        title={L('回到左侧对话区域', 'Scroll back to chat')}
                       >
                         <small>
-                          来源消息 · {src.authorKind === 'user' ? '你' : memberById.get(src.authorId)?.name || src.authorId} ·{' '}
-                          {new Date(src.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                          {L('来源消息', 'Source message')} · {src.authorKind === 'user' ? L('你', 'You') : memberById.get(src.authorId)?.name || src.authorId} ·{' '}
+                          {new Date(src.createdAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}
                         </small>
                         <span>{src.body}</span>
                       </button>
@@ -1219,7 +1228,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
 
   return (
     <aside
-      aria-label="协作空间"
+      aria-label={L('协作空间', 'Collaboration Space')}
       onClick={() => {
         setFilterMenuOpen(false);
         setAddMenuOpen(false);
@@ -1257,7 +1266,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
           }}
         >
           <UploadCloud size={28} />
-          <span className="text-xs font-semibold">松手上传到当前协作空间</span>
+          <span className="text-xs font-semibold">{L('松手上传到当前协作空间', 'Drop to upload to Collaboration Space')}</span>
         </div>
       )}
 
@@ -1275,11 +1284,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               className="space-back -ml-1.5 text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft size={13} />
-              <span>返回列表</span>
+              <span>{L('返回列表', 'Back')}</span>
             </Button>
           ) : (
             <strong className="text-[13.5px] font-semibold tracking-tight text-foreground">
-              协作空间
+              {L('协作空间', 'Collaboration Space')}
             </strong>
           )}
         </div>
@@ -1302,8 +1311,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   previewKind: selectedItem?.previewKind
                 });
               }}
-              aria-label="独立窗口打开"
-              title="独立窗口打开"
+              aria-label={L('独立窗口打开', 'Open in Popout')}
+              title={L('独立窗口打开', 'Open in Popout')}
               className="text-muted-foreground hover:text-foreground"
             >
               <ExternalLink size={13.5} />
@@ -1313,8 +1322,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             variant="ghost"
             size="icon-xs"
             onClick={onToggleWide}
-            aria-label={wideSpace ? '标准协作空间宽度' : '展开协作空间宽度'}
-            title={wideSpace ? '标准宽度' : '宽屏显示'}
+            aria-label={wideSpace ? L('标准协作空间宽度', 'Standard panel width') : L('展开协作空间宽度', 'Expand panel width')}
+            title={wideSpace ? L('标准宽度', 'Standard width') : L('宽屏显示', 'Wide view')}
             className="text-muted-foreground hover:text-foreground"
           >
             {wideSpace ? <Minimize2 size={13.5} /> : <Maximize2 size={13.5} />}
@@ -1323,8 +1332,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             variant="ghost"
             size="icon-xs"
             onClick={onCloseSpace}
-            aria-label="收起协作空间"
-            title="收起协作空间"
+            aria-label={L('收起协作空间', 'Hide Collaboration Space')}
+            title={L('收起协作空间', 'Hide Collaboration Space')}
             className="text-muted-foreground hover:text-foreground"
           >
             <X size={14} />
@@ -1334,12 +1343,12 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
 
       {/* Category Tabs — Coss UI Segmented Control Surface */}
       {!selection && !showTrash && (
-        <nav aria-label="协作空间分类" className="space-tabs border-b border-border/60 px-4 py-2.5">
+        <nav aria-label={L('协作空间分类', 'Collaboration Space tabs')} className="space-tabs border-b border-border/60 px-4 py-2.5">
           <div className="grid w-full grid-cols-3 gap-0.5 rounded-lg bg-muted p-0.5">
             {([
-              ['documents', `资料${items.length > 0 ? ` (${items.length})` : ''}`],
-              ['tasks', `任务${threadTasks.length > 0 ? ` (${threadTasks.length})` : ''}`],
-              ['resources', '资源']
+              ['documents', `${L('资料', 'Materials')}${items.length > 0 ? ` (${items.length})` : ''}`],
+              ['tasks', `${L('任务', 'Tasks')}${threadTasks.length > 0 ? ` (${threadTasks.length})` : ''}`],
+              ['resources', L('资源', 'Resources')]
             ] as const).map(([key, label]) => {
               const active = tab === key;
               return (
@@ -1369,13 +1378,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
       )}
       {undoTrash && (
         <div className="space-undo">
-          <span>已移入回收站：{undoTrash.title}</span>
+          <span>{L(`已移入回收站：${undoTrash.title}`, `Moved to trash: ${undoTrash.title}`)}</span>
           <button
             type="button"
             onClick={() => void mutateItem(undoTrash.kind, undoTrash.id, { action: 'restore' })}
             className="font-semibold underline"
           >
-            撤销
+            {L('撤销', 'Undo')}
           </button>
         </div>
       )}
@@ -1386,13 +1395,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
           <div>
             <div className="space-recycle-heading">
               <Trash2 size={15} />
-              <h2>回收站 ({trash.length})</h2>
+              <h2>{L(`回收站 (${trash.length})`, `Trash (${trash.length})`)}</h2>
             </div>
             {trash.length === 0 ? (
               <div className="space-blank">
                 <span><Trash2 size={20} /></span>
-                <strong>回收站为空</strong>
-                <p>移出列表的资料会暂存于此并可随时恢复。</p>
+                <strong>{L('回收站为空', 'Trash is empty')}</strong>
+                <p>{L('移出列表的资料会暂存于此并可随时恢复。', 'Removed materials stay here until you restore or delete them.')}</p>
               </div>
             ) : (
               <Frame className="rounded-xl">
@@ -1404,7 +1413,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       <div key={trashKey} className="space-trash-row">
                         <span>
                           <strong>{it.title}</strong>
-                          <small>{kindLabel(it)}</small>
+                          <small>{kindLabel(it, locale)}</small>
                         </span>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Button
@@ -1413,7 +1422,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             onClick={() => void mutateItem(it.kind, it.id, { action: 'restore' })}
                           >
                             <RotateCcw size={12} />
-                            <span>恢复</span>
+                            <span>{L('恢复', 'Restore')}</span>
                           </Button>
                           <Button
                             variant={confirming ? 'destructive' : 'outline'}
@@ -1427,7 +1436,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             }}
                           >
                             <Trash2 size={12} />
-                            <span>{confirming ? '确认删除' : '彻底删除'}</span>
+                            <span>{confirming ? L('确认删除', 'Confirm') : L('彻底删除', 'Delete')}</span>
                           </Button>
                         </div>
                       </div>
@@ -1438,12 +1447,12 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             )}
           </div>
         ) : selection?.kind === 'document' && artifact?.id !== selection.id ? (
-          <div role="status"><p>{docNotice || '正在加载文稿…'}</p>{docNotice && <button className="dw-btn" onClick={onRetryDocument}>重试</button>}</div>
+          <div role="status"><p>{docNotice || L('正在加载文稿…', 'Loading document…')}</p>{docNotice && <button className="dw-btn" onClick={onRetryDocument}>{L('重试', 'Retry')}</button>}</div>
         ) : selection?.kind === 'document' ? (
           <div className="flex flex-col h-full min-h-0">
             <div className="space-detail-heading">
               <div className="flex items-center justify-between gap-2">
-                <small>文档 · v{artifact?.headVersion ?? 1}{conflictVersionsCount > 0 ? ` · ${conflictVersionsCount} 份冲突保留稿` : ''}</small>
+                <small>{L('文档', 'Doc')} · v{artifact?.headVersion ?? 1}{conflictVersionsCount > 0 ? L(` · ${conflictVersionsCount} 份冲突保留稿`, ` · ${conflictVersionsCount} conflict branches`) : ''}</small>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -1451,7 +1460,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     className={!docEditing ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
                     style={{ height: 24, padding: '0 9px', fontSize: 11 }}
                   >
-                    预览
+                    {L('预览', 'Preview')}
                   </button>
                   <button
                     type="button"
@@ -1459,11 +1468,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     className={docEditing ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
                     style={{ height: 24, padding: '0 9px', fontSize: 11 }}
                   >
-                    编辑
+                    {L('编辑', 'Edit')}
                   </button>
                 </div>
               </div>
-              <h2>{artifact?.title || selectedItem?.title || '文档详情'}</h2>
+              <h2>{artifact?.title || selectedItem?.title || L('文档详情', 'Document Details')}</h2>
               {docNotice && <span>{docNotice}</span>}
             </div>
 
@@ -1482,7 +1491,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <ExternalLink size={11} />
-                  <span>独立窗口</span>
+                  <span>{L('独立窗口', 'Popout')}</span>
                 </button>
               )}
               {selectedItem && (
@@ -1492,7 +1501,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <Quote size={11} />
-                  <span>引用到对话</span>
+                  <span>{L('引用到对话', 'Cite')}</span>
                 </button>
               )}
               <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -1502,7 +1511,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   className="dw-btn dw-btn-outline dw-btn-sm"
                 >
                   <History size={11} />
-                  <span>版本 ({versions.length})</span>
+                  <span>{L(`版本 (${versions.length})`, `Versions (${versions.length})`)}</span>
                 </button>
                 {historyMenuOpen && (
                   <div className="chat-context-menu absolute left-0 top-full mt-1 w-60 max-h-60 overflow-y-auto">
@@ -1517,10 +1526,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         className="flex-col items-start gap-0.5"
                       >
                         <strong>
-                          v{ver.version} · {ver.branchKind === 'conflict_branch' ? '冲突保留稿' : '主稿'}
+                          v{ver.version} · {ver.branchKind === 'conflict_branch' ? L('冲突保留稿', 'Conflict branch') : L('主稿', 'Main')}
                         </strong>
                         <small>
-                          写入者：{ver.writerKind === 'user' ? '你' : memberById.get(ver.writerId)?.name || ver.writerId}
+                          {L('写入者：', 'Author: ')}{ver.writerKind === 'user' ? L('你', 'You') : memberById.get(ver.writerId)?.name || ver.writerId}
                         </small>
                       </button>
                     ))}
@@ -1529,17 +1538,17 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </div>
               <button type="button" onClick={onCopyArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
                 <Copy size={11} />
-                <span>复制</span>
+                <span>{L('复制', 'Copy')}</span>
               </button>
               <button type="button" onClick={onExportArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
                 <Download size={11} />
-                <span>导出</span>
+                <span>{L('导出', 'Export')}</span>
               </button>
               <button type="button" onClick={onSaveArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
-                保存修改
+                {L('保存修改', 'Save')}
               </button>
               <button type="button" onClick={onSendArtifactBackToOriginChat} className="dw-btn dw-btn-primary dw-btn-sm">
-                发回原对话继续改
+                {L('发回原对话继续改', 'Revise in Thread')}
               </button>
               {artifact && (
                 <button
@@ -1549,7 +1558,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   style={{ color: '#a75229' }}
                 >
                   <Trash2 size={11} />
-                  <span>移到回收站</span>
+                  <span>{L('移到回收站', 'Trash')}</span>
                 </button>
               )}
             </div>
@@ -1558,7 +1567,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               <textarea
                 value={docDraft}
                 onChange={(e) => setDocDraft(e.target.value)}
-                aria-label="文稿编辑器"
+                aria-label={L('文稿编辑器', 'Document editor')}
                 className="dw-textarea flex-1 min-h-[220px] font-mono text-xs"
               />
             ) : (
@@ -1587,9 +1596,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         ) : selection?.kind === 'file' && selectedItem ? (
           <div className="flex flex-col gap-3">
             <div className="space-detail-heading">
-              <small>{kindLabel(selectedItem)}</small>
+              <small>{kindLabel(selectedItem, locale)}</small>
               <h2>{selectedItem.title}</h2>
-              <span>上传于 {new Date(selectedItem.createdAt).toLocaleString('zh-CN')}</span>
+              <span>{L('上传于 ', 'Uploaded ')}{new Date(selectedItem.createdAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')}</span>
             </div>
 
             {selectedItem.previewKind === 'image' && (
@@ -1626,7 +1635,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 <File size={22} />
                 <div>
                   <strong>{selectedItem.title}</strong>
-                  <p>此格式保留原件，可下载后使用对应应用打开。</p>
+                  <p>{L('此格式保留原件，可下载后使用对应应用打开。', 'Download this file to open it in a local application.')}</p>
                 </div>
               </div>
             )}
@@ -1647,7 +1656,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="dw-btn dw-btn-outline dw-btn-sm"
               >
                 <ExternalLink size={12} />
-                <span>独立窗口</span>
+                <span>{L('独立窗口', 'Popout')}</span>
               </button>
               <button
                 type="button"
@@ -1655,7 +1664,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="dw-btn dw-btn-outline dw-btn-sm"
               >
                 <MessageSquare size={12} />
-                <span>引用到对话</span>
+                <span>{L('引用到对话', 'Cite')}</span>
               </button>
               <a
                 href={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}?download=1`}
@@ -1663,7 +1672,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="dw-btn dw-btn-primary dw-btn-sm"
               >
                 <Download size={12} />
-                <span>下载原件</span>
+                <span>{L('下载原件', 'Download')}</span>
               </a>
               <button
                 type="button"
@@ -1672,7 +1681,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 style={{ color: '#a75229' }}
               >
                 <Trash2 size={12} />
-                <span>移到回收站</span>
+                <span>{L('移到回收站', 'Trash')}</span>
               </button>
             </div>
 
@@ -1681,7 +1690,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         ) : selection?.kind === 'link' && selectedItem ? (
           <div className="flex flex-col gap-3">
             <div className="space-detail-heading">
-              <small>外部链接</small>
+              <small>{L('外部链接', 'External Link')}</small>
               <h2>{selectedItem.title}</h2>
             </div>
             <a href={selectedItem.url} target="_blank" rel="noreferrer" className="shared-ref flex items-center justify-between gap-2">
@@ -1696,11 +1705,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="dw-btn dw-btn-outline dw-btn-sm"
               >
                 <MessageSquare size={12} />
-                <span>引用到对话</span>
+                <span>{L('引用到对话', 'Cite')}</span>
               </button>
               <a href={selectedItem.url} target="_blank" rel="noreferrer" className="dw-btn dw-btn-primary dw-btn-sm">
                 <ExternalLink size={12} />
-                <span>打开链接</span>
+                <span>{L('打开链接', 'Open Link')}</span>
               </a>
               <button
                 type="button"
@@ -1709,7 +1718,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 style={{ color: '#a75229' }}
               >
                 <Trash2 size={12} />
-                <span>移除</span>
+                <span>{L('移除', 'Remove')}</span>
               </button>
             </div>
 
@@ -1730,8 +1739,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="搜索资料…"
-                  aria-label="搜索协作空间资料"
+                  placeholder={L('搜索资料…', 'Search materials…')}
+                  aria-label={L('搜索协作空间资料', 'Search materials')}
                   className="pl-7 [&_input]:pl-7"
                 />
               </div>
@@ -1742,8 +1751,8 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 size="icon-sm"
                 disabled={!thread || uploading}
                 onClick={() => fileInputRef.current?.click()}
-                aria-label="上传文件"
-                title={uploading ? '上传中…' : '上传本地文件'}
+                aria-label={L('上传文件', 'Upload files')}
+                title={uploading ? L('上传中…', 'Uploading…') : L('上传本地文件', 'Upload local files')}
               >
                 <Paperclip size={13.5} />
               </Button>
@@ -1756,7 +1765,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     setFilterMenuOpen((o) => !o);
                     setAddMenuOpen(false);
                   }}
-                  aria-label="筛选资料类型"
+                  aria-label={L('筛选资料类型', 'Filter material type')}
                   className={kindFilter ? 'border-ring text-foreground' : ''}
                 >
                   <SlidersHorizontal size={13.5} />
@@ -1764,10 +1773,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 {filterMenuOpen && (
                   <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
                     {([
-                      ['', '全部类型'],
-                      ['document', '文档'],
-                      ['file', '文件'],
-                      ['link', '外部链接']
+                      ['', L('全部类型', 'All types')],
+                      ['document', L('文档', 'Documents')],
+                      ['file', L('文件', 'Files')],
+                      ['link', L('外部链接', 'Links')]
                     ] as const).map(([val, label]) => (
                       <button
                         key={val || 'all'}
@@ -1794,7 +1803,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     setAddMenuOpen((o) => !o);
                     setFilterMenuOpen(false);
                   }}
-                  aria-label="添加资料"
+                  aria-label={L('添加资料', 'Add material')}
                 >
                   <Plus size={14} />
                 </Button>
@@ -1810,7 +1819,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       }}
                     >
                       <FileText size={13} />
-                      <span>新建文档</span>
+                      <span>{L('新建文档', 'New Document')}</span>
                     </button>
                     <button
                       type="button"
@@ -1823,7 +1832,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       }}
                     >
                       <Link2 size={13} />
-                      <span>添加链接</span>
+                      <span>{L('添加链接', 'Add Link')}</span>
                     </button>
                     <button
                       type="button"
@@ -1834,7 +1843,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       }}
                     >
                       <Folder size={13} />
-                      <span>新建文件夹</span>
+                      <span>{L('新建文件夹', 'New Folder')}</span>
                     </button>
                   </div>
                 )}
@@ -1846,9 +1855,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 <FramePanel className="rounded-lg p-3">
                   <form onSubmit={handleCreateSubmit} className="flex flex-col gap-2 text-xs">
                     <div className="font-semibold text-foreground">
-                      {createMode === 'document' ? '新建文档' : createMode === 'link' ? '添加链接' : '新建文件夹'}
+                      {createMode === 'document'
+                        ? L('新建文档', 'New Document')
+                        : createMode === 'link'
+                          ? L('添加链接', 'Add Link')
+                          : L('新建文件夹', 'New Folder')}
                       {effectiveActiveFolderId
-                        ? `（/${folderPathById.get(effectiveActiveFolderId) || '当前目录'}）`
+                        ? ` (/${folderPathById.get(effectiveActiveFolderId) || L('当前目录', 'Current folder')})`
                         : ''}
                     </div>
                     <input
@@ -1858,10 +1871,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                       onChange={(e) => setDraftTitle(e.target.value)}
                       placeholder={
                         createMode === 'document'
-                          ? '文档名称（如：产品方案.md）'
+                          ? L('文档名称（如：产品方案.md）', 'Document title (e.g. proposal.md)')
                           : createMode === 'link'
-                            ? '链接标题'
-                            : '文件夹名称'
+                            ? L('链接标题', 'Link title')
+                            : L('文件夹名称', 'Folder name')
                       }
                       className="dw-input"
                     />
@@ -1880,16 +1893,16 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         rows={createMode === 'document' ? 3 : 2}
                         value={draftNote}
                         onChange={(e) => setDraftNote(e.target.value)}
-                        placeholder={createMode === 'document' ? '初始正文内容（可选）' : '备注说明（可选）'}
+                        placeholder={createMode === 'document' ? L('初始正文内容（可选）', 'Initial content (optional)') : L('备注说明（可选）', 'Notes (optional)')}
                         className="dw-textarea"
                       />
                     )}
                     <div className="flex justify-end gap-1.5">
                       <Button variant="outline" size="xs" onClick={() => setCreateMode(null)}>
-                        取消
+                        {L('取消', 'Cancel')}
                       </Button>
                       <Button type="submit" size="xs">
-                        确认
+                        {L('确认', 'Confirm')}
                       </Button>
                     </div>
                   </form>
@@ -1901,7 +1914,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               <Frame className="dw-inline-panel rounded-xl">
                 <FramePanel className="rounded-lg p-3">
                   <form onSubmit={handleRenameConfirm} className="flex flex-col gap-2 text-xs">
-                    <div className="font-semibold text-foreground">重命名</div>
+                    <div className="font-semibold text-foreground">{L('重命名', 'Rename')}</div>
                     <input
                       type="text"
                       required
@@ -1911,10 +1924,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     />
                     <div className="flex justify-end gap-1.5">
                       <Button variant="outline" size="xs" onClick={() => setRenameTarget(null)}>
-                        取消
+                        {L('取消', 'Cancel')}
                       </Button>
                       <Button type="submit" size="xs">
-                        保存
+                        {L('保存', 'Save')}
                       </Button>
                     </div>
                   </form>
@@ -1925,7 +1938,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             {moveTarget && (
               <Frame className="dw-inline-panel rounded-xl">
                 <FramePanel className="flex flex-col gap-1.5 rounded-lg p-3 text-xs">
-                  <div className="font-semibold text-foreground">移动「{moveTarget.title}」到目录</div>
+                  <div className="font-semibold text-foreground">{L(`移动「${moveTarget.title}」到目录`, `Move "${moveTarget.title}" to folder`)}</div>
                   <Button
                     variant="outline"
                     size="xs"
@@ -1935,7 +1948,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     }}
                     className="justify-start"
                   >
-                    / 根目录
+                    {L('/ 根目录', '/ Root')}
                   </Button>
                   {folders.map((fld) => (
                     <Button
@@ -1952,7 +1965,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     </Button>
                   ))}
                   <Button variant="ghost" size="xs" onClick={() => setMoveTarget(null)} className="self-end">
-                    取消
+                    {L('取消', 'Cancel')}
                   </Button>
                 </FramePanel>
               </Frame>
@@ -1962,20 +1975,20 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               <div className="my-auto py-10 text-center text-xs text-muted-foreground" role="status">
                 {props.materialsState === 'error' ? (
                   <div className="flex flex-col items-center gap-2">
-                    <strong>资料加载失败</strong>
+                    <strong>{L('资料加载失败', 'Failed to load materials')}</strong>
                     <Button variant="outline" size="xs" onClick={() => void onRefreshSpace()}>
-                      重新加载资料
+                      {L('重新加载资料', 'Reload')}
                     </Button>
                   </div>
                 ) : (
-                  <span>正在加载资料…</span>
+                  <span>{L('正在加载资料…', 'Loading materials…')}</span>
                 )}
               </div>
             ) : searching ? (
               <Frame className="rounded-xl">
                 <FrameHeader className="flex-row items-center justify-between px-3 py-2">
                   <h4 className="m-0 text-[11px] font-semibold text-muted-foreground">
-                    搜索结果 ({filteredItems.length})
+                    {L(`搜索结果 (${filteredItems.length})`, `Results (${filteredItems.length})`)}
                   </h4>
                   <button
                     type="button"
@@ -1985,12 +1998,12 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     }}
                     className="text-[11px] font-medium text-info-foreground hover:underline"
                   >
-                    清除筛选
+                    {L('清除筛选', 'Clear filters')}
                   </button>
                 </FrameHeader>
                 <FramePanel className="max-h-[420px] overflow-y-auto rounded-lg p-1 coss-scroll">
                   {filteredItems.length === 0 ? (
-                    <p className="py-6 text-center text-xs text-muted-foreground">没有找到匹配资料</p>
+                    <p className="py-6 text-center text-xs text-muted-foreground">{L('没有找到匹配资料', 'No matching materials')}</p>
                   ) : (
                     filteredItems.map((it) =>
                       renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'search' })
@@ -2004,9 +2017,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   <EmptyMedia variant="icon">
                     <FolderOpen />
                   </EmptyMedia>
-                  <EmptyTitle className="text-sm">还没有资料</EmptyTitle>
+                  <EmptyTitle className="text-sm">{L('还没有资料', 'No materials yet')}</EmptyTitle>
                   <EmptyDescription className="text-xs">
-                    拖拽任意文件到此处或点击 + 新建文档；Agent 产出的文件也会自动归档到这里。
+                    {L('拖拽任意文件到此处或点击 + 新建文档；Agent 产出的文件也会自动归档到这里。', 'Drop files here or click + to add a document; Agent deliverables are saved here automatically.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -2017,13 +2030,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   <section
                     className="material-shortcuts"
                     data-testid="space-recent-section"
-                    aria-label="最近更新"
+                    aria-label={L('最近更新', 'Recent Updates')}
                   >
                     <Frame className="rounded-xl">
                       <FrameHeader className="flex-row items-center justify-between px-3 py-2">
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
                           <Clock size={11} />
-                          <span>最近更新 ({recentItems.length})</span>
+                          <span>{L(`最近更新 (${recentItems.length})`, `Recent (${recentItems.length})`)}</span>
                         </span>
                         {recentItems.length > 6 && (
                           <button
@@ -2031,7 +2044,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             onClick={() => setExpandedRecent((v) => !v)}
                             className="text-[11px] font-medium text-info-foreground hover:underline"
                           >
-                            {expandedRecent ? '收起' : '查看全部'}
+                            {expandedRecent ? L('收起', 'Collapse') : L('查看全部', 'View all')}
                           </button>
                         )}
                       </FrameHeader>
@@ -2053,13 +2066,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 {/* Bottom section: drill-down document & folder manager (Coss Frame) */}
                 <section
                   data-testid="space-manager-section"
-                  aria-label="文档管理"
+                  aria-label={L('文档管理', 'Files & Folders')}
                 >
                   <Frame className="rounded-xl">
                     <FrameHeader className="flex-row items-center justify-between px-3 py-2">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
                         <FolderOpen size={11.5} />
-                        <span>文档管理</span>
+                        <span>{L('文档管理', 'Files & Folders')}</span>
                       </span>
                       <button
                         type="button"
@@ -2067,10 +2080,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           setCreateMode('folder');
                           setDraftTitle('');
                         }}
-                        title={effectiveActiveFolderId ? '在当前目录下新建子文件夹' : '在根目录新建文件夹'}
+                        title={effectiveActiveFolderId ? L('在当前目录下新建子文件夹', 'Create subfolder here') : L('在根目录新建文件夹', 'Create folder in root')}
                         className="text-[11px] font-medium text-info-foreground hover:underline"
                       >
-                        + 新建文件夹
+                        {L('+ 新建文件夹', '+ New Folder')}
                       </button>
                     </FrameHeader>
 
@@ -2087,22 +2100,22 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               const cur = folderById.get(effectiveActiveFolderId);
                               setActiveFolderId(cur?.parentFolderId ?? null);
                             }}
-                            aria-label="返回上一级文件夹"
+                            aria-label={L('返回上一级文件夹', 'Up one folder')}
                             className="h-6 px-1.5 text-[11px]"
                           >
                             <ArrowLeft size={11} />
-                            <span>返回上级</span>
+                            <span>{L('返回上级', 'Up')}</span>
                           </Button>
                           <div
                             className="material-breadcrumbs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] text-muted-foreground"
-                            aria-label="当前文件夹路径"
+                            aria-label={L('当前文件夹路径', 'Folder path')}
                           >
                             <button
                               type="button"
                               onClick={() => setActiveFolderId(null)}
                               className="rounded px-1 py-0.5 hover:bg-accent hover:text-foreground"
                             >
-                              根目录
+                              {L('根目录', 'Root')}
                             </button>
                             {breadcrumbs.map((crumb, idx) => {
                               const isLast = idx === breadcrumbs.length - 1;
@@ -2135,11 +2148,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
 
                       {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
                         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-3 py-5 text-center text-[11.5px] text-muted-foreground">
-                          <span>{effectiveActiveFolderId ? '当前文件夹为空' : '根目录暂无未归档文件'}</span>
+                          <span>{effectiveActiveFolderId ? L('当前文件夹为空', 'This folder is empty') : L('根目录暂无未归档文件', 'No unfiled items in root')}</span>
                           <div className="flex flex-wrap justify-center gap-1.5">
                             <Button variant="outline" size="xs" onClick={() => fileInputRef.current?.click()}>
                               <Paperclip size={11} />
-                              <span>上传文件</span>
+                              <span>{L('上传文件', 'Upload')}</span>
                             </Button>
                             <Button
                               variant="outline"
@@ -2151,7 +2164,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               }}
                             >
                               <FileText size={11} />
-                              <span>新建文档</span>
+                              <span>{L('新建文档', 'New Doc')}</span>
                             </Button>
                             <Button
                               variant="outline"
@@ -2162,7 +2175,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               }}
                             >
                               <Folder size={11} />
-                              <span>新建文件夹</span>
+                              <span>{L('新建文件夹', 'New Folder')}</span>
                             </Button>
                           </div>
                         </div>
@@ -2180,7 +2193,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="material-trash flex w-full items-center gap-1.5 border-t border-border pt-2.5 text-left text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
               >
                 <Trash2 size={12} />
-                <span>回收站{trash.length > 0 ? ` (${trash.length})` : ''}</span>
+                <span>{L('回收站', 'Trash')}{trash.length > 0 ? ` (${trash.length})` : ''}</span>
               </button>
             </div>
           </div>
@@ -2189,9 +2202,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
                 {([
-                  ['active', '进行中'],
-                  ['done', '已完成'],
-                  ['all', '全部']
+                  ['active', L('进行中', 'Active')],
+                  ['done', L('已完成', 'Done')],
+                  ['all', L('全部', 'All')]
                 ] as const).map(([val, label]) => (
                   <button
                     key={val}
@@ -2209,7 +2222,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </div>
               <Button variant="outline" size="xs" onClick={onOpenCreateTask}>
                 <Plus size={12} />
-                <span>指派任务</span>
+                <span>{L('指派任务', 'Assign Task')}</span>
               </Button>
             </div>
 
@@ -2219,9 +2232,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   <EmptyMedia variant="icon">
                     <ListTodo />
                   </EmptyMedia>
-                  <EmptyTitle className="text-sm">暂无匹配的本对话任务</EmptyTitle>
+                  <EmptyTitle className="text-sm">{L('暂无匹配的本对话任务', 'No tasks in this thread')}</EmptyTitle>
                   <EmptyDescription className="text-xs">
-                    点击「指派任务」或在对话里和负责人约定分工即可立项执行。
+                    {L('点击「指派任务」或在对话里和负责人约定分工即可立项执行。', 'Click "Assign Task" or ask a team member in chat to kick off work.')}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -2241,30 +2254,30 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             ? 'secondary'
                             : 'info';
                   const statusLabel =
-                    outcomeStatus(t.latestRun) ??
+                    outcomeStatus(t.latestRun, locale) ??
                     (t.status === 'paused'
                       ? runStatus === 'running'
-                        ? '当前步骤结束后暂停'
-                        : '已暂停'
+                        ? L('当前步骤结束后暂停', 'Pausing after step')
+                        : L('已暂停', 'Paused')
                       : !runStatus
                         ? t.kind === 'scheduled'
                           ? t.scheduleEnabled
-                            ? '等待定时触发'
-                            : '已暂停'
-                          : '待启动'
+                            ? L('等待定时触发', 'Scheduled')
+                            : L('已暂停', 'Paused')
+                          : L('待启动', 'Pending')
                         : runStatus === 'completed'
                           ? t.kind === 'scheduled' && t.latestRun
-                            ? `第 ${t.latestRun.runNumber} 期已完成`
-                            : '已完成'
+                            ? L(`第 ${t.latestRun.runNumber} 期已完成`, `Run #${t.latestRun.runNumber} done`)
+                            : L('已完成', 'Done')
                           : runStatus === 'waiting_user'
-                            ? '待你确认'
+                            ? L('待你确认', 'Needs reply')
                             : runStatus === 'failed'
-                              ? '执行失败'
+                              ? L('执行失败', 'Failed')
                               : runStatus === 'timed_out'
-                                ? '超时未完成'
+                                ? L('超时未完成', 'Timed out')
                                 : runStatus === 'canceled'
-                                  ? '已取消'
-                                  : '进行中');
+                                  ? L('已取消', 'Canceled')
+                                  : L('进行中', 'Running'));
 
                   return (
                     <Frame key={t.id} className="rounded-xl">
@@ -2282,10 +2295,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               <span className="line-clamp-2">{t.title}</span>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <span>{leadName} 负责</span>
+                              <span>{L(`${leadName} 负责`, `Lead: ${leadName}`)}</span>
                               {t.kind === 'scheduled' && t.cronExpr && (
                                 <Badge variant="outline" size="sm" className="font-mono text-[10px]">
-                                  {formatCronHuman(t.cronExpr)}
+                                  {formatCronHuman(t.cronExpr, locale)}
                                 </Badge>
                               )}
                             </div>
@@ -2340,9 +2353,9 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
                             >
                               <FileText size={13} className="shrink-0 text-muted-foreground" />
-                              <span className="min-w-0 flex-1 truncate font-medium">查看交付产物</span>
+                              <span className="min-w-0 flex-1 truncate font-medium">{L('查看交付产物', 'Open Deliverable')}</span>
                               <Badge variant="secondary" size="sm" className="text-[10px]">
-                                正文
+                                {L('正文', 'Doc')}
                               </Badge>
                             </button>
                           )}
@@ -2351,7 +2364,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             onClick={() => onOpenTask(t.id)}
                             className="inline-flex items-center gap-1 self-start text-[11.5px] font-medium text-info-foreground hover:underline"
                           >
-                            <span>查看步骤详情 →</span>
+                            <span>{L('查看步骤详情 →', 'View step details →')}</span>
                           </button>
                         </div>
                       </FramePanel>
@@ -2378,20 +2391,20 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               {/* Resource 1: Workspace Directory */}
               <Frame className="rounded-xl">
                 <FrameHeader className="flex-row items-center justify-between px-3 py-2">
-                  <span className="text-[11px] font-semibold text-muted-foreground">本机工作目录</span>
+                  <span className="text-[11px] font-semibold text-muted-foreground">{L('本机工作目录', 'Workspace Directory')}</span>
                   <button
                     type="button"
                     onClick={() => void onChooseWorkspace()}
                     className="text-[11px] font-medium text-info-foreground hover:underline"
                   >
-                    {hasDesktopDialog ? (thread?.workspacePath ? '更换目录' : '选择目录') : '设置路径'}
+                    {hasDesktopDialog ? (thread?.workspacePath ? L('更换目录', 'Change') : L('选择目录', 'Choose')) : L('设置路径', 'Set Path')}
                   </button>
                 </FrameHeader>
                 <FramePanel className="flex flex-col gap-2 rounded-lg p-3">
                   <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-xs">
                     <FolderOpen size={14} className="shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
-                      {thread?.workspacePath || '尚未绑定本机工作目录'}
+                      {thread?.workspacePath || L('尚未绑定本机工作目录', 'No workspace folder bound')}
                     </span>
                     {hasDesktopDialog && (
                       <button
@@ -2402,14 +2415,17 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         }}
                         className="shrink-0 text-[11px] font-medium text-info-foreground hover:underline"
                       >
-                        手动输入
+                        {L('手动输入', 'Edit Path')}
                       </button>
                     )}
                   </div>
 
                   {!isLocalOwner && (
                     <p className="m-0 text-[11px] leading-relaxed text-muted-foreground">
-                      提示：当前对接成员为远端/Web，本地目录仅本机编码成员（如 Codex / Claude）可直接读写。
+                      {L(
+                        '提示：当前对接成员为远端/Web，本地目录仅本机编码成员（如 Codex / Claude）可直接读写。',
+                        'Note: Active member runs remotely; only local coding agents (Codex / Claude) access local folders directly.'
+                      )}
                     </p>
                   )}
 
@@ -2428,10 +2444,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         type="text"
                         value={wsPathInput}
                         onChange={(e) => setWsPathInput(e.target.value)}
-                        placeholder="输入目录绝对路径"
+                        placeholder={L('输入目录绝对路径', 'Enter absolute directory path')}
                       />
                       <Button type="submit" size="xs">
-                        确定
+                        {L('确定', 'OK')}
                       </Button>
                     </form>
                   )}
@@ -2451,7 +2467,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               }}
                               className="hover:text-foreground hover:underline"
                             >
-                              上级目录
+                              {L('上级目录', 'Up')}
                             </button>
                           )}
                           <button
@@ -2459,14 +2475,14 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                             onClick={() => void loadWorkspaceFiles(wsSubpath, true)}
                             className="hover:text-foreground hover:underline"
                           >
-                            刷新
+                            {L('刷新', 'Refresh')}
                           </button>
                         </div>
                       </div>
                       {wsError ? (
                         <div className="text-[11px] text-warning-foreground">{wsError}</div>
                       ) : wsBusy ? (
-                        <div className="text-[11px] text-muted-foreground">读取目录中…</div>
+                        <div className="text-[11px] text-muted-foreground">{L('读取目录中…', 'Loading directory…')}</div>
                       ) : (
                         <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto coss-scroll">
                           {wsEntries.map((ent) => (
@@ -2485,7 +2501,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                                       kind: 'workspace_file',
                                       title: ent.name,
                                       subLabel: formatBytes(ent.sizeBytes),
-                                      snippet: `请查看文件 ${ent.relPath}`
+                                      snippet: L(`请查看文件 ${ent.relPath}`, `Please inspect file ${ent.relPath}`)
                                     });
                                   }
                                 }}
@@ -2499,7 +2515,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                                 <span className="truncate">{ent.name}</span>
                               </button>
                               <span className="shrink-0 pl-2 font-mono text-[10px] text-muted-foreground">
-                                {ent.kind === 'file' ? formatBytes(ent.sizeBytes) : '目录'}
+                                {ent.kind === 'file' ? formatBytes(ent.sizeBytes) : L('目录', 'Dir')}
                               </span>
                             </div>
                           ))}
@@ -2514,14 +2530,14 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               <Frame className="rounded-xl">
                 <FrameHeader className="flex-row items-center justify-between px-3 py-2">
                   <span className="text-[11px] font-semibold text-muted-foreground">
-                    DuolaBase 连接与凭证
+                    {L('DuolaBase 连接与凭证', 'DuolaBase Connectors & Vault')}
                   </span>
                   <button
                     type="button"
                     onClick={() => onNavigatePage('connectors')}
                     className="text-[11px] font-medium text-info-foreground hover:underline"
                   >
-                    管理连接器
+                    {L('管理连接器', 'Manage')}
                   </button>
                 </FrameHeader>
                 <FramePanel className="flex flex-col gap-3 rounded-lg p-3">
@@ -2531,7 +2547,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold text-foreground">
-                        DuolaBase MCP 网关
+                        {L('DuolaBase MCP 网关', 'DuolaBase MCP Gateway')}
                       </div>
                       <small
                         className={`block truncate text-[11px] ${
@@ -2541,15 +2557,15 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                         }`}
                       >
                         {!duolabaseStatus.enabled
-                          ? '已暂停连接'
+                          ? L('已暂停连接', 'Paused')
                           : duolabaseStatus.hasToken
-                            ? `已连通 (${duolabaseStatus.endpoint})`
-                            : '尚未配置访问令牌'}
+                            ? L(`已连通 (${duolabaseStatus.endpoint})`, `Connected (${duolabaseStatus.endpoint})`)
+                            : L('尚未配置访问令牌', 'Access token not set')}
                       </small>
                     </div>
                     <button
                       type="button"
-                      aria-label="切换 DuolaBase 状态"
+                      aria-label={L('切换 DuolaBase 状态', 'Toggle DuolaBase')}
                       aria-pressed={duolabaseStatus.enabled}
                       onClick={() => void onToggleDuolabase()}
                       className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
@@ -2568,9 +2584,12 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     <div className="border-t border-border/60 pt-2.5">
                       <div className="font-mono text-[11px] text-muted-foreground">
                         {resBusy && !resSummary
-                          ? '正在读取实时连接器与凭证统计…'
+                          ? L('正在读取实时连接器与凭证统计…', 'Loading connector & secret counts…')
                           : resSummary
-                            ? `已接入 ${resSummary.connectorCount} 个连接器 · ${resSummary.vaultCount ?? '—'} 条 Vault 凭证`
+                            ? L(
+                                `已接入 ${resSummary.connectorCount} 个连接器 · ${resSummary.vaultCount ?? '—'} 条 Vault 凭证`,
+                                `${resSummary.connectorCount} connectors · ${resSummary.vaultCount ?? '—'} Vault secrets`
+                              )
                             : null}
                       </div>
                       {resSummary && resSummary.activeConnectors.length > 0 && (
@@ -2581,10 +2600,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                               type="button"
                               onClick={() => onNavigatePage('connectors')}
                               className="inline-flex max-w-[150px] items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:border-ring hover:bg-muted"
-                              title={c.toolCount ? `${c.toolCount} 个可用工具` : undefined}
+                              title={c.toolCount ? L(`${c.toolCount} 个可用工具`, `${c.toolCount} tools available`) : undefined}
                             >
                               <Plug size={10} className="shrink-0 text-muted-foreground" />
-                              <span className="truncate">{c.name || c.provider || '连接器'}</span>
+                              <span className="truncate">{c.name || c.provider || L('连接器', 'Connector')}</span>
                             </button>
                           ))}
                         </div>
@@ -2595,11 +2614,11 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                   <div className="grid grid-cols-2 gap-1.5">
                     <Button variant="outline" size="xs" onClick={() => onNavigatePage('connectors')}>
                       <Plug size={11.5} />
-                      <span>连接器</span>
+                      <span>{L('连接器', 'Connectors')}</span>
                     </Button>
                     <Button variant="outline" size="xs" onClick={() => onNavigatePage('vault')}>
                       <KeyRound size={11.5} />
-                      <span>Vault 凭证库</span>
+                      <span>{L('Vault 凭证库', 'Vault Secrets')}</span>
                     </Button>
                   </div>
                 </FramePanel>
@@ -2609,7 +2628,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               <Frame className="rounded-xl">
                 <FrameHeader className="flex-row items-center justify-between px-3 py-2">
                   <span className="text-[11px] font-semibold text-muted-foreground">
-                    成员与运行端 ({members.length})
+                    {L(`成员与运行端 (${members.length})`, `Members & Runtimes (${members.length})`)}
                   </span>
                   <button
                     type="button"
@@ -2618,7 +2637,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                   >
                     <RefreshCw size={11} className={refreshingMembers ? 'is-refreshing' : ''} />
-                    <span>刷新</span>
+                    <span>{L('刷新', 'Refresh')}</span>
                   </button>
                 </FrameHeader>
                 <FramePanel className="flex flex-col gap-1 rounded-lg p-1.5">
@@ -2630,10 +2649,10 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           <div className="truncate text-xs font-medium text-foreground">{m.name}</div>
                           <div className="text-[10.5px] text-muted-foreground">
                             {m.location === 'remote-bridge'
-                              ? '远端桥接'
+                              ? L('远端桥接', 'Remote Bridge')
                               : m.location === 'webhook'
                                 ? 'Webhook Bot'
-                                : '本机接入'}
+                                : L('本机接入', 'Local Runtime')}
                           </div>
                         </div>
                         <Badge
@@ -2647,7 +2666,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                           size="sm"
                           className="text-[10px]"
                         >
-                          {m.status === 'ready' ? '在线' : m.status === 'auth_required' ? '待验证' : '离线'}
+                          {m.status === 'ready' ? L('在线', 'Online') : m.status === 'auth_required' ? L('待验证', 'Needs auth') : L('离线', 'Offline')}
                         </Badge>
                       </div>
                     ))}
@@ -2659,7 +2678,7 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                     className="mt-1 w-full justify-start text-muted-foreground hover:text-foreground"
                   >
                     <Users size={12} />
-                    <span>查看完整成员与 Token 用量 →</span>
+                    <span>{L('查看完整成员与 Token 用量 →', 'Members & Token Usage →')}</span>
                   </Button>
                 </FramePanel>
               </Frame>
