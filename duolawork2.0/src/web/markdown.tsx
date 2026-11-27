@@ -183,7 +183,12 @@ function isAllowedImageSrc(raw: string): boolean {
 
 function extractSpaceFileId(src: string): string | null {
   const m = src.trim().match(/^\/api\/v2\/space\/files\/([^?#]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
 }
 
 function ChatImageCard({
@@ -500,14 +505,18 @@ export function MarkdownView({
 
     // Standalone image line -> render directly as figure without wrapping in <p>
     const standaloneImg = line.trim().match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
-    if (standaloneImg && isAllowedImageSrc(standaloneImg[2])) {
+    if (standaloneImg) {
       blocks.push(
-        <ChatImageCard
-          key={`blk-${key++}`}
-          src={standaloneImg[2]}
-          alt={standaloneImg[1] || ''}
-          actions={imageActions}
-        />
+        isAllowedImageSrc(standaloneImg[2]) ? (
+          <ChatImageCard
+            key={`blk-${key++}`}
+            src={standaloneImg[2]}
+            alt={standaloneImg[1] || ''}
+            actions={imageActions}
+          />
+        ) : (
+          <p key={`blk-${key++}`}>{standaloneImg[1] || '图片'}（图片地址无法在此打开）</p>
+        )
       );
       i += 1;
       continue;
@@ -590,7 +599,8 @@ export function MarkdownView({
     }
 
     // Paragraph (consume consecutive plain lines, stopping at standalone image lines)
-    const pLines: string[] = [];
+    // Always consume the current line, including unrecognized Markdown.
+    const pLines: string[] = [lines[i++]];
     while (
       i < lines.length &&
       lines[i].trim() !== '' &&

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -79,6 +79,14 @@ import { VaultPage } from './VaultPage.js';
 interface TaskWithLatestRun extends TaskRecord {
   latestRun: TaskRunRecord | null;
 }
+
+interface ThreadSpaceData {
+  folders: SpaceFolderRecord[];
+  items: SpaceItemView[];
+  trash: SpaceItemView[];
+  tasks: SpaceTaskSummary[];
+}
+const emptySpace: ThreadSpaceData = { folders: [], items: [], trash: [], tasks: [] };
 
 interface EnrichedStep extends TaskStepRecord {
   submissions: StepSubmissionRecord[];
@@ -265,10 +273,20 @@ export function App(): React.JSX.Element {
   const [wideSpace, setWideSpace] = useState<boolean>(false);
   const [spaceTab, setSpaceTab] = useState<'documents' | 'tasks' | 'resources'>('documents');
   const [spaceSelection, updateSpaceSelection] = useState<{ kind: SpaceItemKind; id: string } | null>(null);
-  const [spaceFolders, setSpaceFolders] = useState<SpaceFolderRecord[]>([]);
-  const [spaceItems, setSpaceItems] = useState<SpaceItemView[]>([]);
-  const [spaceTrash, setSpaceTrash] = useState<SpaceItemView[]>([]);
-  const [spaceTasks, setSpaceTasks] = useState<SpaceTaskSummary[]>([]);
+  const [spaceData, setSpaceData] = useState<{ threadId: string; data: ThreadSpaceData } | null>(null);
+  const [spaceLoadError, setSpaceLoadError] = useState('');
+  const [threadLoadError, setThreadLoadError] = useState('');
+  const spaceRequest = useRef(0);
+  const threadRequest = useRef(0);
+  const spaceThreadId = (viewMode === 'task' ? taskDetail?.task.sourceThreadId : activeThreadId) || '';
+  const requestedSpaceThread = useRef(spaceThreadId);
+  useLayoutEffect(() => {
+    requestedSpaceThread.current = spaceThreadId;
+  }, [spaceThreadId]);
+  const hasLoadedSpace = spaceData?.threadId === spaceThreadId;
+  const materialsState = hasLoadedSpace ? 'ready' : spaceThreadId && spaceLoadError === spaceThreadId ? 'error' : 'loading';
+  const { folders: spaceFolders, items: spaceItems, trash: spaceTrash, tasks: spaceTasks } =
+    (hasLoadedSpace && spaceData?.data) || emptySpace;
 
   // Active document editor state
   const [artifact, setArtifact] = useState<ArtifactRecord | null>(null);
@@ -454,31 +472,44 @@ export function App(): React.JSX.Element {
   }, [newTaskLeadId]);
 
   const loadSpace = useCallback(async (threadId: string) => {
-    if (!threadId) {
-      setSpaceFolders([]);
-      setSpaceItems([]);
-      setSpaceTrash([]);
-      setSpaceTasks([]);
-      return;
+    if (!threadId || threadId !== requestedSpaceThread.current) return;
+    const request = ++spaceRequest.current;
+    setSpaceLoadError('');
+    const current = () => request === spaceRequest.current && threadId === requestedSpaceThread.current;
+    try {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}/space`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (!current()) return;
+      setSpaceData({
+        threadId,
+        data: { folders: data.folders || [], items: data.items || [], trash: data.trash || [], tasks: data.tasks || [] }
+      });
+    } catch {
+      if (current()) setSpaceLoadError(threadId);
     }
-    const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}/space`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setSpaceFolders(data.folders || []);
-    setSpaceItems(data.items || []);
-    setSpaceTrash(data.trash || []);
-    setSpaceTasks(data.tasks || []);
   }, []);
+
+  useEffect(() => {
+    if (spaceThreadId && (viewMode === 'thread' || viewMode === 'task')) void loadSpace(spaceThreadId);
+  }, [spaceThreadId, viewMode, loadSpace]);
 
   const loadThread = useCallback(
     async (threadId: string) => {
       if (!threadId) return;
-      const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (activeThreadIdRef.current && activeThreadIdRef.current !== threadId) {
+      const request = ++threadRequest.current;
+      setThreadLoadError('');
+      const current = () => request === threadRequest.current && activeThreadIdRef.current === threadId;
+      let data;
+      try {
+        const res = await fetch(`/api/v2/threads/${encodeURIComponent(threadId)}`);
+        if (!res.ok) throw new Error(String(res.status));
+        data = await res.json();
+      } catch {
+        if (current()) setThreadLoadError(threadId);
         return;
       }
+      if (!current()) return;
       const nextMsgs: ThreadMessageRecord[] = data.messages || [];
       setMessagesThreadId(threadId);
       setMessages(nextMsgs);
@@ -501,9 +532,8 @@ export function App(): React.JSX.Element {
         }
         return next;
       });
-      await loadSpace(threadId);
     },
-    [loadSpace]
+    []
   );
 
   const visibleMessages = useMemo(
@@ -661,6 +691,7 @@ export function App(): React.JSX.Element {
       void cur.loadBootstrap(true);
       if (cur.viewMode === 'thread' && cur.activeThreadId) {
         void cur.loadThread(cur.activeThreadId);
+        void cur.loadSpace(cur.activeThreadId);
       } else if (cur.viewMode === 'task' && cur.activeTaskId) {
         void cur.loadTaskDetail(cur.activeTaskId, cur.activeRunId);
       }
@@ -1751,9 +1782,7 @@ export function App(): React.JSX.Element {
         : ownerStatus === 'auth_required'
           ? '待授权'
           : '离线';
-  const spaceThread =
-    activeThread ??
-    (taskDetail ? threads.find((t) => t.id === taskDetail.task.sourceThreadId) ?? null : null);
+  const spaceThread = threads.find((t) => t.id === spaceThreadId) ?? null;
   const showRightSpace = spaceOpen && (viewMode === 'thread' || viewMode === 'task');
   const activeRefs = activeThread ? draftRefsByThread[activeThread.id] || [] : [];
   const activeDraft = activeThread ? inputDrafts[activeThread.id] || '' : '';
@@ -1762,6 +1791,7 @@ export function App(): React.JSX.Element {
     showRightSpace ? (
       <CollaborationSpacePanel
         thread={spaceThread}
+        materialsState={materialsState}
         members={members}
         duolabaseStatus={duolabaseStatus}
         hasDesktopDialog={hasDesktopDialog}
@@ -2721,7 +2751,13 @@ export function App(): React.JSX.Element {
                 )}
 
                 <div ref={messagesScrollRef} className="messages-scroll">
-                  {visibleMessages.length === 0 ? (
+                  {messagesThreadId !== activeThread.id ? (
+                    <div className="channel-intro" role="status">
+                      {threadLoadError === activeThread.id ? (
+                        <><p>对话加载失败</p><button className="dw-btn" onClick={() => void loadThread(activeThread.id)}>重新加载对话</button></>
+                      ) : <p>正在加载对话…</p>}
+                    </div>
+                  ) : visibleMessages.length === 0 ? (
                     <div className="channel-intro">
                       <AgentAvatar
                         name={currentOwner?.name || '负责人'}

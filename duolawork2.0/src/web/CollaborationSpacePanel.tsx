@@ -81,6 +81,7 @@ export type WorkbenchNavPage = 'connectors' | 'vault' | 'members' | 'schedules';
 
 export interface CollaborationSpacePanelProps {
   thread: ThreadRecord | null;
+  materialsState: 'ready' | 'loading' | 'error';
   members: MemberRecord[];
   duolabaseStatus: DuolaBasePublicStatus;
   hasDesktopDialog: boolean;
@@ -1896,7 +1897,13 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
               </div>
             )}
 
-            {searching ? (
+            {props.materialsState !== 'ready' && thread ? (
+              <div className="space-blank my-auto" role="status">
+                {props.materialsState === 'error' ? (
+                  <><strong>资料加载失败</strong><button className="dw-btn" onClick={() => void onRefreshSpace()}>重新加载资料</button></>
+                ) : <strong>正在加载资料…</strong>}
+              </div>
+            ) : searching ? (
               <div>
                 <div className="material-section-heading">
                   <h4>搜索结果 ({filteredItems.length})</h4>

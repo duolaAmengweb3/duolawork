@@ -593,7 +593,10 @@ test('SPACE-REF-06: Clickable file, folder, and bare URL references in chat jump
         '- 文档：《执行方案.md》',
         '- 配图：`研究归档/图表/trend.png`',
         '- 命令保持普通样式：`python3`',
-        '- 原始网页：https://example.com/report。'
+        '- 原始网页：https://example.com/report。',
+        '![本机生成的图](/Users/test/output/report.png)',
+        '#  ',
+        '旧回复之后的正文仍应显示'
       ].join('\n')
     }));
 
@@ -601,7 +604,32 @@ test('SPACE-REF-06: Clickable file, folder, and bare URL references in chat jump
     const { url } = await app.listen(0, '127.0.0.1');
 
     const page = await browser.newPage({ viewport: { width: 1360, height: 840 } });
-    await page.goto(url, { waitUntil: 'networkidle' });
+    const detailUrl = `**/api/v2/threads/${thread.id}`;
+    const spaceUrl = `${detailUrl}/space`;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    for (const pattern of [detailUrl, spaceUrl]) {
+      await page.route(pattern, async (route) => {
+        await gate;
+        await route.fulfill({ status: 503, body: '{}' });
+      });
+    }
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    try {
+      await page.getByText('正在加载对话…').waitFor();
+      await page.getByText('正在加载资料…').waitFor();
+      assert.equal(await page.getByText('还没有资料').count(), 0);
+    } finally {
+      release();
+    }
+    await page.getByText('对话加载失败').waitFor();
+    await page.getByText('资料加载失败').waitFor();
+    await page.unroute(detailUrl);
+    await page.unroute(spaceUrl);
+    await page.getByRole('button', { name: '重新加载资料' }).click();
+    await page.getByRole('button', { name: '重新加载对话' }).click();
+    await page.getByText('本机生成的图（图片地址无法在此打开）', { exact: true }).waitFor();
+    await page.getByText('旧回复之后的正文仍应显示', { exact: false }).first().waitFor();
 
     // 1. Bare URL is a real clickable <a> without trailing Chinese punctuation
     const bareLink = page.locator('a.dw-bare-link', { hasText: 'https://example.com/report' });
