@@ -47,6 +47,7 @@ export interface DuolaWorkAppOptions {
   worktreesRoot?: string;
   staticWebDir?: string;
   autoImportAgentHub?: boolean;
+  refreshRegisteredHubHealth?: boolean;
   agentHubDir?: string;
   buildInfo?: BuildInfoMeta;
   auth?: CloudAuthOptions;
@@ -72,6 +73,7 @@ export class DuolaWorkApp {
   private readonly staticWebDir: string | null;
   private readonly agentHubDir: string;
   private readonly autoImportAgentHub: boolean;
+  private readonly refreshRegisteredHubHealth: boolean;
   private readonly buildInfo: BuildInfoMeta;
   private readonly lockFilePath: string | null;
   private lockFd: number | null = null;
@@ -137,6 +139,7 @@ export class DuolaWorkApp {
     this.staticWebDir = options.staticWebDir ?? null;
     this.agentHubDir = options.agentHubDir ?? path.join(os.homedir(), '.config', 'agent-hub');
     this.autoImportAgentHub = options.autoImportAgentHub !== false;
+    this.refreshRegisteredHubHealth = options.refreshRegisteredHubHealth ?? this.autoImportAgentHub;
     this.duolabase = new DuolaBaseClient(this.db, this.autoImportAgentHub, options.externalMcpCaller);
     this.buildInfo = options.buildInfo ?? loadBuildInfoFromDisk(this.staticWebDir);
     this.lockFilePath = options.lockFilePath ?? null;
@@ -368,7 +371,8 @@ export class DuolaWorkApp {
   }
 
   private async readLegacyWorkspace(healthOnly: boolean): Promise<number> {
-    if (!this.autoImportAgentHub) return 0;
+    if (!this.autoImportAgentHub && !healthOnly) return 0;
+    if (healthOnly && !this.db.listMembers().some(m => m.driverKind === 'remote-bridge' && m.config.remoteMode === 'hub-channel')) return 0;
     const creds = this.loadHubCredentialsReadOnly();
 
 
@@ -802,9 +806,9 @@ export class DuolaWorkApp {
       this.reconcileTimer = setInterval(runBackgroundReconcile, 8_000);
       this.reconcileTimer.unref?.();
     }
-    if (this.autoImportAgentHub && !this.legacySyncStarted) {
+    if ((this.autoImportAgentHub || this.refreshRegisteredHubHealth) && !this.legacySyncStarted) {
       this.legacySyncStarted = true;
-      this.legacyMembersSyncPromise = this.syncLegacyWorkspaceMembersReadOnly();
+      this.legacyMembersSyncPromise = this.syncLegacyWorkspaceMembersReadOnly(!this.autoImportAgentHub);
       this.legacyHealthTimer = setInterval(() => {
         void this.syncLegacyWorkspaceMembersReadOnly(true);
       }, 15000);
@@ -1067,7 +1071,7 @@ export class DuolaWorkApp {
       }
 
       if (pathname === '/api/v2/members/refresh-health' && method === 'POST') {
-        await this.syncLegacyWorkspaceMembersReadOnly();
+        await this.syncLegacyWorkspaceMembersReadOnly(!this.autoImportAgentHub && this.refreshRegisteredHubHealth);
         const currentMembers = this.db.listMembers();
         await Promise.all(
           currentMembers.map(async (m) => {

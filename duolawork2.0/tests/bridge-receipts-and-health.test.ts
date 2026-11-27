@@ -82,7 +82,7 @@ test('a running workbench refreshes receiver state and leaves node-owned members
     res.setHeader('Content-Type', 'application/json');
     if (!available) res.writeHead(503);
     res.end(JSON.stringify(req.url === '/v2/workspace' ? {
-      members: [{ id, name: '接收端' }], connections: [{ id, transport: 'muse-poll', status: 'verified', pollSeconds: 15, lastPollAt }]
+      members: [{ id, name: '接收端' }, { id: 'unregistered', name: '未导入成员' }], connections: [{ id, transport: 'muse-poll', status: 'verified', pollSeconds: 15, lastPollAt }]
     } : { items: [] }));
   });
   await new Promise<void>((resolve) => hub.listen(0, '127.0.0.1', resolve));
@@ -90,11 +90,17 @@ test('a running workbench refreshes receiver state and leaves node-owned members
   const port = (hub.address() as {port: number}).port;
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({endpoint: `http://127.0.0.1:${port}`, adminKey: 'fixture'}));
   const app = new DuolaWorkApp({ dbPath: path.join(dir, 'app.sqlite'), filesDir: path.join(dir, 'files'),
-    worktreesRoot: path.join(dir, 'worktrees'), agentHubDir: dir, autoImportAgentHub: true });
+    worktreesRoot: path.join(dir, 'worktrees'), agentHubDir: dir, autoImportAgentHub: false, refreshRegisteredHubHealth: true });
+  app.db.upsertMember({
+    id, name: '接收端', driverKind: 'remote-bridge', platformId: 'muse', location: 'remote-bridge',
+    status: 'offline', statusMessage: '等待同步', config: {remoteMode: 'hub-channel', hubTransport: 'muse-poll'},
+    capabilities: {supportsIsolatedSessions: false, supportsSessionResume: false, supportsCancel: false, maxConcurrentRuns: 1}
+  });
   try {
     const { url } = await app.listen(0, '127.0.0.1');
     await (await fetch(url + '/api/v2/bootstrap')).json();
     assert.equal(app.db.getMember(id)?.status, 'ready');
+    assert.equal(app.db.getMember('unregistered'), null);
     lastPollAt = new Date(Date.now() - 60000).toISOString();
     const deadline = Date.now() + 20000;
     while (app.db.getMember(id)?.status === 'ready' && Date.now() < deadline) {
