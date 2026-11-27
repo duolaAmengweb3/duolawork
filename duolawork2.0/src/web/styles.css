@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/coss-theme.css";
+@import "./styles/reader.css";
 @import "./styles/conversation.css";
 @import "./styles/space.css";
 @import "./styles/material-library.css";

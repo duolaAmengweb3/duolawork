@@ -25,22 +25,29 @@ const buildInfoPath = path.join(rootDir, 'dist', 'build-info.json');
 const iconPngPath = path.join(__dirname, 'assets', 'DuolaWork.png');
 
 let mainWindow = null;
+const popoutWindows = new Map();
+let currentThemeMode = 'light';
 let duolaApp = null;
 let activeAppUrl = '';
 let shuttingDown = false;
 
 function applyWindowTheme(theme) {
   const mode = theme === 'dark' ? 'dark' : 'light';
+  currentThemeMode = mode;
   try {
     nativeTheme.themeSource = mode;
   } catch {
     // ignore headless/unsupported fallback
   }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    try {
-      mainWindow.setBackgroundColor(mode === 'dark' ? '#111318' : '#ffffff');
-    } catch {
-      // ignore if window already disposing
+  const bg = mode === 'dark' ? '#111318' : '#ffffff';
+  const windows = [mainWindow, ...popoutWindows.values()];
+  for (const w of windows) {
+    if (w && !w.isDestroyed()) {
+      try {
+        w.setBackgroundColor(bg);
+      } catch {
+        // ignore if window already disposing
+      }
     }
   }
 }
@@ -214,6 +221,16 @@ function createMainWindow(url, buildInfo, initialTheme = 'light') {
 async function shutdownCleanly() {
   if (shuttingDown) return;
   shuttingDown = true;
+  for (const w of popoutWindows.values()) {
+    if (w && !w.isDestroyed()) {
+      try {
+        w.close();
+      } catch {
+        // ignore popout close errors
+      }
+    }
+  }
+  popoutWindows.clear();
   if (duolaApp) {
     try {
       await Promise.race([
@@ -324,6 +341,84 @@ app.whenReady().then(async () => {
     if (!isAllowedSender(event)) return { ok: false };
     applyWindowTheme(theme === 'dark' ? 'dark' : 'light');
     return { ok: true };
+  });
+
+  ipcMain.handle('dw2:set-always-on-top', (event, flag) => {
+    if (!isAllowedSender(event)) return { ok: false };
+    const senderWin = BrowserWindow.fromWebContents(event.sender);
+    if (!senderWin || senderWin.isDestroyed()) return { ok: false };
+    const next = Boolean(flag);
+    senderWin.setAlwaysOnTop(next, 'floating');
+    return { ok: true, alwaysOnTop: next };
+  });
+
+  ipcMain.handle('dw2:open-popout', (event, opts) => {
+    if (!isAllowedSender(event)) return { ok: false };
+    const rawPath = typeof opts?.path === 'string' ? opts.path.trim() : '';
+    if (!rawPath || !rawPath.startsWith('/')) return { ok: false };
+    const baseUrl = activeAppUrl || cloudUrl;
+    if (!baseUrl) return { ok: false };
+    let targetUrl = '';
+    try {
+      const resolved = new URL(rawPath, baseUrl);
+      const baseOrigin = new URL(baseUrl).origin;
+      if (resolved.origin !== baseOrigin) return { ok: false };
+      targetUrl = resolved.toString();
+    } catch {
+      return { ok: false };
+    }
+
+    const key = typeof opts?.key === 'string' && opts.key.trim() ? opts.key.trim() : targetUrl;
+    const existing = popoutWindows.get(key);
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore();
+      existing.show();
+      existing.focus();
+      return { ok: true, reused: true };
+    }
+
+    const width = Math.max(680, Math.min(1600, Number(opts?.width) || 1080));
+    const height = Math.max(520, Math.min(1200, Number(opts?.height) || 800));
+    const win = new BrowserWindow({
+      width,
+      height,
+      minWidth: 640,
+      minHeight: 480,
+      show: false,
+      backgroundColor: currentThemeMode === 'dark' ? '#111318' : '#ffffff',
+      title: typeof opts?.title === 'string' && opts.title.trim() ? `${opts.title.trim()} · DuolaWork` : 'DuolaWork 阅读器',
+      icon: fs.existsSync(iconPngPath) ? iconPngPath : undefined,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+
+    win.webContents.setWindowOpenHandler(({ url: extUrl }) => {
+      if (/^https?:\/\//i.test(extUrl)) {
+        void shell.openExternal(extUrl);
+      }
+      return { action: 'deny' };
+    });
+
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) {
+        win.show();
+        win.focus();
+      }
+    });
+
+    win.on('closed', () => {
+      if (popoutWindows.get(key) === win) {
+        popoutWindows.delete(key);
+      }
+    });
+
+    popoutWindows.set(key, win);
+    void win.loadURL(targetUrl);
+    return { ok: true, reused: false };
   });
 
   if (cloudUrl && !testMode) {

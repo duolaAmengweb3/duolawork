@@ -63,6 +63,7 @@ import {
 } from '../shared/types.js';
 import { AgentAvatar } from './AgentAvatar.js';
 import { MarkdownView } from './markdown.js';
+import { RichTextFileViewer } from './RichFileViewer.js';
 import { Badge } from './components/ui/badge.js';
 import { Button } from './components/ui/button.js';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
@@ -70,6 +71,7 @@ import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
 import { Input } from './components/ui/input.js';
 import { PaginationBar, usePagination } from './components/ui/pagination.js';
 import { formatCronHuman } from './lib/format.js';
+import { openMaterialPopout } from './lib/popout.js';
 
 export interface SpaceTaskSummary extends TaskRecord {
   latestRun: TaskRunRecord | null;
@@ -897,6 +899,25 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
           </button>
           {menuOpen && (
             <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
+              {(item.kind === 'document' || item.kind === 'file') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRowMenuKey(null);
+                    void openMaterialPopout({
+                      kind: item.kind === 'document' ? 'document' : 'file',
+                      id: item.id,
+                      threadId: thread?.id,
+                      title: item.title,
+                      mimeType: item.mimeType,
+                      previewKind: item.previewKind
+                    });
+                  }}
+                >
+                  <ExternalLink size={13} />
+                  <span>独立窗口打开</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -1264,6 +1285,30 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
         </div>
 
         <div className="flex items-center gap-1">
+          {selection && (selection.kind === 'document' || selection.kind === 'file') && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                void openMaterialPopout({
+                  kind: selection.kind === 'document' ? 'document' : 'file',
+                  id: selection.id,
+                  threadId: thread?.id,
+                  title:
+                    selection.kind === 'document'
+                      ? artifact?.title || selectedItem?.title
+                      : selectedItem?.title,
+                  mimeType: selectedItem?.mimeType,
+                  previewKind: selectedItem?.previewKind
+                });
+              }}
+              aria-label="独立窗口打开"
+              title="独立窗口打开"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink size={13.5} />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-xs"
@@ -1423,6 +1468,23 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             </div>
 
             <div className="space-detail-actions">
+              {(artifact || selectedItem) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void openMaterialPopout({
+                      kind: 'document',
+                      id: artifact?.id || selectedItem!.id,
+                      threadId: thread?.id,
+                      title: artifact?.title || selectedItem?.title
+                    })
+                  }
+                  className="dw-btn dw-btn-outline dw-btn-sm"
+                >
+                  <ExternalLink size={11} />
+                  <span>独立窗口</span>
+                </button>
+              )}
               {selectedItem && (
                 <button
                   type="button"
@@ -1550,58 +1612,15 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
                 className="material-pdf-frame"
               />
             )}
-            {selectedItem.previewKind === 'text' && (() => {
-              const isHtmlFile =
-                /\.html?$/i.test(selectedItem.title || '') ||
-                (selectedItem.mimeType || '').includes('text/html');
-              if (isHtmlFile) {
-                return (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setHtmlPreviewMode('render')}
-                        className={htmlPreviewMode === 'render' ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
-                        style={{ height: 24, padding: '0 9px', fontSize: 11 }}
-                      >
-                        网页预览
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setHtmlPreviewMode('source')}
-                        className={htmlPreviewMode === 'source' ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
-                        style={{ height: 24, padding: '0 9px', fontSize: 11 }}
-                      >
-                        源码
-                      </button>
-                    </div>
-                    {fileTextState === 'loading' ? (
-                      <pre className="material-file-text">正在读取网页内容…</pre>
-                    ) : fileTextState === 'error' ? (
-                      <pre className="material-file-text">读取网页内容失败</pre>
-                    ) : htmlPreviewMode === 'render' ? (
-                      <iframe
-                        sandbox=""
-                        srcDoc={fileTextPreview}
-                        title={selectedItem.title}
-                        className="material-pdf-frame"
-                      />
-                    ) : (
-                      <pre className="material-file-text">{fileTextPreview || '(空文件)'}</pre>
-                    )}
-                  </div>
-                );
-              }
-              return (
-                <pre className="material-file-text">
-                  {fileTextState === 'loading'
-                    ? '正在读取文件内容…'
-                    : fileTextState === 'error'
-                      ? '读取文件内容失败'
-                      : fileTextPreview || '(空文件)'}
-                </pre>
-              );
-            })()}
+            {selectedItem.previewKind === 'text' && (
+              <RichTextFileViewer
+                title={selectedItem.title}
+                mimeType={selectedItem.mimeType}
+                content={fileTextPreview}
+                loading={fileTextState === 'loading'}
+                error={fileTextState === 'error'}
+              />
+            )}
             {selectedItem.previewKind === 'binary' && (
               <div className="shared-file-meta">
                 <File size={22} />
@@ -1613,6 +1632,23 @@ export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): Re
             )}
 
             <div className="space-detail-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void openMaterialPopout({
+                    kind: 'file',
+                    id: selectedItem.id,
+                    threadId: thread?.id,
+                    title: selectedItem.title,
+                    mimeType: selectedItem.mimeType,
+                    previewKind: selectedItem.previewKind
+                  })
+                }
+                className="dw-btn dw-btn-outline dw-btn-sm"
+              >
+                <ExternalLink size={12} />
+                <span>独立窗口</span>
+              </button>
               <button
                 type="button"
                 onClick={() => onQuoteToChat(buildQuoteChip(selectedItem))}
