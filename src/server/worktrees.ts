@@ -1,9 +1,26 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+
+function resolveIntegrationShell(command: string): { file: string; args: string[] } {
+  if (process.platform === 'win32') {
+    return {
+      file: process.env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', command]
+    };
+  }
+  if (existsSync('/bin/zsh')) {
+    return { file: '/bin/zsh', args: ['-lc', command] };
+  }
+  if (existsSync('/bin/bash')) {
+    return { file: '/bin/bash', args: ['-lc', command] };
+  }
+  return { file: '/bin/sh', args: ['-c', command] };
+}
 
 export interface StepWorktreeInfo {
   worktreePath: string;
@@ -189,11 +206,11 @@ export class WorktreeManager {
 
     let testOutput: string | undefined;
     if (input.testCommand && input.testCommand.trim()) {
-      const { stdout, stderr } = await execFileAsync(
-        '/bin/zsh',
-        ['-lc', input.testCommand],
-        { cwd: integrationPath, timeout: 120_000 }
-      );
+      const shell = resolveIntegrationShell(input.testCommand);
+      const { stdout, stderr } = await execFileAsync(shell.file, shell.args, {
+        cwd: integrationPath,
+        timeout: 120_000
+      });
       testOutput = [stdout, stderr].filter(Boolean).join('\n').trim();
     }
 

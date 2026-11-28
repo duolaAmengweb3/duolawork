@@ -31,12 +31,15 @@ jobs:
         run: npm run build
 
       - name: Import Apple Developer ID certificate (optional)
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
+          if [ -z "${APPLE_CERTIFICATE_BASE64:-}" ] || [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ]; then
+            echo "Developer ID signing secrets not configured; using ad-hoc signing."
+            exit 0
+          fi
           KEYCHAIN_PATH="$RUNNER_TEMP/dw-signing.keychain-db"
           CERT_PATH="$RUNNER_TEMP/dev-id.p12"
           echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
@@ -50,11 +53,12 @@ jobs:
 
       - name: Package DuolaWork.app and DuolaWork.dmg
         env:
-          DUOLAWORK_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY || '-' }}
+          APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
+          export DUOLAWORK_SIGN_IDENTITY="${APPLE_SIGN_IDENTITY:--}"
           npm run package:mac
           npm run package:dmg
 
