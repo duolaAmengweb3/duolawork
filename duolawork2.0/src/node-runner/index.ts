@@ -24,7 +24,15 @@ import {
   type TurnImageAttachment
 } from '../server/drivers/types.js';
 import type { NodeHelloMember } from '../server/node-hub.js';
-import { isExcludedClaudeVps, type DriverKind, type MemberRecord, type WorkspaceFileEntry } from '../shared/types.js';
+import {
+  DEFAULT_COMPANION_KEEPALIVE,
+  isExcludedClaudeVps,
+  normalizeCompanionKeepalive,
+  type CompanionKeepalivePrefs,
+  type DriverKind,
+  type MemberRecord,
+  type WorkspaceFileEntry
+} from '../shared/types.js';
 
 interface OutboxEntry {
   attemptId: string;
@@ -48,6 +56,7 @@ export interface NodeRunnerConfig {
   allowedWorkspaceRoots?: string[];
   outboxPath?: string;
   appVersion?: string;
+  companionKeepalive?: Partial<CompanionKeepalivePrefs>;
   mockDriver?: MockDriver;
 }
 
@@ -79,6 +88,8 @@ export class DuolaWorkNodeRunner {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
   private readonly outboxPath: string | null;
+  private companionKeepalive: CompanionKeepalivePrefs;
+  public onCompanionKeepaliveChanged?: (prefs: CompanionKeepalivePrefs) => void;
 
   constructor(private readonly config: NodeRunnerConfig) {
     this.drivers.set('codex-app-server', new CodexAppServerDriver());
@@ -86,7 +97,12 @@ export class DuolaWorkNodeRunner {
     this.drivers.set('acp-stdio', new AcpStdioDriver());
     this.drivers.set('mock', config.mockDriver ?? new MockDriver());
     this.outboxPath = config.outboxPath ?? null;
+    this.companionKeepalive = normalizeCompanionKeepalive(config.companionKeepalive);
     this.loadOutbox();
+  }
+
+  public getCompanionKeepalive(): CompanionKeepalivePrefs {
+    return { ...this.companionKeepalive };
   }
 
   private rejectPendingStart?: (err: Error) => void;
@@ -440,6 +456,10 @@ export class DuolaWorkNodeRunner {
       }
       if (msg.type === 'node.welcome') {
         this.canResumeTools = msg.resumesToolCalls === true;
+        if (msg.companionKeepalive && typeof msg.companionKeepalive === 'object') {
+          this.companionKeepalive = normalizeCompanionKeepalive(msg.companionKeepalive);
+          this.onCompanionKeepaliveChanged?.(this.getCompanionKeepalive());
+        }
         for (const pending of this.pendingToolCalls.values()) {
           if (!pending.sent || this.canResumeTools) {
             this.send(pending.frame);
@@ -488,6 +508,15 @@ export class DuolaWorkNodeRunner {
       return;
     }
     if (type === 'node.pong') return;
+
+    if (type === 'node.companion_keepalive') {
+      this.companionKeepalive = normalizeCompanionKeepalive(msg.prefs);
+      console.log(
+        `[duolawork-node] companion keepalive updated: deepseekHarness=${this.companionKeepalive.deepseekHarness} grokBot=${this.companionKeepalive.grokBot}`
+      );
+      this.onCompanionKeepaliveChanged?.(this.getCompanionKeepalive());
+      return;
+    }
 
     if (type === 'turn.ack') {
       const attemptId = String(msg.attemptId || '');
@@ -954,48 +983,77 @@ async function isMacProcessRunning(pattern: string): Promise<boolean> {
   }
 }
 
-async function ensureMacCompanionApps(): Promise<void> {
-  if (process.platform !== 'darwin') return;
+export async function ensureMacCompanionApps(
+  prefs: CompanionKeepalivePrefs = DEFAULT_COMPANION_KEEPALIVE,
+  deps?: {
+    platform?: string;
+    existsSync?: (p: string) => boolean;
+    isRunning?: (pattern: string) => Promise<boolean>;
+    launch?: (args: string[], env: NodeJS.ProcessEnv) => Promise<void>;
+  }
+): Promise<{ launched: string[] }> {
+  const platform = deps?.platform ?? process.platform;
+  if (platform !== 'darwin') return { launched: [] };
+  const normalized = normalizeCompanionKeepalive(prefs);
+  if (!normalized.grokBot && !normalized.deepseekHarness) return { launched: [] };
+
+  const exists = deps?.existsSync ?? fs.existsSync;
+  const checkRunning = deps?.isRunning ?? isMacProcessRunning;
+  const launchApp =
+    deps?.launch ??
+    (async (args: string[], env: NodeJS.ProcessEnv) => {
+      await execFileAsync('/usr/bin/open', args, { env, timeout: 10_000 });
+    });
+
   const proxyEnv = resolveLocalProxyEnv();
   const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
   delete cleanEnv.ELECTRON_RUN_AS_NODE;
+  const launched: string[] = [];
 
-  const grokApp = '/Applications/Grok Bot.app';
-  if (fs.existsSync(grokApp)) {
-    const running = await isMacProcessRunning('/Applications/Grok Bot.app/Contents/MacOS/Grok Bot');
-    if (!running) {
-      try {
-        await execFileAsync('/usr/bin/open', ['-g', '-j', grokApp], { env: cleanEnv, timeout: 10_000 });
-        console.log('[duolawork-node] companion keepalive launched Grok Bot.app in background');
-      } catch {
-        // non-fatal
+  if (normalized.grokBot) {
+    const grokApp = '/Applications/Grok Bot.app';
+    if (exists(grokApp)) {
+      const running = await checkRunning('/Applications/Grok Bot.app/Contents/MacOS/Grok Bot');
+      if (!running) {
+        try {
+          await launchApp(['-g', '-j', grokApp], cleanEnv);
+          launched.push('Grok Bot.app');
+          console.log('[duolawork-node] companion keepalive launched Grok Bot.app in background');
+        } catch {
+          // non-fatal
+        }
       }
     }
   }
 
-  const dshApp = '/Applications/DeepSeek Harness.app';
-  if (fs.existsSync(dshApp)) {
-    const running = await isMacProcessRunning('/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness');
-    if (!running) {
-      try {
-        const openArgs = ['-g', '-j'];
-        const httpProxy = proxyEnv.HTTP_PROXY || proxyEnv.http_proxy || '';
-        const httpsProxy = proxyEnv.HTTPS_PROXY || proxyEnv.https_proxy || httpProxy;
-        if (httpProxy) {
-          openArgs.push('--env', `HTTP_PROXY=${httpProxy}`);
+  if (normalized.deepseekHarness) {
+    const dshApp = '/Applications/DeepSeek Harness.app';
+    if (exists(dshApp)) {
+      const running = await checkRunning('/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness');
+      if (!running) {
+        try {
+          const openArgs = ['-g', '-j'];
+          const httpProxy = proxyEnv.HTTP_PROXY || proxyEnv.http_proxy || '';
+          const httpsProxy = proxyEnv.HTTPS_PROXY || proxyEnv.https_proxy || httpProxy;
+          if (httpProxy) {
+            openArgs.push('--env', `HTTP_PROXY=${httpProxy}`);
+          }
+          if (httpsProxy) {
+            openArgs.push('--env', `HTTPS_PROXY=${httpsProxy}`);
+          }
+          openArgs.push('--env', 'NO_PROXY=127.0.0.1,localhost,::1');
+          openArgs.push(dshApp);
+          await launchApp(openArgs, cleanEnv);
+          launched.push('DeepSeek Harness.app');
+          console.log('[duolawork-node] companion keepalive launched DeepSeek Harness.app in background');
+        } catch {
+          // non-fatal
         }
-        if (httpsProxy) {
-          openArgs.push('--env', `HTTPS_PROXY=${httpsProxy}`);
-        }
-        openArgs.push('--env', 'NO_PROXY=127.0.0.1,localhost,::1');
-        openArgs.push(dshApp);
-        await execFileAsync('/usr/bin/open', openArgs, { env: cleanEnv, timeout: 10_000 });
-        console.log('[duolawork-node] companion keepalive launched DeepSeek Harness.app in background');
-      } catch {
-        // non-fatal
       }
     }
   }
+
+  return { launched };
 }
 
 // Standalone CLI entrypoint: `node dist/node-runner/index.mjs [--config /path/to/node.json]`
@@ -1068,13 +1126,18 @@ async function runCliIfMain(): Promise<void> {
     cfg.outboxPath = path.join(path.dirname(configPath), 'outbox.json');
   }
   const runner = new DuolaWorkNodeRunner(cfg);
+  let companionTimer: NodeJS.Timeout | null = null;
+  runner.onCompanionKeepaliveChanged = (prefs) => {
+    if (process.platform === 'darwin' && cfg.kind === 'local') {
+      void ensureMacCompanionApps(prefs);
+    }
+  };
   await runner.start();
   console.log(`[duolawork-node] connected to ${cfg.serverUrl} as "${cfg.name}" (${cfg.kind})`);
-  let companionTimer: NodeJS.Timeout | null = null;
   if (process.platform === 'darwin' && cfg.kind === 'local') {
-    void ensureMacCompanionApps();
+    void ensureMacCompanionApps(runner.getCompanionKeepalive());
     companionTimer = setInterval(() => {
-      void ensureMacCompanionApps();
+      void ensureMacCompanionApps(runner.getCompanionKeepalive());
     }, 3 * 60_000);
     companionTimer.unref?.();
   }

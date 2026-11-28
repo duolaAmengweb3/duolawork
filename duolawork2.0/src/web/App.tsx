@@ -37,6 +37,7 @@ import {
   Plug,
   Plus,
   Search,
+  Sparkles,
   Square,
   Sun,
   Trash2,
@@ -4052,6 +4053,50 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         ) : viewMode === 'task' && activeTaskId ? (
           <div className="channel-intro" role="status">
             {taskReadFailed ? <><p>{L('暂时无法读取任务', 'Unable to load task')}</p><button className="dw-btn" onClick={() => void loadTaskDetail(activeTaskId)}>{L('重试', 'Retry')}</button></> : <p>{L('正在读取任务…', 'Loading task…')}</p>}
+          </div>
+        ) : authState.checked && viewMode === 'thread' && !activeThread ? (
+          <div
+            data-testid="empty-workspace-welcome"
+            className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center"
+          >
+            <BrandLogo size={42} />
+            <div className="max-w-[480px] space-y-1.5">
+              <h2 className="m-0 text-lg font-semibold tracking-tight text-foreground">
+                {L('欢迎使用 DuolaWork 3.0', 'Welcome to DuolaWork 3.0')}
+              </h2>
+              <p className="m-0 text-xs leading-relaxed text-muted-foreground">
+                {members.length === 0
+                  ? L(
+                      '先扫描并一键接入你本机已有的 Codex、Claude Code 或 Gemini 订阅，即可零配置开始多 Agent 协作。',
+                      'Auto-discover your local Codex, Claude Code, or Gemini subscriptions in one click to start multi-agent cowork.'
+                    )
+                  : L(
+                      '新建一条对话开始讨论方案、改代码、析数据，或委派负责人自动验收的定时任务。',
+                      'Start a new thread to draft specs, ship code, analyze data, or delegate lead-reviewed scheduled tasks.'
+                    )}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              <Button
+                size="sm"
+                variant={members.length === 0 ? 'default' : 'outline'}
+                onClick={() => setViewMode('members')}
+                data-testid="empty-workspace-discover-btn"
+              >
+                <Sparkles size={14} />
+                <span>{t('discoverShortcutBtn')}</span>
+              </Button>
+              {members.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={() => void handleCreateThread()}
+                  data-testid="empty-workspace-new-thread-btn"
+                >
+                  <Plus size={14} />
+                  <span>{t('newThreadTitle')}</span>
+                </Button>
+              )}
+            </div>
           </div>
         ) : null}
       </main>

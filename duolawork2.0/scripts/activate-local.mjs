@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { resolveDesktopBootMode } = require('../desktop/boot-mode.cjs');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const builtApp = path.join(rootDir, 'release', 'DuolaWork.app');
@@ -115,6 +119,78 @@ function readBundleVersion(appPath) {
   }
 }
 
+function resolveActiveBootMode() {
+  const desktopCfgDir = path.join(os.homedir(), '.config', 'duolawork-desktop');
+  const clientCfgPath = path.join(desktopCfgDir, 'client.json');
+  const cloudAccessPath = path.join(desktopCfgDir, 'cloud-access.json');
+  let clientConfig = null;
+  try {
+    if (fs.existsSync(clientCfgPath)) {
+      clientConfig = JSON.parse(fs.readFileSync(clientCfgPath, 'utf8'));
+    }
+  } catch {
+    clientConfig = null;
+  }
+  return resolveDesktopBootMode({
+    envCloudUrl: process.env.DUOLAWORK_CLOUD_URL || '',
+    clientConfig,
+    hasCloudAccess: fs.existsSync(cloudAccessPath),
+    testMode: process.env.DUOLAWORK_V2_TEST_MODE === '1'
+  });
+}
+
+function isTargetAppCmd(cmd) {
+  return cmd.includes('/release/DuolaWork.app/') && !cmd.includes('/duolawork2.0/');
+}
+
+function listTargetAppMainPids() {
+  try {
+    const out = execFileSync('/bin/ps', ['-ax', '-o', 'pid=,command='], { encoding: 'utf8' });
+    const pids = [];
+    for (const line of out.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const sp = trimmed.indexOf(' ');
+      if (sp <= 0) continue;
+      const pid = Number(trimmed.slice(0, sp).trim());
+      const cmd = trimmed.slice(sp + 1);
+      if (
+        Number.isInteger(pid) &&
+        pid > 0 &&
+        pid !== process.pid &&
+        isTargetAppCmd(cmd) &&
+        cmd.trimEnd().endsWith('/Contents/MacOS/Electron')
+      ) {
+        pids.push(pid);
+      }
+    }
+    return pids;
+  } catch {
+    return [];
+  }
+}
+
+function listTargetAppAnyPids() {
+  try {
+    const out = execFileSync('/bin/ps', ['-ax', '-o', 'pid=,command='], { encoding: 'utf8' });
+    const pids = [];
+    for (const line of out.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const sp = trimmed.indexOf(' ');
+      if (sp <= 0) continue;
+      const pid = Number(trimmed.slice(0, sp).trim());
+      const cmd = trimmed.slice(sp + 1);
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid && isTargetAppCmd(cmd)) {
+        pids.push(pid);
+      }
+    }
+    return pids;
+  } catch {
+    return [];
+  }
+}
+
 const protectedBefore = hashProtectedFiles();
 const chromePidsBefore = listManagedChromePids();
 console.log(`[activate] protected files hashed: ${Object.keys(protectedBefore).length}, chrome PIDs: ${chromePidsBefore.join(',') || 'none'}`);
@@ -163,21 +239,25 @@ if (pids8766.length > 0) {
   await waitPidsExit(legacyPids, 4000);
 }
 
-// 2. Gracefully stop any running DuolaWork 2.0 server/app on port 8780
+// 2. Gracefully stop any running DuolaWork server/app (Local port 8780 OR Cloud-mode Electron)
 const pids8780 = getListeningPids(8780).filter((pid) => !chromePidsBefore.includes(pid));
-for (const pid of pids8780) {
+const appMainPids = listTargetAppMainPids().filter((pid) => !chromePidsBefore.includes(pid));
+const stopPids = [...new Set([...pids8780, ...appMainPids])];
+for (const pid of stopPids) {
   try {
     process.kill(pid, 'SIGTERM');
   } catch {
     // ignore
   }
 }
-if (pids8780.length > 0) {
-  const freed8780 = await waitPortFree(8780, 6000);
-  let remaining = await waitPidsExit(pids8780, 5000);
-  if (!freed8780 || remaining.length > 0) {
+if (stopPids.length > 0) {
+  const freed8780 = pids8780.length > 0 ? await waitPortFree(8780, 8000) : true;
+  let remaining = await waitPidsExit(stopPids, 8000);
+  const remainingApp = listTargetAppAnyPids().filter((pid) => !chromePidsBefore.includes(pid));
+  if (!freed8780 || remaining.length > 0 || remainingApp.length > 0) {
     const fallbackPids = new Set([
       ...remaining,
+      ...remainingApp,
       ...getListeningPids(8780).filter((pid) => !chromePidsBefore.includes(pid))
     ]);
     for (const pid of fallbackPids) {
@@ -202,21 +282,36 @@ if (fs.existsSync(legacyV2App) && legacyAppVer && legacyAppVer.startsWith('1.') 
 }
 const previousVersion = fs.existsSync(targetApp) ? readBundleVersion(targetApp) : legacyAppVer;
 
+function rmTreeForce(dirPath) {
+  if (!fs.existsSync(dirPath)) return;
+  try {
+    fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 6, retryDelay: 120 });
+  } catch {
+    // Fallback on macOS APFS/Spotlight ENOTEMPTY locks inside .app bundles
+  }
+  if (fs.existsSync(dirPath)) {
+    execFileSync('/bin/rm', ['-rf', dirPath]);
+  }
+}
+
 const stagingTarget = path.join(targetReleaseDir, `.staging-DuolaWork-${Date.now()}.app`);
-fs.rmSync(stagingTarget, { recursive: true, force: true });
+rmTreeForce(stagingTarget);
 execFileSync('/usr/bin/ditto', [builtApp, stagingTarget], { stdio: 'inherit' });
 if (fs.existsSync(targetApp)) {
   const prevTrash = path.join(targetReleaseDir, '.prev-DuolaWork.app');
-  fs.rmSync(prevTrash, { recursive: true, force: true });
+  rmTreeForce(prevTrash);
   fs.renameSync(targetApp, prevTrash);
   fs.renameSync(stagingTarget, targetApp);
-  fs.rmSync(prevTrash, { recursive: true, force: true });
+  rmTreeForce(prevTrash);
 } else {
   fs.renameSync(stagingTarget, targetApp);
 }
 console.log(`[activate] installed ${targetApp}`);
 
 // 4. Launch installed desktop app detached & capture launch screenshot
+const bootMode = resolveActiveBootMode();
+console.log(`[activate] boot mode: ${bootMode.mode}${bootMode.cloudUrl ? ` (${bootMode.cloudUrl})` : ''}`);
+
 fs.mkdirSync(evidenceDir, { recursive: true });
 fs.rmSync(launchPng, { force: true });
 const appExec = path.join(targetApp, 'Contents', 'MacOS', 'Electron');
@@ -243,46 +338,78 @@ const launched = spawn(appExec, [], {
 launched.unref();
 
 let health = null;
+let memberCount = null;
+let threadCount = null;
+let taskCount = null;
 const deadline = Date.now() + 25_000;
-while (Date.now() < deadline) {
-  try {
-    const res = await fetch('http://127.0.0.1:8780/api/v2/health');
-    if (res.ok) {
-      const data = await res.json();
-      if (
-        data.desktopReady &&
-        data.renderedBuildId === buildInfo.id &&
-        fs.existsSync(launchPng) &&
-        fs.statSync(launchPng).size > 10000
-      ) {
-        health = data;
-        break;
-      }
+
+if (bootMode.mode === 'cloud') {
+  let pngReady = false;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(launched.pid)) {
+      throw new Error(`激活后的 DuolaWork 桌面端进程提前退出 (pid=${launched.pid})`);
     }
-  } catch {
-    // wait for startup
+    if (fs.existsSync(launchPng) && fs.statSync(launchPng).size > 10000) {
+      pngReady = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 300));
   }
-  await new Promise((r) => setTimeout(r, 300));
+  if (!pngReady || !isPidAlive(launched.pid)) {
+    throw new Error('激活后的 DuolaWork Cloud 桌面端未在预期时间内完成截图就绪');
+  }
+  const healthRes = await fetch(`${bootMode.cloudUrl}/api/v2/health`);
+  if (!healthRes.ok) {
+    throw new Error(`Cloud 健康检查失败: HTTP ${healthRes.status}`);
+  }
+  health = await healthRes.json();
+  assert.equal(health.status, 'ok');
+  assert.equal(health.version, buildInfo.version);
+  assert.equal(health.buildId, buildInfo.id);
+} else {
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch('http://127.0.0.1:8780/api/v2/health');
+      if (res.ok) {
+        const data = await res.json();
+        if (
+          data.desktopReady &&
+          data.renderedBuildId === buildInfo.id &&
+          fs.existsSync(launchPng) &&
+          fs.statSync(launchPng).size > 10000
+        ) {
+          health = data;
+          break;
+        }
+      }
+    } catch {
+      // wait for startup
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  if (!health) {
+    throw new Error('激活后的 DuolaWork Local 桌面端未在预期时间内完成渲染就绪或截图');
+  }
+
+  assert.equal(health.version, buildInfo.version);
+  assert.equal(health.buildId, buildInfo.id);
+  assert.equal(health.desktopReady, true);
+  assert.equal(health.renderedBuildId, buildInfo.id);
+
+  const boot = await (await fetch('http://127.0.0.1:8780/api/v2/bootstrap')).json();
+  const hasClaudeVps = (boot.members || []).some(
+    (m) =>
+      m.id === 'member_bf4fdac30b4542c8988bb6725f47ec0b' ||
+      String(m.name || '').toLowerCase().includes('claudevps') ||
+      (m.platformId === 'claude-code' && (m.driverKind === 'remote-bridge' || m.location === 'remote-bridge'))
+  );
+  assert.equal(hasClaudeVps, false, 'ClaudeVPS must never appear in active members');
+  assert.ok((boot.members || []).length >= 2, 'Expected imported members >= 2');
+  memberCount = boot.members?.length ?? 0;
+  threadCount = boot.threads?.length ?? 0;
+  taskCount = boot.tasks?.length ?? 0;
 }
-
-if (!health) {
-  throw new Error('激活后的 DuolaWork 2.0 桌面端未在预期时间内完成渲染就绪或截图');
-}
-
-assert.equal(health.version, buildInfo.version);
-assert.equal(health.buildId, buildInfo.id);
-assert.equal(health.desktopReady, true);
-assert.equal(health.renderedBuildId, buildInfo.id);
-
-const boot = await (await fetch('http://127.0.0.1:8780/api/v2/bootstrap')).json();
-const hasClaudeVps = (boot.members || []).some(
-  (m) =>
-    m.id === 'member_bf4fdac30b4542c8988bb6725f47ec0b' ||
-    String(m.name || '').toLowerCase().includes('claudevps') ||
-    (m.platformId === 'claude-code' && (m.driverKind === 'remote-bridge' || m.location === 'remote-bridge'))
-);
-assert.equal(hasClaudeVps, false, 'ClaudeVPS must never appear in active members');
-assert.ok((boot.members || []).length >= 2, 'Expected imported members >= 2');
 
 const protectedAfter = hashProtectedFiles();
 assert.deepEqual(protectedAfter, protectedBefore, 'Protected ~/.config/agent-hub/ files must remain untouched');
@@ -294,6 +421,8 @@ for (const pid of chromePidsBefore) {
 
 const report = {
   activatedAt: new Date().toISOString(),
+  bootMode: bootMode.mode,
+  cloudUrl: bootMode.cloudUrl || null,
   targetApp,
   backup196App: fs.existsSync(backup196App) ? backup196App : null,
   previousVersion,
@@ -302,12 +431,12 @@ const report = {
   health,
   pid: launched.pid,
   launchScreenshot: launchPng,
-  memberCount: boot.members?.length ?? 0,
-  threadCount: boot.threads?.length ?? 0,
-  taskCount: boot.tasks?.length ?? 0,
+  memberCount,
+  threadCount,
+  taskCount,
   chromePidsBefore,
   chromePidsAfter,
   protectedFilesVerified: Object.keys(protectedAfter)
 };
 fs.writeFileSync(activationJson, JSON.stringify(report, null, 2) + '\n');
-console.log(`[activate] SUCCESS version=${report.installedVersion} buildId=${buildInfo.id} pid=${launched.pid}`);
+console.log(`[activate] SUCCESS mode=${bootMode.mode} version=${report.installedVersion} buildId=${buildInfo.id} pid=${launched.pid}`);
