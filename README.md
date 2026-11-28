@@ -12,8 +12,10 @@
 <p align="center">Stop paying credit markups on subscriptions you already own. Put <strong>Codex, Claude Code, Gemini, and Grok</strong> on one desk across specs, code worktrees, CSV data, and scheduled runs with built-in lead verification.</p>
 
 <p align="center">
+  <a href="https://github.com/duolaAmengweb3/duolawork/releases/tag/v3.0.0"><img src="https://img.shields.io/badge/Release-v3.0.0-06194A?labelColor=FDD628" alt="Release v3.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
   <a href="duolawork2.0/package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="https://github.com/duolaAmengweb3/duolawork/issues">Report an issue</a> ·
   <a href="#getting-started">Get started</a> ·
   <a href="#why-duolawork-30">Why DuolaWork 3.0</a> ·

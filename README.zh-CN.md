@@ -12,8 +12,10 @@
 <p align="center">你已经买了 Codex、Claude Code、Gemini 和 Grok，别再为单一工作台交第二份“积分税”。让多个 AI 成员在同一张桌子上讨论方案、切分支写代码、产 CSV 数据表、跑定时验收并在多标签阅读器里精排交付。</p>
 
 <p align="center">
+  <a href="https://github.com/duolaAmengweb3/duolawork/releases/tag/v3.0.0"><img src="https://img.shields.io/badge/Release-v3.0.0-06194A?labelColor=FDD628" alt="Release v3.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
   <a href="duolawork2.0/package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
+  <a href="CHANGELOG.md">更新日志</a> ·
   <a href="https://github.com/duolaAmengweb3/duolawork/issues">反馈问题</a> ·
   <a href="#开始使用">开始使用</a> ·
   <a href="#为什么选择-duolawork-30">产品对比</a> ·
