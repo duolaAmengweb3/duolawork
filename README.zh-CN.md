@@ -12,9 +12,10 @@
 <p align="center">你已经买了 Codex、Claude Code、Gemini 和 Grok，别再为单一工作台交第二份“积分税”。让多个 AI 成员在同一张桌子上讨论方案、切分支写代码、产 CSV 数据表、跑定时验收并在多标签阅读器里精排交付。</p>
 
 <p align="center">
+  <a href="https://github.com/duolaAmengweb3/duolawork/actions/workflows/ci.yml"><img src="https://github.com/duolaAmengweb3/duolawork/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/duolaAmengweb3/duolawork/releases/tag/v3.0.0"><img src="https://img.shields.io/badge/Release-v3.0.0-06194A?labelColor=FDD628" alt="Release v3.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
-  <a href="duolawork2.0/package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
   <a href="CHANGELOG.md">更新日志</a> ·
   <a href="https://github.com/duolaAmengweb3/duolawork/issues">反馈问题</a> ·
   <a href="#开始使用">开始使用</a> ·
@@ -63,7 +64,7 @@
 - **3 分钟零配置 BYOS 自动发现**：进入「成员与用量」自动探测本机已安装且已登录的 `codex`、`claude` 与 `gemini`（只读检测，不改动你原有的 CLI 配置），一键接入成员。
 - **桌面伴生应用保活可控开关**：针对桌面连接器（`DeepSeek Harness`、`Grok Bot`）的后台自动拉起默认关闭，可在「成员与用量 → 桌面伴生应用自动保活」按应用独立开关并实时同步本机执行节点。
 - **连接器与 Vault 凭证代理**：外部工具权限与明文凭证隔离保管在 Vault，执行成员沙盒调用无法反查明文或越权改写。
-- **可选云端控制面与跨机执行节点**：提供完整的 [duolawork2.0/deploy](duolawork2.0/deploy) 部署配置（HTTPS 反代 + Node 24 `node:sqlite` WAL 热备份）及本机/VPS 外连 WebSocket 执行节点守护。
+- **可选云端控制面与跨机执行节点**：提供完整的 [deploy](deploy) 部署配置（HTTPS 反代 + Node 24 `node:sqlite` WAL 热备份）及本机/VPS 外连 WebSocket 执行节点守护。
 
 <details>
 <summary>架构与交付流程图（矢量 SVG / PNG）</summary>
@@ -85,21 +86,21 @@
 </details>
 
 <details>
-<summary>仓库目录结构（3.0 主工程与 1.x 历史归档）</summary>
+<summary>仓库目录结构（1.x 历史源码已归档至 tag <code>archive/v1-legacy</code>）</summary>
 
 ```text
-duolawork2.0/
-  src/
-    server/          HTTP/SSE 控制面、云端登录鉴权、NodeHub、任务状态机、调度器、BYOS 自动发现
-    server/drivers/  Codex app-server、Claude CLI、ACP stdio、Remote Node 与桥接驱动
-    node-runner/     跨机外连执行节点（持久化 outbox 重放、可开关桌面伴生保活）
-    shared/          进度状态解析、文件格式识别、共享类型定义
-    web/             React + Coss UI 三栏工作台、协作空间、多标签阅读器、中英双语 i18n
-  desktop/           Electron Local-First / Cloud 双模式桌面壳（DuolaWork.app）
-  deploy/            systemd 服务配置（含 Node 24 sqlite WAL 热备）与 Nginx 反代示例
-  scripts/           构建、前端体积门禁检查、macOS 打包与本机激活脚本
-  tests/             自动化单元测试、状态机审计与 Playwright 浏览器端到端回归
-cloud/, local/, ui/  早期 1.x Agent Hub 参考源码保留目录
+src/
+  server/          HTTP/SSE 控制面、云端登录鉴权、NodeHub、任务状态机、调度器、BYOS 自动发现
+  server/drivers/  Codex app-server、Claude CLI、ACP stdio、Remote Node 与桥接驱动
+  node-runner/     跨机外连执行节点（持久化 outbox 重放、可开关桌面伴生保活）
+  shared/          进度状态解析、文件格式识别、共享类型定义
+  web/             React + Coss UI 三栏工作台、协作空间、多标签阅读器、中英双语 i18n
+desktop/           Electron Local-First / Cloud 双模式桌面壳与 macOS entitlements
+deploy/            systemd 服务配置（含 Node 24 sqlite WAL 热备）与 Nginx 反代示例
+scripts/           构建、前端体积门禁检查、macOS `.app` / `.dmg` 打包与本机激活脚本
+tests/             自动化单元测试、状态机审计与 Playwright 浏览器端到端回归
+.github/workflows/ GitHub Actions CI（ubuntu-latest + macos-latest）与 macOS DMG 构建工作流
+docs/assets/       桌面端截图、架构流程图与品牌资产
 ```
 
 </details>
@@ -112,7 +113,7 @@ cloud/, local/, ui/  早期 1.x Agent Hub 参考源码保留目录
 
 ```sh
 git clone https://github.com/duolaAmengweb3/duolawork.git
-cd duolawork/duolawork2.0
+cd duolawork
 npm ci
 npm run build
 npm run desktop
@@ -123,11 +124,17 @@ npm run desktop
 3. **开始协作交付**：选择首屏场景卡或绑定本地目录，在多标签阅读器里定稿，或把复杂/周期工作交给负责人拆单验收。
 
 <details>
-<summary>可选：打包 `DuolaWork.app` 或配对跨机执行节点</summary>
+<summary>可选：打包 `DuolaWork.app` / `.dmg`（支持 Developer ID 签名与公证）或配对节点</summary>
 
 ```sh
-# 打包 macOS 桌面应用（产物位于 duolawork2.0/release/DuolaWork.app）
+# 构建 macOS 应用包（dist/mac/DuolaWork.app）与压缩 DMG 安装包（dist/mac/DuolaWork-<version>-<arch>.dmg）
 npm run package:mac
+npm run package:dmg
+
+# 如需 Developer ID 正式签名与 Apple 公证（可选）
+DUOLAWORK_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" npm run package:mac
+DUOLAWORK_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  DUOLAWORK_NOTARY_PROFILE=duolawork-notary npm run package:dmg
 
 # 将本机或 Linux VPS 作为执行节点接入自建云端控制面
 node dist/node-runner/index.mjs pair --server https://你的云端域名 --code <配对码> --kind local
@@ -139,14 +146,13 @@ node dist/node-runner/index.mjs
 ## 当前边界
 
 - **部署形态**：面向个人与自建单工作区团队（单节点 `node:sqlite` + 本地文件目录），当前不宣称多租户 SaaS 集群。
-- **桌面端**：桌面打包（`DuolaWork.app`）与 Electron 测试主要在 macOS 验证；`node-runner` 支持 macOS 与 Linux。
+- **桌面端**：桌面打包（`DuolaWork.app` / `.dmg`）与 Electron 测试主要在 macOS 验证；`node-runner` 支持 macOS 与 Linux。
 - **原生运行时依赖**：实际产出质量、登录有效性、速率限制与工具沙盒仍取决于底层各官方 CLI 与连接器账号授权。
 - **结果审阅**：版本保护、有界交接与回执核验帮助你核对过程与输入，重要代码和对外内容仍须人工最终把关。
 
 ## 开发与回归验证
 
 ```sh
-cd duolawork2.0
 npm run typecheck
 npm run build
 npm test

@@ -1,381 +1,460 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { dataDir, readConfig } from "../local/storage.mjs";
-import { BrowserManager } from "../local/browser.mjs";
-import { BackgroundPage } from "../local/background-page.mjs";
-import { assertArtifactPath } from "../local/data-policy.mjs";
-import { cloudClient } from "../local/transport.mjs";
-import { requestJson } from "../local/transport.mjs";
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-  expected = JSON.parse(
-    await fs.readFile(path.join(root, "shared/build-info.json"), "utf8"),
-  ),
-  sourceBundle = path.join(root, "release/Agent Hub.app"),
-  bundle = process.env.AGENT_HUB_INSTALL_PATH
-    ? path.resolve(process.env.AGENT_HUB_INSTALL_PATH)
-    : sourceBundle,
-  exe = path.join(bundle, "Contents/MacOS/Electron"),
-  config = await readConfig(),
-  base = `http://127.0.0.1:${config.port || 8766}`;
-await assertArtifactPath(bundle);
-if (path.basename(bundle) !== "Agent Hub.app")
-  throw new Error("安装目标必须为 Agent Hub.app");
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function get(p) {
-  const r = await fetch(base + p, { signal: AbortSignal.timeout(15000) });
-  if (!r.ok) throw new Error("Activation check returned HTTP " + r.status);
-  return r.json();
+import assert from 'node:assert/strict';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  gracefullyStopDuolaWorkProcesses,
+  partitionPortListeners,
+  transactionalAppInstall
+} from './activate-helpers.mjs';
+
+const require = createRequire(import.meta.url);
+const { resolveDesktopBootMode } = require('../desktop/boot-mode.cjs');
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const builtApp = path.join(rootDir, 'dist', 'mac', 'DuolaWork.app');
+const buildInfoPath = path.join(rootDir, 'dist', 'build-info.json');
+const targetReleaseDir =
+  process.env.DUOLAWORK_TARGET_RELEASE_DIR || path.join(rootDir, 'release');
+const targetApp = path.join(targetReleaseDir, 'DuolaWork.app');
+const legacyV2App = path.join(targetReleaseDir, 'Agent Hub.app');
+const backup196App = path.join(targetReleaseDir, 'previous-Agent-Hub-1.9.6.app');
+const evidenceDir = path.join(rootDir, 'evidence', 'v2-final');
+const launchPng = path.join(evidenceDir, 'desktop-activated.png');
+const activationJson = path.join(evidenceDir, 'activation.json');
+const agentHubDir = path.join(os.homedir(), '.config', 'agent-hub');
+
+if (!fs.existsSync(path.join(builtApp, 'Contents/MacOS/Electron')) || !fs.existsSync(buildInfoPath)) {
+  throw new Error('缺少打包产物，请先运行 npm run build && npm run package:mac');
 }
-const durable = (s) => ({
-  accounts: s.accounts,
-  members: s.members,
-  tasks: s.tasks,
-  profile: s.profile,
-  routines: s.routines,
-  notes: s.notes,
-  settings: s.settings,
-  artifacts: s.artifacts,
-});
-const activeWork=await requestJson(config.endpoint+'/v2/active-work',{token:config.adminKey});
-const allowActiveWork=process.argv.includes('--allow-active-work');
-if(activeWork.active&&!allowActiveWork)throw new Error('原生 Agent 仍在回应，未重启本机软件。');
-const digest = (v) =>
-  createHash("sha256").update(JSON.stringify(v)).digest("hex");
-async function localDigest() {
-  const h = createHash("sha256");
-  async function walk(dir) {
-    for (const e of (await fs.readdir(dir, { withFileTypes: true })).sort(
-      (a, b) => a.name.localeCompare(b.name),
-    )) {
-      const f = path.join(dir, e.name);
-      if (e.isDirectory()) await walk(f);
-      else if (e.isFile()) {
-        h.update(path.relative(dataDir, f));
-        h.update(await fs.readFile(f));
-      }
+const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, 'utf8'));
+
+function hashProtectedFiles() {
+  const names = [
+    'config.json',
+    'vault.enc',
+    'vault-key.oscrypt',
+    'browser-profiles.json',
+    'agent-connections.json',
+    'native-coding.json'
+  ];
+  const out = {};
+  for (const name of names) {
+    const p = path.join(agentHubDir, name);
+    if (fs.existsSync(p)) {
+      out[name] = createHash('sha256').update(fs.readFileSync(p)).digest('hex');
     }
   }
-  await walk(dataDir);
-  return h.digest("hex");
+  return out;
 }
-let before;
-try {
-  before = await get("/api/state");
-} catch (e) {
-  if (e.cause?.code !== "ECONNREFUSED") throw e;
-  before = await cloudClient(config).state();
-}
-if (
-  before &&
-  before.tasks.some((t) => t.steps.some((s) => s.status === "running"))
-)
-  throw new Error("当前有任务在执行，未强行重启。");
-// Hold a blank hidden frame across the app's exit. This matters when the
-// user's last account window is closed: Chrome otherwise unloads that context.
-// Chrome can restart itself after an update, while its old Hub owner PID is stale.
-// Observe known full-Chrome processes using the existing protected profile only;
-// never attach, terminate, or recreate a browser just to make the update check pass.
-const processRows = execFileSync("/bin/ps", ["-ax", "-o", "pid=,command="], {
-  encoding: "utf8",
-}).split("\n");
-const observedProfiles = (before?.accounts || []).flatMap((account) => {
-  const directory = path.join(dataDir, "profiles", account.id);
-  return processRows.flatMap((line) => {
-    const m = line.match(/^\s*(\d+)\s+(.+)$/);
-    if (!m) return [];
-    const cmd = m[2];
-    return cmd.startsWith(
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome ",
-    ) &&
-      cmd.includes("--remote-debugging-port=0") &&
-      (cmd.includes("--user-data-dir=" + directory + " ") ||
-        cmd.endsWith("--user-data-dir=" + directory))
-      ? [{ accountId: account.id, pid: Number(m[1]), command: cmd, directory }]
-      : [];
-  });
-});
-const updater = new BrowserManager({
-    proxy: () => config.browserProxyUrl || "",
-  }),
-  holds = [];
-try {
-  await updater.recover(before?.accounts || []);
-  for (const entry of updater.active.values())
-    holds.push(await BackgroundPage.create(entry.endpoint, "about:blank"));
-  const handoff = [
-    ...new Map(
-      [...(before?.local?.browsers || []), ...updater.list()].map((b) => [
-        b.accountId,
-        b,
-      ]),
-    ).values(),
-  ];
-  async function persistentDigest() {
-    const h = createHash("sha256");
-    for (const name of [
-      "config.json",
-      "vault.enc",
-      "vault.key",
-      "vault-key.oscrypt",
-      "browser-profiles.json",
-      "agent-connections.json",
-    ]) {
-      h.update(name);
-      try {
-        h.update(await fs.readFile(path.join(dataDir, name)));
-      } catch (e) {
-        if (e.code !== "ENOENT") throw e;
-        h.update("absent");
+
+function listManagedChromePids() {
+  try {
+    const txt = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' });
+    const pids = [];
+    for (const line of txt.split('\n')) {
+      if (
+        line.includes('agent-hub/profiles') &&
+        !line.includes('Google Chrome Helper') &&
+        !line.includes('grep')
+      ) {
+        const pid = Number(line.trim().split(/\s+/)[0]);
+        if (pid > 0) pids.push(pid);
       }
     }
-    const live = new Set([
-      ...handoff.map((b) => b.accountId),
-      ...observedProfiles.map((b) => b.accountId),
-    ]);
-    async function walk(dir) {
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch (e) {
-        if (e.code === "ENOENT") return;
-        throw e;
+    return pids.sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
+function getListeningPids(port) {
+  try {
+    const out = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).trim();
+    return out
+      .split(/\s+/)
+      .map(Number)
+      .filter((n) => n > 0);
+  } catch {
+    return [];
+  }
+}
+
+function getProcessCommand(pid) {
+  try {
+    return execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function waitPortFree(port, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (getListeningPids(port).length === 0) return true;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+}
+
+function isPidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitPidsExit(pids, timeoutMs = 8000) {
+  const unique = [...new Set(pids.filter((p) => Number.isFinite(p) && p > 0))];
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const alive = unique.filter((p) => isPidAlive(p));
+    if (alive.length === 0) return [];
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return unique.filter((p) => isPidAlive(p));
+}
+
+function readBundleVersion(appPath) {
+  try {
+    const plist = path.join(appPath, 'Contents', 'Info.plist');
+    if (!fs.existsSync(plist)) return '';
+    return execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist], {
+      encoding: 'utf8'
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolveActiveBootMode() {
+  const desktopCfgDir = path.join(os.homedir(), '.config', 'duolawork-desktop');
+  const clientCfgPath = path.join(desktopCfgDir, 'client.json');
+  const cloudAccessPath = path.join(desktopCfgDir, 'cloud-access.json');
+  let clientConfig = null;
+  try {
+    if (fs.existsSync(clientCfgPath)) {
+      clientConfig = JSON.parse(fs.readFileSync(clientCfgPath, 'utf8'));
+    }
+  } catch {
+    clientConfig = null;
+  }
+  return resolveDesktopBootMode({
+    envCloudUrl: process.env.DUOLAWORK_CLOUD_URL || '',
+    clientConfig,
+    hasCloudAccess: fs.existsSync(cloudAccessPath),
+    testMode: process.env.DUOLAWORK_V2_TEST_MODE === '1'
+  });
+}
+
+function isTargetAppCmd(cmd) {
+  return (
+    cmd.includes(targetApp) &&
+    !cmd.includes('/dist/mac/') &&
+    !cmd.includes('/.staging-') &&
+    !cmd.includes('/.rollback-')
+  );
+}
+
+function listTargetAppMainPids() {
+  try {
+    const out = execFileSync('/bin/ps', ['-ax', '-o', 'pid=,command='], { encoding: 'utf8' });
+    const pids = [];
+    for (const line of out.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const sp = trimmed.indexOf(' ');
+      if (sp <= 0) continue;
+      const pid = Number(trimmed.slice(0, sp).trim());
+      const cmd = trimmed.slice(sp + 1);
+      if (
+        Number.isInteger(pid) &&
+        pid > 0 &&
+        pid !== process.pid &&
+        isTargetAppCmd(cmd) &&
+        cmd.trimEnd().endsWith('/Contents/MacOS/Electron')
+      ) {
+        pids.push(pid);
       }
-      for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-        const f = path.join(dir, e.name);
-        if (e.isDirectory()) await walk(f);
-        else if (e.isFile()) {
-          h.update(path.relative(dataDir, f));
-          h.update(await fs.readFile(f));
+    }
+    return pids;
+  } catch {
+    return [];
+  }
+}
+
+function rmTreeForce(dirPath) {
+  if (!fs.existsSync(dirPath)) return;
+  try {
+    fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 6, retryDelay: 120 });
+  } catch {
+    // Fallback on macOS APFS/Spotlight ENOTEMPTY locks inside .app bundles
+  }
+  if (fs.existsSync(dirPath)) {
+    execFileSync('/bin/rm', ['-rf', dirPath]);
+  }
+}
+
+const protectedBefore = hashProtectedFiles();
+const chromePidsBefore = listManagedChromePids();
+const bootMode = resolveActiveBootMode();
+console.log(
+  `[activate] protected files hashed: ${Object.keys(protectedBefore).length}, chrome PIDs: ${chromePidsBefore.join(',') || 'none'}`
+);
+
+// 1. Gracefully stop legacy 1.9.6 on port 8766 (checking active work first!)
+const pids8766 = getListeningPids(8766);
+if (pids8766.length > 0) {
+  try {
+    const awRes = await fetch('http://127.0.0.1:8766/api/local/active-work');
+    if (awRes.ok) {
+      const aw = await awRes.json();
+      if (aw.busy && process.env.FORCE_ACTIVATE !== '1') {
+        throw new Error(`1.9.6 正在执行任务，拒绝中断: ${JSON.stringify(aw)}`);
+      }
+    }
+  } catch (err) {
+    if (String(err.message).includes('拒绝中断')) throw err;
+  }
+
+  try {
+    const prep = await fetch('http://127.0.0.1:8766/api/local/prepare-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'upgrade_to_duolawork_2_0' })
+    });
+    if (prep.ok) {
+      const body = await prep.json();
+      console.log(`[activate] 1.9.6 prepare-update -> ${JSON.stringify(body)}`);
+    }
+  } catch {
+    // ignore if endpoint already stopping
+  }
+
+  const legacyPids = pids8766.filter((pid) => !chromePidsBefore.includes(pid));
+  for (const pid of legacyPids) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // ignore
+    }
+  }
+  const freed = await waitPortFree(8766, 8000);
+  if (!freed) {
+    throw new Error('端口 8766 未在 8s 内释放，中止替换以保护现场');
+  }
+  await waitPidsExit(legacyPids, 4000);
+}
+
+// 2. Identify port 8780 listeners safely, preserve unrelated processes, and send only SIGTERM to DuolaWork
+const { duolaworkPids: port8780DuolaPids, unrelatedPids } = partitionPortListeners(
+  getListeningPids(8780),
+  getProcessCommand,
+  targetApp,
+  chromePidsBefore
+);
+const appMainPids = listTargetAppMainPids().filter((pid) => !chromePidsBefore.includes(pid));
+await gracefullyStopDuolaWorkProcesses({
+  duolaworkPids: [...port8780DuolaPids, ...appMainPids],
+  unrelatedPids,
+  bootMode: bootMode.mode,
+  signalPid: (pid, sig) => {
+    try {
+      process.kill(pid, sig);
+    } catch {
+      // ignore ESRCH
+    }
+  },
+  waitExit: (pids, timeoutMs) => waitPidsExit(pids, timeoutMs),
+  waitPortFree: (timeoutMs) => waitPortFree(8780, timeoutMs),
+  gracefulTimeoutMs: Number(process.env.DUOLAWORK_ACTIVATE_WAIT_MS || 8000)
+});
+
+// 3 + 4. Preserve 1.9.6 backup, install transactionally keeping previous bundle until verification succeeds!
+fs.mkdirSync(targetReleaseDir, { recursive: true });
+const legacyAppVer = fs.existsSync(legacyV2App) ? readBundleVersion(legacyV2App) : '';
+if (fs.existsSync(legacyV2App) && legacyAppVer && legacyAppVer.startsWith('1.') && !fs.existsSync(backup196App)) {
+  console.log(`[activate] backing up legacy ${legacyAppVer} -> ${backup196App}`);
+  fs.renameSync(legacyV2App, backup196App);
+}
+const previousVersion = fs.existsSync(targetApp) ? readBundleVersion(targetApp) : legacyAppVer;
+
+const { result: verifyReport } = await transactionalAppInstall({
+  builtApp,
+  targetApp,
+  targetReleaseDir,
+  exists: (p) => fs.existsSync(p),
+  mkdir: (p) => fs.mkdirSync(p, { recursive: true }),
+  copyBundle: async (src, dest) => {
+    execFileSync('/usr/bin/ditto', [src, dest], { stdio: 'inherit' });
+  },
+  rename: (src, dest) => fs.renameSync(src, dest),
+  rmTree: rmTreeForce,
+  verifyInstalled: async (installedAppPath) => {
+    console.log(`[activate] staged & verifying ${installedAppPath}`);
+    console.log(`[activate] boot mode: ${bootMode.mode}${bootMode.cloudUrl ? ` (${bootMode.cloudUrl})` : ''}`);
+
+    fs.mkdirSync(evidenceDir, { recursive: true });
+    fs.rmSync(launchPng, { force: true });
+    const appExec = path.join(installedAppPath, 'Contents', 'MacOS', 'Electron');
+    const cleanLaunchEnv = { ...process.env };
+    for (const k of [
+      'ELECTRON_RUN_AS_NODE',
+      'HTTP_PROXY',
+      'HTTPS_PROXY',
+      'ALL_PROXY',
+      'http_proxy',
+      'https_proxy',
+      'all_proxy'
+    ]) {
+      delete cleanLaunchEnv[k];
+    }
+    const launched = spawn(appExec, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...cleanLaunchEnv,
+        DUOLAWORK_V2_LAUNCH_EVIDENCE: launchPng
+      }
+    });
+    launched.unref();
+
+    let health = null;
+    let memberCount = null;
+    let threadCount = null;
+    let taskCount = null;
+    const deadline = Date.now() + 25_000;
+
+    try {
+      if (bootMode.mode === 'cloud') {
+        let pngReady = false;
+        while (Date.now() < deadline) {
+          if (!isPidAlive(launched.pid)) {
+            throw new Error(`激活后的 DuolaWork 桌面端进程提前退出 (pid=${launched.pid})`);
+          }
+          if (fs.existsSync(launchPng) && fs.statSync(launchPng).size > 10000) {
+            pngReady = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        if (!pngReady || !isPidAlive(launched.pid)) {
+          throw new Error('激活后的 DuolaWork Cloud 桌面端未在预期时间内完成截图就绪');
+        }
+        const healthRes = await fetch(`${bootMode.cloudUrl}/api/v2/health`);
+        if (!healthRes.ok) {
+          throw new Error(`Cloud 健康检查失败: HTTP ${healthRes.status}`);
+        }
+        health = await healthRes.json();
+        assert.equal(health.status, 'ok');
+        assert.equal(health.version, buildInfo.version);
+        assert.equal(health.buildId, buildInfo.id);
+      } else {
+        while (Date.now() < deadline) {
+          try {
+            const res = await fetch('http://127.0.0.1:8780/api/v2/health');
+            if (res.ok) {
+              const data = await res.json();
+              if (
+                data.desktopReady &&
+                data.renderedBuildId === buildInfo.id &&
+                fs.existsSync(launchPng) &&
+                fs.statSync(launchPng).size > 10000
+              ) {
+                health = data;
+                break;
+              }
+            }
+          } catch {
+            // wait for startup
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+
+        if (!health) {
+          throw new Error('激活后的 DuolaWork Local 桌面端未在预期时间内完成渲染就绪或截图');
+        }
+
+        assert.equal(health.version, buildInfo.version);
+        assert.equal(health.buildId, buildInfo.id);
+        assert.equal(health.desktopReady, true);
+        assert.equal(health.renderedBuildId, buildInfo.id);
+
+        const boot = await (await fetch('http://127.0.0.1:8780/api/v2/bootstrap')).json();
+        const hasClaudeVps = (boot.members || []).some(
+          (m) =>
+            m.id === 'member_bf4fdac30b4542c8988bb6725f47ec0b' ||
+            String(m.name || '').toLowerCase().includes('claudevps') ||
+            (m.platformId === 'claude-code' && (m.driverKind === 'remote-bridge' || m.location === 'remote-bridge'))
+        );
+        assert.equal(hasClaudeVps, false, 'ClaudeVPS must never appear in active members');
+        assert.ok((boot.members || []).length >= 2, 'Expected imported members >= 2');
+        memberCount = boot.members?.length ?? 0;
+        threadCount = boot.threads?.length ?? 0;
+        taskCount = boot.tasks?.length ?? 0;
+      }
+
+      const protectedAfter = hashProtectedFiles();
+      assert.deepEqual(
+        protectedAfter,
+        protectedBefore,
+        'Protected ~/.config/agent-hub/ files must remain untouched'
+      );
+
+      const chromePidsAfter = listManagedChromePids();
+      for (const pid of chromePidsBefore) {
+        assert.ok(chromePidsAfter.includes(pid), `Managed Chrome PID ${pid} must stay alive across activation`);
+      }
+
+      return {
+        health,
+        memberCount,
+        threadCount,
+        taskCount,
+        pid: launched.pid,
+        chromePidsAfter,
+        protectedAfter
+      };
+    } catch (verifyErr) {
+      if (launched.pid && isPidAlive(launched.pid)) {
+        try {
+          process.kill(launched.pid, 'SIGTERM');
+          await waitPidsExit([launched.pid], 3000);
+        } catch {
+          // ignore
         }
       }
-    }
-    for (const a of before?.accounts || [])
-      if (!live.has(a.id)) await walk(path.join(dataDir, "profiles", a.id));
-    await walk(path.join(dataDir, "documents"));
-    return h.digest("hex");
-  }
-  async function post(p, body = {}, retry = 0) {
-    const r = await fetch(base + p, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(
-        ["/api/local/finish-update", "/api/local/restore-sessions"].includes(p)
-          ? 60000
-          : 15000,
-      ),
-    });
-    if (r.status === 409 && p === "/api/local/prepare-update" && retry < 120) {
-      // Build/session gates already passed. Wait for the running client's real
-      // idle handoff instead of rerunning the whole release or forcing a stop.
-      if (retry % 12 === 0) console.log("等待运行中的客户端安全交接，保留当前任务与登录资料");
-      await sleep(5000);
-      return post(p, body, retry + 1);
-    }
-    if (!r.ok) throw Object.assign(new Error("更新交接失败 HTTP " + r.status),{status:r.status});
-    return r.json();
-  }
-  const localBefore = await persistentDigest(),
-    cloudBefore = before ? digest(durable(before)) : null;
-  let oldPid = null,
-    prepared = false;
-  try {
-    const ids = execFileSync(
-      "/usr/sbin/lsof",
-      ["-t", "-iTCP:" + (config.port || 8766), "-sTCP:LISTEN"],
-      { encoding: "utf8" },
-    )
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    if (ids.length !== 1)
-      throw new Error("Local port has unexpected listeners");
-    oldPid = Number(ids[0]);
-    const cmd = execFileSync(
-      "/bin/ps",
-      ["-p", String(oldPid), "-o", "command="],
-      { encoding: "utf8" },
-    ).trim();
-    if (cmd !== exe) throw new Error("本机端口属于其他程序，未关闭任何进程。");
-    // Native agents can be busy even when no managed browser is open.
-    // Always ask the running client to check and drain its receivers first.
-    {
-      // --allow-active-work only overrides remote activity. A live local
-      // receiver still has to complete its normal controlled handoff.
-      const result = await post("/api/local/prepare-update");
-      if (
-        !result.prepared ||
-        !(before?.local?.browsers || []).every((b) =>
-          result.browsers.some(
-            (n) => n.accountId === b.accountId && n.pid === b.pid,
-          ),
-        )
-      )
-        throw new Error("原账号窗口未准备好交接，未重启。");
-      prepared = true;
-    }
-    process.kill(oldPid, "SIGTERM");
-    for (let i = 0; i < 300; i++) {
-      try {
-        process.kill(oldPid, 0);
-      } catch {
-        oldPid = null;
-        break;
-      }
-      await sleep(100);
-    }
-    if (oldPid) throw new Error("原客户端没有完成退出，未强制终止。");
-  } catch (e) {
-    if (prepared && oldPid)
-      await post("/api/local/cancel-update").catch(() => {});
-    if (!String(e.message).includes("lsof")) throw e;
-  }
-  if (bundle !== sourceBundle) {
-    const identifier = execFileSync(
-      "/usr/libexec/PlistBuddy",
-      [
-        "-c",
-        "Print :CFBundleIdentifier",
-        path.join(sourceBundle, "Contents/Info.plist"),
-      ],
-      { encoding: "utf8" },
-    ).trim();
-    if (identifier !== "com.duola.agenthub")
-      throw new Error("构建包归属不匹配");
-    const next = bundle + ".next",
-      backup = path.join(root, "release/previous-Agent-Hub.app");
-    await assertArtifactPath(next);
-    await assertArtifactPath(backup);
-    await fs.rm(next, { recursive: true, force: true });
-    execFileSync("/usr/bin/ditto", [sourceBundle, next]);
-    try {
-      await fs.access(bundle);
-      await fs.rm(backup, { recursive: true, force: true });
-      await fs.rename(bundle, backup);
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
-    }
-    await fs.rename(next, bundle);
-  }
-  await fs.mkdir(path.join(root, ".local"), { recursive: true });
-  const log = await fs.open(
-    path.join(root, ".local/activation.log"),
-    "a",
-    0o600,
-  );
-  const env = {
-    ...process.env,
-    AGENT_HUB_ACTIVATING: "1",
-    AGENT_HUB_LAUNCH_EVIDENCE: path.join(root, ".local/activated-client.png"),
-  };
-  delete env.AGENT_HUB_TEST_MODE;
-  delete env.AGENT_HUB_DATA_DIR;
-  delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(exe, [], {
-    cwd: root,
-    env,
-    detached: true,
-    stdio: ["ignore", log.fd, log.fd],
-  });
-  child.unref();
-  await log.close();
-  let status;
-  for (let i = 0; i < 180; i++) {
-    try {
-      status = await get("/api/local/status");
-      if (
-        status.build?.id === expected.id &&
-        status.clientView?.ready &&
-        status.clientView?.buildId === expected.id &&
-        status.online &&
-        handoff.every((b) =>
-          status.browsers.some(
-            (n) => n.accountId === b.accountId && n.pid === b.pid,
-          ),
-        )
-      )
-        break;
-    } catch {}
-    await sleep(200);
-  }
-  if (
-    status?.build?.id !== expected.id ||
-    status?.clientView?.buildId !== expected.id ||
-    !status.clientView.ready ||
-    !status.online
-  )
-    throw new Error(
-      "新客户端还未通过实际启用检查，不能报告更新完成；详情保留在 .local/activation.log。",
-    );
-  if (handoff.length) await post("/api/local/restore-sessions");
-  const after = await get("/api/state");
-  if (
-    !handoff.every((b) =>
-      status.browsers.some(
-        (n) => n.accountId === b.accountId && n.pid === b.pid,
-      ),
-    )
-  )
-    throw new Error("原账号浏览器未被接管，不自动创建或重新登录。");
-  for (const b of handoff) {
-    if (
-      before.local?.loginStatuses?.[b.accountId]?.status === "authenticated"
-    ) {
-      const proof = await post("/api/account/login-check", {
-        accountId: b.accountId,
-      });
-      if (proof.status !== "authenticated")
-        throw new Error("更新后登录尚未确认，不自动重新登录。");
+      throw verifyErr;
     }
   }
-  for (const b of observedProfiles) {
-    const command = execFileSync(
-      "/bin/ps",
-      ["-p", String(b.pid), "-o", "command="],
-      { encoding: "utf8" },
-    ).trim();
-    if (command !== b.command)
-      throw new Error("原浏览器进程归属发生变化，未自动重新登录或替换。");
-  }
-  const localAfter = await persistentDigest();
-  if (localAfter !== localBefore)
-    throw new Error("持久资料校验不一致，未标记为交付完成。");
-  if (cloudBefore && digest(durable(after)) !== cloudBefore)
-    throw new Error("工作区任务或配置发生变化，未标记为交付完成。");
-  await post("/api/local/finish-update");
-  const report = {
-    at: new Date().toISOString(),
-    url: base,
-    buildId: expected.id,
-    processId: status.processId,
-    desktopBuildId: status.clientView.buildId,
-    backendAndDesktopMatch: true,
-    ...(allowActiveWork?{ownerAuthorizedActiveUpdate:true}:{}),
-    cloudOnline: status.online,
-    protectedLocalDataUnchanged:
-      handoff.length || observedProfiles.length ? null : true,
-    protectedLocalMetadataUnchanged: true,
-    ownedBrowsersPreserved: handoff.length,
-    observedProfileProcessesPreserved: observedProfiles.length,
-    profileVerification:
-      handoff.length || observedProfiles.length
-        ? "运行中 Chrome 保留相同 PID 和资料目录；未受控进程未附加或重登；关闭资料目录核对字节"
-        : "关闭浏览器时核对完整资料字节",
-    workspaceDataUnchanged: !!cloudBefore,
-    realCommercialAgentTested: false,
-  };
-  await fs.writeFile(
-    path.join(root, "evidence/activation.json"),
-    JSON.stringify(report, null, 2) + "\n",
-  );
-  console.log(JSON.stringify(report, null, 2));
-} finally {
-  for (const page of holds) page.close();
-  for (const entry of updater.active.values()) {
-    entry.workPage?.close();
-    await entry.browser.close().catch(() => {});
-  }
-}
+});
+
+const report = {
+  activatedAt: new Date().toISOString(),
+  bootMode: bootMode.mode,
+  cloudUrl: bootMode.cloudUrl || null,
+  targetApp,
+  backup196App: fs.existsSync(backup196App) ? backup196App : null,
+  previousVersion,
+  installedVersion: readBundleVersion(targetApp),
+  buildInfo,
+  health: verifyReport.health,
+  pid: verifyReport.pid,
+  launchScreenshot: launchPng,
+  memberCount: verifyReport.memberCount,
+  threadCount: verifyReport.threadCount,
+  taskCount: verifyReport.taskCount,
+  chromePidsBefore,
+  chromePidsAfter: verifyReport.chromePidsAfter,
+  protectedFilesVerified: Object.keys(verifyReport.protectedAfter)
+};
+fs.writeFileSync(activationJson, JSON.stringify(report, null, 2) + '\n');
+console.log(
+  `[activate] SUCCESS mode=${bootMode.mode} version=${report.installedVersion} buildId=${buildInfo.id} pid=${report.pid}`
+);

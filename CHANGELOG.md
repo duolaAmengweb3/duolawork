@@ -4,6 +4,15 @@ All notable changes to **DuolaWork** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Repository Root Promotion**: Promoted DuolaWork 3.0 from `duolawork2.0/` to the repository root (`npm ci && npm run build && npm run desktop` directly in `duolawork/`). Earlier 1.x sources and the pre-promotion layout remain archived at tag [`archive/v1-legacy`](https://github.com/duolaAmengweb3/duolawork/releases/tag/v3.0.0) (`git checkout archive/v1-legacy`).
+
+### Added
+- **Public GitHub Actions CI & macOS DMG Workflow**: Added `.github/workflows/ci.yml` (`ubuntu-latest` and `macos-latest` on Node.js 24 running `typecheck`, `build`, and the full automated suite) and `.github/workflows/release-mac.yml`.
+- **Developer ID Signed `.dmg` Packaging & Notarization Support**: Updated `scripts/package-mac.mjs` to output `dist/mac/DuolaWork.app` with optional Hardened Runtime inside-out signing (`desktop/entitlements.mac.plist`), added `scripts/package-dmg.mjs` (`npm run package:dmg`) with compressed UDZO `.dmg` creation, optional Developer ID signing, Apple `notarytool` / `stapler` hooks, and SHA-256 verification.
+
 ## [3.0.0] - 2026-11-28
 
 ### Added

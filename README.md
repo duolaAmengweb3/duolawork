@@ -12,9 +12,10 @@
 <p align="center">Stop paying credit markups on subscriptions you already own. Put <strong>Codex, Claude Code, Gemini, and Grok</strong> on one desk across specs, code worktrees, CSV data, and scheduled runs with built-in lead verification.</p>
 
 <p align="center">
+  <a href="https://github.com/duolaAmengweb3/duolawork/actions/workflows/ci.yml"><img src="https://github.com/duolaAmengweb3/duolawork/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/duolaAmengweb3/duolawork/releases/tag/v3.0.0"><img src="https://img.shields.io/badge/Release-v3.0.0-06194A?labelColor=FDD628" alt="Release v3.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Source--Available-FDD628?labelColor=06194A" alt="DuolaWork Source-Available License 1.0"></a>
-  <a href="duolawork2.0/package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-06194A" alt="Node.js 24+"></a>
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="https://github.com/duolaAmengweb3/duolawork/issues">Report an issue</a> ·
   <a href="#getting-started">Get started</a> ·
@@ -65,7 +66,7 @@ Open any spec, CSV/TSV table, JSON/JSONL, syntax-highlighted code file, image, o
 - **3-minute BYOS auto-discovery**: Open **Members & Usage** to scan locally installed & authenticated `codex`, `claude`, and `gemini` CLIs (read-only — never edits existing CLI auth/config files) and activate them in one click.
 - **Per-app companion keepalive controls**: Background relaunch switches for desktop-bridged apps (`DeepSeek Harness`, `Grok Bot`) are **off by default** and synced live to connected local execution nodes.
 - **Connectors & Vault proxy**: Connect external services via DuolaBase connectors and encrypted Vault storage under scoped turn permissions (worker tool calls cannot reveal plaintext secrets or alter Vault config).
-- **Optional Cloud Control Plane & Cross-Machine Nodes**: Self-host [duolawork2.0/deploy](duolawork2.0/deploy) with TLS reverse proxy + Node 24 `node:sqlite` hot backups, and pair local Mac or remote Linux VPS execution nodes over outbound WebSocket with durable outbox replay.
+- **Optional Cloud Control Plane & Cross-Machine Nodes**: Self-host [deploy](deploy) with TLS reverse proxy + Node 24 `node:sqlite` hot backups, and pair local Mac or remote Linux VPS execution nodes over outbound WebSocket with durable outbox replay.
 
 <details>
 <summary>Architecture & delivery flow diagrams (Vector SVG / PNG)</summary>
@@ -87,21 +88,21 @@ Open any spec, CSV/TSV table, JSON/JSONL, syntax-highlighted code file, image, o
 </details>
 
 <details>
-<summary>Repository layout (3.0 codebase vs 1.x archive)</summary>
+<summary>Repository layout (1.x archived at tag <code>archive/v1-legacy</code>)</summary>
 
 ```text
-duolawork2.0/
-  src/
-    server/          HTTP/SSE server, Cloud Auth Gate, NodeHub, Task FSM, Scheduler, BYOS Discovery
-    server/drivers/  Codex app-server, Claude CLI, ACP stdio, Remote Node, Webhook & Bridge drivers
-    node-runner/     Outbound cross-machine execution daemon with durable outbox & opt-in keepalive
-    shared/          FSM state helpers, file-format detection, shared types & progress formatters
-    web/             React + Coss UI workbench, Collaboration Space, Popout Reader, EN/ZH i18n
-  desktop/           Electron Local-First / Cloud dual-mode shell (`DuolaWork.app`)
-  deploy/            Systemd services (`duolawork-cloud`, `duolawork-node`, `backup-sqlite.mjs`) & Nginx config
-  scripts/           Build, bundle budget check, macOS `.app` packaging & local activation
-  tests/             Automated unit, FSM, sandbox, i18n & Playwright browser E2E suite
-cloud/, local/, ui/  Earlier 1.x Agent Hub implementation kept for reference
+src/
+  server/          HTTP/SSE server, Cloud Auth Gate, NodeHub, Task FSM, Scheduler, BYOS Discovery
+  server/drivers/  Codex app-server, Claude CLI, ACP stdio, Remote Node, Webhook & Bridge drivers
+  node-runner/     Outbound cross-machine execution daemon with durable outbox & opt-in keepalive
+  shared/          FSM state helpers, file-format detection, shared types & progress formatters
+  web/             React + Coss UI workbench, Collaboration Space, Popout Reader, EN/ZH i18n
+desktop/           Electron Local-First / Cloud dual-mode shell & macOS entitlements
+deploy/            Systemd services (`duolawork-cloud`, `duolawork-node`, `backup-sqlite.mjs`) & Nginx config
+scripts/           Build, bundle budget check, macOS `.app` / `.dmg` packaging & local activation
+tests/             Automated unit, FSM, sandbox, i18n & Playwright browser E2E suite
+.github/workflows/ GitHub Actions CI (`ubuntu-latest` + `macos-latest`) & macOS DMG release build
+docs/assets/       Screenshots, architecture diagrams & brand assets
 ```
 
 </details>
@@ -114,7 +115,7 @@ You need **Node.js 24+**, **npm**, and at least one existing agent CLI or subscr
 
 ```sh
 git clone https://github.com/duolaAmengweb3/duolawork.git
-cd duolawork/duolawork2.0
+cd duolawork
 npm ci
 npm run build
 npm run desktop
@@ -125,11 +126,17 @@ npm run desktop
 3. **Start collaborating**: Pick a starter scenario card or bind a local folder, iterate on deliverables in the multi-tab reader, or schedule recurring multi-step tasks.
 
 <details>
-<summary>Optional: package `DuolaWork.app` or pair a remote / local execution node</summary>
+<summary>Optional: package `DuolaWork.app` / `.dmg` (Developer ID + notarization supported) or pair a node</summary>
 
 ```sh
-# Build macOS desktop bundle (`duolawork2.0/release/DuolaWork.app`)
+# Build local macOS desktop bundle (`dist/mac/DuolaWork.app`) & compressed DMG (`dist/mac/DuolaWork-<version>-<arch>.dmg`)
 npm run package:mac
+npm run package:dmg
+
+# Sign & notarize with a Developer ID Application certificate (optional)
+DUOLAWORK_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" npm run package:mac
+DUOLAWORK_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  DUOLAWORK_NOTARY_PROFILE=duolawork-notary npm run package:dmg
 
 # Pair an outbound execution node against a self-hosted Cloud Control Plane
 node dist/node-runner/index.mjs pair --server https://your-cloud-domain --code <PAIR_CODE> --kind local
@@ -141,14 +148,13 @@ node dist/node-runner/index.mjs
 ## Current scope & honest boundaries
 
 - **Single-workspace primary storage**: Designed for individual developers, small teams, and self-hosted single-tenant SQLite deployments (`node:sqlite` + local file store), not multi-tenant SaaS clusters.
-- **macOS desktop primary target**: Desktop packaging (`DuolaWork.app`) and Electron automation are validated on macOS; Node runner supports macOS and Linux.
+- **macOS desktop primary target**: Desktop packaging (`DuolaWork.app` / `.dmg`) and Electron automation are validated on macOS; Node runner supports macOS and Linux.
 - **Original agent runtime dependency**: Task quality, auth validity, rate limits, and sandbox rules continue to depend on your underlying CLI subscriptions and external connectors.
 - **Human verification stays in the loop**: Versioned artifacts, bounded handoffs, and readback checks help verify execution steps, while code correctness and published business outputs still merit review.
 
 ## Development & tests
 
 ```sh
-cd duolawork2.0
 npm run typecheck
 npm run build
 npm test
