@@ -209,7 +209,13 @@ const embeddedAppDir = path.join(appResourcesDir, 'app');
 fs.rmSync(path.join(appResourcesDir, 'default_app.asar'), { force: true });
 fs.mkdirSync(embeddedAppDir, { recursive: true });
 
-fs.cpSync(path.join(rootDir, 'dist'), path.join(embeddedAppDir, 'dist'), { recursive: true });
+const distSrcDir = path.join(rootDir, 'dist');
+const embeddedDistDir = path.join(embeddedAppDir, 'dist');
+fs.mkdirSync(embeddedDistDir, { recursive: true });
+for (const entry of fs.readdirSync(distSrcDir)) {
+  if (entry === 'mac') continue;
+  fs.cpSync(path.join(distSrcDir, entry), path.join(embeddedDistDir, entry), { recursive: true });
+}
 fs.cpSync(path.join(rootDir, 'desktop'), path.join(embeddedAppDir, 'desktop'), { recursive: true });
 fs.writeFileSync(
   path.join(embeddedAppDir, 'package.json'),
