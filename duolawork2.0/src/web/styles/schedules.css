@@ -1,0 +1,20 @@
+/* Task detail view & run history styles (SchedulesPage overview now uses Coss UI + Tailwind v4) */
+.schedule-detail{max-width:1000px}
+.schedule-detail-title{display:flex;justify-content:space-between;align-items:center;gap:15px;margin:22px 0}
+.schedule-detail-title h2{font-size:21px;font-weight:600}
+.schedule-detail-title p{color:var(--muted-foreground);margin-top:8px;font-size:13px}
+.schedule-instructions{white-space:pre-wrap;padding:20px;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:30px}
+.schedule-detail h3{font-weight:600;margin-bottom:8px}
+.schedule-runs article{padding:20px 0;border-bottom:1px solid var(--border)}
+.schedule-runs article>div{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.schedule-runs article>p{font-size:12px;color:var(--muted-foreground);margin:8px 0 12px}
+.schedule-run-state.completed{color:var(--success-foreground)}
+.schedule-run-state.running{color:var(--info-foreground)}
+.schedule-run-state.waiting,.schedule-run-state.needs_result{color:var(--warning-foreground)}
+.schedule-run-result{display:grid;gap:10px;margin:8px 0 12px;padding:12px;background:var(--muted);border-radius:10px}
+.schedule-run-references{display:grid;gap:6px;min-width:0}
+.schedule-run-references>small{color:var(--muted-foreground)}
+.schedule-run-references>span{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.schedule-run-references .space-reference{max-width:100%}
+.schedule-run-result>p{margin:0;overflow-wrap:anywhere}
+.schedule-run-result>button{justify-self:start}

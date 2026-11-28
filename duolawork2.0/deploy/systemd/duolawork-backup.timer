@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily 03:30 SQLite Hot Backup for DuolaWork 2.0
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

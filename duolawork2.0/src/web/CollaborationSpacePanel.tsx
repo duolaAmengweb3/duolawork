@@ -1,0 +1,2691 @@
+import { useViewCache, useViewData } from './view-cache.js';
+import { outcomeStatus } from '../shared/task-progress.js';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy,
+  Download,
+  ExternalLink,
+  File,
+  FileText,
+  Film,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  History,
+  Image,
+  KeyRound,
+  Link2,
+  ListTodo,
+  Maximize2,
+  MessageSquare,
+  Minimize2,
+  MoreHorizontal,
+  Music,
+  Paperclip,
+  Pencil,
+  Pin,
+  PinOff,
+  Plug,
+  Plus,
+  Quote,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  UploadCloud,
+  Users,
+  X
+} from 'lucide-react';
+import {
+  isLocalCodingMember,
+  type ArtifactRecord,
+  type ArtifactVersionRecord,
+  type DuolaBasePublicStatus,
+  type MaterialContextResult,
+  type MaterialTaskRole,
+  type MemberRecord,
+  type SpaceFolderRecord,
+  type SpaceItemKind,
+  type SpaceItemView,
+  type TaskRecord,
+  type TaskRunRecord,
+  type TaskStepRecord,
+  type ThreadRecord,
+  type WorkspaceFileEntry
+} from '../shared/types.js';
+import { AgentAvatar } from './AgentAvatar.js';
+import { MarkdownView } from './markdown.js';
+import { RichTextFileViewer } from './RichFileViewer.js';
+import { Badge } from './components/ui/badge.js';
+import { Button } from './components/ui/button.js';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty.js';
+import { Frame, FrameHeader, FramePanel } from './components/ui/frame.js';
+import { Input } from './components/ui/input.js';
+import { PaginationBar, usePagination } from './components/ui/pagination.js';
+import { formatCronHuman } from './lib/format.js';
+import { useI18n, type Locale } from './lib/i18n.js';
+import { openMaterialPopout } from './lib/popout.js';
+
+export interface SpaceTaskSummary extends TaskRecord {
+  latestRun: TaskRunRecord | null;
+  steps?: TaskStepRecord[];
+}
+
+export interface SpaceReferenceChip {
+  id: string;
+  kind: SpaceItemKind | 'workspace_file';
+  title: string;
+  snippet: string;
+  subLabel?: string;
+  version?: number;
+  url?: string;
+}
+
+export type WorkbenchNavPage = 'connectors' | 'vault' | 'members' | 'schedules';
+
+export interface CollaborationSpacePanelProps {
+  thread: ThreadRecord | null;
+  materialsState: 'ready' | 'loading' | 'error';
+  members: MemberRecord[];
+  duolabaseStatus: DuolaBasePublicStatus;
+  hasDesktopDialog: boolean;
+  refreshingMembers: boolean;
+  wideSpace: boolean;
+  onToggleWide: () => void;
+  onCloseSpace: () => void;
+  tab: 'documents' | 'tasks' | 'resources';
+  onTabChange: (tab: 'documents' | 'tasks' | 'resources') => void;
+  selection: { kind: SpaceItemKind; id: string } | null;
+  onSelectItem: (sel: { kind: SpaceItemKind; id: string } | null) => void;
+  focusFolderRequest?: { folderId: string | null; seq: number } | null;
+  folders: SpaceFolderRecord[];
+  items: SpaceItemView[];
+  trash: SpaceItemView[];
+  threadTasks: SpaceTaskSummary[];
+  artifact: ArtifactRecord | null;
+  versions: ArtifactVersionRecord[];
+  docEditing: boolean;
+  setDocEditing: (v: boolean) => void;
+  docDraft: string;
+  setDocDraft: (v: string) => void;
+  docNotice: string;
+  onRetryDocument: () => void;
+  onSaveArtifact: () => Promise<void>;
+  onCopyArtifact: () => Promise<void>;
+  onExportArtifact: () => void;
+  onSendArtifactBackToOriginChat: () => Promise<void>;
+  onSelectVersion: (content: string) => void;
+  onRefreshSpace: () => Promise<void>;
+  onQuoteToChat: (ref: SpaceReferenceChip) => void;
+  onOpenTask: (taskId: string) => void;
+  onOpenCreateTask: () => void;
+  onChooseWorkspace: () => Promise<void>;
+  onSaveWorkspacePath: (path: string | null) => Promise<void>;
+  onRefreshMembers: () => Promise<void>;
+  onToggleDuolabase: () => Promise<void>;
+  onNavigatePage: (page: WorkbenchNavPage) => void;
+  onFocusChat?: () => void;
+  onNotify: (msg: string) => void;
+}
+
+function formatBytes(n?: number): string {
+  if (!n || n <= 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function itemIcon(item: SpaceItemView) {
+  if (item.kind === 'link') return Link2;
+  if (item.kind === 'document') return FileText;
+  if (item.previewKind === 'image') return Image;
+  if (item.previewKind === 'video') return Film;
+  if (item.previewKind === 'audio') return Music;
+  return File;
+}
+
+function kindLabel(item: SpaceItemView, locale: Locale): string {
+  const en = locale === 'en';
+  if (item.kind === 'link') return en ? 'Link' : '链接';
+  if (item.kind === 'document') return `v${item.version ?? 1}`;
+  if (item.previewKind === 'image') return `${en ? 'Image' : '图片'} · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'pdf') return `PDF · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'video') return `${en ? 'Video' : '视频'} · ${formatBytes(item.sizeBytes)}`;
+  if (item.previewKind === 'audio') return `${en ? 'Audio' : '音频'} · ${formatBytes(item.sizeBytes)}`;
+  return formatBytes(item.sizeBytes);
+}
+
+const ROLE_META: Record<MaterialTaskRole, { zh: string; en: string; badgeClass: string }> = {
+  input: { zh: '输入材料', en: 'Input', badgeClass: 'working' },
+  output: { zh: '工作成果', en: 'Deliverable', badgeClass: 'done' },
+  reference: { zh: '相关资料', en: 'Reference', badgeClass: '' }
+};
+
+export function CollaborationSpacePanel(props: CollaborationSpacePanelProps): React.JSX.Element {
+  const { locale, L } = useI18n();
+  const {
+    thread,
+    members,
+    duolabaseStatus,
+    hasDesktopDialog,
+    refreshingMembers,
+    wideSpace,
+    onToggleWide,
+    onCloseSpace,
+    tab,
+    onTabChange,
+    selection,
+    onSelectItem,
+    focusFolderRequest,
+    folders,
+    items,
+    trash,
+    threadTasks,
+    artifact,
+    versions,
+    docEditing,
+    setDocEditing,
+    docDraft,
+    setDocDraft,
+    docNotice,
+    onRetryDocument,
+    onSaveArtifact,
+    onCopyArtifact,
+    onExportArtifact,
+    onSendArtifactBackToOriginChat,
+    onSelectVersion,
+    onRefreshSpace,
+    onQuoteToChat,
+    onOpenTask,
+    onOpenCreateTask,
+    onChooseWorkspace,
+    onSaveWorkspacePath,
+    onRefreshMembers,
+    onToggleDuolabase,
+    onNavigatePage,
+    onFocusChat,
+    onNotify
+  } = props;
+
+  const [query, setQuery] = useState<string>('');
+  const [kindFilter, setKindFilter] = useState<'' | SpaceItemKind>('');
+  const [filterMenuOpen, setFilterMenuOpen] = useState<boolean>(false);
+  const [addMenuOpen, setAddMenuOpen] = useState<boolean>(false);
+  const [expandedRecent, setExpandedRecent] = useState<boolean>(false);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
+  const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
+  const [showTrash, setShowTrash] = useState<boolean>(false);
+  const [undoTrash, setUndoTrash] = useState<{ kind: SpaceItemKind; id: string; title: string } | null>(null);
+  const [taskFilter, setTaskFilter] = useState<'active' | 'done' | 'all'>('active');
+  const [historyMenuOpen, setHistoryMenuOpen] = useState<boolean>(false);
+  const [dragging, setDragging] = useState<boolean>(false);
+
+  const [createMode, setCreateMode] = useState<'document' | 'link' | 'folder' | null>(null);
+  const [draftTitle, setDraftTitle] = useState<string>('');
+  const [draftUrl, setDraftUrl] = useState<string>('https://');
+  const [draftNote, setDraftNote] = useState<string>('');
+
+  const [renameTarget, setRenameTarget] = useState<
+    | { target: 'item'; kind: SpaceItemKind; id: string; title: string }
+    | { target: 'folder'; id: string; title: string }
+    | null
+  >(null);
+  const [moveTarget, setMoveTarget] = useState<{
+    kind: SpaceItemKind;
+    id: string;
+    title: string;
+    folderId: string | null;
+  } | null>(null);
+
+  const views = useViewCache();
+  const contextRequest = useRef(0);
+  const directoryRequest = useRef(0);
+  const [materialContext, setMaterialContext] = useState<MaterialContextResult | null>(null);
+  const [contextOpen, setContextOpen] = useState<boolean>(true);
+  const [linkPickerOpen, setLinkPickerOpen] = useState<boolean>(false);
+  const [linkRole, setLinkRole] = useState<MaterialTaskRole>('reference');
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [fileTextPreview, setFileTextPreview] = useState<string>('');
+  const [fileTextState, setFileTextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [htmlPreviewMode, setHtmlPreviewMode] = useState<'render' | 'source'>('render');
+
+  const [wsSubpath, setWsSubpath] = useState<string>('');
+  const [wsEntries, setWsEntries] = useState<WorkspaceFileEntry[]>([]);
+  const [wsError, setWsError] = useState<string>('');
+  const [wsBusy, setWsBusy] = useState<boolean>(false);
+  const [editingWsPath, setEditingWsPath] = useState<boolean>(false);
+  const [wsPathInput, setWsPathInput] = useState<string>('');
+  const [confirmPurgeKey, setConfirmPurgeKey] = useState<string | null>(null);
+  const resourcesVisible = tab === 'resources' && duolabaseStatus.enabled && duolabaseStatus.hasToken;
+  type ConnectorSummary = {id: string; name?: string; provider?: string; toolCount?: number; status?: string};
+  const {data: service, read: readService} = useViewData<{systemInfo?: {connectorCount?: number; vaultCount?: number}}>(
+    '/api/v2/duolabase/status', 30000, resourcesVisible
+  );
+  const {data: connectors, read: readConnectors} = useViewData<ConnectorSummary[] | {items?: ConnectorSummary[]}>(
+    '/api/v2/duolabase/connectors?', 30000, resourcesVisible
+  );
+  const [resourcesFailed, setResourcesFailed] = useState(false);
+  const list = Array.isArray(connectors) ? connectors : connectors?.items;
+  const resSummary = service || list ? {
+    connectorCount: service?.systemInfo?.connectorCount ?? list?.length ?? '—',
+    vaultCount: service?.systemInfo?.vaultCount,
+    activeConnectors: (list || []).filter(c => c.status !== 'disabled' && c.status !== 'inactive').slice(0,6)
+  } : null;
+  const resBusy = resourcesVisible && !resSummary && !resourcesFailed;
+
+  const memberById = useMemo(() => {
+    const map = new Map<string, MemberRecord>();
+    for (const m of members) map.set(m.id, m);
+    return map;
+  }, [members]);
+
+  const selectedItem = useMemo(() => {
+    if (!selection) return null;
+    return items.find((i) => i.kind === selection.kind && i.id === selection.id) ?? null;
+  }, [items, selection]);
+
+  useEffect(() => {
+    if (focusFolderRequest) {
+      setShowTrash(false);
+      setActiveFolderId(focusFolderRequest.folderId);
+    }
+  }, [focusFolderRequest]);
+
+  useEffect(() => {
+    setShowTrash(false);
+    setCreateMode(null);
+    setRenameTarget(null);
+    setMoveTarget(null);
+    setRowMenuKey(null);
+    setFolderMenuId(null);
+    setActiveFolderId(null);
+    setExpandedRecent(false);
+    setWsSubpath('');
+    setEditingWsPath(false);
+    setUndoTrash(null);
+    setLinkPickerOpen(false);
+    setConfirmPurgeKey(null);
+  }, [thread?.id]);
+
+  useEffect(() => {
+    if (!undoTrash) return;
+    const t = setTimeout(() => setUndoTrash(null), 6000);
+    return () => clearTimeout(t);
+  }, [undoTrash]);
+
+  useLayoutEffect(() => {
+    setFileTextPreview('');
+    setHtmlPreviewMode('render');
+    if (!selection || selection.kind !== 'file' || selectedItem?.previewKind !== 'text') {
+      setFileTextState('idle');
+      return;
+    }
+    const isHtml = /\.html?$/i.test(selectedItem.title || '') || (selectedItem.mimeType || '').includes('text/html');
+    const maxChars = isHtml ? 4_000_000 : 64_000;
+    let alive = true;
+    const url = '/api/v2/space/files/'+encodeURIComponent(selection.id);
+    const key = url+'#'+(selectedItem.sha256 ?? selectedItem.updatedAt);
+    const cached = views.peek<string>(key);
+    setFileTextPreview(cached ?? '');
+    setFileTextState(cached !== undefined ? 'ready' : 'loading');
+    views.read(key, async () => {
+      const response = await fetch(url);
+      if (!response.ok) throw Object.assign(new Error(L('文件读取失败', 'Failed to read file')), {status:response.status});
+      return (await response.text()).slice(0,maxChars);
+    }, Infinity)
+      .then((txt) => {
+        if (!alive) return;
+        setFileTextPreview(txt.slice(0, maxChars));
+        setFileTextState('ready');
+      })
+      .catch(() => {
+        if (alive) setFileTextState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selection, selectedItem?.previewKind, selectedItem?.title, selectedItem?.mimeType, selectedItem?.sha256, selectedItem?.updatedAt, views]);
+
+  const loadMaterialContext = useCallback(async (refresh = false) => {
+    const request = ++contextRequest.current;
+    if (!thread?.id || !selection) {setMaterialContext(null);return;}
+    const qs = new URLSearchParams({kind:selection.kind,id:selection.id});
+    const key = '/api/v2/threads/'+encodeURIComponent(thread.id)+'/space/context?'+qs;
+    if (refresh) views.expire(key);
+    setMaterialContext(views.peek<MaterialContextResult>(key) ?? null);
+    try {
+      const data = await views.json<MaterialContextResult>(key,15000);
+      if (request === contextRequest.current) setMaterialContext(data);
+    } catch { if (request === contextRequest.current && !views.peek(key)) setMaterialContext(null); }
+  }, [thread?.id, selection, views]);
+  useLayoutEffect(() => {
+    setLinkPickerOpen(false);
+    void loadMaterialContext();
+    return () => { contextRequest.current++; };
+  }, [loadMaterialContext, artifact?.headVersion]);
+
+  const loadWorkspaceFiles = useCallback(async (sub = '', force = false) => {
+    const request = ++directoryRequest.current;
+    if (!thread?.id || !thread.workspacePath) {setWsEntries([]);setWsError('');return;}
+    const url = '/api/v2/threads/'+encodeURIComponent(thread.id)+'/workspace-files'+(sub?'?subpath='+encodeURIComponent(sub):'');
+    const key = JSON.stringify([url,thread.workspaceNodeId,thread.workspacePath]);
+    type Directory = {entries:WorkspaceFileEntry[];subpath:string};
+    if (force) views.expire(key);
+    const cached = views.peek<Directory>(key);
+    setWsEntries(cached?.entries ?? []);setWsSubpath(sub);setWsBusy(!cached);setWsError('');
+    try {
+      const data = await views.read<Directory>(key,async()=>{
+        const res = await fetch(url);if (!res.ok) throw Object.assign(new Error(L('目录读取失败', 'Failed to read directory')),{status:res.status});return res.json();
+      },10000);
+      if (request === directoryRequest.current) {setWsEntries(data.entries || []);setWsSubpath(data.subpath || '');}
+    } catch { if (request === directoryRequest.current) {setWsError(L('目录读取失败', 'Failed to read directory'));if (!views.peek(key)) setWsEntries([]);} }
+    finally { if (request === directoryRequest.current) setWsBusy(false); }
+  },[thread?.id,thread?.workspacePath,thread?.workspaceNodeId,views]);
+  useLayoutEffect(() => {
+    if (tab === 'resources' && thread?.workspacePath) {
+      void loadWorkspaceFiles('');
+    } else {
+      setWsEntries([]);
+    }
+    return () => { directoryRequest.current++; };
+  }, [tab, thread?.id, thread?.workspacePath, loadWorkspaceFiles]);
+
+  useEffect(() => {
+    if (!resourcesVisible) return;
+    let active = true;
+    setResourcesFailed(false);
+    void Promise.allSettled([readService(),readConnectors()]).then(results => {
+      if (active) setResourcesFailed(results.every(r => r.status === 'rejected'));
+    });
+    return () => { active = false; };
+  }, [resourcesVisible, duolabaseStatus.endpoint, duolabaseStatus.tokenSource, readService, readConnectors]);
+
+  const mutateItem = async (
+    kind: SpaceItemKind,
+    id: string,
+    payload: {
+      action: 'pin' | 'unpin' | 'move' | 'rename' | 'delete' | 'restore';
+      title?: string;
+      folderId?: string | null;
+    },
+    itemTitle?: string
+  ) => {
+    const res = await fetch(`/api/v2/space/items/${kind}/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      onNotify(err.message || err.error || L('操作资料失败', 'Material action failed'));
+      return;
+    }
+    if (payload.action === 'delete') {
+      if (selection?.kind === kind && selection.id === id) {
+        onSelectItem(null);
+      }
+      setUndoTrash({
+        kind,
+        id,
+        title: itemTitle || items.find((i) => i.kind === kind && i.id === id)?.title || L('资料', 'Material')
+      });
+    } else if (payload.action === 'restore') {
+      setUndoTrash(null);
+    }
+    await onRefreshSpace();
+  };
+
+  const uploadFileList = async (files: File[]) => {
+    if (!thread?.id || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of files) {
+        if (file.size > 16 * 1024 * 1024) {
+          onNotify(L(`文件 ${file.name} 超过 16 MiB 限制`, `File ${file.name} exceeds 16 MiB limit`));
+          continue;
+        }
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(new Error(L('文件读取失败', 'Failed to read file')));
+          reader.readAsDataURL(file);
+        });
+        const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        const res = await fetch(`/api/v2/threads/${encodeURIComponent(thread.id)}/space/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            dataBase64: base64,
+            folderId: activeFolderId
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          onNotify(err.message || L(`上传 ${file.name} 失败`, `Failed to upload ${file.name}`));
+        }
+      }
+      await onRefreshSpace();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUploadFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    await uploadFileList(files);
+  };
+
+  const handleDropFiles = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    if (!thread?.id) return;
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      await uploadFileList(files);
+    }
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!thread?.id || !createMode) return;
+    const title = draftTitle.trim();
+    if (!title) return;
+
+    if (createMode === 'folder') {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(thread.id)}/space/folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, parentFolderId: activeFolderId })
+      });
+      if (res.ok) {
+        setCreateMode(null);
+        await onRefreshSpace();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onNotify(err.message || L('新建文件夹失败', 'Failed to create folder'));
+      }
+      return;
+    }
+
+    if (createMode === 'document') {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(thread.id)}/space/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          content: draftNote || `# ${title.replace(/\.md$/i, '')}\n\n`,
+          folderId: activeFolderId
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCreateMode(null);
+        await onRefreshSpace();
+        if (data.artifact?.id) {
+          onSelectItem({ kind: 'document', id: data.artifact.id });
+          setDocEditing(true);
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onNotify(err.message || L('新建文档失败', 'Failed to create document'));
+      }
+      return;
+    }
+
+    if (createMode === 'link') {
+      const res = await fetch(`/api/v2/threads/${encodeURIComponent(thread.id)}/space/links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          url: draftUrl.trim(),
+          note: draftNote.trim(),
+          folderId: activeFolderId
+        })
+      });
+      if (res.ok) {
+        setCreateMode(null);
+        await onRefreshSpace();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onNotify(err.message || L('添加链接失败', 'Failed to add link'));
+      }
+    }
+  };
+
+  const handleRenameConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameTarget) return;
+    const clean = renameTarget.title.trim();
+    if (!clean) return;
+    if (renameTarget.target === 'folder') {
+      const res = await fetch(`/api/v2/space/folders/${encodeURIComponent(renameTarget.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: clean })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        onNotify(err.message || L('重命名文件夹失败', 'Failed to rename folder'));
+        return;
+      }
+      await onRefreshSpace();
+    } else {
+      await mutateItem(renameTarget.kind, renameTarget.id, { action: 'rename', title: clean });
+    }
+    setRenameTarget(null);
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    const target = folders.find((f) => f.id === folderId) ?? null;
+    const res = await fetch(`/api/v2/space/folders/${encodeURIComponent(folderId)}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      if (activeFolderId === folderId) {
+        setActiveFolderId(target?.parentFolderId ?? null);
+      }
+      await onRefreshSpace();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      onNotify(err.message || L('删除文件夹失败', 'Failed to delete folder'));
+    }
+  };
+
+  const handleAssociateTask = async (taskId: string) => {
+    if (!thread?.id || !selection) return;
+    const res = await fetch(`/api/v2/threads/${encodeURIComponent(thread.id)}/space/associations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: selection.kind,
+        id: selection.id,
+        taskId,
+        role: linkRole,
+        resourceVersion:
+          selection.kind === 'document' ? artifact?.headVersion ?? 1 : 1
+      })
+    });
+    if (res.ok) {
+      setLinkPickerOpen(false);
+      await loadMaterialContext(true);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      onNotify(err.message || L('关联任务失败', 'Failed to link task'));
+    }
+  };
+
+  const handleUnlinkTask = async (linkId: string) => {
+    const res = await fetch(`/api/v2/space/associations/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      await loadMaterialContext(true);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      onNotify(err.message || L('取消关联失败', 'Failed to unlink task'));
+    }
+  };
+
+  const handlePurgeTrashItem = async (kind: SpaceItemKind, id: string) => {
+    const res = await fetch(`/api/v2/space/items/${kind}/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      onNotify(err.message || L('彻底删除失败', 'Failed to permanently delete'));
+      return;
+    }
+    setConfirmPurgeKey(null);
+    setUndoTrash(null);
+    await onRefreshSpace();
+  };
+
+  const buildQuoteChip = (item: SpaceItemView): SpaceReferenceChip => {
+    if (item.kind === 'document') {
+      return {
+        id: item.id,
+        kind: 'document',
+        title: item.title,
+        version: item.version ?? 1,
+        subLabel: `v${item.version ?? 1}`,
+        snippet: L(
+          `参考文档《${item.title}》(id=${item.id}, v${item.version ?? 1})`,
+          `Reference document "${item.title}" (id=${item.id}, v${item.version ?? 1})`
+        )
+      };
+    }
+    if (item.kind === 'link') {
+      return {
+        id: item.id,
+        kind: 'link',
+        title: item.title,
+        url: item.url,
+        subLabel: L('链接', 'Link'),
+        snippet: L(`参考链接《${item.title}》(${item.url})`, `Reference link "${item.title}" (${item.url})`)
+      };
+    }
+    return {
+      id: item.id,
+      kind: 'file',
+      title: item.title,
+      subLabel: formatBytes(item.sizeBytes),
+      snippet: L(`参考文件「${item.title}」(id=${item.id})`, `Reference file "${item.title}" (id=${item.id})`)
+    };
+  };
+
+  const searching = Boolean(query.trim() || kindFilter);
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((it) => {
+      if (kindFilter && it.kind !== kindFilter) return false;
+      if (!q) return true;
+      return (
+        it.title.toLowerCase().includes(q) ||
+        (it.excerpt || '').toLowerCase().includes(q) ||
+        (it.url || '').toLowerCase().includes(q)
+      );
+    });
+  }, [items, query, kindFilter]);
+
+  const folderById = useMemo(() => {
+    const map = new Map<string, SpaceFolderRecord>();
+    for (const f of folders) map.set(f.id, f);
+    return map;
+  }, [folders]);
+
+  const folderPathById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of folders) {
+      const parts: string[] = [];
+      const seen = new Set<string>();
+      let cur: SpaceFolderRecord | undefined = f;
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        parts.unshift(cur.title);
+        cur = cur.parentFolderId ? folderById.get(cur.parentFolderId) : undefined;
+      }
+      map.set(f.id, parts.join('/'));
+    }
+    return map;
+  }, [folders, folderById]);
+
+  const effectiveActiveFolderId = useMemo(
+    () => (activeFolderId && folderById.has(activeFolderId) ? activeFolderId : null),
+    [activeFolderId, folderById]
+  );
+
+  useEffect(() => {
+    if (activeFolderId && !folderById.has(activeFolderId)) {
+      setActiveFolderId(null);
+    }
+  }, [activeFolderId, folderById]);
+
+  // Top section: strictly chronological (updatedAt DESC) across all folders so newly saved or edited items are found immediately.
+  const recentItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const cmp = b.updatedAt.localeCompare(a.updatedAt);
+      return cmp !== 0 ? cmp : b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [items]);
+
+  const childrenFoldersByParent = useMemo(() => {
+    const map = new Map<string | null, SpaceFolderRecord[]>();
+    for (const f of folders) {
+      const parent = f.parentFolderId && folderById.has(f.parentFolderId) ? f.parentFolderId : null;
+      const list = map.get(parent) ?? [];
+      list.push(f);
+      map.set(parent, list);
+    }
+    return map;
+  }, [folders, folderById]);
+
+  const breadcrumbs = useMemo(() => {
+    const trail: SpaceFolderRecord[] = [];
+    const seen = new Set<string>();
+    let cur = effectiveActiveFolderId ? folderById.get(effectiveActiveFolderId) : undefined;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      trail.unshift(cur);
+      cur = cur.parentFolderId ? folderById.get(cur.parentFolderId) : undefined;
+    }
+    return trail;
+  }, [effectiveActiveFolderId, folderById]);
+
+  const currentChildFolders = useMemo(
+    () => childrenFoldersByParent.get(effectiveActiveFolderId) ?? [],
+    [childrenFoldersByParent, effectiveActiveFolderId]
+  );
+
+  const currentFolderItems = useMemo(() => {
+    return items
+      .filter((it) => {
+        const fid = it.folderId && folderById.has(it.folderId) ? it.folderId : null;
+        return fid === effectiveActiveFolderId;
+      })
+      .sort((a, b) => {
+        if (Boolean(a.pinnedAt) !== Boolean(b.pinnedAt)) {
+          return a.pinnedAt ? -1 : 1;
+        }
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+  }, [items, folderById, effectiveActiveFolderId]);
+
+  const folderEntryCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of folders) {
+      if (f.parentFolderId && folderById.has(f.parentFolderId)) {
+        counts.set(f.parentFolderId, (counts.get(f.parentFolderId) ?? 0) + 1);
+      }
+    }
+    for (const it of items) {
+      if (it.folderId && folderById.has(it.folderId)) {
+        counts.set(it.folderId, (counts.get(it.folderId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [folders, items, folderById]);
+
+  const formatSpaceTime = (iso: string): string => {
+    const ts = Date.parse(iso);
+    if (!Number.isFinite(ts)) return '';
+    const diffMs = Date.now() - ts;
+    if (diffMs >= 0 && diffMs < 60_000) return L('刚刚', 'just now');
+    if (diffMs >= 60_000 && diffMs < 3600_000) {
+      const mins = Math.floor(diffMs / 60_000);
+      return L(`${mins}分钟前`, `${mins}m ago`);
+    }
+    const d = new Date(ts);
+    const now = new Date();
+    const hhmm = d.toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    ) {
+      return hhmm;
+    }
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    if (d.getFullYear() === now.getFullYear()) {
+      return `${mm}-${dd} ${hhmm}`;
+    }
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  };
+
+  const filteredTasks = useMemo(() => {
+    return threadTasks.filter((t) => {
+      const rs = t.latestRun?.status;
+      const done =
+        rs === 'completed' || rs === 'failed' || rs === 'canceled' || t.status === 'completed';
+      if (taskFilter === 'active') return !done;
+      if (taskFilter === 'done') return done;
+      return true;
+    });
+  }, [threadTasks, taskFilter]);
+
+  const tasksPager = usePagination(filteredTasks, 4, `${thread?.id || ''}:${taskFilter}`);
+
+  const conflictVersionsCount = versions.filter((v) => v.branchKind === 'conflict_branch').length;
+
+  const renderItemRow = (
+    item: SpaceItemView,
+    opts?: { showFolderChip?: boolean; showTime?: boolean; keyPrefix?: string }
+  ) => {
+    const Icon = itemIcon(item);
+    const key = `${opts?.keyPrefix ?? 'dir'}:${item.kind}:${item.id}`;
+    const menuOpen = rowMenuKey === key;
+    const folderLabel = item.folderId ? folderPathById.get(item.folderId) || '' : '';
+    const timeLabel = opts?.showTime !== false ? formatSpaceTime(item.updatedAt) : '';
+    return (
+      <div
+        key={key}
+        className="material-row group flex items-start rounded-lg px-1.5 py-1 transition-colors hover:bg-muted/60 focus-within:bg-muted/60"
+        data-item-id={item.id}
+        data-item-kind={item.kind}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setDocEditing(false);
+            onSelectItem({ kind: item.kind, id: item.id });
+          }}
+          className="material-item-open flex min-w-0 flex-1 items-start gap-2.5 p-1 text-left"
+          title={`${item.title} · ${kindLabel(item, locale)}${folderLabel ? ` · ${L('目录：', 'Folder: ')}${folderLabel}` : ''}`}
+        >
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50 text-muted-foreground">
+            <Icon size={13.5} />
+          </span>
+          <span className="material-item-title block min-w-0 flex-1">
+            <span className="block break-words text-[12.5px] font-medium leading-snug text-foreground">
+              {item.pinnedAt && (
+                <span className="material-pin-badge mr-1 inline-flex align-middle text-info-foreground" title={L('已置顶', 'Pinned')}>
+                  <Pin size={10} />
+                </span>
+              )}
+              {item.title}
+            </span>
+            <span className="material-item-meta mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-foreground">
+              <span className="font-mono">{kindLabel(item, locale)}</span>
+              {opts?.showFolderChip && folderLabel && (
+                <span
+                  className="material-folder-chip inline-flex max-w-[130px] items-center gap-1 truncate rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground"
+                  title={folderLabel}
+                >
+                  <Folder size={9} className="shrink-0" />
+                  <span className="truncate">{folderLabel}</span>
+                </span>
+              )}
+              {item.taskId && <span>· {L('任务产物', 'Deliverable')}</span>}
+              {timeLabel && <span className="font-mono">· {timeLabel}</span>}
+            </span>
+          </span>
+        </button>
+
+        <div className="relative shrink-0 self-center" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setRowMenuKey(menuOpen ? null : key)}
+            className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+            aria-label={L(`操作资料 ${item.title}`, `Actions for ${item.title}`)}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          {menuOpen && (
+            <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
+              {(item.kind === 'document' || item.kind === 'file') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRowMenuKey(null);
+                    void openMaterialPopout({
+                      kind: item.kind === 'document' ? 'document' : 'file',
+                      id: item.id,
+                      threadId: thread?.id,
+                      title: item.title,
+                      mimeType: item.mimeType,
+                      previewKind: item.previewKind
+                    });
+                  }}
+                >
+                  <ExternalLink size={13} />
+                  <span>{L('独立窗口打开', 'Open in Popout')}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  void mutateItem(item.kind, item.id, { action: item.pinnedAt ? 'unpin' : 'pin' });
+                }}
+              >
+                {item.pinnedAt ? <PinOff size={13} /> : <Pin size={13} />}
+                <span>{item.pinnedAt ? L('取消置顶', 'Unpin') : L('置顶', 'Pin')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  onQuoteToChat(buildQuoteChip(item));
+                }}
+              >
+                <MessageSquare size={13} />
+                <span>{L('引用到对话', 'Cite in Chat')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  setRenameTarget({ target: 'item', kind: item.kind, id: item.id, title: item.title });
+                }}
+              >
+                <Pencil size={13} />
+                <span>{L('重命名', 'Rename')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  setMoveTarget({ kind: item.kind, id: item.id, title: item.title, folderId: item.folderId });
+                }}
+              >
+                <FolderInput size={13} />
+                <span>{L('移动到文件夹', 'Move to Folder')}</span>
+              </button>
+              <button
+                type="button"
+                className="destructive"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  void mutateItem(item.kind, item.id, { action: 'delete' }, item.title);
+                }}
+              >
+                <Trash2 size={13} />
+                <span>{L('移到回收站', 'Move to Trash')}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFolderRow = (folder: SpaceFolderRecord): React.ReactNode => {
+    const menuOpen = folderMenuId === folder.id;
+    const entryCount = folderEntryCountById.get(folder.id) ?? 0;
+
+    return (
+      <div
+        key={folder.id}
+        className="material-folder-row group relative flex items-center rounded-lg px-1.5 py-0.5 transition-colors hover:bg-muted/60 focus-within:bg-muted/60"
+        data-folder-id={folder.id}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveFolderId(folder.id)}
+          className="material-folder-open flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1.5 text-left"
+          title={L(`打开文件夹「${folder.title}」`, `Open folder "${folder.title}"`)}
+        >
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Folder size={13.5} />
+          </span>
+          <span className="material-folder-name min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+            {folder.title}
+          </span>
+          <Badge variant="secondary" size="sm" className="material-folder-count font-mono text-[10px]">
+            {entryCount > 0 ? L(`${entryCount} 项`, `${entryCount}`) : L('空', 'Empty')}
+          </Badge>
+          <ChevronRight size={13} className="material-folder-chevron shrink-0 text-muted-foreground" />
+        </button>
+
+        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setFolderMenuId(menuOpen ? null : folder.id)}
+            className="material-row-menu flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+            aria-label={L(`管理文件夹 ${folder.title}`, `Manage folder ${folder.title}`)}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          {menuOpen && (
+            <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                }}
+              >
+                <FolderOpen size={13} />
+                <span>{L('打开文件夹', 'Open Folder')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                  setCreateMode('document');
+                  setDraftTitle('');
+                  setDraftNote('');
+                }}
+              >
+                <FileText size={13} />
+                <span>{L('在此新建文档', 'New Document Here')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setActiveFolderId(folder.id);
+                  setCreateMode('folder');
+                  setDraftTitle('');
+                }}
+              >
+                <Folder size={13} />
+                <span>{L('在此新建子文件夹', 'New Subfolder Here')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  setRenameTarget({ target: 'folder', id: folder.id, title: folder.title });
+                }}
+              >
+                <Pencil size={13} />
+                <span>{L('重命名文件夹', 'Rename Folder')}</span>
+              </button>
+              <button
+                type="button"
+                className="destructive"
+                onClick={() => {
+                  setFolderMenuId(null);
+                  void handleDeleteFolder(folder.id);
+                }}
+              >
+                <Trash2 size={13} />
+                <span>{L('删除文件夹', 'Delete Folder')}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderContextSection = () => {
+    if (!selection) return null;
+    const linkedTasks = materialContext?.tasks ?? [];
+    const sources = materialContext?.sources ?? [];
+    return (
+      <div className="material-context">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setContextOpen((o) => !o)}
+            className="inline-flex items-center gap-1 font-semibold"
+            style={{ color: '#4f627f' }}
+          >
+            {contextOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <span>{L(`关联任务与来源 (${linkedTasks.length + sources.length})`, `Linked Tasks & Sources (${linkedTasks.length + sources.length})`)}</span>
+          </button>
+          {threadTasks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setContextOpen(true);
+                setLinkPickerOpen((v) => !v);
+              }}
+              className="dw-btn dw-btn-outline dw-btn-sm"
+              style={{ height: 24, fontSize: 11, padding: '0 8px' }}
+            >
+              <Plus size={11} />
+              <span>{L('关联任务', 'Link Task')}</span>
+            </button>
+          )}
+        </div>
+
+        {linkPickerOpen && (
+          <div className="material-associate-form p-2.5 rounded-lg border" style={{ borderColor: '#dce3f0', background: '#fff' }}>
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-[11px]" style={{ color: '#8795aa' }}>{L('关系：', 'Role: ')}</span>
+              {(['input', 'output', 'reference'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setLinkRole(r)}
+                  className={`task-overview-state ${linkRole === r ? ROLE_META[r].badgeClass : ''}`}
+                  style={linkRole === r ? { outline: '1.5px solid #416ee6' } : undefined}
+                >
+                  {locale === 'en' ? ROLE_META[r].en : ROLE_META[r].zh}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-1 max-h-28 overflow-y-auto">
+              {threadTasks.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => void handleAssociateTask(t.id)}
+                  className="text-left px-2 py-1 rounded border text-xs truncate hover:bg-[#f2f6ff]"
+                  style={{ borderColor: '#e5ebf4' }}
+                >
+                  {t.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {contextOpen && (
+          <>
+            {linkedTasks.length === 0 && sources.length === 0 ? (
+              <p className="mt-2">{L('暂未绑定任务，点击右上角“关联任务”可标记为输入材料或成果。', 'No linked tasks yet. Click "Link Task" to mark as input or deliverable.')}</p>
+            ) : (
+              <>
+                {linkedTasks.length > 0 && (
+                  <div className="material-context-tasks">
+                    {linkedTasks.map((lk) => {
+                      const meta = ROLE_META[lk.role] || ROLE_META.reference;
+                      return (
+                        <div key={lk.id}>
+                          <button type="button" onClick={() => onOpenTask(lk.taskId)}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`task-overview-state ${meta.badgeClass}`}>{locale === 'en' ? meta.en : meta.zh}</span>
+                              {lk.versionChanged && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px]"
+                                  style={{ color: '#b77824' }}
+                                >
+                                  <AlertTriangle size={10} />
+                                  <span>v{lk.resourceVersion}→v{lk.currentVersion}</span>
+                                </span>
+                              )}
+                            </div>
+                            <strong className="block mt-1 text-xs">{lk.taskTitle}</strong>
+                          </button>
+                          {lk.origin === 'manual' && (
+                            <button
+                              type="button"
+                              onClick={() => void handleUnlinkTask(lk.id)}
+                              className="material-unlink"
+                              aria-label={L(`取消关联 ${lk.taskTitle}`, `Unlink ${lk.taskTitle}`)}
+                            >
+                              {L('取消关联', 'Unlink')}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {sources.length > 0 && (
+                  <div className="material-source-history">
+                    {sources.map((src) => (
+                      <button
+                        key={src.id}
+                        type="button"
+                        onClick={() => {
+                          if (onFocusChat) {
+                            onFocusChat();
+                          } else {
+                            onSelectItem(null);
+                          }
+                        }}
+                        title={L('回到左侧对话区域', 'Scroll back to chat')}
+                      >
+                        <small>
+                          {L('来源消息', 'Source message')} · {src.authorKind === 'user' ? L('你', 'You') : memberById.get(src.authorId)?.name || src.authorId} ·{' '}
+                          {new Date(src.createdAt).toLocaleTimeString(locale === 'en' ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                        </small>
+                        <span>{src.body}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <aside
+      aria-label={L('协作空间', 'Collaboration Space')}
+      onClick={() => {
+        setFilterMenuOpen(false);
+        setAddMenuOpen(false);
+        setRowMenuKey(null);
+        setFolderMenuId(null);
+        setHistoryMenuOpen(false);
+      }}
+      onDragEnter={(e) => {
+        if (tab === 'documents' && !selection && !showTrash) {
+          e.preventDefault();
+          setDragging(true);
+        }
+      }}
+      onDragOver={(e) => {
+        if (tab === 'documents' && !selection && !showTrash) {
+          e.preventDefault();
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDragging(false);
+        }
+      }}
+      onDrop={(e) => void handleDropFiles(e)}
+      id="workbench-space"
+      className={`collaboration-space space-redesign ${wideSpace ? 'space-expanded' : ''}`}
+    >
+      {dragging && (
+        <div
+          className="absolute inset-2 z-50 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 pointer-events-none"
+          style={{
+            borderColor: '#355cc9',
+            backgroundColor: '#edf2ff',
+            color: '#355cc9'
+          }}
+        >
+          <UploadCloud size={28} />
+          <span className="text-xs font-semibold">{L('松手上传到当前协作空间', 'Drop to upload to Collaboration Space')}</span>
+        </div>
+      )}
+
+      {/* Top Bar */}
+      <div className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {selection || showTrash ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => {
+                onSelectItem(null);
+                setShowTrash(false);
+              }}
+              className="space-back -ml-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft size={13} />
+              <span>{L('返回列表', 'Back')}</span>
+            </Button>
+          ) : (
+            <strong className="text-[13.5px] font-semibold tracking-tight text-foreground">
+              {L('协作空间', 'Collaboration Space')}
+            </strong>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {selection && (selection.kind === 'document' || selection.kind === 'file') && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => {
+                void openMaterialPopout({
+                  kind: selection.kind === 'document' ? 'document' : 'file',
+                  id: selection.id,
+                  threadId: thread?.id,
+                  title:
+                    selection.kind === 'document'
+                      ? artifact?.title || selectedItem?.title
+                      : selectedItem?.title,
+                  mimeType: selectedItem?.mimeType,
+                  previewKind: selectedItem?.previewKind
+                });
+              }}
+              aria-label={L('独立窗口打开', 'Open in Popout')}
+              title={L('独立窗口打开', 'Open in Popout')}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink size={13.5} />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onToggleWide}
+            aria-label={wideSpace ? L('标准协作空间宽度', 'Standard panel width') : L('展开协作空间宽度', 'Expand panel width')}
+            title={wideSpace ? L('标准宽度', 'Standard width') : L('宽屏显示', 'Wide view')}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            {wideSpace ? <Minimize2 size={13.5} /> : <Maximize2 size={13.5} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onCloseSpace}
+            aria-label={L('收起协作空间', 'Hide Collaboration Space')}
+            title={L('收起协作空间', 'Hide Collaboration Space')}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X size={14} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Category Tabs — Coss UI Segmented Control Surface */}
+      {!selection && !showTrash && (
+        <nav aria-label={L('协作空间分类', 'Collaboration Space tabs')} className="space-tabs border-b border-border/60 px-4 py-2.5">
+          <div className="grid w-full grid-cols-3 gap-0.5 rounded-lg bg-muted p-0.5">
+            {([
+              ['documents', `${L('资料', 'Materials')}${items.length > 0 ? ` (${items.length})` : ''}`],
+              ['tasks', `${L('任务', 'Tasks')}${threadTasks.length > 0 ? ` (${threadTasks.length})` : ''}`],
+              ['resources', L('资源', 'Resources')]
+            ] as const).map(([key, label]) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onTabChange(key)}
+                  className={
+                    active
+                      ? 'active flex h-7 items-center justify-center rounded-md bg-background px-2 text-xs font-medium text-foreground shadow-xs/5 ring-1 ring-border/70 transition-all'
+                      : 'flex h-7 items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground'
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
+      {/* Undo Trash & Error/Notice Banners */}
+      {docNotice && selection?.kind !== 'document' && (
+        <div className="space-undo" role="status">
+          <span>{docNotice}</span>
+        </div>
+      )}
+      {undoTrash && (
+        <div className="space-undo">
+          <span>{L(`已移入回收站：${undoTrash.title}`, `Moved to trash: ${undoTrash.title}`)}</span>
+          <button
+            type="button"
+            onClick={() => void mutateItem(undoTrash.kind, undoTrash.id, { action: 'restore' })}
+            className="font-semibold underline"
+          >
+            {L('撤销', 'Undo')}
+          </button>
+        </div>
+      )}
+
+      {/* Content Area */}
+      <div className="space-content">
+        {showTrash ? (
+          <div>
+            <div className="space-recycle-heading">
+              <Trash2 size={15} />
+              <h2>{L(`回收站 (${trash.length})`, `Trash (${trash.length})`)}</h2>
+            </div>
+            {trash.length === 0 ? (
+              <div className="space-blank">
+                <span><Trash2 size={20} /></span>
+                <strong>{L('回收站为空', 'Trash is empty')}</strong>
+                <p>{L('移出列表的资料会暂存于此并可随时恢复。', 'Removed materials stay here until you restore or delete them.')}</p>
+              </div>
+            ) : (
+              <Frame className="rounded-xl">
+                <FramePanel className="max-h-[460px] divide-y divide-border overflow-y-auto rounded-lg px-3 py-1 coss-scroll">
+                  {trash.map((it) => {
+                    const trashKey = `${it.kind}:${it.id}`;
+                    const confirming = confirmPurgeKey === trashKey;
+                    return (
+                      <div key={trashKey} className="space-trash-row">
+                        <span>
+                          <strong>{it.title}</strong>
+                          <small>{kindLabel(it, locale)}</small>
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => void mutateItem(it.kind, it.id, { action: 'restore' })}
+                          >
+                            <RotateCcw size={12} />
+                            <span>{L('恢复', 'Restore')}</span>
+                          </Button>
+                          <Button
+                            variant={confirming ? 'destructive' : 'outline'}
+                            size="xs"
+                            onClick={() => {
+                              if (confirming) {
+                                void handlePurgeTrashItem(it.kind, it.id);
+                              } else {
+                                setConfirmPurgeKey(trashKey);
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>{confirming ? L('确认删除', 'Confirm') : L('彻底删除', 'Delete')}</span>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </FramePanel>
+              </Frame>
+            )}
+          </div>
+        ) : selection?.kind === 'document' && artifact?.id !== selection.id ? (
+          <div role="status"><p>{docNotice || L('正在加载文稿…', 'Loading document…')}</p>{docNotice && <button className="dw-btn" onClick={onRetryDocument}>{L('重试', 'Retry')}</button>}</div>
+        ) : selection?.kind === 'document' ? (
+          <div className="flex flex-col h-full min-h-0">
+            <div className="space-detail-heading">
+              <div className="flex items-center justify-between gap-2">
+                <small>{L('文档', 'Doc')} · v{artifact?.headVersion ?? 1}{conflictVersionsCount > 0 ? L(` · ${conflictVersionsCount} 份冲突保留稿`, ` · ${conflictVersionsCount} conflict branches`) : ''}</small>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDocEditing(false)}
+                    className={!docEditing ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
+                    style={{ height: 24, padding: '0 9px', fontSize: 11 }}
+                  >
+                    {L('预览', 'Preview')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDocEditing(true)}
+                    className={docEditing ? 'dw-btn dw-btn-primary dw-btn-sm' : 'dw-btn dw-btn-outline dw-btn-sm'}
+                    style={{ height: 24, padding: '0 9px', fontSize: 11 }}
+                  >
+                    {L('编辑', 'Edit')}
+                  </button>
+                </div>
+              </div>
+              <h2>{artifact?.title || selectedItem?.title || L('文档详情', 'Document Details')}</h2>
+              {docNotice && <span>{docNotice}</span>}
+            </div>
+
+            <div className="space-detail-actions">
+              {(artifact || selectedItem) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void openMaterialPopout({
+                      kind: 'document',
+                      id: artifact?.id || selectedItem!.id,
+                      threadId: thread?.id,
+                      title: artifact?.title || selectedItem?.title
+                    })
+                  }
+                  className="dw-btn dw-btn-outline dw-btn-sm"
+                >
+                  <ExternalLink size={11} />
+                  <span>{L('独立窗口', 'Popout')}</span>
+                </button>
+              )}
+              {selectedItem && (
+                <button
+                  type="button"
+                  onClick={() => onQuoteToChat(buildQuoteChip(selectedItem))}
+                  className="dw-btn dw-btn-outline dw-btn-sm"
+                >
+                  <Quote size={11} />
+                  <span>{L('引用到对话', 'Cite')}</span>
+                </button>
+              )}
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setHistoryMenuOpen((o) => !o)}
+                  className="dw-btn dw-btn-outline dw-btn-sm"
+                >
+                  <History size={11} />
+                  <span>{L(`版本 (${versions.length})`, `Versions (${versions.length})`)}</span>
+                </button>
+                {historyMenuOpen && (
+                  <div className="chat-context-menu absolute left-0 top-full mt-1 w-60 max-h-60 overflow-y-auto">
+                    {versions.map((ver) => (
+                      <button
+                        key={ver.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectVersion(ver.content);
+                          setHistoryMenuOpen(false);
+                        }}
+                        className="flex-col items-start gap-0.5"
+                      >
+                        <strong>
+                          v{ver.version} · {ver.branchKind === 'conflict_branch' ? L('冲突保留稿', 'Conflict branch') : L('主稿', 'Main')}
+                        </strong>
+                        <small>
+                          {L('写入者：', 'Author: ')}{ver.writerKind === 'user' ? L('你', 'You') : memberById.get(ver.writerId)?.name || ver.writerId}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={onCopyArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
+                <Copy size={11} />
+                <span>{L('复制', 'Copy')}</span>
+              </button>
+              <button type="button" onClick={onExportArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
+                <Download size={11} />
+                <span>{L('导出', 'Export')}</span>
+              </button>
+              <button type="button" onClick={onSaveArtifact} className="dw-btn dw-btn-outline dw-btn-sm">
+                {L('保存修改', 'Save')}
+              </button>
+              <button type="button" onClick={onSendArtifactBackToOriginChat} className="dw-btn dw-btn-primary dw-btn-sm">
+                {L('发回原对话继续改', 'Revise in Thread')}
+              </button>
+              {artifact && (
+                <button
+                  type="button"
+                  onClick={() => void mutateItem('document', artifact.id, { action: 'delete' }, artifact.title)}
+                  className="dw-btn dw-btn-outline dw-btn-sm ml-auto"
+                  style={{ color: '#a75229' }}
+                >
+                  <Trash2 size={11} />
+                  <span>{L('移到回收站', 'Trash')}</span>
+                </button>
+              )}
+            </div>
+
+            {docEditing ? (
+              <textarea
+                value={docDraft}
+                onChange={(e) => setDocDraft(e.target.value)}
+                aria-label={L('文稿编辑器', 'Document editor')}
+                className="dw-textarea flex-1 min-h-[220px] font-mono text-xs"
+              />
+            ) : (
+              <div className="space-prose flex-1 min-h-[200px] overflow-y-auto pr-1">
+                <MarkdownView
+                  text={docDraft}
+                  imageActions={{
+                    onDownloadLocal: (src, alt) => {
+                      const href = src.startsWith('/api/v2/')
+                        ? `${src}${src.includes('?') ? '&' : '?'}download=1`
+                        : `/api/v2/media/download?url=${encodeURIComponent(src)}${alt ? `&name=${encodeURIComponent(alt)}` : ''}`;
+                      const a = document.createElement('a');
+                      a.href = href;
+                      a.download = alt || 'image';
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {renderContextSection()}
+          </div>
+        ) : selection?.kind === 'file' && selectedItem ? (
+          <div className="flex flex-col gap-3">
+            <div className="space-detail-heading">
+              <small>{kindLabel(selectedItem, locale)}</small>
+              <h2>{selectedItem.title}</h2>
+              <span>{L('上传于 ', 'Uploaded ')}{new Date(selectedItem.createdAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN')}</span>
+            </div>
+
+            {selectedItem.previewKind === 'image' && (
+              <div className="shared-media-preview large">
+                <img src={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}`} alt={selectedItem.title} />
+              </div>
+            )}
+            {selectedItem.previewKind === 'video' && (
+              <div className="shared-media-preview large">
+                <video src={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}`} controls />
+              </div>
+            )}
+            {selectedItem.previewKind === 'audio' && (
+              <audio src={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}`} controls className="w-full" />
+            )}
+            {selectedItem.previewKind === 'pdf' && (
+              <iframe
+                src={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}`}
+                title={selectedItem.title}
+                className="material-pdf-frame"
+              />
+            )}
+            {selectedItem.previewKind === 'text' && (
+              <RichTextFileViewer
+                title={selectedItem.title}
+                mimeType={selectedItem.mimeType}
+                content={fileTextPreview}
+                loading={fileTextState === 'loading'}
+                error={fileTextState === 'error'}
+              />
+            )}
+            {selectedItem.previewKind === 'binary' && (
+              <div className="shared-file-meta">
+                <File size={22} />
+                <div>
+                  <strong>{selectedItem.title}</strong>
+                  <p>{L('此格式保留原件，可下载后使用对应应用打开。', 'Download this file to open it in a local application.')}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-detail-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void openMaterialPopout({
+                    kind: 'file',
+                    id: selectedItem.id,
+                    threadId: thread?.id,
+                    title: selectedItem.title,
+                    mimeType: selectedItem.mimeType,
+                    previewKind: selectedItem.previewKind
+                  })
+                }
+                className="dw-btn dw-btn-outline dw-btn-sm"
+              >
+                <ExternalLink size={12} />
+                <span>{L('独立窗口', 'Popout')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onQuoteToChat(buildQuoteChip(selectedItem))}
+                className="dw-btn dw-btn-outline dw-btn-sm"
+              >
+                <MessageSquare size={12} />
+                <span>{L('引用到对话', 'Cite')}</span>
+              </button>
+              <a
+                href={`/api/v2/space/files/${encodeURIComponent(selectedItem.id)}?download=1`}
+                download={selectedItem.title}
+                className="dw-btn dw-btn-primary dw-btn-sm"
+              >
+                <Download size={12} />
+                <span>{L('下载原件', 'Download')}</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => void mutateItem('file', selectedItem.id, { action: 'delete' }, selectedItem.title)}
+                className="dw-btn dw-btn-outline dw-btn-sm ml-auto"
+                style={{ color: '#a75229' }}
+              >
+                <Trash2 size={12} />
+                <span>{L('移到回收站', 'Trash')}</span>
+              </button>
+            </div>
+
+            {renderContextSection()}
+          </div>
+        ) : selection?.kind === 'link' && selectedItem ? (
+          <div className="flex flex-col gap-3">
+            <div className="space-detail-heading">
+              <small>{L('外部链接', 'External Link')}</small>
+              <h2>{selectedItem.title}</h2>
+            </div>
+            <a href={selectedItem.url} target="_blank" rel="noreferrer" className="shared-ref flex items-center justify-between gap-2">
+              <span className="truncate">{selectedItem.url}</span>
+              <ArrowUpRight size={14} />
+            </a>
+            {selectedItem.note && <p className="space-muted">{selectedItem.note}</p>}
+            <div className="space-detail-actions">
+              <button
+                type="button"
+                onClick={() => onQuoteToChat(buildQuoteChip(selectedItem))}
+                className="dw-btn dw-btn-outline dw-btn-sm"
+              >
+                <MessageSquare size={12} />
+                <span>{L('引用到对话', 'Cite')}</span>
+              </button>
+              <a href={selectedItem.url} target="_blank" rel="noreferrer" className="dw-btn dw-btn-primary dw-btn-sm">
+                <ExternalLink size={12} />
+                <span>{L('打开链接', 'Open Link')}</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => void mutateItem('link', selectedItem.id, { action: 'delete' }, selectedItem.title)}
+                className="dw-btn dw-btn-outline dw-btn-sm ml-auto"
+                style={{ color: '#a75229' }}
+              >
+                <Trash2 size={12} />
+                <span>{L('移除', 'Remove')}</span>
+              </button>
+            </div>
+
+            {renderContextSection()}
+          </div>
+        ) : tab === 'documents' ? (
+          <div className="material-library flex min-h-full flex-col gap-3">
+            {/* Search & Quick Actions Toolbar */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex min-w-0 flex-1 items-center">
+                <Search
+                  size={13}
+                  className="pointer-events-none absolute left-2.5 z-10 text-muted-foreground"
+                />
+                <Input
+                  nativeInput
+                  size="sm"
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={L('搜索资料…', 'Search materials…')}
+                  aria-label={L('搜索协作空间资料', 'Search materials')}
+                  className="pl-7 [&_input]:pl-7"
+                />
+              </div>
+
+              <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => void handleUploadFiles(e)} />
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={!thread || uploading}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label={L('上传文件', 'Upload files')}
+                title={uploading ? L('上传中…', 'Uploading…') : L('上传本地文件', 'Upload local files')}
+              >
+                <Paperclip size={13.5} />
+              </Button>
+
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant={kindFilter ? 'secondary' : 'outline'}
+                  size="icon-sm"
+                  onClick={() => {
+                    setFilterMenuOpen((o) => !o);
+                    setAddMenuOpen(false);
+                  }}
+                  aria-label={L('筛选资料类型', 'Filter material type')}
+                  className={kindFilter ? 'border-ring text-foreground' : ''}
+                >
+                  <SlidersHorizontal size={13.5} />
+                </Button>
+                {filterMenuOpen && (
+                  <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
+                    {([
+                      ['', L('全部类型', 'All types')],
+                      ['document', L('文档', 'Documents')],
+                      ['file', L('文件', 'Files')],
+                      ['link', L('外部链接', 'Links')]
+                    ] as const).map(([val, label]) => (
+                      <button
+                        key={val || 'all'}
+                        type="button"
+                        onClick={() => {
+                          setKindFilter(val);
+                          setFilterMenuOpen(false);
+                        }}
+                      >
+                        <span className="flex-1 text-left">{label}</span>
+                        {kindFilter === val && <Check size={12} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  disabled={!thread}
+                  onClick={() => {
+                    setAddMenuOpen((o) => !o);
+                    setFilterMenuOpen(false);
+                  }}
+                  aria-label={L('添加资料', 'Add material')}
+                >
+                  <Plus size={14} />
+                </Button>
+                {addMenuOpen && (
+                  <div className="chat-context-menu absolute right-0 top-full z-40 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setCreateMode('document');
+                        setDraftTitle('');
+                        setDraftNote('');
+                      }}
+                    >
+                      <FileText size={13} />
+                      <span>{L('新建文档', 'New Document')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setCreateMode('link');
+                        setDraftTitle('');
+                        setDraftUrl('https://');
+                        setDraftNote('');
+                      }}
+                    >
+                      <Link2 size={13} />
+                      <span>{L('添加链接', 'Add Link')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setCreateMode('folder');
+                        setDraftTitle('');
+                      }}
+                    >
+                      <Folder size={13} />
+                      <span>{L('新建文件夹', 'New Folder')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {createMode && (
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="rounded-lg p-3">
+                  <form onSubmit={handleCreateSubmit} className="flex flex-col gap-2 text-xs">
+                    <div className="font-semibold text-foreground">
+                      {createMode === 'document'
+                        ? L('新建文档', 'New Document')
+                        : createMode === 'link'
+                          ? L('添加链接', 'Add Link')
+                          : L('新建文件夹', 'New Folder')}
+                      {effectiveActiveFolderId
+                        ? ` (/${folderPathById.get(effectiveActiveFolderId) || L('当前目录', 'Current folder')})`
+                        : ''}
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      placeholder={
+                        createMode === 'document'
+                          ? L('文档名称（如：产品方案.md）', 'Document title (e.g. proposal.md)')
+                          : createMode === 'link'
+                            ? L('链接标题', 'Link title')
+                            : L('文件夹名称', 'Folder name')
+                      }
+                      className="dw-input"
+                    />
+                    {createMode === 'link' && (
+                      <input
+                        type="url"
+                        required
+                        value={draftUrl}
+                        onChange={(e) => setDraftUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="dw-input"
+                      />
+                    )}
+                    {createMode !== 'folder' && (
+                      <textarea
+                        rows={createMode === 'document' ? 3 : 2}
+                        value={draftNote}
+                        onChange={(e) => setDraftNote(e.target.value)}
+                        placeholder={createMode === 'document' ? L('初始正文内容（可选）', 'Initial content (optional)') : L('备注说明（可选）', 'Notes (optional)')}
+                        className="dw-textarea"
+                      />
+                    )}
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="outline" size="xs" onClick={() => setCreateMode(null)}>
+                        {L('取消', 'Cancel')}
+                      </Button>
+                      <Button type="submit" size="xs">
+                        {L('确认', 'Confirm')}
+                      </Button>
+                    </div>
+                  </form>
+                </FramePanel>
+              </Frame>
+            )}
+
+            {renameTarget && (
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="rounded-lg p-3">
+                  <form onSubmit={handleRenameConfirm} className="flex flex-col gap-2 text-xs">
+                    <div className="font-semibold text-foreground">{L('重命名', 'Rename')}</div>
+                    <input
+                      type="text"
+                      required
+                      value={renameTarget.title}
+                      onChange={(e) => setRenameTarget({ ...renameTarget, title: e.target.value })}
+                      className="dw-input"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="outline" size="xs" onClick={() => setRenameTarget(null)}>
+                        {L('取消', 'Cancel')}
+                      </Button>
+                      <Button type="submit" size="xs">
+                        {L('保存', 'Save')}
+                      </Button>
+                    </div>
+                  </form>
+                </FramePanel>
+              </Frame>
+            )}
+
+            {moveTarget && (
+              <Frame className="dw-inline-panel rounded-xl">
+                <FramePanel className="flex flex-col gap-1.5 rounded-lg p-3 text-xs">
+                  <div className="font-semibold text-foreground">{L(`移动「${moveTarget.title}」到目录`, `Move "${moveTarget.title}" to folder`)}</div>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: null });
+                      setMoveTarget(null);
+                    }}
+                    className="justify-start"
+                  >
+                    {L('/ 根目录', '/ Root')}
+                  </Button>
+                  {folders.map((fld) => (
+                    <Button
+                      key={fld.id}
+                      variant="outline"
+                      size="xs"
+                      onClick={() => {
+                        void mutateItem(moveTarget.kind, moveTarget.id, { action: 'move', folderId: fld.id });
+                        setMoveTarget(null);
+                      }}
+                      className="justify-start truncate"
+                    >
+                      / {folderPathById.get(fld.id) || fld.title}
+                    </Button>
+                  ))}
+                  <Button variant="ghost" size="xs" onClick={() => setMoveTarget(null)} className="self-end">
+                    {L('取消', 'Cancel')}
+                  </Button>
+                </FramePanel>
+              </Frame>
+            )}
+
+            {props.materialsState !== 'ready' && thread ? (
+              <div className="my-auto py-10 text-center text-xs text-muted-foreground" role="status">
+                {props.materialsState === 'error' ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <strong>{L('资料加载失败', 'Failed to load materials')}</strong>
+                    <Button variant="outline" size="xs" onClick={() => void onRefreshSpace()}>
+                      {L('重新加载资料', 'Reload')}
+                    </Button>
+                  </div>
+                ) : (
+                  <span>{L('正在加载资料…', 'Loading materials…')}</span>
+                )}
+              </div>
+            ) : searching ? (
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <h4 className="m-0 text-[11px] font-semibold text-muted-foreground">
+                    {L(`搜索结果 (${filteredItems.length})`, `Results (${filteredItems.length})`)}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setKindFilter('');
+                    }}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
+                  >
+                    {L('清除筛选', 'Clear filters')}
+                  </button>
+                </FrameHeader>
+                <FramePanel className="max-h-[420px] overflow-y-auto rounded-lg p-1 coss-scroll">
+                  {filteredItems.length === 0 ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">{L('没有找到匹配资料', 'No matching materials')}</p>
+                  ) : (
+                    filteredItems.map((it) =>
+                      renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'search' })
+                    )
+                  )}
+                </FramePanel>
+              </Frame>
+            ) : items.length === 0 && folders.length === 0 ? (
+              <Empty className="my-auto py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FolderOpen />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-sm">{L('还没有资料', 'No materials yet')}</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    {L('拖拽任意文件到此处或点击 + 新建文档；Agent 产出的文件也会自动归档到这里。', 'Drop files here or click + to add a document; Agent deliverables are saved here automatically.')}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {/* Top section: chronological recent updates (Coss Frame) */}
+                {recentItems.length > 0 && (
+                  <section
+                    className="material-shortcuts"
+                    data-testid="space-recent-section"
+                    aria-label={L('最近更新', 'Recent Updates')}
+                  >
+                    <Frame className="rounded-xl">
+                      <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                          <Clock size={11} />
+                          <span>{L(`最近更新 (${recentItems.length})`, `Recent (${recentItems.length})`)}</span>
+                        </span>
+                        {recentItems.length > 6 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRecent((v) => !v)}
+                            className="text-[11px] font-medium text-info-foreground hover:underline"
+                          >
+                            {expandedRecent ? L('收起', 'Collapse') : L('查看全部', 'View all')}
+                          </button>
+                        )}
+                      </FrameHeader>
+                      <FramePanel className="rounded-lg p-1">
+                        <div
+                          className={`material-recent-list coss-scroll ${
+                            expandedRecent ? 'expanded max-h-[260px] overflow-y-auto pr-0.5' : ''
+                          }`}
+                        >
+                          {(expandedRecent ? recentItems : recentItems.slice(0, 6)).map((it) =>
+                            renderItemRow(it, { showFolderChip: true, showTime: true, keyPrefix: 'recent' })
+                          )}
+                        </div>
+                      </FramePanel>
+                    </Frame>
+                  </section>
+                )}
+
+                {/* Bottom section: drill-down document & folder manager (Coss Frame) */}
+                <section
+                  data-testid="space-manager-section"
+                  aria-label={L('文档管理', 'Files & Folders')}
+                >
+                  <Frame className="rounded-xl">
+                    <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                        <FolderOpen size={11.5} />
+                        <span>{L('文档管理', 'Files & Folders')}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateMode('folder');
+                          setDraftTitle('');
+                        }}
+                        title={effectiveActiveFolderId ? L('在当前目录下新建子文件夹', 'Create subfolder here') : L('在根目录新建文件夹', 'Create folder in root')}
+                        className="text-[11px] font-medium text-info-foreground hover:underline"
+                      >
+                        {L('+ 新建文件夹', '+ New Folder')}
+                      </button>
+                    </FrameHeader>
+
+                    <FramePanel className="rounded-lg p-1.5">
+                      {effectiveActiveFolderId && (
+                        <div
+                          className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-border bg-muted/45 px-2 py-1.5"
+                          data-testid="space-folder-nav"
+                        >
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => {
+                              const cur = folderById.get(effectiveActiveFolderId);
+                              setActiveFolderId(cur?.parentFolderId ?? null);
+                            }}
+                            aria-label={L('返回上一级文件夹', 'Up one folder')}
+                            className="h-6 px-1.5 text-[11px]"
+                          >
+                            <ArrowLeft size={11} />
+                            <span>{L('返回上级', 'Up')}</span>
+                          </Button>
+                          <div
+                            className="material-breadcrumbs flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-[11px] text-muted-foreground"
+                            aria-label={L('当前文件夹路径', 'Folder path')}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setActiveFolderId(null)}
+                              className="rounded px-1 py-0.5 hover:bg-accent hover:text-foreground"
+                            >
+                              {L('根目录', 'Root')}
+                            </button>
+                            {breadcrumbs.map((crumb, idx) => {
+                              const isLast = idx === breadcrumbs.length - 1;
+                              return (
+                                <React.Fragment key={crumb.id}>
+                                  <span className="opacity-50">/</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveFolderId(crumb.id)}
+                                    className={`max-w-[110px] truncate rounded px-1 py-0.5 hover:bg-accent ${
+                                      isLast ? 'font-semibold text-foreground' : ''
+                                    }`}
+                                    title={crumb.title}
+                                  >
+                                    {crumb.title}
+                                  </button>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="max-h-[340px] overflow-y-auto pr-0.5 coss-scroll">
+                        {currentChildFolders.map((fld) => renderFolderRow(fld))}
+                        {currentFolderItems.map((it) =>
+                          renderItemRow(it, { showFolderChip: false, showTime: true, keyPrefix: 'dir' })
+                        )}
+                      </div>
+
+                      {currentChildFolders.length === 0 && currentFolderItems.length === 0 && (
+                        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-3 py-5 text-center text-[11.5px] text-muted-foreground">
+                          <span>{effectiveActiveFolderId ? L('当前文件夹为空', 'This folder is empty') : L('根目录暂无未归档文件', 'No unfiled items in root')}</span>
+                          <div className="flex flex-wrap justify-center gap-1.5">
+                            <Button variant="outline" size="xs" onClick={() => fileInputRef.current?.click()}>
+                              <Paperclip size={11} />
+                              <span>{L('上传文件', 'Upload')}</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => {
+                                setCreateMode('document');
+                                setDraftTitle('');
+                                setDraftNote('');
+                              }}
+                            >
+                              <FileText size={11} />
+                              <span>{L('新建文档', 'New Doc')}</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => {
+                                setCreateMode('folder');
+                                setDraftTitle('');
+                              }}
+                            >
+                              <Folder size={11} />
+                              <span>{L('新建文件夹', 'New Folder')}</span>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </FramePanel>
+                  </Frame>
+                </section>
+              </div>
+            )}
+
+            <div className="mt-auto pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTrash(true)}
+                className="material-trash flex w-full items-center gap-1.5 border-t border-border pt-2.5 text-left text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Trash2 size={12} />
+                <span>{L('回收站', 'Trash')}{trash.length > 0 ? ` (${trash.length})` : ''}</span>
+              </button>
+            </div>
+          </div>
+        ) : tab === 'tasks' ? (
+          <div className="task-overview flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+                {([
+                  ['active', L('进行中', 'Active')],
+                  ['done', L('已完成', 'Done')],
+                  ['all', L('全部', 'All')]
+                ] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setTaskFilter(val)}
+                    className={
+                      taskFilter === val
+                        ? 'rounded-md bg-background px-2.5 py-1 text-[11.5px] font-medium text-foreground shadow-xs/5 ring-1 ring-border/70'
+                        : 'rounded-md px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground hover:text-foreground'
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="xs" onClick={onOpenCreateTask}>
+                <Plus size={12} />
+                <span>{L('指派任务', 'Assign Task')}</span>
+              </Button>
+            </div>
+
+            {filteredTasks.length === 0 ? (
+              <Empty className="py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <ListTodo />
+                  </EmptyMedia>
+                  <EmptyTitle className="text-sm">{L('暂无匹配的本对话任务', 'No tasks in this thread')}</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    {L('点击「指派任务」或在对话里和负责人约定分工即可立项执行。', 'Click "Assign Task" or ask a team member in chat to kick off work.')}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {tasksPager.pageItems.map((t) => {
+                  const leadName = memberById.get(t.leadMemberId)?.name || t.leadMemberId;
+                  const runStatus = t.latestRun?.status;
+                  const badgeVariant =
+                    runStatus === 'completed'
+                      ? 'success'
+                      : runStatus === 'failed' || runStatus === 'timed_out'
+                        ? 'error'
+                        : runStatus === 'waiting_user'
+                          ? 'warning'
+                          : runStatus === 'canceled' || (!runStatus && t.kind === 'scheduled' && !t.scheduleEnabled)
+                            ? 'secondary'
+                            : 'info';
+                  const statusLabel =
+                    outcomeStatus(t.latestRun, locale) ??
+                    (t.status === 'paused'
+                      ? runStatus === 'running'
+                        ? L('当前步骤结束后暂停', 'Pausing after step')
+                        : L('已暂停', 'Paused')
+                      : !runStatus
+                        ? t.kind === 'scheduled'
+                          ? t.scheduleEnabled
+                            ? L('等待定时触发', 'Scheduled')
+                            : L('已暂停', 'Paused')
+                          : L('待启动', 'Pending')
+                        : runStatus === 'completed'
+                          ? t.kind === 'scheduled' && t.latestRun
+                            ? L(`第 ${t.latestRun.runNumber} 期已完成`, `Run #${t.latestRun.runNumber} done`)
+                            : L('已完成', 'Done')
+                          : runStatus === 'waiting_user'
+                            ? L('待你确认', 'Needs reply')
+                            : runStatus === 'failed'
+                              ? L('执行失败', 'Failed')
+                              : runStatus === 'timed_out'
+                                ? L('超时未完成', 'Timed out')
+                                : runStatus === 'canceled'
+                                  ? L('已取消', 'Canceled')
+                                  : L('进行中', 'Running'));
+
+                  return (
+                    <Frame key={t.id} className="rounded-xl">
+                      <FramePanel className="flex flex-col gap-2.5 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask(t.id)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-center gap-1.5 text-[13px] font-semibold leading-snug text-foreground hover:underline">
+                              {t.kind === 'scheduled' && (
+                                <Clock size={12} className="shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="line-clamp-2">{t.title}</span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span>{L(`${leadName} 负责`, `Lead: ${leadName}`)}</span>
+                              {t.kind === 'scheduled' && t.cronExpr && (
+                                <Badge variant="outline" size="sm" className="font-mono text-[10px]">
+                                  {formatCronHuman(t.cronExpr, locale)}
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                          <Badge
+                            variant={badgeVariant}
+                            size="sm"
+                            className="task-overview-state shrink-0"
+                          >
+                            {statusLabel}
+                          </Badge>
+                        </div>
+
+                        {t.steps && t.steps.length > 0 && (
+                          <div className="max-h-[168px] space-y-1.5 overflow-y-auto border-t border-border/60 pt-2 pr-1 coss-scroll">
+                            {t.steps.map((st) => (
+                              <div key={st.id} className="flex items-start gap-2 text-xs">
+                                <span
+                                  className={`mt-1.5 size-1.5 shrink-0 rounded-full ${
+                                    st.status === 'accepted'
+                                      ? 'bg-emerald-500'
+                                      : st.status === 'running'
+                                        ? 'bg-blue-500'
+                                        : st.status === 'blocked' ||
+                                            st.status === 'failed' ||
+                                            st.status === 'timed_out'
+                                          ? 'bg-amber-500'
+                                          : 'bg-foreground/25'
+                                  }`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate font-medium text-foreground/90">
+                                    {st.stepOrder}. {st.title}
+                                  </div>
+                                  <div className="text-[10.5px] text-muted-foreground">
+                                    {memberById.get(st.assigneeMemberId)?.name || st.assigneeMemberId}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-1.5 border-t border-border/60 pt-2">
+                          {t.latestRun?.finalArtifactId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDocEditing(false);
+                                onSelectItem({ kind: 'document', id: t.latestRun!.finalArtifactId! });
+                              }}
+                              className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+                            >
+                              <FileText size={13} className="shrink-0 text-muted-foreground" />
+                              <span className="min-w-0 flex-1 truncate font-medium">{L('查看交付产物', 'Open Deliverable')}</span>
+                              <Badge variant="secondary" size="sm" className="text-[10px]">
+                                {L('正文', 'Doc')}
+                              </Badge>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask(t.id)}
+                            className="inline-flex items-center gap-1 self-start text-[11.5px] font-medium text-info-foreground hover:underline"
+                          >
+                            <span>{L('查看步骤详情 →', 'View step details →')}</span>
+                          </button>
+                        </div>
+                      </FramePanel>
+                    </Frame>
+                  );
+                })}
+                <PaginationBar
+                  compact
+                  page={tasksPager.page}
+                  totalPages={tasksPager.totalPages}
+                  startIndex={tasksPager.startIndex}
+                  endIndex={tasksPager.endIndex}
+                  total={tasksPager.total}
+                  onPageChange={tasksPager.setPage}
+                />
+              </div>
+            )}
+          </div>
+        ) : (() => {
+          const activeOwner = members.find((m) => m.id === thread?.activeOwnerMemberId) ?? null;
+          const isLocalOwner = isLocalCodingMember(activeOwner);
+          return (
+            <div className="channel-resources flex flex-col gap-3.5">
+              {/* Resource 1: Workspace Directory */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">{L('本机工作目录', 'Workspace Directory')}</span>
+                  <button
+                    type="button"
+                    onClick={() => void onChooseWorkspace()}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
+                  >
+                    {hasDesktopDialog ? (thread?.workspacePath ? L('更换目录', 'Change') : L('选择目录', 'Choose')) : L('设置路径', 'Set Path')}
+                  </button>
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-2 rounded-lg p-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-xs">
+                    <FolderOpen size={14} className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground">
+                      {thread?.workspacePath || L('尚未绑定本机工作目录', 'No workspace folder bound')}
+                    </span>
+                    {hasDesktopDialog && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWsPathInput(thread?.workspacePath || '');
+                          setEditingWsPath((v) => !v);
+                        }}
+                        className="shrink-0 text-[11px] font-medium text-info-foreground hover:underline"
+                      >
+                        {L('手动输入', 'Edit Path')}
+                      </button>
+                    )}
+                  </div>
+
+                  {!isLocalOwner && (
+                    <p className="m-0 text-[11px] leading-relaxed text-muted-foreground">
+                      {L(
+                        '提示：当前对接成员为远端/Web，本地目录仅本机编码成员（如 Codex / Claude）可直接读写。',
+                        'Note: Active member runs remotely; only local coding agents (Codex / Claude) access local folders directly.'
+                      )}
+                    </p>
+                  )}
+
+                  {editingWsPath && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        setEditingWsPath(false);
+                        void onSaveWorkspacePath(wsPathInput.trim() || null);
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Input
+                        nativeInput
+                        size="sm"
+                        type="text"
+                        value={wsPathInput}
+                        onChange={(e) => setWsPathInput(e.target.value)}
+                        placeholder={L('输入目录绝对路径', 'Enter absolute directory path')}
+                      />
+                      <Button type="submit" size="xs">
+                        {L('确定', 'OK')}
+                      </Button>
+                    </form>
+                  )}
+
+                  {thread?.workspacePath && (
+                    <div className="rounded-lg border border-border bg-muted/25 p-2">
+                      <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="truncate font-mono">/{wsSubpath}</span>
+                        <div className="flex items-center gap-2">
+                          {wsSubpath && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const parts = wsSubpath.split('/').filter(Boolean);
+                                parts.pop();
+                                void loadWorkspaceFiles(parts.join('/'));
+                              }}
+                              className="hover:text-foreground hover:underline"
+                            >
+                              {L('上级目录', 'Up')}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void loadWorkspaceFiles(wsSubpath, true)}
+                            className="hover:text-foreground hover:underline"
+                          >
+                            {L('刷新', 'Refresh')}
+                          </button>
+                        </div>
+                      </div>
+                      {wsError ? (
+                        <div className="text-[11px] text-warning-foreground">{wsError}</div>
+                      ) : wsBusy ? (
+                        <div className="text-[11px] text-muted-foreground">{L('读取目录中…', 'Loading directory…')}</div>
+                      ) : (
+                        <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto coss-scroll">
+                          {wsEntries.map((ent) => (
+                            <div
+                              key={ent.relPath}
+                              className="flex items-center rounded-md px-1.5 py-1 transition-colors hover:bg-muted/70"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (ent.kind === 'dir') {
+                                    void loadWorkspaceFiles(ent.relPath);
+                                  } else {
+                                    onQuoteToChat({
+                                      id: ent.relPath,
+                                      kind: 'workspace_file',
+                                      title: ent.name,
+                                      subLabel: formatBytes(ent.sizeBytes),
+                                      snippet: L(`请查看文件 ${ent.relPath}`, `Please inspect file ${ent.relPath}`)
+                                    });
+                                  }
+                                }}
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs text-foreground"
+                              >
+                                {ent.kind === 'dir' ? (
+                                  <Folder size={13} className="shrink-0 text-amber-500" />
+                                ) : (
+                                  <File size={13} className="shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="truncate">{ent.name}</span>
+                              </button>
+                              <span className="shrink-0 pl-2 font-mono text-[10px] text-muted-foreground">
+                                {ent.kind === 'file' ? formatBytes(ent.sizeBytes) : L('目录', 'Dir')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </FramePanel>
+              </Frame>
+
+              {/* Resource 2: DuolaBase Connectors & Vault */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    {L('DuolaBase 连接与凭证', 'DuolaBase Connectors & Vault')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigatePage('connectors')}
+                    className="text-[11px] font-medium text-info-foreground hover:underline"
+                  >
+                    {L('管理连接器', 'Manage')}
+                  </button>
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-3 rounded-lg p-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/50 text-foreground">
+                      <Plug size={14} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold text-foreground">
+                        {L('DuolaBase MCP 网关', 'DuolaBase MCP Gateway')}
+                      </div>
+                      <small
+                        className={`block truncate text-[11px] ${
+                          duolabaseStatus.enabled && duolabaseStatus.hasToken
+                            ? 'text-success-foreground'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {!duolabaseStatus.enabled
+                          ? L('已暂停连接', 'Paused')
+                          : duolabaseStatus.hasToken
+                            ? L(`已连通 (${duolabaseStatus.endpoint})`, `Connected (${duolabaseStatus.endpoint})`)
+                            : L('尚未配置访问令牌', 'Access token not set')}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={L('切换 DuolaBase 状态', 'Toggle DuolaBase')}
+                      aria-pressed={duolabaseStatus.enabled}
+                      onClick={() => void onToggleDuolabase()}
+                      className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        duolabaseStatus.enabled ? 'bg-primary' : 'bg-input'
+                      }`}
+                    >
+                      <span
+                        className={`block size-4 rounded-full bg-background shadow-sm transition-transform ${
+                          duolabaseStatus.enabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {duolabaseStatus.enabled && duolabaseStatus.hasToken && (resBusy || resSummary) && (
+                    <div className="border-t border-border/60 pt-2.5">
+                      <div className="font-mono text-[11px] text-muted-foreground">
+                        {resBusy && !resSummary
+                          ? L('正在读取实时连接器与凭证统计…', 'Loading connector & secret counts…')
+                          : resSummary
+                            ? L(
+                                `已接入 ${resSummary.connectorCount} 个连接器 · ${resSummary.vaultCount ?? '—'} 条 Vault 凭证`,
+                                `${resSummary.connectorCount} connectors · ${resSummary.vaultCount ?? '—'} Vault secrets`
+                              )
+                            : null}
+                      </div>
+                      {resSummary && resSummary.activeConnectors.length > 0 && (
+                        <div className="mt-2 flex max-h-[88px] flex-wrap gap-1.5 overflow-y-auto pr-0.5 coss-scroll">
+                          {resSummary.activeConnectors.map((c) => (
+                            <button
+                              key={c.id || c.name}
+                              type="button"
+                              onClick={() => onNavigatePage('connectors')}
+                              className="inline-flex max-w-[150px] items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:border-ring hover:bg-muted"
+                              title={c.toolCount ? L(`${c.toolCount} 个可用工具`, `${c.toolCount} tools available`) : undefined}
+                            >
+                              <Plug size={10} className="shrink-0 text-muted-foreground" />
+                              <span className="truncate">{c.name || c.provider || L('连接器', 'Connector')}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button variant="outline" size="xs" onClick={() => onNavigatePage('connectors')}>
+                      <Plug size={11.5} />
+                      <span>{L('连接器', 'Connectors')}</span>
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => onNavigatePage('vault')}>
+                      <KeyRound size={11.5} />
+                      <span>{L('Vault 凭证库', 'Vault Secrets')}</span>
+                    </Button>
+                  </div>
+                </FramePanel>
+              </Frame>
+
+              {/* Resource 3: Team Members & Runtimes */}
+              <Frame className="rounded-xl">
+                <FrameHeader className="flex-row items-center justify-between px-3 py-2">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    {L(`成员与运行端 (${members.length})`, `Members & Runtimes (${members.length})`)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void onRefreshMembers()}
+                    disabled={refreshingMembers}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <RefreshCw size={11} className={refreshingMembers ? 'is-refreshing' : ''} />
+                    <span>{L('刷新', 'Refresh')}</span>
+                  </button>
+                </FrameHeader>
+                <FramePanel className="flex flex-col gap-1 rounded-lg p-1.5">
+                  <div className="max-h-[220px] divide-y divide-border/50 overflow-y-auto pr-0.5 coss-scroll">
+                    {members.map((m) => (
+                      <div key={m.id} className="flex items-center gap-2.5 px-2 py-2">
+                        <AgentAvatar small name={m.name} platformId={m.platformId} status={m.status} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-foreground">{m.name}</div>
+                          <div className="text-[10.5px] text-muted-foreground">
+                            {m.location === 'remote-bridge'
+                              ? L('远端桥接', 'Remote Bridge')
+                              : m.location === 'webhook'
+                                ? 'Webhook Bot'
+                                : L('本机接入', 'Local Runtime')}
+                          </div>
+                        </div>
+                        <Badge
+                          variant={
+                            m.status === 'ready'
+                              ? 'success'
+                              : m.status === 'auth_required'
+                                ? 'warning'
+                                : 'secondary'
+                          }
+                          size="sm"
+                          className="text-[10px]"
+                        >
+                          {m.status === 'ready' ? L('在线', 'Online') : m.status === 'auth_required' ? L('待验证', 'Needs auth') : L('离线', 'Offline')}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => onNavigatePage('members')}
+                    className="mt-1 w-full justify-start text-muted-foreground hover:text-foreground"
+                  >
+                    <Users size={12} />
+                    <span>{L('查看完整成员与 Token 用量 →', 'Members & Token Usage →')}</span>
+                  </Button>
+                </FramePanel>
+              </Frame>
+            </div>
+          );
+        })()}
+      </div>
+    </aside>
+  );
+}

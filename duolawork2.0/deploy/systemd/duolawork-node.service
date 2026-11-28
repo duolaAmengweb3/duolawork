@@ -1,0 +1,20 @@
+[Unit]
+Description=DuolaWork 2.0 Outbound Execution Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__NODE_USER__
+Environment=DUOLAWORK_NODE_CONFIG=__NODE_CONFIG_PATH__
+WorkingDirectory=/opt/duolawork/current
+ExecStart=/opt/duolawork/runtime/node/bin/node /opt/duolawork/current/dist/node-runner/index.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+LimitCORE=0
+MemoryHigh=256M
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

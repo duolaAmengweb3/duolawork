@@ -1,0 +1,6 @@
+/* ServiceIcon container & connector health utilities (ConnectorsPage uses Coss UI + Tailwind v4) */
+.connector-symbol{display:grid;place-items:center;width:36px;height:36px;background:var(--card);border:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,0.04);color:var(--foreground);border-radius:10px;flex-shrink:0}
+.connector-symbol img{display:block;object-fit:contain;width:22px;height:22px}
+.connector-health{font-size:11px;font-weight:500;padding:2px 7px;border-radius:5px;background:var(--muted);color:var(--muted-foreground)}
+.connector-health.ready{color:var(--success-foreground);background:color-mix(in srgb,var(--success) 10%,transparent)}
+.connector-health.authorization_required,.connector-health.attention,.connector-health.offline{color:var(--warning-foreground);background:color-mix(in srgb,var(--warning) 12%,transparent)}
