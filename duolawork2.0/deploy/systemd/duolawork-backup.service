@@ -5,4 +5,4 @@ Description=DuolaWork 2.0 SQLite WAL Hot Backup
 Type=oneshot
 User=duolawork
 Group=duolawork
-ExecStart=/bin/sh -c 'mkdir -p /var/lib/duolawork/backups && sqlite3 /var/lib/duolawork/duolawork-v2.sqlite ".backup /var/lib/duolawork/backups/dw2-$(date +%%F-%%H%%M).sqlite" && find /var/lib/duolawork/backups -name "dw2-*.sqlite" -mtime +14 -delete'
+ExecStart=/opt/duolawork/runtime/node/bin/node /opt/duolawork/current/deploy/scripts/backup-sqlite.mjs /var/lib/duolawork/duolawork-v2.sqlite /var/lib/duolawork/backups 14

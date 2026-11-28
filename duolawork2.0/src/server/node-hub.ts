@@ -7,8 +7,11 @@ import { sha256Hex } from './auth.js';
 import type { DuolaWorkDatabase } from './db.js';
 import { emptyUnobservableUsage, redactSecrets, type EnsuredSession, type ReconcileResult, type SessionBindingInput, type TurnDispatchInput, type TurnExecutionResult, type TurnStreamEvent } from './drivers/types.js';
 import {
+  DEFAULT_COMPANION_KEEPALIVE,
   isExcludedClaudeVps,
+  normalizeCompanionKeepalive,
   turnPhases,
+  type CompanionKeepalivePrefs,
   type ExecutionNodeRecord,
   type MemberCapabilities,
   type MemberRecord,
@@ -214,6 +217,24 @@ export class ExecutionNodeHub {
     if (!nodeId) return false;
     const live = this.liveSockets.get(nodeId);
     return Boolean(live && live.ws.readyState === WebSocket.OPEN);
+  }
+
+  public getCompanionKeepalivePrefs(): CompanionKeepalivePrefs {
+    return normalizeCompanionKeepalive(
+      this.db.getSetting<CompanionKeepalivePrefs>('companion_keepalive', DEFAULT_COMPANION_KEEPALIVE)
+    );
+  }
+
+  public broadcastCompanionKeepalive(prefs: CompanionKeepalivePrefs): number {
+    const normalized = normalizeCompanionKeepalive(prefs);
+    let notified = 0;
+    for (const [nodeId, live] of this.liveSockets.entries()) {
+      if (live.ws.readyState !== WebSocket.OPEN) continue;
+      if (this.getNode(nodeId)?.kind !== 'local') continue;
+      this.sendFrame(live.ws, { type: 'node.companion_keepalive', prefs: normalized });
+      notified += 1;
+    }
+    return notified;
   }
 
   public revokeNode(nodeId: string): boolean {
@@ -432,7 +453,13 @@ export class ExecutionNodeHub {
       }
 
       live.resumesToolCalls = msg.resumesToolCalls === true;
-      this.sendFrame(ws, { type: 'node.welcome', nodeId, serverTime: now, resumesToolCalls: true });
+      this.sendFrame(ws, {
+        type: 'node.welcome',
+        nodeId,
+        serverTime: now,
+        resumesToolCalls: true,
+        companionKeepalive: this.getCompanionKeepalivePrefs()
+      });
       for (const turn of this.activeTurns.values()) {
         if (turn.nodeId !== nodeId || !turn.disconnected) continue;
         turn.disconnected = false;

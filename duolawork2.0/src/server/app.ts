@@ -30,6 +30,7 @@ import { WorktreeManager } from './worktrees.js';
 import { redactSecrets } from './drivers/types.js';
 import {
   isExcludedClaudeVps,
+  normalizeCompanionKeepalive,
   type DriverKind,
   type MaterialTaskRole,
   type MemberLocation,
@@ -1562,6 +1563,25 @@ export class DuolaWorkApp {
         } finally {
           clearTimeout(timer);
         }
+        return;
+      }
+
+      if (pathname === '/api/v2/settings/companion-keepalive' && method === 'GET') {
+        sendJson(res, 200, this.nodeHub.getCompanionKeepalivePrefs());
+        return;
+      }
+
+      if (pathname === '/api/v2/settings/companion-keepalive' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const current = this.nodeHub.getCompanionKeepalivePrefs();
+        const updated = normalizeCompanionKeepalive({
+          deepseekHarness:
+            body.deepseekHarness !== undefined ? Boolean(body.deepseekHarness) : current.deepseekHarness,
+          grokBot: body.grokBot !== undefined ? Boolean(body.grokBot) : current.grokBot
+        });
+        this.db.setSetting('companion_keepalive', updated);
+        this.nodeHub.broadcastCompanionKeepalive(updated);
+        sendJson(res, 200, updated);
         return;
       }
 

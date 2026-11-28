@@ -5,13 +5,18 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { chromium } from 'playwright';
+import { DuolaWorkNodeRunner, ensureMacCompanionApps } from '../src/node-runner/index.js';
 import { DuolaWorkApp } from '../src/server/app.js';
 import {
   activateDiscoveredAgent,
   discoverLocalAgents,
   ForbiddenDiscoveryError
 } from '../src/server/discovery.js';
-import { EXCLUDED_CLAUDE_VPS_MEMBER_ID } from '../src/shared/types.js';
+import {
+  DEFAULT_COMPANION_KEEPALIVE,
+  EXCLUDED_CLAUDE_VPS_MEMBER_ID,
+  type CompanionKeepalivePrefs
+} from '../src/shared/types.js';
 
 const require = createRequire(import.meta.url);
 const { DEFAULT_CLOUD_URL, resolveDesktopBootMode } = require('../desktop/boot-mode.cjs') as {
@@ -235,16 +240,133 @@ test('DW3-03: EmptyThreadWelcome scenarios, bilingual i18n toggle persistence, t
     await sidebar.getByRole('button', { name: /^Schedules/ }).click();
     await page.getByRole('heading', { name: 'Tasks & Schedules', exact: true }).waitFor();
 
-    // 5. Open Members & Usage page -> verify BYOS Discovery frame renders in English & toggle back to Chinese
+    // 5. Open Members & Usage page -> verify BYOS Discovery & Companion Keepalive switches (default OFF) & toggle back to Chinese
     await sidebar.getByRole('button', { name: /^Members & Usage/ }).click();
     await page.getByTestId('byos-discovery-card').waitFor();
     await page.getByText('Auto-Discover Local Agents (BYOS)').waitFor();
+
+    await page.getByTestId('companion-keepalive-card').waitFor();
+    const deepseekSwitch = page.getByTestId('keepalive-toggle-deepseek');
+    const grokSwitch = page.getByTestId('keepalive-toggle-grok');
+    assert.equal(await deepseekSwitch.getAttribute('aria-checked'), 'false');
+    assert.equal(await grokSwitch.getAttribute('aria-checked'), 'false');
+    await deepseekSwitch.click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="keepalive-toggle-deepseek"]')?.getAttribute('aria-checked') === 'true'
+    );
+    await page.reload({ waitUntil: 'networkidle' });
+    await sidebar.getByRole('button', { name: /^Members & Usage/ }).click();
+    await page.getByTestId('companion-keepalive-card').waitFor();
+    assert.equal(await page.getByTestId('keepalive-toggle-deepseek').getAttribute('aria-checked'), 'true');
+    assert.equal(await page.getByTestId('keepalive-toggle-grok').getAttribute('aria-checked'), 'false');
+    await page.getByTestId('keepalive-toggle-deepseek').click();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="keepalive-toggle-deepseek"]')?.getAttribute('aria-checked') === 'false'
+    );
 
     await page.getByTestId('locale-toggle').click();
     await page.getByRole('heading', { name: '成员与用量统计' }).waitFor();
     await page.getByText('本机 Agent 一键发现').waitFor();
   } finally {
     await browser.close();
+    await app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('DW3-04: companion keepalive defaults OFF, launches selectively when enabled, and live-syncs to local node runner', async () => {
+  const launchedCmds: string[][] = [];
+  const deps = {
+    platform: 'darwin',
+    existsSync: () => true,
+    isRunning: async () => false,
+    launch: async (args: string[]) => {
+      launchedCmds.push(args);
+    }
+  };
+
+  const offRes = await ensureMacCompanionApps(DEFAULT_COMPANION_KEEPALIVE, deps);
+  assert.deepEqual(offRes.launched, []);
+  assert.equal(launchedCmds.length, 0);
+
+  const dsRes = await ensureMacCompanionApps({ deepseekHarness: true, grokBot: false }, deps);
+  assert.deepEqual(dsRes.launched, ['DeepSeek Harness.app']);
+  assert.equal(launchedCmds.length, 1);
+  assert.ok(launchedCmds[0].includes('/Applications/DeepSeek Harness.app'));
+
+  const grokRes = await ensureMacCompanionApps({ deepseekHarness: false, grokBot: true }, deps);
+  assert.deepEqual(grokRes.launched, ['Grok Bot.app']);
+  assert.equal(launchedCmds.length, 2);
+  assert.ok(launchedCmds[1].includes('/Applications/Grok Bot.app'));
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dw3-keepalive-'));
+  const app = new DuolaWorkApp({
+    dbPath: path.join(dir, 'v3-keepalive.sqlite'),
+    filesDir: path.join(dir, 'files'),
+    autoImportAgentHub: false
+  });
+
+  let runner: DuolaWorkNodeRunner | null = null;
+  try {
+    const { url } = await app.listen(0, '127.0.0.1');
+    const { code } = app.nodeHub.createPairingCode({ name: 'TestMac', kind: 'local' });
+    const { nodeToken } = app.nodeHub.pairNode({
+      code,
+      name: 'TestMac',
+      kind: 'local',
+      platform: 'darwin'
+    });
+
+    const received: CompanionKeepalivePrefs[] = [];
+    runner = new DuolaWorkNodeRunner({
+      serverUrl: url,
+      nodeToken,
+      name: 'TestMac',
+      kind: 'local',
+      members: [],
+      outboxPath: path.join(dir, 'outbox.json')
+    });
+    runner.onCompanionKeepaliveChanged = (prefs) => {
+      received.push(prefs);
+    };
+
+    await runner.start();
+    assert.deepEqual(runner.getCompanionKeepalive(), DEFAULT_COMPANION_KEEPALIVE);
+
+    const getInitial = await fetch(`${url}/api/v2/settings/companion-keepalive`);
+    assert.equal(getInitial.status, 200);
+    assert.deepEqual(await getInitial.json(), { deepseekHarness: false, grokBot: false });
+
+    const postEnable = await fetch(`${url}/api/v2/settings/companion-keepalive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deepseekHarness: true })
+    });
+    assert.equal(postEnable.status, 200);
+    assert.deepEqual(await postEnable.json(), { deepseekHarness: true, grokBot: false });
+
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline && !runner.getCompanionKeepalive().deepseekHarness) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.deepEqual(runner.getCompanionKeepalive(), { deepseekHarness: true, grokBot: false });
+    assert.ok(received.some((p) => p.deepseekHarness === true && p.grokBot === false));
+
+    const postDisable = await fetch(`${url}/api/v2/settings/companion-keepalive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deepseekHarness: false, grokBot: false })
+    });
+    assert.equal(postDisable.status, 200);
+    assert.deepEqual(await postDisable.json(), { deepseekHarness: false, grokBot: false });
+
+    const deadline2 = Date.now() + 4000;
+    while (Date.now() < deadline2 && runner.getCompanionKeepalive().deepseekHarness) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    assert.deepEqual(runner.getCompanionKeepalive(), { deepseekHarness: false, grokBot: false });
+  } finally {
+    runner?.stop();
     await app.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }

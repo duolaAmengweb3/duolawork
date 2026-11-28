@@ -17,13 +17,15 @@ import {
   X
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type {
-  AuthSessionRecord,
-  DriverKind,
-  ExecutionNodeRecord,
-  MemberRecord,
-  MemberUsageSummary,
-  ThreeTierUsage
+import {
+  DEFAULT_COMPANION_KEEPALIVE,
+  type AuthSessionRecord,
+  type CompanionKeepalivePrefs,
+  type DriverKind,
+  type ExecutionNodeRecord,
+  type MemberRecord,
+  type MemberUsageSummary,
+  type ThreeTierUsage
 } from '../shared/types.js';
 import { AgentAvatar } from './AgentAvatar.js';
 import { Badge } from './components/ui/badge.js';
@@ -119,6 +121,11 @@ export function MembersUsagePage({
     0,
     authRequired
   );
+  const keepaliveData = useViewData<CompanionKeepalivePrefs>(
+    '/api/v2/settings/companion-keepalive',
+    0
+  );
+  const keepalivePrefs = keepaliveData.data ?? DEFAULT_COMPANION_KEEPALIVE;
   const summaries = useMemo(
     () => Object.fromEntries((usage.data?.summaries ?? []).map((s) => [s.memberId, s])),
     [usage.data]
@@ -148,6 +155,7 @@ export function MembersUsagePage({
   } | null>(null);
   const [discoverLoading, setDiscoverLoading] = useState<boolean>(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [savingKeepalive, setSavingKeepalive] = useState<'deepseekHarness' | 'grokBot' | null>(null);
 
   const loadDiscover = useMemo(
     () => async () => {
@@ -172,6 +180,7 @@ export function MembersUsagePage({
 
   const loadUsage = usage.read;
   const loadSessions = sessionData.read;
+  const loadKeepalive = keepaliveData.read;
   useEffect(() => {
     let active = true;
     const report = () => {
@@ -179,6 +188,7 @@ export function MembersUsagePage({
     };
     void loadUsage().catch(report);
     void loadSessions().catch(report);
+    void loadKeepalive().catch(() => {});
     void loadDiscover();
     const timer = window.setInterval(() => {
       if (!document.hidden) void loadUsage(true).catch(report);
@@ -187,7 +197,40 @@ export function MembersUsagePage({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadUsage, loadSessions, loadDiscover, members.length, L]);
+  }, [loadUsage, loadSessions, loadKeepalive, loadDiscover, members.length, L]);
+
+  const handleToggleKeepalive = async (key: 'deepseekHarness' | 'grokBot') => {
+    const nextValue = !keepalivePrefs[key];
+    setSavingKeepalive(key);
+    setError('');
+    try {
+      const res = await fetch('/api/v2/settings/companion-keepalive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: nextValue })
+      });
+      const data = (await res.json().catch(() => ({}))) as Partial<CompanionKeepalivePrefs> & {
+        message?: string;
+      };
+      if (!res.ok) {
+        setError(data.message || L('更新伴生保活开关失败', 'Failed to update companion keepalive'));
+        return;
+      }
+      const nextPrefs: CompanionKeepalivePrefs = {
+        deepseekHarness: Boolean(data.deepseekHarness),
+        grokBot: Boolean(data.grokBot)
+      };
+      views.put('/api/v2/settings/companion-keepalive', nextPrefs);
+      const appName = key === 'deepseekHarness' ? 'DeepSeek Harness' : 'Grok Bot';
+      toast.success(
+        nextPrefs[key]
+          ? L(`已开启 ${appName} 自动保活`, `Enabled keepalive for ${appName}`)
+          : L(`已关闭 ${appName} 自动保活`, `Disabled keepalive for ${appName}`)
+      );
+    } finally {
+      setSavingKeepalive(null);
+    }
+  };
 
   const handleActivateDiscovered = async (candidate: DiscoveredAgentCandidate) => {
     setActivatingId(candidate.id);
@@ -1145,6 +1188,90 @@ export function MembersUsagePage({
             </Frame>
           )}
         </div>
+
+        {/* Desktop Companion Keepalive Switches (Default OFF) */}
+        <Frame data-testid="companion-keepalive-card">
+          <FrameHeader className="flex-row items-center justify-between gap-2 px-4 py-3">
+            <div className="min-w-0">
+              <FrameTitle className="flex items-center gap-1.5 text-[13px]">
+                <Laptop size={14} className="text-muted-foreground" />
+                <span>{L('桌面伴生应用自动保活', 'Desktop Companion Keepalive')}</span>
+              </FrameTitle>
+              <FrameDescription className="text-[11.5px]">
+                {L(
+                  '默认关闭。仅开启需要本机节点后台保持在线的连接器；关闭后手动退出不再自动拉起。',
+                  'Off by default. Enable only for desktop connectors you want kept running in the background; disabled apps will not auto-relaunch after quitting.'
+                )}
+              </FrameDescription>
+            </div>
+          </FrameHeader>
+          <FramePanel className="p-0">
+            <div className="grid grid-cols-1 divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
+              {(
+                [
+                  {
+                    key: 'deepseekHarness' as const,
+                    testId: 'keepalive-toggle-deepseek',
+                    platformId: 'deepseek-harness',
+                    label: 'DeepSeek Harness',
+                    desc: L(
+                      '关闭后手动退出 DeepSeek Harness 不再每 3 分钟自动拉起。',
+                      'When off, quitting DeepSeek Harness prevents automatic background relaunch.'
+                    )
+                  },
+                  {
+                    key: 'grokBot' as const,
+                    testId: 'keepalive-toggle-grok',
+                    platformId: 'grok-bot',
+                    label: 'Grok Bot',
+                    desc: L(
+                      '仅当需要通过桌面连接器保持 Grok Bot 在线时开启。',
+                      'Enable only when you want Grok Bot kept running for desktop bridging.'
+                    )
+                  }
+                ]
+              ).map((item) => {
+                const enabled = Boolean(keepalivePrefs[item.key]);
+                return (
+                  <div key={item.key} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <AgentAvatar small name={item.label} platformId={item.platformId} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-[13px] font-medium text-foreground">
+                            {item.label}
+                          </span>
+                          <Badge variant={enabled ? 'success' : 'secondary'} size="sm">
+                            {enabled ? L('自动保活已开', 'Keepalive On') : L('不自动拉起', 'Keepalive Off')}
+                          </Badge>
+                        </div>
+                        <p className="m-0 mt-0.5 text-[11.5px] text-muted-foreground">{item.desc}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enabled}
+                      aria-label={item.label}
+                      data-testid={item.testId}
+                      disabled={savingKeepalive === item.key}
+                      onClick={() => void handleToggleKeepalive(item.key)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
+                        enabled ? 'border-emerald-600 bg-emerald-600' : 'border-border bg-muted'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none block size-4 rounded-full bg-white shadow-sm transition-transform ${
+                          enabled ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </FramePanel>
+        </Frame>
 
         {/* Detailed Three-Tier Dispatch & Token Usage Ledger */}
         <Frame>

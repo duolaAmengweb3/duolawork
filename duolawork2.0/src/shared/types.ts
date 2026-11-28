@@ -628,3 +628,21 @@ export interface DuolaBasePublicStatus {
   tokenSource: 'env' | 'settings' | 'codex_config' | 'mock' | 'none';
   consoleUrl: string;
 }
+
+export interface CompanionKeepalivePrefs {
+  deepseekHarness: boolean;
+  grokBot: boolean;
+}
+
+export const DEFAULT_COMPANION_KEEPALIVE: CompanionKeepalivePrefs = {
+  deepseekHarness: false,
+  grokBot: false
+};
+
+export function normalizeCompanionKeepalive(raw: unknown): CompanionKeepalivePrefs {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return {
+    deepseekHarness: Boolean(obj.deepseekHarness),
+    grokBot: Boolean(obj.grokBot)
+  };
+}
