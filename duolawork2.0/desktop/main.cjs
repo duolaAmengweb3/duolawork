@@ -4,6 +4,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, nativeTheme } = require('electron');
 const { DEFAULT_CLOUD_URL, resolveDesktopBootMode } = require('./boot-mode.cjs');
+const { createModeSwitchController, handleWillPreventUnload } = require('./mode-switch.cjs');
 
 const testMode = process.env.DUOLAWORK_V2_TEST_MODE === '1';
 const customUserData = process.env.DUOLAWORK_V2_USER_DATA;
@@ -38,6 +39,8 @@ let currentThemeMode = 'light';
 let duolaApp = null;
 let activeAppUrl = '';
 let shuttingDown = false;
+let currentRuntimeInfo = { mode: 'local', cloudUrl: '', clientConfigPath: '' };
+let modeSwitchController = null;
 
 function applyWindowTheme(theme) {
   const mode = theme === 'dark' ? 'dark' : 'light';
@@ -94,6 +97,7 @@ function writeClientConfigMode(clientConfigPath, mode, cloudUrl) {
 }
 
 function buildAppMenu(runtimeInfo = { mode: 'local', cloudUrl: '', clientConfigPath: '' }) {
+  currentRuntimeInfo = runtimeInfo;
   const isMac = process.platform === 'darwin';
   const modeLabel =
     runtimeInfo.mode === 'cloud'
@@ -109,9 +113,13 @@ function buildAppMenu(runtimeInfo = { mode: 'local', cloudUrl: '', clientConfigP
           checked: runtimeInfo.mode === 'local',
           click: () => {
             if (runtimeInfo.mode === 'local') return;
-            writeClientConfigMode(runtimeInfo.clientConfigPath, 'local', runtimeInfo.cloudUrl);
-            app.relaunch();
-            app.exit(0);
+            if (modeSwitchController) {
+              modeSwitchController.requestModeSwitch('local', runtimeInfo.cloudUrl);
+            } else {
+              writeClientConfigMode(runtimeInfo.clientConfigPath, 'local', runtimeInfo.cloudUrl);
+              app.relaunch();
+              app.quit();
+            }
           }
         },
         {
@@ -125,9 +133,13 @@ function buildAppMenu(runtimeInfo = { mode: 'local', cloudUrl: '', clientConfigP
               (typeof prev?.serverUrl === 'string' && prev.serverUrl.trim()) ||
               runtimeInfo.cloudUrl ||
               DEFAULT_CLOUD_URL;
-            writeClientConfigMode(runtimeInfo.clientConfigPath, 'cloud', targetUrl);
-            app.relaunch();
-            app.exit(0);
+            if (modeSwitchController) {
+              modeSwitchController.requestModeSwitch('cloud', targetUrl);
+            } else {
+              writeClientConfigMode(runtimeInfo.clientConfigPath, 'cloud', targetUrl);
+              app.relaunch();
+              app.quit();
+            }
           }
         }
       ]
@@ -240,6 +252,24 @@ function createMainWindow(url, buildInfo, initialTheme = 'light') {
     return { action: 'deny' };
   });
 
+  win.webContents.on('will-prevent-unload', (event) => {
+    handleWillPreventUnload({
+      event,
+      showConfirmDialog: () =>
+        dialog.showMessageBoxSync(win, {
+          type: 'question',
+          message: '当前有未发送草稿或未保存修改',
+          detail: '退出或切换运行模式会放弃未保存的内容。',
+          buttons: ['继续编辑', '放弃修改'],
+          defaultId: 0,
+          cancelId: 0
+        }),
+      onCancel: () => {
+        modeSwitchController?.cancelPendingSwitch();
+      }
+    });
+  });
+
   win.once('ready-to-show', () => {
     if (!hiddenForTest && !win.isDestroyed()) {
       win.show();
@@ -320,11 +350,19 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Let reader windows finish their unsaved-edit checks before stopping the local service.
+// Let windows finish their unsaved-edit checks before committing mode switch and stopping the local service.
 app.on('will-quit', async (event) => {
   if (!shuttingDown) {
     event.preventDefault();
     await shutdownCleanly();
+    const switching = modeSwitchController?.commitPendingSwitchBeforeQuit();
+    if (switching && !testMode) {
+      try {
+        app.releaseSingleInstanceLock();
+      } catch {
+        // ignore
+      }
+    }
     app.exit(0);
   }
 });
@@ -356,6 +394,14 @@ app.whenReady().then(async () => {
     testMode
   });
   const cloudUrl = boot.cloudUrl;
+
+  modeSwitchController = createModeSwitchController({
+    getCurrentRuntimeInfo: () => currentRuntimeInfo,
+    writeMode: writeClientConfigMode,
+    quitApp: () => app.quit(),
+    relaunchApp: () => app.relaunch(),
+    rebuildMenu: (info) => buildAppMenu(info)
+  });
 
   buildAppMenu({ mode: boot.mode, cloudUrl, clientConfigPath });
 
@@ -467,16 +513,22 @@ app.whenReady().then(async () => {
       win.webContents.setIgnoreMenuShortcuts(closeTab);
     });
 
-    win.webContents.on('will-prevent-unload', event => {
-      const choice = dialog.showMessageBoxSync(win, {
-        type: 'question',
-        message: '文档还有未保存的修改',
-        detail: '关闭或重新载入窗口会放弃这些修改。',
-        buttons: ['继续编辑', '放弃修改'],
-        defaultId: 0,
-        cancelId: 0
+    win.webContents.on('will-prevent-unload', (event) => {
+      handleWillPreventUnload({
+        event,
+        showConfirmDialog: () =>
+          dialog.showMessageBoxSync(win, {
+            type: 'question',
+            message: '文档还有未保存的修改',
+            detail: '关闭或重新载入窗口会放弃这些修改。',
+            buttons: ['继续编辑', '放弃修改'],
+            defaultId: 0,
+            cancelId: 0
+          }),
+        onCancel: () => {
+          modeSwitchController?.cancelPendingSwitch();
+        }
       });
-      if (choice === 1) event.preventDefault();
     });
 
     win.once('ready-to-show', () => {

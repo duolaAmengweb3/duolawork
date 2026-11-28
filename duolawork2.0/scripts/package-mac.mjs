@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,14 +17,34 @@ if (!fs.existsSync(buildInfoPath) || !fs.existsSync(path.join(rootDir, 'dist', '
 const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, 'utf8'));
 
 function findElectronTemplateApp() {
+  const req = createRequire(import.meta.url);
+  let resolvedPkgDir = '';
+  let resolvedFromPackage = '';
+  try {
+    resolvedPkgDir = path.dirname(req.resolve('electron/package.json'));
+    resolvedFromPackage = path.join(resolvedPkgDir, 'dist', 'Electron.app');
+  } catch {
+    resolvedPkgDir = '';
+    resolvedFromPackage = '';
+  }
   const candidates = [
     process.env.DUOLAWORK_ELECTRON_APP,
     path.join(rootDir, 'node_modules/electron/dist/Electron.app'),
-    '/Users/duola/Desktop/Xduola/.worktrees/agent-hub-conversation-20261031/node_modules/electron/dist/Electron.app'
+    resolvedFromPackage,
+    path.resolve(rootDir, '..', 'node_modules/electron/dist/Electron.app')
   ].filter(Boolean);
-  const found = candidates.find((p) => fs.existsSync(path.join(p, 'Contents/MacOS/Electron')));
+  let found = candidates.find((p) => fs.existsSync(path.join(p, 'Contents/MacOS/Electron')));
+  if (!found && resolvedPkgDir && fs.existsSync(path.join(resolvedPkgDir, 'install.js'))) {
+    console.log('[package:mac] Electron.app template missing; running electron installer...');
+    const hasProxy = Boolean(
+      process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
+    );
+    const args = hasProxy ? ['--use-env-proxy', path.join(resolvedPkgDir, 'install.js')] : [path.join(resolvedPkgDir, 'install.js')];
+    execFileSync(process.execPath, args, { cwd: rootDir, stdio: 'inherit' });
+    found = candidates.find((p) => fs.existsSync(path.join(p, 'Contents/MacOS/Electron')));
+  }
   if (!found) {
-    throw new Error('未找到可用 Electron.app 模板');
+    throw new Error('未找到可用 Electron.app 模板，请先执行 npm ci 安装 electron');
   }
   return found;
 }
@@ -89,10 +110,11 @@ if (fs.existsSync(icnsSrc)) {
 
 // Preserve standalone external MCP/Feishu helper bundles for live process compatibility without importing 1.x server code
 const compatBundleNames = ['feishu-mcp-bundle.cjs', 'mcp-tool-host-bundle.cjs'];
+const compatReleaseRoot = process.env.DUOLAWORK_COMPAT_RELEASE_DIR || path.resolve(rootDir, '..', 'release');
 const compatSearchDirs = [
-  '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/DuolaWork.app/Contents/Resources/app/local',
-  '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/Agent Hub.app/Contents/Resources/app/local',
-  '/Users/duola/Desktop/Xduola/32号-Agent-Hub/release/previous-Agent-Hub-1.9.6.app/Contents/Resources/app/local'
+  path.join(compatReleaseRoot, 'DuolaWork.app', 'Contents', 'Resources', 'app', 'local'),
+  path.join(compatReleaseRoot, 'Agent Hub.app', 'Contents', 'Resources', 'app', 'local'),
+  path.join(compatReleaseRoot, 'previous-Agent-Hub-1.9.6.app', 'Contents', 'Resources', 'app', 'local')
 ];
 for (const bundleName of compatBundleNames) {
   for (const dir of compatSearchDirs) {

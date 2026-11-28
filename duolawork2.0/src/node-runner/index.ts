@@ -89,6 +89,8 @@ export class DuolaWorkNodeRunner {
   private pingTimer: NodeJS.Timeout | null = null;
   private readonly outboxPath: string | null;
   private companionKeepalive: CompanionKeepalivePrefs;
+  private companionKeepaliveRevision = 0;
+  private controlPlaneSynced = false;
   public onCompanionKeepaliveChanged?: (prefs: CompanionKeepalivePrefs) => void;
 
   constructor(private readonly config: NodeRunnerConfig) {
@@ -103,6 +105,28 @@ export class DuolaWorkNodeRunner {
 
   public getCompanionKeepalive(): CompanionKeepalivePrefs {
     return { ...this.companionKeepalive };
+  }
+
+  public getCompanionKeepaliveRevision(): number {
+    return this.companionKeepaliveRevision;
+  }
+
+  public isControlPlaneConnected(): boolean {
+    return (
+      !this.stopped &&
+      this.controlPlaneSynced &&
+      Boolean(this.ws && this.ws.readyState === WebSocket.OPEN)
+    );
+  }
+
+  public async runCompanionKeepaliveCheck(
+    deps?: Parameters<typeof ensureMacCompanionApps>[1]
+  ): Promise<{ launched: string[]; paused: boolean; reason?: string }> {
+    if (!this.isControlPlaneConnected()) {
+      return { launched: [], paused: true, reason: 'control_plane_disconnected' };
+    }
+    const res = await ensureMacCompanionApps(this.getCompanionKeepalive(), deps);
+    return { launched: res.launched, paused: false };
   }
 
   private rejectPendingStart?: (err: Error) => void;
@@ -129,6 +153,7 @@ export class DuolaWorkNodeRunner {
 
   public stop(): void {
     this.stopped = true;
+    this.controlPlaneSynced = false;
     this.rejectPendingStart?.(new Error('NODE_STOPPED'));
     this.rejectPendingStart = undefined;
     if (this.reconnectTimer) {
@@ -456,10 +481,19 @@ export class DuolaWorkNodeRunner {
       }
       if (msg.type === 'node.welcome') {
         this.canResumeTools = msg.resumesToolCalls === true;
+        this.controlPlaneSynced = true;
         if (msg.companionKeepalive && typeof msg.companionKeepalive === 'object') {
           this.companionKeepalive = normalizeCompanionKeepalive(msg.companionKeepalive);
-          this.onCompanionKeepaliveChanged?.(this.getCompanionKeepalive());
         }
+        if (msg.companionKeepaliveRevision !== undefined) {
+          this.companionKeepaliveRevision = Number(msg.companionKeepaliveRevision) || 0;
+        }
+        this.send({
+          type: 'node.companion_keepalive_ack',
+          revision: this.companionKeepaliveRevision,
+          prefs: this.getCompanionKeepalive()
+        });
+        this.onCompanionKeepaliveChanged?.(this.getCompanionKeepalive());
         for (const pending of this.pendingToolCalls.values()) {
           if (!pending.sent || this.canResumeTools) {
             this.send(pending.frame);
@@ -475,7 +509,10 @@ export class DuolaWorkNodeRunner {
     });
 
     ws.on('close', () => {
-      if (this.ws === ws) this.ws = null;
+      if (this.ws === ws) {
+        this.ws = null;
+        this.controlPlaneSynced = false;
+      }
       if (this.pingTimer) {
         clearInterval(this.pingTimer);
         this.pingTimer = null;
@@ -511,9 +548,17 @@ export class DuolaWorkNodeRunner {
 
     if (type === 'node.companion_keepalive') {
       this.companionKeepalive = normalizeCompanionKeepalive(msg.prefs);
+      if (msg.revision !== undefined) {
+        this.companionKeepaliveRevision = Number(msg.revision) || this.companionKeepaliveRevision;
+      }
       console.log(
-        `[duolawork-node] companion keepalive updated: deepseekHarness=${this.companionKeepalive.deepseekHarness} grokBot=${this.companionKeepalive.grokBot}`
+        `[duolawork-node] companion keepalive updated (r${this.companionKeepaliveRevision}): deepseekHarness=${this.companionKeepalive.deepseekHarness} grokBot=${this.companionKeepalive.grokBot}`
       );
+      this.send({
+        type: 'node.companion_keepalive_ack',
+        revision: this.companionKeepaliveRevision,
+        prefs: this.getCompanionKeepalive()
+      });
       this.onCompanionKeepaliveChanged?.(this.getCompanionKeepalive());
       return;
     }
@@ -1127,17 +1172,17 @@ async function runCliIfMain(): Promise<void> {
   }
   const runner = new DuolaWorkNodeRunner(cfg);
   let companionTimer: NodeJS.Timeout | null = null;
-  runner.onCompanionKeepaliveChanged = (prefs) => {
+  runner.onCompanionKeepaliveChanged = () => {
     if (process.platform === 'darwin' && cfg.kind === 'local') {
-      void ensureMacCompanionApps(prefs);
+      void runner.runCompanionKeepaliveCheck();
     }
   };
   await runner.start();
   console.log(`[duolawork-node] connected to ${cfg.serverUrl} as "${cfg.name}" (${cfg.kind})`);
   if (process.platform === 'darwin' && cfg.kind === 'local') {
-    void ensureMacCompanionApps(runner.getCompanionKeepalive());
+    void runner.runCompanionKeepaliveCheck();
     companionTimer = setInterval(() => {
-      void ensureMacCompanionApps(runner.getCompanionKeepalive());
+      void runner.runCompanionKeepaliveCheck();
     }, 3 * 60_000);
     companionTimer.unref?.();
   }

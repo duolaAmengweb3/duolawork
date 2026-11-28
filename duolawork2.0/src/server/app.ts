@@ -194,6 +194,13 @@ export class DuolaWorkApp {
 
     this.nodeHub.onNodesChanged = (nodes) => {
       this.threads.emit({ type: 'nodes.updated', payload: nodes });
+      this.threads.emit({
+        type: 'settings.companion_keepalive',
+        payload: this.nodeHub.getCompanionKeepaliveStatus()
+      });
+    };
+    this.nodeHub.onCompanionKeepaliveChanged = (status) => {
+      this.threads.emit({ type: 'settings.companion_keepalive', payload: status });
     };
     this.nodeHub.onMembersChanged = () => {
       this.threads.emit({ type: 'thread.members_refreshed', payload: this.db.listMembers() });
@@ -1567,21 +1574,19 @@ export class DuolaWorkApp {
       }
 
       if (pathname === '/api/v2/settings/companion-keepalive' && method === 'GET') {
-        sendJson(res, 200, this.nodeHub.getCompanionKeepalivePrefs());
+        sendJson(res, 200, this.nodeHub.getCompanionKeepaliveStatus());
         return;
       }
 
       if (pathname === '/api/v2/settings/companion-keepalive' && method === 'POST') {
         const body = await readJsonBody(req);
-        const current = this.nodeHub.getCompanionKeepalivePrefs();
-        const updated = normalizeCompanionKeepalive({
-          deepseekHarness:
-            body.deepseekHarness !== undefined ? Boolean(body.deepseekHarness) : current.deepseekHarness,
-          grokBot: body.grokBot !== undefined ? Boolean(body.grokBot) : current.grokBot
+        const status = this.nodeHub.setCompanionKeepalivePrefs({
+          ...(body.deepseekHarness !== undefined
+            ? { deepseekHarness: Boolean(body.deepseekHarness) }
+            : {}),
+          ...(body.grokBot !== undefined ? { grokBot: Boolean(body.grokBot) } : {})
         });
-        this.db.setSetting('companion_keepalive', updated);
-        this.nodeHub.broadcastCompanionKeepalive(updated);
-        sendJson(res, 200, updated);
+        sendJson(res, 200, status);
         return;
       }
 

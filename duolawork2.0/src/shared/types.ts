@@ -634,6 +634,21 @@ export interface CompanionKeepalivePrefs {
   grokBot: boolean;
 }
 
+export interface CompanionKeepaliveNodeSync {
+  nodeId: string;
+  nodeName: string;
+  online: boolean;
+  ackedRevision: number | null;
+  synced: boolean;
+  ackedAt: string | null;
+}
+
+export interface CompanionKeepaliveStatus extends CompanionKeepalivePrefs {
+  revision: number;
+  updatedAt: string | null;
+  localNodes: CompanionKeepaliveNodeSync[];
+}
+
 export const DEFAULT_COMPANION_KEEPALIVE: CompanionKeepalivePrefs = {
   deepseekHarness: false,
   grokBot: false

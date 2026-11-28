@@ -117,6 +117,19 @@ interface EnrichedStep extends TaskStepRecord {
 
 type MainViewMode = 'thread' | 'task' | 'archive' | WorkbenchNavPage;
 
+interface PendingNewThread {
+  tempId: string;
+  title: string;
+  activeOwnerMemberId: string;
+  status: 'creating' | 'failed' | 'canceled';
+  errorMessage?: string;
+  preferredMemberId?: string;
+}
+
+function isPendingThreadId(id: string): boolean {
+  return id.startsWith('__pending_new_');
+}
+
 interface DesktopBridge {
   isDesktop?: boolean;
   chooseDirectory?: (defaultPath?: string) => Promise<string | null>;
@@ -339,6 +352,8 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   const [inputDrafts, setInputDrafts] = useState<Record<string, string>>({});
   const [draftRefsByThread, setDraftRefsByThread] = useState<Record<string, SpaceReferenceChip[]>>({});
   const [sendingByThread, setSendingByThread] = useState<Record<string, boolean>>({});
+  const [pendingNewThread, setPendingNewThread] = useState<PendingNewThread | null>(null);
+  const [queuedPendingSendTempId, setQueuedPendingSendTempId] = useState<string | null>(null);
   const [clarifySelections, setClarifySelections] = useState<Record<string, Record<string, string[]>>>({});
   const [clarifyNotes, setClarifyNotes] = useState<Record<string, string>>({});
   const [editingThreadTitle, setEditingThreadTitle] = useState<boolean>(false);
@@ -403,6 +418,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
   const documentEditingRef = useRef(false);
   documentEditingRef.current = docEditing;
+  const hasUnsavedWorkRef = useRef(false);
   const selectionRef = useRef(spaceSelection);
   const loadedDocument = useRef<string | null>(null);
   const documentRequest = useRef(0);
@@ -436,6 +452,20 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   const [draftImagesByThread, setDraftImagesByThread] = useState<
     Record<string, Array<{ id: string; name: string; url: string }>>
   >({});
+  hasUnsavedWorkRef.current =
+    (docEditing && artifact !== null && docDraft !== artifact.content) ||
+    Object.values(inputDrafts).some((v) => v.trim().length > 0) ||
+    Object.values(draftImagesByThread).some((imgs) => imgs.length > 0);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedWorkRef.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
   const [uploadingChatImages, setUploadingChatImages] = useState<boolean>(false);
   const [spaceFocusFolderReq, setSpaceFocusFolderReq] = useState<{
     folderId: string | null;
@@ -453,10 +483,24 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   const sseBootIdRef = useRef<string | null>(null);
   const sseBuildIdRef = useRef<string | null>(null);
   const sseHadDisconnectRef = useRef<boolean>(false);
+  const pendingNewThreadRef = useRef<PendingNewThread | null>(null);
+  const pendingThreadSeqRef = useRef(0);
+  const pendingCreateAbortRef = useRef<AbortController | null>(null);
+  const pendingQueuedSendRef = useRef<
+    Record<
+      string,
+      {
+        rawDraftValue: string;
+        savedRefs: SpaceReferenceChip[];
+        savedImages: Array<{ id: string; name: string; url: string }>;
+        text: string;
+      } | null
+    >
+  >({});
 
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
-    if (activeThreadId) {
+    if (activeThreadId && !isPendingThreadId(activeThreadId)) {
       try { sessionStorage.setItem('dw2-thread', activeThreadId); } catch { /* Storage is optional. */ }
     }
   }, [activeThreadId]);
@@ -523,10 +567,23 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     return map;
   }, [members]);
 
-  const activeThread = useMemo(
-    () => threads.find((t) => t.id === activeThreadId) ?? null,
-    [threads, activeThreadId]
-  );
+  const activeThread = useMemo(() => {
+    if (pendingNewThread && activeThreadId === pendingNewThread.tempId) {
+      return {
+        id: pendingNewThread.tempId,
+        projectId: 'default',
+        workspacePath: null,
+        title: pendingNewThread.title,
+        activeOwnerMemberId: pendingNewThread.activeOwnerMemberId,
+        boundArtifactId: null,
+        status: 'active',
+        pinnedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } satisfies ThreadRecord;
+    }
+    return threads.find((t) => t.id === activeThreadId) ?? null;
+  }, [threads, activeThreadId, pendingNewThread]);
 
   const visibleThreads = useMemo(() => {
     const q = threadSearch.trim().toLowerCase();
@@ -588,7 +645,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   }, [newTaskLeadId]);
 
   const loadSpace = useCallback(async (threadId: string, navigation = false) => {
-    if (!threadId || threadId !== requestedSpaceThread.current) return;
+    if (!threadId || isPendingThreadId(threadId) || threadId !== requestedSpaceThread.current) return;
     const request = ++spaceRequest.current;
     setSpaceLoadError('');
     const current = () => request === spaceRequest.current && threadId === requestedSpaceThread.current;
@@ -619,6 +676,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
   useLayoutEffect(() => {
     if (spaceThreadId && (viewMode === 'thread' || viewMode === 'task')) {
+      if (isPendingThreadId(spaceThreadId)) {
+        setSpaceLoadError('');
+        setSpaceData({ threadId: spaceThreadId, data: emptySpace });
+        return;
+      }
       const cached = views.peek<ThreadSpaceData>(threadUrl(spaceThreadId)+'/space');
       if (cached) setSpaceData({threadId:spaceThreadId, data:cached});
       void loadSpace(spaceThreadId, true);
@@ -627,7 +689,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
   const loadThread = useCallback(
     async (threadId: string, navigation = false) => {
-      if (!threadId) return;
+      if (!threadId || isPendingThreadId(threadId)) return;
       const request = ++threadRequest.current;
       const toolsAtRequest = toolEventCount.current;
       setThreadLoadError('');
@@ -865,6 +927,12 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
   useLayoutEffect(() => {
     if (viewMode === 'thread' && activeThreadId) {
+      if (isPendingThreadId(activeThreadId)) {
+        setThreadLoadError('');
+        setMessagesThreadId(activeThreadId);
+        setMessages([]);
+        return;
+      }
       const cached = views.peek<ThreadView>(threadUrl(activeThreadId));
       if (cached) {setMessagesThreadId(activeThreadId);setMessages(cached.messages);}
       void loadThread(activeThreadId, true);
@@ -1000,6 +1068,11 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         }
         if (parsed.type === 'nodes.updated' && Array.isArray(parsed.payload)) {
           setNodes(parsed.payload as ExecutionNodeRecord[]);
+          views.expire('/api/v2/settings/companion-keepalive');
+          return;
+        }
+        if (parsed.type === 'settings.companion_keepalive' && parsed.payload) {
+          views.put('/api/v2/settings/companion-keepalive', parsed.payload);
           return;
         }
         if (parsed.type === 'thread.delta') {
@@ -1160,34 +1233,245 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setAuthState({ checked: true, authRequired: true, authenticated: false });
   };
 
-  const handleCreateThread = async (preferredMemberId?: string) => {
-    const defaultOwner = preferredMemberId || activeThread?.activeOwnerMemberId || members[0]?.id || '';
-    const ownerName = memberById.get(defaultOwner)?.name;
-    const res = await fetch('/api/v2/threads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: preferredMemberId && ownerName
-          ? L(`与 ${ownerName} 对话`, `Chat with ${ownerName}`)
-          : L(`新对话 ${threads.length + 1}`, `New Thread ${threads.length + 1}`),
-        activeOwnerMemberId: defaultOwner
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showChatNotice(err.message || L('新建对话失败', 'Failed to create thread'));
-      return;
+  const isPendingCancelledOrReplaced = (tempId: string, signal: AbortSignal) => {
+    const latest = pendingNewThreadRef.current;
+    return signal.aborted || !latest || latest.tempId !== tempId || latest.status === 'canceled';
+  };
+
+  const executePendingThreadCreate = async (pending: PendingNewThread) => {
+    const controller = new AbortController();
+    pendingCreateAbortRef.current = controller;
+    try {
+      const res = await fetch('/api/v2/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          title: pending.title,
+          activeOwnerMemberId: pending.activeOwnerMemberId
+        })
+      });
+      if (isPendingCancelledOrReplaced(pending.tempId, controller.signal)) {
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.message || L('新建对话失败，草稿已保留', 'Failed to create thread; draft preserved');
+        delete pendingQueuedSendRef.current[pending.tempId];
+        setQueuedPendingSendTempId((cur) => (cur === pending.tempId ? null : cur));
+        const failedState: PendingNewThread = { ...pending, status: 'failed', errorMessage: errMsg };
+        pendingNewThreadRef.current = failedState;
+        setPendingNewThread(failedState);
+        showChatNotice(errMsg);
+        return;
+      }
+
+      const data = await res.json();
+      const createdThread = data.thread as ThreadRecord;
+      if (isPendingCancelledOrReplaced(pending.tempId, controller.signal)) {
+        return;
+      }
+
+      const queued = pendingQueuedSendRef.current[pending.tempId];
+      delete pendingQueuedSendRef.current[pending.tempId];
+      setQueuedPendingSendTempId((cur) => (cur === pending.tempId ? null : cur));
+      const stillViewingPending = activeThreadIdRef.current === pending.tempId;
+
+      if (queued && stillViewingPending) {
+        setInputDrafts((prev) => {
+          if (!Object.hasOwn(prev, pending.tempId)) return prev;
+          const next = { ...prev };
+          delete next[pending.tempId];
+          return next;
+        });
+        setDraftRefsByThread((prev) => {
+          if (!Object.hasOwn(prev, pending.tempId)) return prev;
+          const next = { ...prev };
+          delete next[pending.tempId];
+          return next;
+        });
+        setDraftImagesByThread((prev) => {
+          if (!Object.hasOwn(prev, pending.tempId)) return prev;
+          const next = { ...prev };
+          delete next[pending.tempId];
+          return next;
+        });
+      } else {
+        setInputDrafts((prev) => {
+          const carried = prev[pending.tempId];
+          const next = { ...prev };
+          delete next[pending.tempId];
+          if (carried) next[createdThread.id] = carried;
+          return next;
+        });
+        setDraftRefsByThread((prev) => {
+          const carried = prev[pending.tempId];
+          const next = { ...prev };
+          delete next[pending.tempId];
+          if (carried && carried.length > 0) next[createdThread.id] = carried;
+          return next;
+        });
+        setDraftImagesByThread((prev) => {
+          const carried = prev[pending.tempId];
+          const next = { ...prev };
+          delete next[pending.tempId];
+          if (carried && carried.length > 0) next[createdThread.id] = carried;
+          return next;
+        });
+      }
+
+      pendingNewThreadRef.current = null;
+      setPendingNewThread(null);
+      setThreads((prev) => [createdThread, ...prev.filter((t) => t.id !== createdThread.id)]);
+
+      if (stillViewingPending) {
+        activeThreadIdRef.current = createdThread.id;
+        setMessagesThreadId(createdThread.id);
+        setMessages([]);
+        setActiveThreadId(createdThread.id);
+        setTimeout(() => inputRef.current?.focus(), 30);
+      }
+
+      void loadBootstrap(true);
+
+      if (queued && stillViewingPending) {
+        await submitMessageToThread(createdThread.id, queued.text, {
+          restoreOnFail: () => {
+            setInputDrafts((prev) => ({
+              ...prev,
+              [createdThread.id]: prev[createdThread.id] ? prev[createdThread.id] : queued.rawDraftValue
+            }));
+            setDraftRefsByThread((prev) => ({
+              ...prev,
+              [createdThread.id]:
+                prev[createdThread.id] && prev[createdThread.id].length > 0
+                  ? prev[createdThread.id]
+                  : queued.savedRefs
+            }));
+            setDraftImagesByThread((prev) => ({
+              ...prev,
+              [createdThread.id]:
+                prev[createdThread.id] && prev[createdThread.id].length > 0
+                  ? prev[createdThread.id]
+                  : queued.savedImages
+            }));
+          }
+        });
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError' || isPendingCancelledOrReplaced(pending.tempId, controller.signal)) {
+        return;
+      }
+      delete pendingQueuedSendRef.current[pending.tempId];
+      setQueuedPendingSendTempId((cur) => (cur === pending.tempId ? null : cur));
+      const errMsg = L('网络异常，新建对话失败，草稿已保留', 'Network error creating thread; draft preserved');
+      const failedState: PendingNewThread = { ...pending, status: 'failed', errorMessage: errMsg };
+      pendingNewThreadRef.current = failedState;
+      setPendingNewThread(failedState);
+      showChatNotice(errMsg);
+    } finally {
+      if (pendingCreateAbortRef.current === controller) {
+        pendingCreateAbortRef.current = null;
+      }
     }
-    const data = await res.json();
+  };
+
+  const handleCancelPendingThread = (tempId: string) => {
+    pendingCreateAbortRef.current?.abort();
+    pendingCreateAbortRef.current = null;
+    delete pendingQueuedSendRef.current[tempId];
+    setQueuedPendingSendTempId((cur) => (cur === tempId ? null : cur));
+    const cur = pendingNewThreadRef.current;
+    if (!cur || cur.tempId !== tempId) return;
+    const canceled: PendingNewThread = {
+      ...cur,
+      status: 'canceled',
+      errorMessage: L('已取消创建，当前输入草稿已保留', 'Creation canceled; draft preserved')
+    };
+    pendingNewThreadRef.current = canceled;
+    setPendingNewThread(canceled);
+    showChatNotice(L('已取消新建对话，输入草稿已保留', 'Canceled new thread; draft preserved'));
+  };
+
+  const handleRetryPendingThread = (tempId: string) => {
+    const cur = pendingNewThreadRef.current;
+    if (!cur || cur.tempId !== tempId) return;
+    const retried: PendingNewThread = {
+      ...cur,
+      status: 'creating',
+      errorMessage: undefined
+    };
+    pendingNewThreadRef.current = retried;
+    setPendingNewThread(retried);
+    void executePendingThreadCreate(retried);
+  };
+
+  const handleSelectExistingThread = (threadId: string) => {
+    const p = pendingNewThreadRef.current;
+    if (p) {
+      delete pendingQueuedSendRef.current[p.tempId];
+      setQueuedPendingSendTempId((cur) => (cur === p.tempId ? null : cur));
+      if (p.status !== 'creating' && !(inputDrafts[p.tempId] || '').trim()) {
+        pendingNewThreadRef.current = null;
+        setPendingNewThread(null);
+      }
+    }
     resetTransientMenus();
-    await loadBootstrap(true);
+    setViewMode('thread');
+    setSpaceSelection(null);
+    activeThreadIdRef.current = threadId;
+    setActiveThreadId(threadId);
+    setMobileSidebarOpen(false);
+  };
+
+  const handleCreateThread = async (preferredMemberId?: string) => {
+    const curPending = pendingNewThreadRef.current;
+    const defaultOwner =
+      preferredMemberId ||
+      (activeThread && !isPendingThreadId(activeThread.id) ? activeThread.activeOwnerMemberId : undefined) ||
+      curPending?.activeOwnerMemberId ||
+      members[0]?.id ||
+      '';
+    const ownerName = memberById.get(defaultOwner)?.name;
+    const title =
+      preferredMemberId && ownerName
+        ? L(`与 ${ownerName} 对话`, `Chat with ${ownerName}`)
+        : L(`新对话 ${threads.length + 1}`, `New Thread ${threads.length + 1}`);
+    const prevThreadId =
+      activeThreadId && !isPendingThreadId(activeThreadId)
+        ? activeThreadId
+        : curPending?.preferredMemberId || threads[0]?.id || '';
+
+    pendingCreateAbortRef.current?.abort();
+    pendingCreateAbortRef.current = null;
+    if (curPending) {
+      delete pendingQueuedSendRef.current[curPending.tempId];
+    }
+
+    const tempId = `__pending_new_${++pendingThreadSeqRef.current}`;
+    const pending: PendingNewThread = {
+      tempId,
+      title,
+      activeOwnerMemberId: defaultOwner,
+      status: 'creating',
+      preferredMemberId: prevThreadId || undefined
+    };
+
+    pendingNewThreadRef.current = pending;
+    setPendingNewThread(pending);
+    setQueuedPendingSendTempId(null);
+    resetTransientMenus();
     setViewMode('thread');
     setSpaceSelection(null);
     setSpaceTab('documents');
-    setMessagesThreadId(data.thread.id);
+    setThreadLoadError('');
+    setMessagesThreadId(tempId);
     setMessages([]);
-    setActiveThreadId(data.thread.id);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    activeThreadIdRef.current = tempId;
+    setActiveThreadId(tempId);
+    setTimeout(() => inputRef.current?.focus(), 20);
+
+    await executePendingThreadCreate(pending);
   };
 
   const handleTogglePinThread = async (thread: ThreadRecord, e: React.MouseEvent) => {
@@ -1243,6 +1527,15 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     setOwnerMenuOpen(false);
     setEditingWorkspace(false);
     if (!activeThreadId || switchingThreads.has(activeThreadId) || activeThread?.activeOwnerMemberId === memberId) return;
+    if (isPendingThreadId(activeThreadId)) {
+      const cur = pendingNewThreadRef.current;
+      if (cur && cur.tempId === activeThreadId) {
+        const nextPending = { ...cur, activeOwnerMemberId: memberId };
+        pendingNewThreadRef.current = nextPending;
+        setPendingNewThread(nextPending);
+      }
+      return;
+    }
     const targetThreadId = activeThreadId;
     setSwitchingThreads(prev => new Set(prev).add(targetThreadId));
     try {
@@ -1360,6 +1653,22 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
     ]
       .filter(Boolean)
       .join('\n\n');
+
+    if (isPendingThreadId(targetThreadId)) {
+      const pending = pendingNewThreadRef.current;
+      if (!pending || pending.tempId !== targetThreadId) return;
+      pendingQueuedSendRef.current[targetThreadId] = {
+        rawDraftValue,
+        savedRefs,
+        savedImages,
+        text
+      };
+      setQueuedPendingSendTempId(targetThreadId);
+      if (pending.status !== 'creating') {
+        handleRetryPendingThread(targetThreadId);
+      }
+      return;
+    }
 
     const restoreUnconfirmedDraft = () => {
       setInputDrafts((prev) => ({
@@ -1505,7 +1814,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   };
 
   const handleSaveThreadTitle = async () => {
-    if (!activeThread) return;
+    if (!activeThread || isPendingThreadId(activeThread.id)) {
+      setEditingThreadTitle(false);
+      return;
+    }
     const trimmed = threadTitleDraft.trim();
     setEditingThreadTitle(false);
     if (!trimmed || trimmed === activeThread.title) return;
@@ -1520,7 +1832,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   };
 
   const handleChooseThreadWorkspace = async () => {
-    if (!activeThread) return;
+    if (!activeThread || isPendingThreadId(activeThread.id)) return;
     try {
       const bridge = getDesktopBridge();
       if (bridge?.chooseDirectory) {
@@ -1670,6 +1982,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
   const uploadChatImages = async (files: File[]) => {
     const targetThreadId = activeThreadId;
     if (!targetThreadId || files.length === 0) return;
+    if (isPendingThreadId(targetThreadId)) {
+      showChatNotice(L('新对话创建中，请稍候再添加图片', 'Thread is still creating; please wait a moment'));
+      return;
+    }
     const imageFiles = files.filter(
       (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
     );
@@ -1828,6 +2144,10 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
   const uploadFilesToThreadSpace = async (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
+    if (isPendingThreadId(activeThreadId)) {
+      showChatNotice(L('新对话创建中，请稍候再上传文件', 'Thread is still creating; please wait a moment'));
+      return;
+    }
     let uploaded = 0;
     const failedNames: string[] = [];
     for (const file of files) {
@@ -2660,6 +2980,50 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
         </div>
 
         <div className="channel-list coss-scroll">
+          {pendingNewThread && (() => {
+            const pOwner = memberById.get(pendingNewThread.activeOwnerMemberId);
+            const pOwnerName = pOwner?.name || pendingNewThread.activeOwnerMemberId;
+            const pSelected = viewMode === 'thread' && activeThreadId === pendingNewThread.tempId;
+            const pSubtitle =
+              pendingNewThread.status === 'creating'
+                ? L('正在创建…', 'Creating…')
+                : pendingNewThread.status === 'canceled'
+                  ? L('已取消 · 草稿已保留', 'Canceled · Draft saved')
+                  : L('创建失败 · 草稿已保留', 'Failed · Draft saved');
+            return (
+              <div
+                key={pendingNewThread.tempId}
+                data-testid="pending-thread-sidebar-row"
+                className={`channel-row ${pSelected ? 'selected' : ''}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetTransientMenus();
+                    setViewMode('thread');
+                    setSpaceSelection(null);
+                    activeThreadIdRef.current = pendingNewThread.tempId;
+                    setActiveThreadId(pendingNewThread.tempId);
+                    setMobileSidebarOpen(false);
+                  }}
+                  className="channel-open-btn"
+                >
+                  <AgentAvatar
+                    small
+                    name={pOwnerName}
+                    platformId={pOwner?.platformId}
+                    status={pOwner?.status}
+                  />
+                  <span className="channel-copy">
+                    {pendingNewThread.title}
+                    <small>
+                      {pOwnerName} · {pSubtitle}
+                    </small>
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
           {visibleThreads.map((t) => {
             const owner = memberById.get(t.activeOwnerMemberId);
             const ownerName = owner?.name || t.activeOwnerMemberId;
@@ -2668,13 +3032,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
               <div key={t.id} className={`channel-row ${selected ? 'selected' : ''}`}>
                 <button
                   type="button"
-                  onClick={() => {
-                    resetTransientMenus();
-                    setViewMode('thread');
-                    setSpaceSelection(null);
-                    setActiveThreadId(t.id);
-                    setMobileSidebarOpen(false);
-                  }}
+                  onClick={() => handleSelectExistingThread(t.id)}
                   className="channel-open-btn"
                 >
                   <AgentAvatar
@@ -2711,7 +3069,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
               </div>
             );
           })}
-          {visibleThreads.length === 0 && (
+          {visibleThreads.length === 0 && !pendingNewThread && (
             <p className="sidebar-empty">{t('sidebarEmpty')}</p>
           )}
         </div>
@@ -2863,10 +3221,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   setActiveTaskId(tid);
                   setViewMode('task');
                 }}
-                onOpenThread={(tid) => {
-                  setActiveThreadId(tid);
-                  setViewMode('thread');
-                }}
+                onOpenThread={(tid) => handleSelectExistingThread(tid)}
                 onToggleSchedule={(tid, enabled) => handleToggleScheduleById(tid, enabled)}
                 onRunTaskNow={handleRunTaskNowById}
                 onCancelRun={(rid) => handleCancelRun(rid)}
@@ -3554,6 +3909,65 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
 
                 {/* Exact 1.9.6 Chat Composer */}
                 <form className="chat-composer" onSubmit={handleSendMessage}>
+                  {pendingNewThread && activeThread.id === pendingNewThread.tempId && (
+                    <div
+                      data-testid="pending-thread-banner"
+                      className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1.5 text-xs text-foreground"
+                    >
+                      <span className="truncate">
+                        {pendingNewThread.status === 'creating'
+                          ? queuedPendingSendTempId === pendingNewThread.tempId
+                            ? L('正在创建新对话，创建成功后将自动发送到此对话…', 'Creating new thread; message will send automatically once created…')
+                            : L('正在创建新对话，输入内容仅属于此新对话…', 'Creating new thread; drafts belong only to this thread…')
+                          : pendingNewThread.errorMessage ||
+                            L('未能创建新对话，当前草稿已保留，可直接重试或取消', 'Thread not created; draft preserved')}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {pendingNewThread.status === 'creating' ? (
+                          <button
+                            type="button"
+                            data-testid="pending-thread-cancel"
+                            onClick={() => handleCancelPendingThread(pendingNewThread.tempId)}
+                            className="dw-btn dw-btn-outline dw-btn-sm"
+                          >
+                            {L('取消', 'Cancel')}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              data-testid="pending-thread-retry"
+                              onClick={() => handleRetryPendingThread(pendingNewThread.tempId)}
+                              className="dw-btn dw-btn-primary dw-btn-sm"
+                            >
+                              {L('重试创建', 'Retry')}
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="pending-thread-dismiss"
+                              onClick={() => {
+                                const fallbackId = pendingNewThread.preferredMemberId || threads[0]?.id || '';
+                                delete pendingQueuedSendRef.current[pendingNewThread.tempId];
+                                setQueuedPendingSendTempId(null);
+                                pendingNewThreadRef.current = null;
+                                setPendingNewThread(null);
+                                if (fallbackId) {
+                                  activeThreadIdRef.current = fallbackId;
+                                  setActiveThreadId(fallbackId);
+                                } else {
+                                  activeThreadIdRef.current = '';
+                                  setActiveThreadId('');
+                                }
+                              }}
+                              className="dw-btn dw-btn-outline dw-btn-sm"
+                            >
+                              {L('放弃并返回', 'Discard')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {activeRefs.length > 0 && (
                     <div className="composer-references">
                       {activeRefs.map((ref) => {
@@ -3664,6 +4078,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                   <textarea
                     ref={inputRef}
                     value={activeDraft}
+                    readOnly={queuedPendingSendTempId === activeThread.id}
                     onChange={(e) =>
                       setInputDrafts((prev) => ({ ...prev, [activeThread.id]: e.target.value }))
                     }
@@ -3763,7 +4178,7 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                           ))}
                         </div>
                       )}
-                      {switchingThreads.has(activeThread.id) ? <small role="status">{L('正在切换成员…', 'Switching member…')}</small> : currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
+                      {switchingThreads.has(activeThread.id) ? <small role="status">{L('正在切换成员…', 'Switching member…')}</small> : !isPendingThreadId(activeThread.id) && currentOwner && ['codex-app-server','acp-stdio','claude-cli'].includes(String(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)) &&
                         <ModelPicker key={activeThread.id+'/'+currentOwner.id} threadId={activeThread.id} memberId={currentOwner.id} perModel={(currentOwner.driverKind==='remote-node' ? currentOwner.config.localDriverKind : currentOwner.driverKind)==='acp-stdio'}/>}
                       <small>{L('Enter 发送 · Shift + Enter 换行', 'Enter to send · Shift + Enter for new line')}</small>
                     </div>
@@ -3779,7 +4194,9 @@ function Workbench({resetSession}: {resetSession: () => void}): React.JSX.Elemen
                         type="submit"
                         aria-label={L('发送消息', 'Send message')}
                         disabled={
-                          switchingThreads.has(activeThread.id) || hasRunningTurn ||
+                          switchingThreads.has(activeThread.id) ||
+                          hasRunningTurn ||
+                          queuedPendingSendTempId === activeThread.id ||
                           (!activeDraft.trim() &&
                             activeRefs.length === 0 &&
                             (draftImagesByThread[activeThread.id] || []).length === 0)
