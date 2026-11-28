@@ -1,8 +1,9 @@
 [Unit]
-Description=DuolaWork 2.0 SQLite WAL Hot Backup
+Description=DuolaWork 2.0 SQLite & Files Atomic Backup
 
 [Service]
 Type=oneshot
 User=duolawork
 Group=duolawork
-ExecStart=/opt/duolawork/runtime/node/bin/node /opt/duolawork/current/deploy/scripts/backup-sqlite.mjs /var/lib/duolawork/duolawork-v2.sqlite /var/lib/duolawork/backups 14
+EnvironmentFile=-/etc/duolawork/server.env
+ExecStart=/opt/duolawork/runtime/node/bin/node /opt/duolawork/current/deploy/scripts/backup-sqlite.mjs /var/lib/duolawork/duolawork-v2.sqlite /var/lib/duolawork/backups 14 /var/lib/duolawork/files

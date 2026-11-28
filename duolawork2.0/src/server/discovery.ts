@@ -8,6 +8,7 @@ import {
   type MemberRecord
 } from '../shared/types.js';
 import { DuolaWorkDatabase, resolveLocalCliBinary } from './db.js';
+import { resolveDefaultAcpArgs } from './drivers/acp-driver.js';
 
 export type DiscoveredAgentStatus = 'ready' | 'needs_login' | 'not_installed';
 
@@ -294,6 +295,9 @@ export function activateDiscoveredAgent(
       candidate.status === 'ready'
         ? `本机 ${candidate.name} 已就绪（独立对话会话）`
         : candidate.hint,
-    config: { command: candidate.binaryPath }
+    config:
+      candidate.driverKind === 'acp-stdio'
+        ? { command: candidate.binaryPath, args: resolveDefaultAcpArgs(candidate.binaryPath) }
+        : { command: candidate.binaryPath }
   });
 }

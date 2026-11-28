@@ -73,6 +73,14 @@ async function callSessionWithMcpFallback(
   }
 }
 
+export function resolveDefaultAcpArgs(binaryPath: string): string[] {
+  const base = path.basename(binaryPath || '').replace(/\.(cmd|exe)$/i, '').toLowerCase();
+  if (base === 'gemini' || base.startsWith('gemini-')) {
+    return ['--acp', '--approval-mode', 'yolo'];
+  }
+  return ['acp', '--dangerously-skip-permissions'];
+}
+
 export class AcpStdioDriver implements AgentDriver {
   public readonly kind = 'acp-stdio' as const;
   private readonly activeClients = new Map<string, { rpc: JsonRpcStdioClient; sessionId: string }>();
@@ -98,7 +106,7 @@ export class AcpStdioDriver implements AgentDriver {
     const args =
       Array.isArray(member.config.args) && member.config.args.length > 0
         ? member.config.args.map(String)
-        : ['acp', '--dangerously-skip-permissions'];
+        : resolveDefaultAcpArgs(bin);
     fs.mkdirSync(effectiveCwd, { recursive: true });
     const rpc = new JsonRpcStdioClient({
       command: bin,
@@ -162,7 +170,7 @@ export class AcpStdioDriver implements AgentDriver {
   public async checkHealth(member: MemberRecord): Promise<{ status: MemberRecord['status']; message: string }> {
     const bin = this.resolveBinary(member);
     if (!fs.existsSync(bin)) {
-      return { status: 'offline', message: '未找到本机 agy 可执行文件' };
+      return { status: 'offline', message: `未找到本机 ACP 运行端可执行文件: ${bin}` };
     }
     let rpc: JsonRpcStdioClient | null = null;
     try {
@@ -228,7 +236,15 @@ export class AcpStdioDriver implements AgentDriver {
     const progress = progressOnOutput(onEvent);
     let text = '';
 
-    rpc.onRequest = async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } });
+    rpc.onRequest = async (_method, params) => {
+      const options = Array.isArray(params?.options) ? params.options : [];
+      const preferred =
+        options.find((o: any) => o?.kind === 'allow_once' || o?.kind === 'allow_always') ??
+        options.find((o: any) => typeof o?.optionId === 'string' && /allow|proceed/i.test(o.optionId)) ??
+        options[0];
+      const optionId = typeof preferred?.optionId === 'string' ? preferred.optionId : 'allow';
+      return { outcome: { outcome: 'selected', optionId } };
+    };
 
     try {
       let session;

@@ -11,7 +11,9 @@ import {
   isExcludedClaudeVps,
   normalizeCompanionKeepalive,
   turnPhases,
+  type CompanionKeepaliveNodeSync,
   type CompanionKeepalivePrefs,
+  type CompanionKeepaliveStatus,
   type ExecutionNodeRecord,
   type MemberCapabilities,
   type MemberRecord,
@@ -59,10 +61,15 @@ export class ExecutionNodeHub {
   private readonly liveSockets = new Map<string, LiveNodeSocket>();
   private readonly pendingRpcs = new Map<string, PendingRpc>();
   private readonly activeTurns = new Map<string, ActiveNodeTurn>();
+  private readonly keepaliveAcks = new Map<
+    string,
+    { revision: number; prefs: CompanionKeepalivePrefs; ackedAt: string }
+  >();
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   public onNodesChanged?: (nodes: ExecutionNodeRecord[]) => void;
   public onMembersChanged?: () => void;
+  public onCompanionKeepaliveChanged?: (status: CompanionKeepaliveStatus) => void;
   public onReplayedAttemptResult?: (payload: {
     attemptId: string;
     ok: boolean;
@@ -219,19 +226,88 @@ export class ExecutionNodeHub {
     return Boolean(live && live.ws.readyState === WebSocket.OPEN);
   }
 
-  public getCompanionKeepalivePrefs(): CompanionKeepalivePrefs {
-    return normalizeCompanionKeepalive(
-      this.db.getSetting<CompanionKeepalivePrefs>('companion_keepalive', DEFAULT_COMPANION_KEEPALIVE)
+  private getCompanionKeepaliveRecord(): CompanionKeepalivePrefs & {
+    revision: number;
+    updatedAt: string | null;
+  } {
+    const raw = this.db.getSetting<Record<string, unknown>>(
+      'companion_keepalive',
+      { ...DEFAULT_COMPANION_KEEPALIVE }
     );
+    const prefs = normalizeCompanionKeepalive(raw);
+    const revision =
+      typeof raw?.revision === 'number' && Number.isFinite(raw.revision) && raw.revision >= 0
+        ? Math.floor(raw.revision)
+        : 0;
+    const updatedAt = typeof raw?.updatedAt === 'string' ? raw.updatedAt : null;
+    return { ...prefs, revision, updatedAt };
   }
 
-  public broadcastCompanionKeepalive(prefs: CompanionKeepalivePrefs): number {
+  public getCompanionKeepalivePrefs(): CompanionKeepalivePrefs {
+    const rec = this.getCompanionKeepaliveRecord();
+    return { deepseekHarness: rec.deepseekHarness, grokBot: rec.grokBot };
+  }
+
+  public getCompanionKeepaliveStatus(): CompanionKeepaliveStatus {
+    const rec = this.getCompanionKeepaliveRecord();
+    const localNodes: CompanionKeepaliveNodeSync[] = this.listNodes()
+      .filter((n) => n.kind === 'local')
+      .map((n) => {
+        const online = this.isNodeOnline(n.id);
+        const ack = this.keepaliveAcks.get(n.id);
+        const synced = Boolean(online && ack && ack.revision === rec.revision);
+        return {
+          nodeId: n.id,
+          nodeName: n.name,
+          online,
+          ackedRevision: ack ? ack.revision : null,
+          synced,
+          ackedAt: ack ? ack.ackedAt : null
+        };
+      });
+    return {
+      deepseekHarness: rec.deepseekHarness,
+      grokBot: rec.grokBot,
+      revision: rec.revision,
+      updatedAt: rec.updatedAt,
+      localNodes
+    };
+  }
+
+  public setCompanionKeepalivePrefs(
+    patch: Partial<CompanionKeepalivePrefs>
+  ): CompanionKeepaliveStatus {
+    const prev = this.getCompanionKeepaliveRecord();
+    const prefs = normalizeCompanionKeepalive({
+      deepseekHarness:
+        patch.deepseekHarness !== undefined ? patch.deepseekHarness : prev.deepseekHarness,
+      grokBot: patch.grokBot !== undefined ? patch.grokBot : prev.grokBot
+    });
+    const nextRevision = prev.revision + 1;
+    const updatedAt = new Date().toISOString();
+    this.db.setSetting('companion_keepalive', {
+      ...prefs,
+      revision: nextRevision,
+      updatedAt
+    });
+    this.broadcastCompanionKeepalive(prefs, nextRevision);
+    const status = this.getCompanionKeepaliveStatus();
+    this.onCompanionKeepaliveChanged?.(status);
+    return status;
+  }
+
+  public broadcastCompanionKeepalive(prefs: CompanionKeepalivePrefs, revision?: number): number {
     const normalized = normalizeCompanionKeepalive(prefs);
+    const rev = revision ?? this.getCompanionKeepaliveRecord().revision;
     let notified = 0;
     for (const [nodeId, live] of this.liveSockets.entries()) {
       if (live.ws.readyState !== WebSocket.OPEN) continue;
       if (this.getNode(nodeId)?.kind !== 'local') continue;
-      this.sendFrame(live.ws, { type: 'node.companion_keepalive', prefs: normalized });
+      this.sendFrame(live.ws, {
+        type: 'node.companion_keepalive',
+        prefs: normalized,
+        revision: rev
+      });
       notified += 1;
     }
     return notified;
@@ -260,8 +336,10 @@ export class ExecutionNodeHub {
          WHERE node_id = ?`
       )
       .run(now, nodeId);
+    this.keepaliveAcks.delete(nodeId);
     const res = this.db.sqlite.prepare(`DELETE FROM v2_nodes WHERE id = ?`).run(nodeId);
     this.onNodesChanged?.(this.listNodes());
+    this.onCompanionKeepaliveChanged?.(this.getCompanionKeepaliveStatus());
     this.onMembersChanged?.();
     return Number(res.changes || 0) > 0;
   }
@@ -362,6 +440,7 @@ export class ExecutionNodeHub {
     }
 
     this.onNodesChanged?.(this.listNodes());
+    this.onCompanionKeepaliveChanged?.(this.getCompanionKeepaliveStatus());
     this.onMembersChanged?.();
   }
 
@@ -383,6 +462,16 @@ export class ExecutionNodeHub {
       this.db.sqlite
         .prepare(`UPDATE v2_nodes SET last_heartbeat_at = ? WHERE id = ?`)
         .run(new Date().toISOString(), nodeId);
+      return;
+    }
+
+    if (type === 'node.companion_keepalive_ack') {
+      this.keepaliveAcks.set(nodeId, {
+        revision: Number(msg.revision ?? 0),
+        prefs: normalizeCompanionKeepalive(msg.prefs),
+        ackedAt: new Date().toISOString()
+      });
+      this.onCompanionKeepaliveChanged?.(this.getCompanionKeepaliveStatus());
       return;
     }
 
@@ -453,12 +542,17 @@ export class ExecutionNodeHub {
       }
 
       live.resumesToolCalls = msg.resumesToolCalls === true;
+      const keepaliveRec = this.getCompanionKeepaliveRecord();
       this.sendFrame(ws, {
         type: 'node.welcome',
         nodeId,
         serverTime: now,
         resumesToolCalls: true,
-        companionKeepalive: this.getCompanionKeepalivePrefs()
+        companionKeepalive: {
+          deepseekHarness: keepaliveRec.deepseekHarness,
+          grokBot: keepaliveRec.grokBot
+        },
+        companionKeepaliveRevision: keepaliveRec.revision
       });
       for (const turn of this.activeTurns.values()) {
         if (turn.nodeId !== nodeId || !turn.disconnected) continue;

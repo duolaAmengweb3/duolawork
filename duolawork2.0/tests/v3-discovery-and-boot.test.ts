@@ -335,7 +335,14 @@ test('DW3-04: companion keepalive defaults OFF, launches selectively when enable
 
     const getInitial = await fetch(`${url}/api/v2/settings/companion-keepalive`);
     assert.equal(getInitial.status, 200);
-    assert.deepEqual(await getInitial.json(), { deepseekHarness: false, grokBot: false });
+    const initJson = await getInitial.json();
+    assert.deepEqual(
+      { deepseekHarness: initJson.deepseekHarness, grokBot: initJson.grokBot },
+      { deepseekHarness: false, grokBot: false }
+    );
+    assert.equal(initJson.localNodes.length, 1);
+    assert.equal(initJson.localNodes[0].online, true);
+    assert.equal(initJson.localNodes[0].synced, true);
 
     const postEnable = await fetch(`${url}/api/v2/settings/companion-keepalive`, {
       method: 'POST',
@@ -343,7 +350,11 @@ test('DW3-04: companion keepalive defaults OFF, launches selectively when enable
       body: JSON.stringify({ deepseekHarness: true })
     });
     assert.equal(postEnable.status, 200);
-    assert.deepEqual(await postEnable.json(), { deepseekHarness: true, grokBot: false });
+    const enableJson = await postEnable.json();
+    assert.deepEqual(
+      { deepseekHarness: enableJson.deepseekHarness, grokBot: enableJson.grokBot },
+      { deepseekHarness: true, grokBot: false }
+    );
 
     const deadline = Date.now() + 4000;
     while (Date.now() < deadline && !runner.getCompanionKeepalive().deepseekHarness) {
@@ -358,7 +369,11 @@ test('DW3-04: companion keepalive defaults OFF, launches selectively when enable
       body: JSON.stringify({ deepseekHarness: false, grokBot: false })
     });
     assert.equal(postDisable.status, 200);
-    assert.deepEqual(await postDisable.json(), { deepseekHarness: false, grokBot: false });
+    const disableJson = await postDisable.json();
+    assert.deepEqual(
+      { deepseekHarness: disableJson.deepseekHarness, grokBot: false },
+      { deepseekHarness: false, grokBot: false }
+    );
 
     const deadline2 = Date.now() + 4000;
     while (Date.now() < deadline2 && runner.getCompanionKeepalive().deepseekHarness) {

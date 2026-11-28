@@ -18,9 +18,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  DEFAULT_COMPANION_KEEPALIVE,
   type AuthSessionRecord,
-  type CompanionKeepalivePrefs,
+  type CompanionKeepaliveStatus,
   type DriverKind,
   type ExecutionNodeRecord,
   type MemberRecord,
@@ -121,11 +120,11 @@ export function MembersUsagePage({
     0,
     authRequired
   );
-  const keepaliveData = useViewData<CompanionKeepalivePrefs>(
+  const keepaliveData = useViewData<CompanionKeepaliveStatus>(
     '/api/v2/settings/companion-keepalive',
     0
   );
-  const keepalivePrefs = keepaliveData.data ?? DEFAULT_COMPANION_KEEPALIVE;
+  const keepaliveStatus = keepaliveData.data ?? null;
   const summaries = useMemo(
     () => Object.fromEntries((usage.data?.summaries ?? []).map((s) => [s.memberId, s])),
     [usage.data]
@@ -156,6 +155,10 @@ export function MembersUsagePage({
   const [discoverLoading, setDiscoverLoading] = useState<boolean>(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [savingKeepalive, setSavingKeepalive] = useState<'deepseekHarness' | 'grokBot' | null>(null);
+  const [keepaliveState, setKeepaliveState] = useState<'loading' | 'ready' | 'error'>(() =>
+    views.peek('/api/v2/settings/companion-keepalive') ? 'ready' : 'loading'
+  );
+  const [keepaliveError, setKeepaliveError] = useState<string>('');
 
   const loadDiscover = useMemo(
     () => async () => {
@@ -181,6 +184,43 @@ export function MembersUsagePage({
   const loadUsage = usage.read;
   const loadSessions = sessionData.read;
   const loadKeepalive = keepaliveData.read;
+
+  const refreshKeepalive = useMemo(
+    () => async (force = false) => {
+      if (force || !views.peek('/api/v2/settings/companion-keepalive')) {
+        setKeepaliveState('loading');
+      }
+      setKeepaliveError('');
+      try {
+        const res = await loadKeepalive(force);
+        if (res) {
+          setKeepaliveState('ready');
+        } else {
+          setKeepaliveState('error');
+          setKeepaliveError(
+            L('未能读取伴生应用保活设置，当前状态未知，请重试。', 'Unable to load companion keepalive settings; state unknown.')
+          );
+        }
+      } catch (err) {
+        setKeepaliveState('error');
+        const detail = err instanceof Error && err.message ? err.message : '';
+        setKeepaliveError(
+          detail
+            ? L(`读取伴生应用保活设置失败（${detail}），当前状态未知。`, `Failed to load companion keepalive (${detail}); state unknown.`)
+            : L('读取伴生应用保活设置失败，当前状态未知。', 'Failed to load companion keepalive; state unknown.')
+        );
+      }
+    },
+    [loadKeepalive, views, L]
+  );
+
+  useEffect(() => {
+    if (keepaliveStatus) {
+      setKeepaliveState('ready');
+      setKeepaliveError('');
+    }
+  }, [keepaliveStatus]);
+
   useEffect(() => {
     let active = true;
     const report = () => {
@@ -188,7 +228,7 @@ export function MembersUsagePage({
     };
     void loadUsage().catch(report);
     void loadSessions().catch(report);
-    void loadKeepalive().catch(() => {});
+    void refreshKeepalive(false);
     void loadDiscover();
     const timer = window.setInterval(() => {
       if (!document.hidden) void loadUsage(true).catch(report);
@@ -197,10 +237,11 @@ export function MembersUsagePage({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadUsage, loadSessions, loadKeepalive, loadDiscover, members.length, L]);
+  }, [loadUsage, loadSessions, refreshKeepalive, loadDiscover, members.length, L]);
 
   const handleToggleKeepalive = async (key: 'deepseekHarness' | 'grokBot') => {
-    const nextValue = !keepalivePrefs[key];
+    if (keepaliveState !== 'ready' || !keepaliveStatus) return;
+    const nextValue = !keepaliveStatus[key];
     setSavingKeepalive(key);
     setError('');
     try {
@@ -209,24 +250,34 @@ export function MembersUsagePage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: nextValue })
       });
-      const data = (await res.json().catch(() => ({}))) as Partial<CompanionKeepalivePrefs> & {
+      const data = (await res.json().catch(() => ({}))) as Partial<CompanionKeepaliveStatus> & {
         message?: string;
       };
       if (!res.ok) {
-        setError(data.message || L('更新伴生保活开关失败', 'Failed to update companion keepalive'));
+        setError(data.message || L('更新伴生保活开关失败，请重试', 'Failed to update companion keepalive; please retry'));
         return;
       }
-      const nextPrefs: CompanionKeepalivePrefs = {
+      const nextStatus: CompanionKeepaliveStatus = {
         deepseekHarness: Boolean(data.deepseekHarness),
-        grokBot: Boolean(data.grokBot)
+        grokBot: Boolean(data.grokBot),
+        revision: typeof data.revision === 'number' ? data.revision : keepaliveStatus.revision + 1,
+        updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString(),
+        localNodes: Array.isArray(data.localNodes) ? data.localNodes : keepaliveStatus.localNodes
       };
-      views.put('/api/v2/settings/companion-keepalive', nextPrefs);
+      views.put('/api/v2/settings/companion-keepalive', nextStatus);
       const appName = key === 'deepseekHarness' ? 'DeepSeek Harness' : 'Grok Bot';
       toast.success(
-        nextPrefs[key]
-          ? L(`已开启 ${appName} 自动保活`, `Enabled keepalive for ${appName}`)
-          : L(`已关闭 ${appName} 自动保活`, `Disabled keepalive for ${appName}`)
+        nextStatus[key]
+          ? L(`云端已保存：已开启 ${appName} 自动保活`, `Saved on cloud: keepalive enabled for ${appName}`)
+          : L(`云端已保存：已关闭 ${appName} 自动保活`, `Saved on cloud: keepalive disabled for ${appName}`)
       );
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? L(`无法连接控制面，伴生保活设置未保存（${err.message}）`, `Network error while saving keepalive setting (${err.message})`)
+          : L('网络异常，伴生保活设置未保存，请重试', 'Network error while saving keepalive setting');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSavingKeepalive(null);
     }
@@ -1191,7 +1242,7 @@ export function MembersUsagePage({
 
         {/* Desktop Companion Keepalive Switches (Default OFF) */}
         <Frame data-testid="companion-keepalive-card">
-          <FrameHeader className="flex-row items-center justify-between gap-2 px-4 py-3">
+          <FrameHeader className="flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <FrameTitle className="flex items-center gap-1.5 text-[13px]">
                 <Laptop size={14} className="text-muted-foreground" />
@@ -1199,13 +1250,109 @@ export function MembersUsagePage({
               </FrameTitle>
               <FrameDescription className="text-[11.5px]">
                 {L(
-                  '默认关闭。仅开启需要本机节点后台保持在线的连接器；关闭后手动退出不再自动拉起。',
-                  'Off by default. Enable only for desktop connectors you want kept running in the background; disabled apps will not auto-relaunch after quitting.'
+                  '默认关闭。云端保存后同步至在线本地节点；节点失联期间暂停自动启动。',
+                  'Off by default. Cloud saves sync to online local nodes; auto-launch pauses while a node is disconnected.'
                 )}
               </FrameDescription>
             </div>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0" data-testid="keepalive-sync-status">
+              {keepaliveState === 'loading' ? (
+                <Badge variant="secondary" size="sm">
+                  {L('正在读取…', 'Loading…')}
+                </Badge>
+              ) : keepaliveState === 'error' || !keepaliveStatus ? (
+                <>
+                  <Badge variant="warning" size="sm" data-testid="keepalive-unknown-state">
+                    {L('状态未知', 'Status Unknown')}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    data-testid="keepalive-retry-btn"
+                    onClick={() => void refreshKeepalive(true)}
+                  >
+                    <RefreshCw size={11} />
+                    <span>{L('重试', 'Retry')}</span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Badge variant="info" size="sm" data-testid="keepalive-cloud-badge">
+                    {L(`云端已保存 (v${keepaliveStatus.revision})`, `Cloud saved (r${keepaliveStatus.revision})`)}
+                  </Badge>
+                  {(() => {
+                    const localNodes = keepaliveStatus.localNodes || [];
+                    if (localNodes.length === 0) {
+                      return (
+                        <Badge variant="secondary" size="sm" data-testid="keepalive-device-badge">
+                          {L('当前未配对本地节点', 'No local nodes paired')}
+                        </Badge>
+                      );
+                    }
+                    const onlineNodes = localNodes.filter((n) => n.online);
+                    const syncedNodes = onlineNodes.filter((n) => n.synced);
+                    if (onlineNodes.length === 0) {
+                      return (
+                        <Badge variant="warning" size="sm" data-testid="keepalive-device-badge">
+                          {L('设备失联 · 已暂停自动启动', 'Device offline · auto-launch paused')}
+                        </Badge>
+                      );
+                    }
+                    if (syncedNodes.length === onlineNodes.length && onlineNodes.length === localNodes.length) {
+                      return (
+                        <Badge variant="success" size="sm" data-testid="keepalive-device-badge">
+                          {L(`设备已收到 (${syncedNodes.length}/${localNodes.length})`, `Device received (${syncedNodes.length}/${localNodes.length})`)}
+                        </Badge>
+                      );
+                    }
+                    if (syncedNodes.length < onlineNodes.length) {
+                      return (
+                        <Badge variant="warning" size="sm" data-testid="keepalive-device-badge">
+                          {L(`等待设备确认 (${syncedNodes.length}/${onlineNodes.length})`, `Pending device ACK (${syncedNodes.length}/${onlineNodes.length})`)}
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge variant="warning" size="sm" data-testid="keepalive-device-badge">
+                        {L(`部分节点失联 · 已暂停 (${syncedNodes.length}/${localNodes.length})`, `Partial offline · paused (${syncedNodes.length}/${localNodes.length})`)}
+                      </Badge>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
           </FrameHeader>
           <FramePanel className="p-0">
+            {keepaliveState === 'error' && keepaliveError && (
+              <div
+                role="alert"
+                data-testid="keepalive-error-banner"
+                className="flex items-center justify-between gap-3 border-b border-border bg-warning/8 px-4 py-2.5 text-xs text-warning-foreground"
+              >
+                <span>{keepaliveError}</span>
+                <Button variant="outline" size="xs" onClick={() => void refreshKeepalive(true)}>
+                  {L('重新读取', 'Reload')}
+                </Button>
+              </div>
+            )}
+            {keepaliveState === 'ready' && keepaliveStatus && keepaliveStatus.localNodes.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground">
+                <span>{L('设备同步状态：', 'Device sync:')}</span>
+                {keepaliveStatus.localNodes.map((n) => (
+                  <span key={n.nodeId} className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10.5px]">
+                    <span className={`size-1.5 rounded-full ${!n.online ? 'bg-neutral-400' : n.synced ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    <span>{n.nodeName}:</span>
+                    <strong>
+                      {!n.online
+                        ? L('失联已暂停', 'Offline (paused)')
+                        : n.synced
+                          ? L(`已收到 (v${n.ackedRevision})`, `Received (r${n.ackedRevision})`)
+                          : L('等待确认', 'Pending ACK')}
+                    </strong>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-1 divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
               {(
                 [
@@ -1231,7 +1378,22 @@ export function MembersUsagePage({
                   }
                 ]
               ).map((item) => {
-                const enabled = Boolean(keepalivePrefs[item.key]);
+                const knownReady = keepaliveState === 'ready' && Boolean(keepaliveStatus);
+                const enabled = knownReady ? Boolean(keepaliveStatus![item.key]) : false;
+                const rowBadgeVariant = !knownReady
+                  ? keepaliveState === 'error'
+                    ? 'warning'
+                    : 'secondary'
+                  : enabled
+                    ? 'success'
+                    : 'secondary';
+                const rowBadgeText = !knownReady
+                  ? keepaliveState === 'error'
+                    ? L('状态未知', 'Unknown')
+                    : L('读取中…', 'Loading…')
+                  : enabled
+                    ? L('自动保活已开', 'Keepalive On')
+                    : L('不自动拉起', 'Keepalive Off');
                 return (
                   <div key={item.key} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -1241,8 +1403,8 @@ export function MembersUsagePage({
                           <span className="truncate text-[13px] font-medium text-foreground">
                             {item.label}
                           </span>
-                          <Badge variant={enabled ? 'success' : 'secondary'} size="sm">
-                            {enabled ? L('自动保活已开', 'Keepalive On') : L('不自动拉起', 'Keepalive Off')}
+                          <Badge variant={rowBadgeVariant} size="sm">
+                            {rowBadgeText}
                           </Badge>
                         </div>
                         <p className="m-0 mt-0.5 text-[11.5px] text-muted-foreground">{item.desc}</p>
@@ -1251,18 +1413,22 @@ export function MembersUsagePage({
                     <button
                       type="button"
                       role="switch"
-                      aria-checked={enabled}
+                      aria-checked={knownReady ? enabled : 'mixed'}
                       aria-label={item.label}
                       data-testid={item.testId}
-                      disabled={savingKeepalive === item.key}
+                      disabled={!knownReady || savingKeepalive === item.key}
                       onClick={() => void handleToggleKeepalive(item.key)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${
-                        enabled ? 'border-emerald-600 bg-emerald-600' : 'border-border bg-muted'
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+                        !knownReady
+                          ? 'border-border bg-muted/60'
+                          : enabled
+                            ? 'cursor-pointer border-emerald-600 bg-emerald-600'
+                            : 'cursor-pointer border-border bg-muted'
                       }`}
                     >
                       <span
                         className={`pointer-events-none block size-4 rounded-full bg-white shadow-sm transition-transform ${
-                          enabled ? 'translate-x-4' : 'translate-x-0.5'
+                          !knownReady ? 'translate-x-2 opacity-60' : enabled ? 'translate-x-4' : 'translate-x-0.5'
                         }`}
                       />
                     </button>
